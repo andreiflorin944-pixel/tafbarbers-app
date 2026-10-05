@@ -24,6 +24,7 @@ import {
   type ClientRow,
   type PromoRow,
   type ServiceRow,
+  BARBER_SERVICE_COLS,
 } from '../db';
 import { HttpError, PERMS, parsePerms, type AppEnv, type Perm } from '../env';
 import { runCampaign } from '../campaigns';
@@ -362,7 +363,7 @@ function serviceValues(b: ServiceInput, create: boolean) {
 
 // --- Frizeri, programul și serviciile lor ---
 
-const BARBER_SELECT = `SELECT b.*, (SELECT group_concat(service_id) FROM barber_services WHERE barber_id = b.id) AS service_ids FROM barbers b`;
+const BARBER_SELECT = `SELECT b.*, ${BARBER_SERVICE_COLS} FROM barbers b`;
 
 adminRoutes.get('/barbers', async (c) => {
   const [r, h] = await Promise.all([
@@ -390,6 +391,8 @@ type BarberInput = {
   sort?: number;
   active?: boolean;
   serviceIds?: string[];
+  /** Prețuri proprii în lei pe serviciu; null = prețul standard. */
+  prices?: Record<string, number | null>;
   hours?: Array<{ weekday: number; start: number; end: number }>;
 };
 
@@ -402,6 +405,7 @@ adminRoutes.post('/barbers', ownerOnly, async (c) => {
     .bind(id, b.name.trim().slice(0, 80), (b.role ?? 'Barber').slice(0, 60), (b.bio ?? '').slice(0, 1000), b.photoUrl ?? null, b.sort ?? 0)
     .run();
   await saveBarberRelations(c.env.DB, id, {
+    prices: b.prices,
     serviceIds: b.serviceIds ?? (await c.env.DB.prepare('SELECT id FROM services').all<{ id: string }>()).results.map((s) => s.id),
     hours: b.hours,
   });
@@ -434,11 +438,28 @@ adminRoutes.delete('/barbers/:id', ownerOnly, async (c) => {
   return c.json({ ok: true, deactivated: !!used });
 });
 
-async function saveBarberRelations(db: D1Database, id: string, b: Pick<BarberInput, 'serviceIds' | 'hours'>) {
+async function saveBarberRelations(db: D1Database, id: string, b: Pick<BarberInput, 'serviceIds' | 'hours' | 'prices'>) {
   const stmts: D1PreparedStatement[] = [];
+  const prices = new Map<string, number | null>();
+  for (const [sid, lei] of Object.entries(b.prices ?? {})) {
+    if (lei === null || lei === undefined || (lei as unknown) === '') prices.set(sid, null);
+    else {
+      const bani = Math.round(Number(lei) * 100);
+      if (!(bani >= 0 && bani <= 100_000_00)) throw new HttpError(400, 'invalid_price');
+      prices.set(sid, bani);
+    }
+  }
   if (b.serviceIds) {
+    // Păstrăm prețurile proprii existente pentru serviciile care rămân bifate.
+    const old = await db.prepare('SELECT service_id, price_bani FROM barber_services WHERE barber_id = ?').bind(id).all<{ service_id: string; price_bani: number | null }>();
+    const keep = new Map(old.results.map((r) => [r.service_id, r.price_bani]));
     stmts.push(db.prepare('DELETE FROM barber_services WHERE barber_id = ?').bind(id));
-    for (const s of b.serviceIds) stmts.push(db.prepare('INSERT INTO barber_services (barber_id, service_id) VALUES (?, ?)').bind(id, s));
+    for (const s of b.serviceIds) {
+      const price = prices.has(s) ? prices.get(s)! : (keep.get(s) ?? null);
+      stmts.push(db.prepare('INSERT INTO barber_services (barber_id, service_id, price_bani) VALUES (?, ?, ?)').bind(id, s, price));
+    }
+  } else {
+    for (const [s, price] of prices) stmts.push(db.prepare('UPDATE barber_services SET price_bani = ? WHERE barber_id = ? AND service_id = ?').bind(price, id, s));
   }
   if (b.hours) {
     for (const h of b.hours) {

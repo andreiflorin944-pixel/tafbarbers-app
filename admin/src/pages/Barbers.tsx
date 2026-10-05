@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, type Barber, type Hours, type Me, type Service } from '../api';
+import { api, ApiError, type Barber, type Hours, type Me, type Service } from '../api';
 import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
 import { hm, parseHm, WEEKDAYS } from '../util';
 
@@ -81,13 +81,22 @@ function BarberModal({ b, services, onClose, onDone }: { b: Partial<Barber>; ser
   const [sort, setSort] = useState(b.sort ?? 0);
   const [svc, setSvc] = useState<string[]>(b.serviceIds ?? []);
   const [hours, setHours] = useState<Hours[]>(b.hours ?? []);
+  // Preț propriu pe serviciu, ca text; gol = prețul standard al serviciului.
+  const [prices, setPrices] = useState<Record<string, string>>(Object.fromEntries(Object.entries(b.prices ?? {}).map(([k, v]) => [k, String(v)])));
   const { busy, error, run } = useAction();
 
   const setInterval = (i: number, patch: Partial<Hours>) => setHours((hs) => hs.map((h, j) => (j === i ? { ...h, ...patch } : h)));
 
   const save = () =>
     run(async () => {
-      const body = { name, role, bio, photoUrl: photoUrl || null, active, sort, serviceIds: svc, hours };
+      const own = Object.fromEntries(
+        services.map((s) => {
+          const t = (prices[s.id] ?? '').trim().replace(',', '.');
+          return [s.id, t === '' || Number(t) === s.price ? null : Number(t)];
+        }),
+      );
+      if (Object.values(own).some((v) => v !== null && !(v >= 0))) throw new ApiError('invalid_price', 400);
+      const body = { name, role, bio, photoUrl: photoUrl || null, active, sort, serviceIds: svc, prices: own, hours };
       if (b.id) await api('PATCH', `/admin/barbers/${b.id}`, body);
       else await api('POST', '/admin/barbers', body);
       onDone();
@@ -153,13 +162,27 @@ function BarberModal({ b, services, onClose, onDone }: { b: Partial<Barber>; ser
           })}
         </div>
 
-        <h2 style={{ marginTop: 6, marginBottom: 0 }}>Servicii pe care le face</h2>
+        <h2 style={{ marginTop: 6, marginBottom: 0 }}>Servicii și prețuri</h2>
+        <p className="muted" style={{ margin: 0 }}>
+          Bifează serviciile pe care le face. Lasă prețul gol ca să folosească prețul standard al serviciului, sau scrie un preț doar pentru acest frizer.
+        </p>
         <div className="grid">
           {services.map((s) => (
-            <label key={s.id} className="check small">
-              <input type="checkbox" checked={svc.includes(s.id)} onChange={(e) => setSvc((x) => (e.target.checked ? [...x, s.id] : x.filter((y) => y !== s.id)))} />
-              {s.name}
-            </label>
+            <div key={s.id} className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', gap: 10 }}>
+              <label className="check small" style={{ flex: 1 }}>
+                <input type="checkbox" checked={svc.includes(s.id)} onChange={(e) => setSvc((x) => (e.target.checked ? [...x, s.id] : x.filter((y) => y !== s.id)))} />
+                {s.name}
+              </label>
+              <input
+                aria-label={`Preț ${s.name}`}
+                style={{ width: 110 }}
+                inputMode="decimal"
+                disabled={!svc.includes(s.id)}
+                placeholder={`${s.price} lei`}
+                value={prices[s.id] ?? ''}
+                onChange={(e) => setPrices((p) => ({ ...p, [s.id]: e.target.value }))}
+              />
+            </div>
           ))}
         </div>
         <label className="check">

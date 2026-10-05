@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { availability } from '../availability';
 import { createSession, deleteSession, normalizePhone, randomCode, sha256, newId, timingSafeEqual, tokenFrom } from '../auth';
-import { barber, getBusiness, promo, service, type BarberRow, type PromoRow, type ServiceRow } from '../db';
+import { barber, BARBER_SERVICE_COLS, getBusiness, promo, service, type BarberRow, type PromoRow, type ServiceRow } from '../db';
 import { HttpError, type AppEnv } from '../env';
 import { msg, otpEmail } from '../messages';
 import { sendEmail, sendSms } from '../notify';
@@ -51,7 +51,7 @@ publicRoutes.get('/services', async (c) => {
 
 publicRoutes.get('/barbers', async (c) => {
   const r = await c.env.DB.prepare(
-    `SELECT b.*, (SELECT group_concat(service_id) FROM barber_services WHERE barber_id = b.id) AS service_ids
+    `SELECT b.*, ${BARBER_SERVICE_COLS}
      FROM barbers b WHERE b.active = 1 ORDER BY b.sort, b.name`,
   ).all<BarberRow>();
   return c.json(r.results.map(barber));

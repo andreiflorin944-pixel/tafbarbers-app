@@ -6,6 +6,7 @@ import { Button, Card, Icon, Screen, Steps, styles } from '@/components/ui';
 import { formatDate, formatTime } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useLoginGate } from '@/components/LoginGate';
+import { barberPrice } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
@@ -53,7 +54,7 @@ export default function Confirm() {
         <View style={{ height: 1, backgroundColor: colors.border, marginVertical: space.xs }} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={styles.text}>Total</Text>
-          <Text style={styles.price}>{service.price} lei</Text>
+          <Text style={styles.price}>{barberPrice(service, barber)} lei</Text>
         </View>
       </Card>
 

@@ -17,6 +17,8 @@ export type Barber = {
   initials: string;
   photoUrl?: string | null;
   serviceIds?: string[];
+  /** Prețuri proprii (lei) pe serviciu, doar unde diferă de prețul standard. */
+  prices?: Record<string, number>;
 };
 
 export type Slot = {

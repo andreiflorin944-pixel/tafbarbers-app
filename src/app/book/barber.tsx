@@ -2,6 +2,7 @@ import { Redirect, router } from 'expo-router';
 import { Text, View } from 'react-native';
 import { Avatar, Card, Screen, Steps, styles } from '@/components/ui';
 import { useLoginGate } from '@/components/LoginGate';
+import { barberPrice, priceLabel } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { space } from '@/theme';
 
@@ -21,7 +22,7 @@ export default function ChooseBarber() {
     <Screen edges={[]}>
       <Steps current={2} />
       <Text style={[styles.muted, { marginBottom: space.sm }]}>
-        {service.name} · {service.durationMin} min · {service.price} lei
+        {service.name} · {service.durationMin} min · {priceLabel(service, barbers)}
       </Text>
 
       <Card onPress={() => pick(null)} selected={draft.barberId === null} style={rowStyle}>
@@ -39,6 +40,7 @@ export default function ChooseBarber() {
             <Text style={styles.cardTitle}>{b.name}</Text>
             <Text style={styles.muted}>{b.role}</Text>
           </View>
+          <Text style={styles.price}>{barberPrice(service, b)} lei</Text>
         </Card>
       ))}
     </Screen>

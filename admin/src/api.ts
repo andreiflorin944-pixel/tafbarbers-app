@@ -166,6 +166,8 @@ export type Barber = {
   sort: number;
   active: boolean;
   serviceIds: string[];
+  /** Prețuri proprii în lei, doar unde diferă de prețul standard. */
+  prices: Record<string, number>;
   hours: Hours[];
 };
 export type Booking = {

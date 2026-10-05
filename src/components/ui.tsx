@@ -4,6 +4,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Barber, Service } from '@/data/types';
 import { mediaUrl } from '@/api/staff';
+import { usePriceLabel } from '@/lib/price';
 import { colors, radius, space } from '@/theme';
 
 // `tab` leaves room for the floating tab bar.
@@ -80,6 +81,7 @@ export function Avatar({ barber, size = 56 }: { barber?: Barber; size?: number }
 }
 
 export function ServiceRow({ service, onPress, selected }: { service: Service; onPress?: () => void; selected?: boolean }) {
+  const priceText = usePriceLabel();
   return (
     <Card onPress={onPress} selected={selected} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
       {service.imageUrl ? (
@@ -94,7 +96,7 @@ export function ServiceRow({ service, onPress, selected }: { service: Service; o
         </Text>
       </View>
       <View style={{ alignItems: 'flex-end' }}>
-        <Text style={styles.price}>{service.price} lei</Text>
+        <Text style={styles.price}>{priceText(service)}</Text>
         <Text style={styles.muted}>{service.durationMin} min</Text>
       </View>
     </Card>

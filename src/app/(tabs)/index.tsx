@@ -11,6 +11,7 @@ import { Button, SectionTitle, styles as ui } from '@/components/ui';
 import type { Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
 import { formatDate, formatTime } from '@/lib/dates';
+import { usePriceLabel } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
@@ -18,6 +19,7 @@ import { colors, radius, space } from '@/theme';
 export default function Home() {
   const { business, loading, loadError, reload, user, bookings, services, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
   const { t, lang } = useT();
+  const priceText = usePriceLabel();
   const { staff } = useStaff();
   const { products, count: cartCount } = useCart();
   const look = business?.appearance;
@@ -128,7 +130,7 @@ export default function Home() {
                 {sv.name}
               </Text>
               <View style={s.svcFoot}>
-                <Text style={s.svcPrice}>{sv.price} lei</Text>
+                <Text style={s.svcPrice}>{priceText(sv)}</Text>
                 <Text style={ui.muted}>{sv.durationMin} min</Text>
               </View>
             </Pressable>

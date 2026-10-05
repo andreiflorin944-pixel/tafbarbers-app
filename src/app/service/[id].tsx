@@ -2,12 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import { Button, styles } from '@/components/ui';
+import { usePriceLabel } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
 
 export default function ServiceDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { serviceById, business, resetDraft, setDraft } = useApp();
+  const priceText = usePriceLabel();
   const service = serviceById(id ?? null);
   if (!service) return <Redirect href="/services" />;
 
@@ -22,7 +24,7 @@ export default function ServiceDetail() {
           <View style={styles.row}>
             <Ionicons name="time-outline" size={16} color={colors.onGold} />
             <Text style={{ color: colors.onGold, fontWeight: '700' }}>{service.durationMin} min</Text>
-            <Text style={{ color: colors.onGold, fontWeight: '700', marginLeft: space.md }}>{service.price} lei</Text>
+            <Text style={{ color: colors.onGold, fontWeight: '700', marginLeft: space.md }}>{priceText(service)}</Text>
           </View>
           <Text style={{ color: colors.onGold, fontSize: 26, fontWeight: '800' }}>{service.name}</Text>
         </View>
