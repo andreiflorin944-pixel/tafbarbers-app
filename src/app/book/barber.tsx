@@ -7,7 +7,7 @@ import { space } from '@/theme';
 export default function ChooseBarber() {
   const { barbers, draft, setDraft, serviceById } = useApp();
   const service = serviceById(draft.serviceId);
-  if (!service) return <Redirect href="/services" />;
+  if (!service) return <Redirect href="/book/service" />;
 
   const pick = (barberId: string | null) => {
     setDraft({ barberId, start: null, slotBarberId: null });

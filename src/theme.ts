@@ -1,14 +1,16 @@
+// Culorile aplicației actuale TAF Barber's: portocaliu și negru.
 export const colors = {
-  bg: '#0B0B0C',
-  card: '#161618',
-  cardAlt: '#1E1E21',
-  border: '#2A2A2E',
-  gold: '#C9A45C',
-  goldDark: '#8C7240',
-  text: '#F5F2EA',
-  muted: '#9A968E',
+  bg: '#000000',
+  card: '#0F0F10',
+  cardAlt: '#1A1A1C',
+  border: '#262628',
+  gold: '#F9A11B', // accentul portocaliu
+  goldDark: '#B87410',
+  onGold: '#000000',
+  text: '#FFFFFF',
+  muted: '#A3A09A',
   danger: '#E5625E',
-  success: '#5FB37C',
+  success: '#5C8A63',
 };
 
 export const radius = { sm: 8, md: 14, lg: 20, pill: 999 };

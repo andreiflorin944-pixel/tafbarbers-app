@@ -42,7 +42,7 @@ export function Card({ children, style, onPress, selected }: { children: ReactNo
 
 export function Button({ title, onPress, variant = 'primary', disabled, loading }: { title: string; onPress: () => void; variant?: 'primary' | 'ghost' | 'danger'; disabled?: boolean; loading?: boolean }) {
   const bg = variant === 'primary' ? colors.gold : 'transparent';
-  const fg = variant === 'primary' ? colors.bg : variant === 'danger' ? colors.danger : colors.text;
+  const fg = variant === 'primary' ? colors.onGold : variant === 'danger' ? colors.danger : colors.text;
   return (
     <Pressable
       onPress={onPress}
@@ -138,4 +138,42 @@ export const styles = StyleSheet.create({
   input: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, color: colors.text, fontSize: 16, paddingHorizontal: space.md, height: 52 },
   label: { color: colors.muted, fontSize: 13, marginBottom: 6, marginTop: space.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  menuButton: { flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.gold, borderRadius: radius.pill, paddingHorizontal: space.lg, height: 72 },
+  menuButtonText: { flex: 1, color: colors.onGold, fontSize: 22, fontWeight: '600' },
+  segmented: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.md, padding: 4, marginBottom: space.md },
+  segment: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: radius.sm },
 });
+
+// Text version of the TAF Barber's logo until we get the real image file.
+export function Logo({ size = 1 }: { size?: number }) {
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <Text style={{ color: colors.text, fontSize: 72 * size, fontWeight: '800', letterSpacing: 6 * size, lineHeight: 80 * size }}>TAF</Text>
+      <View style={{ height: 2, backgroundColor: colors.text, alignSelf: 'stretch', marginVertical: 6 * size }} />
+      <Text style={{ color: colors.text, fontSize: 44 * size, fontWeight: '700', fontStyle: 'italic', fontFamily: 'Georgia' }}>Barber’s</Text>
+      <View style={{ height: 2, backgroundColor: colors.text, alignSelf: 'stretch', marginTop: 6 * size }} />
+    </View>
+  );
+}
+
+export function MenuButton({ icon, title, onPress }: { icon: ComponentProps<typeof Ionicons>['name']; title: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.menuButton, pressed && { opacity: 0.85 }]}>
+      <Ionicons name={icon} size={30} color={colors.onGold} />
+      <Text style={styles.menuButtonText}>{title}</Text>
+      <Ionicons name="chevron-forward" size={22} color={colors.onGold} />
+    </Pressable>
+  );
+}
+
+export function Segmented({ options, value, onChange }: { options: string[]; value: number; onChange: (i: number) => void }) {
+  return (
+    <View style={styles.segmented}>
+      {options.map((o, i) => (
+        <Pressable key={o} onPress={() => onChange(i)} style={[styles.segment, value === i && { backgroundColor: colors.gold }]}>
+          <Text style={{ color: value === i ? colors.onGold : colors.text, fontSize: 15, fontWeight: '600' }}>{o}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}

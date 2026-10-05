@@ -17,19 +17,25 @@ export default function RootLayout() {
           <StatusBar style="light" />
           <Stack
             screenOptions={{
-              headerStyle: { backgroundColor: colors.bg },
-              headerTintColor: colors.text,
+              headerStyle: { backgroundColor: colors.gold },
+              headerTintColor: colors.onGold,
+              headerTitleAlign: 'center',
+              headerTitleStyle: { fontWeight: '700' },
               headerShadowVisible: false,
               headerBackTitle: 'Înapoi',
               contentStyle: { backgroundColor: colors.bg },
             }}
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="book/service" options={{ title: 'Alege serviciul' }} />
             <Stack.Screen name="book/barber" options={{ title: 'Alege frizerul' }} />
             <Stack.Screen name="book/time" options={{ title: 'Alege ora' }} />
             <Stack.Screen name="book/confirm" options={{ title: 'Confirmare' }} />
             <Stack.Screen name="book/success" options={{ headerShown: false, gestureEnabled: false }} />
             <Stack.Screen name="login" options={{ title: 'Intră în cont', presentation: 'modal' }} />
+            <Stack.Screen name="account" options={{ title: 'Cont' }} />
+            <Stack.Screen name="barbers" options={{ title: 'Frizeri' }} />
+            <Stack.Screen name="service/[id]" options={{ title: '', headerTransparent: true }} />
           </Stack>
         </ThemeProvider>
       </AppStateProvider>

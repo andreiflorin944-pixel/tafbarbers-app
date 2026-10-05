@@ -10,7 +10,10 @@ export const business: Business = {
     'TAFBarbers este un barbershop de top, care oferă o experiență de tuns și îngrijire masculină deosebită. Cu o estetică elegantă și modernă, TAFBarbers se remarcă prin atenția la detalii și servicii de cea mai înaltă calitate.',
   address: 'Adresa locației (se preia din Barberly)',
   phone: '',
+  website: 'https://www.tafbarbers.ro',
   instagram: 'tafbarbers',
+  cancellationPolicy:
+    'Poți anula programarea cu cel mult 12 ore înainte și se acceptă o singură neprezentare. Orice altă neprezentare sau anulare cu mai puțin de 12 ore înainte implică plata integrală a programării.',
   hours: [
     null,
     { open: '10:00', close: '20:00' },

@@ -8,7 +8,7 @@ import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function Confirm() {
-  const { draft, serviceById, barberById, user, signIn, addBooking } = useApp();
+  const { draft, serviceById, barberById, user, signIn, addBooking, business } = useApp();
   const service = serviceById(draft.serviceId);
   const barber = barberById(draft.slotBarberId);
   const [name, setName] = useState(user?.name ?? '');
@@ -16,7 +16,7 @@ export default function Confirm() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!service || !draft.start || !barber) return <Redirect href="/services" />;
+  if (!service || !draft.start || !barber) return <Redirect href="/book/service" />;
   const start = new Date(draft.start);
   const valid = name.trim().length >= 2 && /^\+?\d{9,13}$/.test(phone.replace(/\s/g, ''));
 
@@ -62,6 +62,12 @@ export default function Confirm() {
       <Text style={styles.label}>Telefon</Text>
       <TextInput value={phone} onChangeText={setPhone} placeholder="07xx xxx xxx" placeholderTextColor={colors.muted} style={styles.input} keyboardType="phone-pad" autoComplete="tel" />
       <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>Plata se face la locație. Vei primi o confirmare pe SMS.</Text>
+      {business ? (
+        <Text style={[styles.muted, { fontSize: 12, marginTop: space.sm, lineHeight: 18 }]}>
+          <Text style={{ color: colors.gold, fontWeight: '700' }}>Atenție! </Text>
+          {business.cancellationPolicy}
+        </Text>
+      ) : null}
 
       {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
 

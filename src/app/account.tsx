@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
-import { Avatar, Button, Card, Icon, Screen, Title, styles } from '@/components/ui';
+import { Avatar, Button, Card, Icon, Screen, styles } from '@/components/ui';
 import { useApp } from '@/state/AppState';
 import { space } from '@/theme';
 
@@ -9,8 +9,8 @@ export default function Account() {
 
   if (!user) {
     return (
-      <Screen>
-        <Title sub="Salvează-ți datele și vezi istoricul programărilor">Cont</Title>
+      <Screen edges={[]}>
+        <Text style={[styles.muted, { marginBottom: space.md }]}>Salvează-ți datele și vezi istoricul programărilor.</Text>
         <Button title="Intră în cont cu telefonul" onPress={() => router.push('/login')} />
       </Screen>
     );
@@ -19,8 +19,7 @@ export default function Account() {
   const done = bookings.filter((b) => b.status === 'confirmed').length;
 
   return (
-    <Screen>
-      <Title>Cont</Title>
+    <Screen edges={[]}>
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
         <Avatar barber={{ id: 'me', name: user.name, role: '', initials: user.name.charAt(0).toUpperCase() }} />
         <View style={{ flex: 1 }}>

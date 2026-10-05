@@ -38,7 +38,9 @@ export type Business = {
   description: string;
   address: string;
   phone: string;
+  website: string;
   instagram: string;
+  cancellationPolicy: string;
   // 0 = duminică ... 6 = sâmbătă; null = închis
   hours: Array<{ open: string; close: string } | null>;
 };

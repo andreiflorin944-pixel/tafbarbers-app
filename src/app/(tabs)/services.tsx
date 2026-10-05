@@ -1,24 +1,15 @@
 import { router } from 'expo-router';
-import { Screen, ServiceRow, Steps, Title } from '@/components/ui';
+import { Screen, ServiceRow, Title } from '@/components/ui';
 import { useApp } from '@/state/AppState';
 
 export default function Services() {
-  const { services, setDraft, draft } = useApp();
+  const { services } = useApp();
 
   return (
     <Screen>
-      <Title sub="Alege serviciul dorit">Rezervă</Title>
-      <Steps current={1} />
+      <Title sub="Prețuri și durate">Servicii</Title>
       {services.map((s) => (
-        <ServiceRow
-          key={s.id}
-          service={s}
-          selected={draft.serviceId === s.id}
-          onPress={() => {
-            setDraft({ serviceId: s.id, barberId: null, start: null, slotBarberId: null });
-            router.push('/book/barber');
-          }}
-        />
+        <ServiceRow key={s.id} service={s} onPress={() => router.push({ pathname: '/service/[id]', params: { id: s.id } })} />
       ))}
     </Screen>
   );

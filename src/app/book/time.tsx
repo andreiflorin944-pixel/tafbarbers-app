@@ -25,7 +25,7 @@ export default function ChooseTime() {
     api.getAvailability({ serviceId: service.id, barberId: draft.barberId, day }).then(setSlots);
   }, [service, draft.barberId, day]);
 
-  if (!service) return <Redirect href="/services" />;
+  if (!service) return <Redirect href="/book/service" />;
 
   const barber = barberById(draft.barberId);
   const groups = groupByPart(slots ?? []);

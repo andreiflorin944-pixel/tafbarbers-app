@@ -1,13 +1,19 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Alert, Platform, Text, View } from 'react-native';
-import { Button, Card, Empty, Screen, SectionTitle, Title, styles } from '@/components/ui';
+import { Button, Card, Empty, Screen, Segmented, Title, styles } from '@/components/ui';
 import type { Booking } from '@/data/types';
 import { formatDate, formatTime } from '@/lib/dates';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function Bookings() {
-  const { user, bookings, cancelBooking, serviceById, barberById } = useApp();
+  const { user, bookings, cancelBooking, serviceById, barberById, resetDraft } = useApp();
+  const [tab, setTab] = useState(0);
+  const book = () => {
+    resetDraft();
+    router.push('/book/service');
+  };
 
   if (!user) {
     return (
@@ -60,19 +66,23 @@ export default function Bookings() {
     );
   };
 
+  const list = tab === 0 ? upcoming : past;
+
   return (
     <Screen>
       <Title>Programările mele</Title>
-      {upcoming.length === 0 && past.length === 0 ? (
-        <>
-          <Empty icon="calendar-outline" text="Nu ai încă nicio programare." />
-          <Button title="Programează-te" onPress={() => router.push('/services')} />
-        </>
-      ) : null}
-      {upcoming.length > 0 ? <SectionTitle>Viitoare</SectionTitle> : null}
-      {upcoming.map((b) => renderItem(b, true))}
-      {past.length > 0 ? <SectionTitle>Istoric</SectionTitle> : null}
-      {past.map((b) => renderItem(b, false))}
+      <Segmented options={['Urmează', 'Trecut']} value={tab} onChange={setTab} />
+      {list.length === 0 ? (
+        <Card style={{ alignItems: 'center', gap: space.md, paddingVertical: space.lg }}>
+          <Text style={[styles.title, { fontSize: 22, textAlign: 'center' }]}>Nu s-au găsit programări</Text>
+          <Text style={[styles.muted, { textAlign: 'center' }]}>
+            {tab === 0 ? 'Nu ai nicio programare viitoare.' : 'Nu ai încă programări în istoric.'}
+          </Text>
+          <Button title="Rezervă o programare" onPress={book} />
+        </Card>
+      ) : (
+        list.map((b) => renderItem(b, tab === 0))
+      )}
     </Screen>
   );
 }
