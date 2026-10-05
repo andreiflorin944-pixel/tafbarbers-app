@@ -78,6 +78,21 @@ await new Promise(r => setTimeout(r, 800));
 r = await req('GET', '/admin/campaigns', null, at); ok(r.body[0].status === 'sent' && r.body[0].recipients === 1, `campaign sent ${r.body[0].status}`);
 r = await req('GET', '/admin/messages', null, at); ok(r.body.some(m => m.kind === 'confirm') && r.body.some(m => m.kind === 'otp'), `message log kinds ${[...new Set(r.body.map(m=>m.kind))]}`);
 r = await req('POST', '/push-tokens', { token: 'ExponentPushToken[abc]', platform: 'ios' }, tok); ok(r.status === 200, 'push token saved');
+
+// permissions for barber accounts
+r = await req('POST', '/admin/admins', { email: 'andrei@taf.ro', name: 'Andrei', password: 'parola-andrei-1', barberId: 'barber-andrei' }, at); ok(r.status === 201, 'create barber account');
+const andreiId = r.body.id;
+r = await req('POST', '/admin/login', { email: 'andrei@taf.ro', password: 'parola-andrei-1' }); const bt = r.body.token; ok(!!bt, 'barber login');
+r = await req('GET', '/admin/me', null, bt); ok(r.body.owner === false && r.body.permissions.bookings_create === true && r.body.permissions.clients === false, 'barber default perms');
+r = await req('GET', '/admin/bookings', null, bt); ok(r.body.every(x => x.barberId === 'barber-andrei'), `barber sees only own bookings (${r.body.length})`);
+r = await req('GET', '/admin/clients', null, bt); ok(r.status === 403, 'barber cannot list clients by default');
+r = await req('POST', '/admin/services', { name: 'x', durationMin: 30, price: 1 }, bt); ok(r.status === 403, 'barber cannot edit services');
+r = await req('GET', '/admin/stats', null, bt); ok(r.status === 200 && r.body.last30.revenue === null, 'barber stats without revenue');
+r = await req('PATCH', `/admin/admins/${andreiId}`, { permissions: { clients: true, bookings_all: true } }, at); ok(r.status === 200, 'owner updates perms');
+r = await req('GET', '/admin/clients', null, bt); ok(r.status === 200, 'barber can list clients after grant');
+r = await req('GET', '/admin/admins', null, at); ok(r.body.find(a => a.id === andreiId)?.permissions.bookings_all === true, 'perms persisted');
+r = await req('PATCH', `/admin/admins/${andreiId}`, { permissions: { bookings_create: false } }, at);
+r = await req('POST', '/admin/bookings', { phone: '0722000333', serviceId: 'svc-beard', barberId: 'barber-andrei', start: new Date(Date.now() + 3 * 86400000).toISOString() }, bt); ok(r.status === 403, 'create blocked when permission removed');
 // restore
 await req('PATCH', '/admin/barbers/barber-andrei', { active: true }, at);
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');

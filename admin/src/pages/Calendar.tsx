@@ -7,7 +7,7 @@ const PX = 1.2; // pixeli pe minut
 
 type Stats = {
   upcoming: number;
-  last30: { bookings: number; revenue: number; cancelled: number; noShow: number; newClients: number };
+  last30: { bookings: number; revenue: number | null; cancelled: number; noShow: number; newClients: number | null };
 };
 
 export function CalendarPage({ me }: { me: Me }) {
@@ -23,7 +23,8 @@ export function CalendarPage({ me }: { me: Me }) {
   const off = useLoad(() => api<TimeOff[]>('GET', `/admin/time-off?from=${from}`), [day]);
 
   const [barbers, services] = meta.data ?? [[], []];
-  const cols = barbers.filter((b) => b.active && (!me.barberId || b.id === me.barberId));
+  const own = me.permissions.bookings_all ? null : me.barberId;
+  const cols = barbers.filter((b) => b.active && (!own || b.id === own));
   const weekday = new Date(day + 'T12:00:00Z').getUTCDay();
 
   // Intervalul afișat: de la cea mai devreme oră de program până la cea mai târzie (+ programări în afara lui).
@@ -53,15 +54,15 @@ export function CalendarPage({ me }: { me: Me }) {
     <>
       <div className="head">
         <h1>Programări</h1>
-        <button onClick={() => setCreate({})}>+ Programare nouă</button>
+        {me.permissions.bookings_create ? <button onClick={() => setCreate({})}>+ Programare nouă</button> : null}
       </div>
 
       {stats.data ? (
         <div className="grid stats">
           <Stat v={stats.data.upcoming} l="programări viitoare" />
           <Stat v={stats.data.last30.bookings} l="programări, ultimele 30 de zile" />
-          <Stat v={lei(stats.data.last30.revenue)} l="valoare, ultimele 30 de zile" />
-          <Stat v={stats.data.last30.newClients} l="clienți noi, 30 de zile" />
+          {stats.data.last30.revenue !== null ? <Stat v={lei(stats.data.last30.revenue)} l="valoare, ultimele 30 de zile" /> : null}
+          {stats.data.last30.newClients !== null ? <Stat v={stats.data.last30.newClients} l="clienți noi, 30 de zile" /> : null}
           <Stat v={stats.data.last30.cancelled + stats.data.last30.noShow} l="anulări și neprezentări" />
         </div>
       ) : null}
@@ -127,7 +128,7 @@ export function CalendarPage({ me }: { me: Me }) {
                       if (e.target !== e.currentTarget && !(e.target as HTMLElement).classList.contains('cal-off') && !(e.target as HTMLElement).classList.contains('cal-line')) return;
                       const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
                       const m = Math.floor((startMin + y / PX) / 15) * 15;
-                      setCreate({ barberId: b.id, time: hm(m) });
+                      if (me.permissions.bookings_create) setCreate({ barberId: b.id, time: hm(m) });
                     }}
                     title="Click pe o zonă liberă pentru programare nouă"
                   >
@@ -178,7 +179,7 @@ export function CalendarPage({ me }: { me: Me }) {
         </details>
       ) : null}
 
-      {open ? <BookingModal b={open} onClose={() => setOpen(null)} onChange={reload} /> : null}
+      {open ? <BookingModal b={open} canManage={me.permissions.bookings_manage} onClose={() => setOpen(null)} onChange={reload} /> : null}
       {create && meta.data ? (
         <NewBooking
           me={me}
@@ -207,7 +208,7 @@ function Stat({ v, l }: { v: string | number; l: string }) {
   );
 }
 
-function BookingModal({ b, onClose, onChange }: { b: Booking; onClose: () => void; onChange: () => void }) {
+function BookingModal({ b, canManage, onClose, onChange }: { b: Booking; canManage: boolean; onClose: () => void; onChange: () => void }) {
   const { busy, error, run } = useAction();
   const [note, setNote] = useState(b.note);
   const set = (patch: Record<string, string>) =>
@@ -233,10 +234,10 @@ function BookingModal({ b, onClose, onChange }: { b: Booking; onClose: () => voi
           <span className="muted small">{b.source === 'admin' ? 'adăugată din panou' : 'din aplicație'}</span>
         </div>
         <Field label="Notiță internă">
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} />
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} disabled={!canManage} />
         </Field>
         {error ? <div className="err">{error}</div> : null}
-        <div className="row">
+        <div className="row" style={{ display: canManage ? undefined : 'none' }}>
           {note !== b.note ? (
             <button disabled={busy} onClick={() => set({ note })}>
               Salvează notița
@@ -355,7 +356,7 @@ function NewBooking({
         </Field>
         <div className="grid two">
           <Field label="Frizer">
-            <select value={barberId} onChange={(e) => setBarberId(e.target.value)} disabled={!!me.barberId}>
+            <select value={barberId} onChange={(e) => setBarberId(e.target.value)} disabled={!me.permissions.bookings_all && !!me.barberId}>
               {barbers.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}

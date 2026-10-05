@@ -25,7 +25,7 @@ import {
   type PromoRow,
   type ServiceRow,
 } from '../db';
-import { HttpError, type AppEnv } from '../env';
+import { HttpError, PERMS, parsePerms, type AppEnv, type Perm } from '../env';
 import { runCampaign } from '../campaigns';
 import { iso, isDay, localToUtc } from '../time';
 
@@ -74,34 +74,75 @@ adminRoutes.get('/me', async (c) => {
   const a = await c.env.DB.prepare('SELECT id, email, name, barber_id FROM admins WHERE id = ?')
     .bind(c.get('admin').adminId)
     .first<{ id: string; email: string; name: string; barber_id: string | null }>();
-  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, owner: !a!.barber_id });
+  const s = c.get('admin');
+  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, owner: s.owner, permissions: s.perms });
 });
 
-/** Frizerii cu cont propriu văd doar programările lor; restul e doar pentru proprietar. */
+/** Catalogul, campaniile și setările sunt doar pentru proprietar. */
 async function ownerOnly(c: Context<AppEnv>, next: Next) {
-  if (c.get('admin').barberId) throw new HttpError(403, 'owner_only');
+  if (!c.get('admin').owner) throw new HttpError(403, 'owner_only');
   await next();
+}
+
+function need(c: Context<AppEnv>, perm: Perm) {
+  if (!c.get('admin').perms[perm]) throw new HttpError(403, 'no_permission');
+}
+
+/** Frizerul fără dreptul „bookings_all” lucrează doar pe programările lui. */
+function ownBarber(c: Context<AppEnv>): string | null {
+  const a = c.get('admin');
+  return a.perms.bookings_all ? null : a.barberId;
+}
+
+function cleanPerms(raw: unknown): Record<string, boolean> {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return Object.fromEntries(PERMS.filter((p) => typeof o[p] === 'boolean').map((p) => [p, o[p] as boolean]));
 }
 
 // --- Echipa (conturi admin) ---
 
 adminRoutes.get('/admins', ownerOnly, async (c) => {
-  const r = await c.env.DB.prepare('SELECT id, email, name, barber_id FROM admins ORDER BY email').all();
-  return c.json(r.results.map((a: any) => ({ id: a.id, email: a.email, name: a.name, barberId: a.barber_id })));
+  const r = await c.env.DB.prepare('SELECT id, email, name, barber_id, permissions FROM admins ORDER BY email').all();
+  return c.json(
+    r.results.map((a: any) => ({
+      id: a.id,
+      email: a.email,
+      name: a.name,
+      barberId: a.barber_id,
+      permissions: parsePerms(a.permissions, !a.barber_id),
+    })),
+  );
 });
 
 adminRoutes.post('/admins', ownerOnly, async (c) => {
-  const b = await c.req.json<{ email?: string; password?: string; name?: string; barberId?: string | null }>();
+  const b = await c.req.json<{ email?: string; password?: string; name?: string; barberId?: string | null; permissions?: unknown }>();
   const email = validEmail(b.email);
   validPassword(b.password);
   const id = newId('ad');
-  await c.env.DB.prepare('INSERT INTO admins (id, email, name, password_hash, barber_id) VALUES (?, ?, ?, ?, ?)')
-    .bind(id, email, (b.name ?? '').slice(0, 80), await hashPassword(b.password!), b.barberId || null)
+  await c.env.DB.prepare('INSERT INTO admins (id, email, name, password_hash, barber_id, permissions) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(id, email, (b.name ?? '').slice(0, 80), await hashPassword(b.password!), b.barberId || null, JSON.stringify(cleanPerms(b.permissions)))
     .run()
     .catch(() => {
       throw new HttpError(409, 'email_taken');
     });
   return c.json({ id }, 201);
+});
+
+adminRoutes.patch('/admins/:id', ownerOnly, async (c) => {
+  const id = c.req.param('id')!;
+  const b = await c.req.json<{ name?: string; barberId?: string | null; permissions?: unknown; password?: string }>();
+  if (id === c.get('admin').adminId && b.barberId) throw new HttpError(400, 'cannot_demote_self');
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (b.name !== undefined) sets.push('name = ?'), vals.push(String(b.name).slice(0, 80));
+  if (b.barberId !== undefined) sets.push('barber_id = ?'), vals.push(b.barberId || null);
+  if (b.permissions !== undefined) sets.push('permissions = ?'), vals.push(JSON.stringify(cleanPerms(b.permissions)));
+  if (b.password) {
+    validPassword(b.password);
+    sets.push('password_hash = ?'), vals.push(await hashPassword(b.password));
+  }
+  if (sets.length) await c.env.DB.prepare(`UPDATE admins SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
+  return c.json({ ok: true });
 });
 
 adminRoutes.post('/me/password', async (c) => {
@@ -311,7 +352,8 @@ adminRoutes.get('/time-off', async (c) => {
 /** Acceptă fie ISO {start,end}, fie zile locale {fromDay,toDay} (zile întregi, inclusiv). */
 adminRoutes.post('/time-off', async (c) => {
   const b = await c.req.json<{ barberId?: string | null; start?: string; end?: string; fromDay?: string; toDay?: string; reason?: string }>();
-  const scoped = c.get('admin').barberId;
+  need(c, 'timeoff');
+  const scoped = c.get('admin').owner ? null : c.get('admin').barberId;
   const barberId = scoped ?? (b.barberId || null);
   let start: string, end: string;
   if (isDay(b.fromDay) && isDay(b.toDay)) {
@@ -330,7 +372,8 @@ adminRoutes.post('/time-off', async (c) => {
 });
 
 adminRoutes.delete('/time-off/:id', async (c) => {
-  const scoped = c.get('admin').barberId;
+  need(c, 'timeoff');
+  const scoped = c.get('admin').owner ? null : c.get('admin').barberId;
   await c.env.DB.prepare(`DELETE FROM time_off WHERE id = ? ${scoped ? 'AND barber_id = ?' : ''}`)
     .bind(...(scoped ? [c.req.param('id')!, scoped] : [c.req.param('id')!]))
     .run();
@@ -344,7 +387,7 @@ adminRoutes.get('/bookings', async (c) => {
   const q = c.req.query();
   const where = ['b.starts_at >= ?', 'b.starts_at < ?'];
   const vals: unknown[] = [q.from ?? iso(new Date(Date.now() - 86_400_000)), q.to ?? iso(new Date(Date.now() + 30 * 86_400_000))];
-  const barberId = c.get('admin').barberId ?? q.barberId;
+  const barberId = ownBarber(c) ?? q.barberId;
   if (barberId) where.push('b.barber_id = ?'), vals.push(barberId);
   if (q.status) where.push('b.status = ?'), vals.push(q.status);
   const r = await c.env.DB.prepare(`${BOOKING_SELECT} WHERE ${where.join(' AND ')} ORDER BY b.starts_at LIMIT 1000`)
@@ -365,6 +408,7 @@ adminRoutes.post('/bookings', async (c) => {
     force?: boolean;
     notify?: boolean;
   }>();
+  need(c, 'bookings_create');
   if (!b.serviceId || !b.start) throw new HttpError(400, 'invalid_body');
   const phone = normalizePhone(b.phone);
   let cl = await c.env.DB.prepare('SELECT id, name FROM clients WHERE phone = ?').bind(phone).first<{ id: string; name: string }>();
@@ -374,7 +418,7 @@ adminRoutes.post('/bookings', async (c) => {
   } else if (!cl.name && b.name?.trim()) {
     await c.env.DB.prepare('UPDATE clients SET name = ? WHERE id = ?').bind(b.name.trim().slice(0, 80), cl.id).run();
   }
-  const barberId = c.get('admin').barberId ?? b.barberId ?? null;
+  const barberId = ownBarber(c) ?? b.barberId ?? null;
   const created = await createBooking(c.env, {
     clientId: cl.id,
     serviceId: b.serviceId,
@@ -391,7 +435,8 @@ adminRoutes.post('/bookings', async (c) => {
 adminRoutes.patch('/bookings/:id', async (c) => {
   const id = c.req.param('id')!;
   const cur = await getBooking(c.env, id);
-  const scoped = c.get('admin').barberId;
+  need(c, 'bookings_manage');
+  const scoped = ownBarber(c);
   if (!cur || (scoped && cur.barberId !== scoped)) throw new HttpError(404, 'not_found');
   const b = await c.req.json<{ status?: string; note?: string }>();
   if (b.status === 'cancelled') return c.json(await cancelBooking(c.env, id, 'admin'));
@@ -408,6 +453,7 @@ adminRoutes.patch('/bookings/:id', async (c) => {
 // --- Clienți ---
 
 adminRoutes.get('/clients', async (c) => {
+  need(c, 'clients');
   const q = (c.req.query('q') ?? '').trim();
   const like = `%${q.replace(/[%_]/g, '')}%`;
   const r = await c.env.DB.prepare(
@@ -423,6 +469,7 @@ adminRoutes.get('/clients', async (c) => {
 });
 
 adminRoutes.get('/clients/:id', async (c) => {
+  need(c, 'clients');
   const id = c.req.param('id')!;
   const r = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(id).first<ClientRow>();
   if (!r) throw new HttpError(404, 'not_found');
@@ -431,6 +478,7 @@ adminRoutes.get('/clients/:id', async (c) => {
 });
 
 adminRoutes.patch('/clients/:id', async (c) => {
+  need(c, 'clients');
   const b = await c.req.json<{ name?: string; email?: string | null; notes?: string }>();
   const v: Record<string, unknown> = {};
   if (b.name !== undefined) v.name = String(b.name).slice(0, 80);
@@ -546,7 +594,8 @@ adminRoutes.post('/campaigns/:id/send', ownerOnly, async (c) => {
 // --- Tablou de bord ---
 
 adminRoutes.get('/stats', async (c) => {
-  const scoped = c.get('admin').barberId;
+  const scoped = ownBarber(c);
+  const showMoney = c.get('admin').perms.stats;
   const f = scoped ? 'AND barber_id = ?' : '';
   const args = (...a: unknown[]) => (scoped ? [...a, scoped] : a);
   const now = new Date();
@@ -569,10 +618,10 @@ adminRoutes.get('/stats', async (c) => {
     upcoming: upcoming?.n ?? 0,
     last30: {
       bookings: month?.n ?? 0,
-      revenue: (month?.revenue ?? 0) / 100,
+      revenue: showMoney ? (month?.revenue ?? 0) / 100 : null,
       cancelled: month?.cancelled ?? 0,
       noShow: month?.no_show ?? 0,
-      newClients: clients?.n ?? 0,
+      newClients: c.get('admin').perms.clients ? (clients?.n ?? 0) : null,
       messages: Object.fromEntries(messages.results.map((m) => [m.channel, m.n])),
     },
   });

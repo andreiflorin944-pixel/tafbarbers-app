@@ -12,6 +12,10 @@ const RO: Record<string, string> = {
   country_not_supported: 'Momentan acceptăm doar numere din România și Europa.',
   invalid_phone: 'Numărul de telefon nu pare corect.',
   invalid_email: 'Adresa de e-mail nu pare corectă.',
+  wrong_credentials: 'E-mail sau parolă greșită.',
+  no_permission: 'Contul tău nu are drept pentru asta. Cere-i proprietarului.',
+  no_server: 'Partea de echipă merge după ce serverul e online.',
+  barber_required: 'Alege frizerul.',
   unauthorized: 'Sesiunea a expirat. Intră din nou în cont.',
 };
 

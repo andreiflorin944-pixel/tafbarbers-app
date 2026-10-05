@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type Barber, type Business, type Me } from '../api';
+import { api, PERM_LABELS, type Barber, type Business, type Me, type Perm } from '../api';
 import { Field, Loading, useAction, useLoad } from '../ui';
 import { date, time } from '../util';
 
@@ -98,7 +98,7 @@ function BusinessForm() {
 function Team({ me }: { me: Me }) {
   const data = useLoad(() =>
     Promise.all([
-      api<Array<{ id: string; email: string; name: string; barberId: string | null }>>('GET', '/admin/admins'),
+      api<Array<{ id: string; email: string; name: string; barberId: string | null; permissions: Record<Perm, boolean> }>>('GET', '/admin/admins'),
       api<Barber[]>('GET', '/admin/barbers'),
     ]),
   );
@@ -113,21 +113,37 @@ function Team({ me }: { me: Me }) {
     <div className="card grid">
       <h2 style={{ margin: 0 }}>Echipa (conturi în panou)</h2>
       <p className="muted small" style={{ margin: 0 }}>
-        Un cont legat de un frizer vede doar programările și concediile lui. Fără frizer = proprietar, vede tot.
+        Contul unui frizer are doar drepturile bifate mai jos (le poți schimba oricând). Fără frizer = proprietar, vede tot. Același cont merge și în aplicație, la Cont → Echipă.
       </p>
       {admins.map((a) => (
-        <div key={a.id} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
-          <span>
-            {a.name || a.email} <span className="muted small">{a.email}</span>{' '}
-            <span className="pill">{a.barberId ? `frizer: ${barbers.find((b) => b.id === a.barberId)?.name ?? '?'}` : 'proprietar'}</span>
-          </span>
-          {a.id !== me.id ? (
-            <button className="danger sm" onClick={() => confirm(`Ștergi contul ${a.email}?`) && run(async () => (await api('DELETE', `/admin/admins/${a.id}`), data.reload()))}>
-              Șterge
-            </button>
-          ) : (
-            <span className="muted small">tu</span>
-          )}
+        <div key={a.id} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <span>
+              {a.name || a.email} <span className="muted small">{a.email}</span>{' '}
+              <span className="pill">{a.barberId ? `frizer: ${barbers.find((b) => b.id === a.barberId)?.name ?? '?'}` : 'proprietar, vede tot'}</span>
+            </span>
+            {a.id !== me.id ? (
+              <button className="danger sm" onClick={() => confirm(`Ștergi contul ${a.email}?`) && run(async () => (await api('DELETE', `/admin/admins/${a.id}`), data.reload()))}>
+                Șterge
+              </button>
+            ) : (
+              <span className="muted small">tu</span>
+            )}
+          </div>
+          {a.barberId ? (
+            <div className="grid" style={{ gap: 4, marginTop: 8 }}>
+              {(Object.keys(PERM_LABELS) as Perm[]).map((p) => (
+                <label key={p} className="check small">
+                  <input
+                    type="checkbox"
+                    checked={a.permissions[p]}
+                    onChange={(e) => run(async () => (await api('PATCH', `/admin/admins/${a.id}`, { permissions: { ...a.permissions, [p]: e.target.checked } }), data.reload()))}
+                  />
+                  {PERM_LABELS[p]}
+                </label>
+              ))}
+            </div>
+          ) : null}
         </div>
       ))}
       <div className="grid two">

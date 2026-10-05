@@ -1,12 +1,60 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Switch, Text, TextInput, View } from 'react-native';
-import { Avatar, Button, Card, Icon, Screen, styles } from '@/components/ui';
+import { Avatar, Button, Card, Icon, Screen, Segmented, styles } from '@/components/ui';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
+import { useStaff } from '@/state/Staff';
 import { colors, space } from '@/theme';
 
+// Un singur loc de cont, cu două părți: Client (rezervări) și Echipă (proprietar / frizeri).
 export default function Account() {
+  const { staff } = useStaff();
+  const [tab, setTab] = useState(staff ? 1 : 0);
+  return (
+    <Screen edges={[]}>
+      <Segmented options={['Client', 'Echipă']} value={tab} onChange={setTab} />
+      {tab === 0 ? <ClientAccount /> : <StaffAccount />}
+    </Screen>
+  );
+}
+
+function StaffAccount() {
+  const { staff, staffSignOut } = useStaff();
+  if (!staff) {
+    return (
+      <>
+        <Text style={[styles.muted, { marginBottom: space.md }]}>
+          Pentru proprietar și frizeri: agenda zilei, programări noi, anulări. Fiecare frizer vede doar ce i-ai permis din panou.
+        </Text>
+        <Button title="Intră ca echipă" onPress={() => router.push('/staff/login')} />
+      </>
+    );
+  }
+  const p = staff.permissions;
+  const rights = [
+    p.bookings_all ? 'vede programările tuturor' : 'vede programările lui',
+    p.bookings_create && 'adaugă programări',
+    p.bookings_manage && 'anulează / marchează',
+    p.clients && 'vede clienții',
+    p.timeoff && 'își pune concedii',
+    p.stats && 'vede încasările',
+  ].filter(Boolean);
+  return (
+    <>
+      <Card style={{ gap: 4 }}>
+        <Text style={styles.cardTitle}>{staff.name || staff.email}</Text>
+        <Text style={styles.muted}>{staff.owner ? 'Proprietar, acces complet' : `Frizer: ${rights.join(', ')}`}</Text>
+      </Card>
+      <View style={{ marginTop: space.md, gap: space.sm }}>
+        <Button title="Deschide agenda" onPress={() => router.push('/staff')} />
+        <Button title="Ieși din contul de echipă" variant="ghost" onPress={staffSignOut} />
+      </View>
+    </>
+  );
+}
+
+function ClientAccount() {
   const { user, signOut, bookings, updateMe } = useApp();
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
@@ -20,10 +68,10 @@ export default function Account() {
 
   if (!user) {
     return (
-      <Screen edges={[]}>
+      <>
         <Text style={[styles.muted, { marginBottom: space.md }]}>Salvează-ți datele și vezi istoricul programărilor.</Text>
         <Button title="Intră în cont cu telefonul" onPress={() => router.push('/login')} />
-      </Screen>
+      </>
     );
   }
 
@@ -48,7 +96,7 @@ export default function Account() {
   };
 
   return (
-    <Screen edges={[]}>
+    <>
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
         <Avatar barber={{ id: 'me', name: user.name, role: '', initials: (user.name || '?').charAt(0).toUpperCase() }} />
         <View style={{ flex: 1 }}>
@@ -103,7 +151,7 @@ export default function Account() {
       <View style={{ marginTop: space.lg }}>
         <Button title="Ieși din cont" variant="ghost" onPress={signOut} />
       </View>
-    </Screen>
+    </>
   );
 }
 

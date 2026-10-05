@@ -71,6 +71,8 @@ const MESSAGES: Record<string, string> = {
   title_and_body_required: 'Completează titlul și mesajul.',
   wrong_password: 'Parola actuală nu e corectă.',
   cannot_delete_self: 'Nu îți poți șterge propriul cont.',
+  no_permission: 'Nu ai drept pentru asta. Cere-i proprietarului.',
+  cannot_demote_self: 'Nu îți poți lua singur drepturile de proprietar.',
   not_cancellable: 'Programarea nu mai poate fi anulată.',
   barber_required: 'Alege frizerul.',
 };
@@ -162,7 +164,16 @@ export type Business = {
   maxDaysAhead?: number;
   cancellationPolicy?: string;
 };
-export type Me = { id: string; email: string; name: string; barberId: string | null; owner: boolean };
+export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'timeoff' | 'stats';
+export type Me = { id: string; email: string; name: string; barberId: string | null; owner: boolean; permissions: Record<Perm, boolean> };
+export const PERM_LABELS: Record<Perm, string> = {
+  bookings_all: 'Vede programările tuturor frizerilor',
+  bookings_create: 'Adaugă programări',
+  bookings_manage: 'Anulează și marchează programări (finalizată, neprezentare)',
+  clients: 'Vede lista de clienți și istoricul lor',
+  timeoff: 'Își pune singur concedii și pauze',
+  stats: 'Vede încasările',
+};
 export type TimeOff = { id: number; barberId: string | null; start: string; end: string; reason: string };
 export type Campaign = {
   id: string;

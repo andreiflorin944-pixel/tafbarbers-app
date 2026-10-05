@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { I18nProvider } from '@/i18n';
 import { AppStateProvider } from '@/state/AppState';
+import { StaffProvider } from '@/state/Staff';
 import { colors } from '@/theme';
 
 const theme = {
@@ -15,6 +16,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <I18nProvider>
       <AppStateProvider>
+      <StaffProvider>
         <ThemeProvider value={theme}>
           <StatusBar style="light" />
           <Stack
@@ -38,8 +40,12 @@ export default function RootLayout() {
             <Stack.Screen name="account" options={{ title: 'Cont' }} />
             <Stack.Screen name="barbers" options={{ title: 'Frizeri' }} />
             <Stack.Screen name="service/[id]" options={{ title: '', headerTransparent: true }} />
+            <Stack.Screen name="staff/login" options={{ title: 'Intră ca echipă', presentation: 'modal' }} />
+            <Stack.Screen name="staff/index" options={{ title: 'Agenda echipei' }} />
+            <Stack.Screen name="staff/new" options={{ title: 'Programare nouă' }} />
           </Stack>
         </ThemeProvider>
+      </StaffProvider>
       </AppStateProvider>
       </I18nProvider>
     </SafeAreaProvider>

@@ -11,15 +11,15 @@ import { CampaignsPage } from './pages/Campaigns';
 import { SettingsPage } from './pages/Settings';
 
 const PAGES = [
-  { key: 'calendar', label: 'Programări', owner: false, el: CalendarPage },
-  { key: 'clients', label: 'Clienți', owner: false, el: ClientsPage },
-  { key: 'services', label: 'Servicii', owner: true, el: ServicesPage },
-  { key: 'barbers', label: 'Frizeri și program', owner: true, el: BarbersPage },
-  { key: 'timeoff', label: 'Concedii', owner: false, el: TimeOffPage },
-  { key: 'promos', label: 'Bannere aplicație', owner: true, el: PromosPage },
-  { key: 'campaigns', label: 'Campanii', owner: true, el: CampaignsPage },
-  { key: 'settings', label: 'Setări', owner: false, el: SettingsPage },
-] as const;
+  { key: 'calendar', label: 'Programări', show: () => true, el: CalendarPage },
+  { key: 'clients', label: 'Clienți', show: (m: Me) => m.permissions.clients, el: ClientsPage },
+  { key: 'services', label: 'Servicii', show: (m: Me) => m.owner, el: ServicesPage },
+  { key: 'barbers', label: 'Frizeri și program', show: (m: Me) => m.owner, el: BarbersPage },
+  { key: 'timeoff', label: 'Concedii', show: (m: Me) => m.permissions.timeoff, el: TimeOffPage },
+  { key: 'promos', label: 'Bannere aplicație', show: (m: Me) => m.owner, el: PromosPage },
+  { key: 'campaigns', label: 'Campanii', show: (m: Me) => m.owner, el: CampaignsPage },
+  { key: 'settings', label: 'Setări', show: () => true, el: SettingsPage },
+];
 
 const pageFromHash = () => location.hash.replace(/^#\/?/, '').split('/')[0] || 'calendar';
 
@@ -46,7 +46,7 @@ export function App() {
   if (!checked) return null;
   if (!me) return <Login onIn={setMe} />;
 
-  const visible = PAGES.filter((p) => me.owner || !p.owner);
+  const visible = PAGES.filter((p) => p.show(me));
   const current = visible.find((p) => p.key === page) ?? visible[0];
   const Page = current.el;
 

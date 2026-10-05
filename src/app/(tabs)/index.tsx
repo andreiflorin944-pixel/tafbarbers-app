@@ -9,11 +9,13 @@ import type { Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
 import { formatDate, formatTime } from '@/lib/dates';
 import { useApp } from '@/state/AppState';
+import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
 export default function Home() {
   const { loading, loadError, reload, user, bookings, services, barbers, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
   const { t } = useT();
+  const { staff } = useStaff();
 
   const next = bookings
     .filter((b) => b.status === 'confirmed' && new Date(b.start).getTime() > Date.now())
@@ -64,6 +66,11 @@ export default function Home() {
             </Text>
           </View>
           <View style={{ flexDirection: 'row', gap: space.sm }}>
+            {staff ? (
+              <Pressable onPress={() => router.push('/staff')} hitSlop={10} accessibilityLabel="Agenda echipei" style={s.iconBtn}>
+                <Ionicons name="calendar-outline" size={20} color={colors.gold} />
+              </Pressable>
+            ) : null}
             <LangButton />
             <Pressable onPress={() => router.push('/account')} hitSlop={10} accessibilityLabel="Cont" style={s.iconBtn}>
               <Ionicons name="person-outline" size={20} color={colors.text} />
