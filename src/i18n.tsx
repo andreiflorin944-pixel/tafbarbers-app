@@ -1,9 +1,10 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 
-export type Lang = 'ro' | 'en';
+export type Lang = 'ro' | 'en' | 'fr';
 export const LANGS: Array<{ code: Lang; flag: string; name: string }> = [
   { code: 'ro', flag: '🇷🇴', name: 'Română' },
   { code: 'en', flag: '🇬🇧', name: 'English' },
+  { code: 'fr', flag: '🇫🇷', name: 'Français' },
 ];
 
 const ro = {
@@ -32,7 +33,7 @@ const ro = {
 
 type Key = keyof typeof ro;
 
-// EN covers the main screens; untranslated keys fall back to Romanian.
+// EN/FR cover the main screens; untranslated keys fall back to Romanian.
 const en: Partial<Record<Key, string>> = {
   'tab.home': 'Home',
   'tab.services': 'Services',
@@ -57,6 +58,32 @@ const en: Partial<Record<Key, string>> = {
   'bookings.past': 'Past',
 };
 
+const fr: Partial<Record<Key, string>> = {
+  'tab.home': 'Accueil',
+  'tab.services': 'Services',
+  'tab.bookings': 'RDV',
+  'tab.about': 'À propos',
+  'home.welcome': 'Bienvenue chez',
+  'home.hi': 'Salut, {name}',
+  'home.next': 'PROCHAIN RENDEZ-VOUS',
+  'home.ctaKicker': 'COUPE · BARBE · STYLE',
+  'home.ctaTitle': 'Réservez en 30 secondes',
+  'home.ctaText': 'Choisissez le service, le barbier et l’heure. On s’occupe du reste.',
+  'home.book': 'Réserver',
+  'home.newBooking': 'Nouveau rendez-vous',
+  'home.services': 'Services',
+  'home.seeAll': 'Voir tout',
+  'home.team': 'Nos barbiers',
+  'lang.title': 'Choisir la langue',
+  'services.title': 'Services',
+  'services.sub': 'Prix et durées',
+  'bookings.title': 'Mes rendez-vous',
+  'bookings.upcoming': 'À venir',
+  'bookings.past': 'Passés',
+};
+
+const dict: Record<Lang, Partial<Record<Key, string>>> = { ro, en, fr };
+
 type Ctx = { lang: Lang; setLang: (l: Lang) => void; t: (k: Key, vars?: Record<string, string>) => string };
 const I18n = createContext<Ctx | null>(null);
 
@@ -67,7 +94,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       lang,
       setLang,
       t: (k, vars) => {
-        let s: string = (lang === 'en' && en[k]) || ro[k];
+        let s: string = dict[lang][k] || ro[k];
         for (const [v, val] of Object.entries(vars ?? {})) s = s.replace(`{${v}}`, val);
         return s;
       },
