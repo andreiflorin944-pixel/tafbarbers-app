@@ -44,7 +44,11 @@ export default function RootLayout() {
             <Stack.Screen name="service/[id]" options={{ title: '', headerTransparent: true }} />
             <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
             <Stack.Screen name="staff/login" options={{ title: 'Intră ca echipă', presentation: 'modal' }} />
-            <Stack.Screen name="staff/index" options={{ title: 'Agenda echipei' }} />
+            <Stack.Screen name="staff/(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="staff/client/[id]" options={{ title: 'Fișa clientului' }} />
+            <Stack.Screen name="staff/orders" options={{ title: 'Comenzi magazin' }} />
+            <Stack.Screen name="staff/hours" options={{ title: 'Ore de lucru și concedii' }} />
+            <Stack.Screen name="staff/services" options={{ title: 'Servicii' }} />
             <Stack.Screen name="staff/new" options={{ title: 'Programare nouă' }} />
             <Stack.Screen name="shop/index" options={{ title: 'Magazin' }} />
             <Stack.Screen name="shop/cart" options={{ title: 'Coșul meu' }} />

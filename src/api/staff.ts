@@ -7,7 +7,7 @@ export const mediaUrl = (u: string | null | undefined): string | null => (!u ? n
 
 export const apiUrl: string = (process.env.EXPO_PUBLIC_API_URL || (Constants.expoConfig?.extra?.apiUrl as string | undefined) || '').replace(/\/+$/, '');
 
-export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'timeoff' | 'stats';
+export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'timeoff' | 'stats' | 'shop';
 export type StaffMe = { id: string; email: string; name: string; barberId: string | null; owner: boolean; permissions: Record<Perm, boolean> };
 export type StaffBooking = {
   id: string;
@@ -56,4 +56,52 @@ export const staffApi = {
   create: (t: string, body: { phone: string; name: string; serviceId: string; barberId: string; start: string; notify: boolean }) =>
     call<StaffBooking>('POST', '/admin/bookings', t, body),
   timeOff: (t: string, body: { fromDay: string; toDay: string; reason: string; barberId?: string | null }) => call('POST', '/admin/time-off', t, body),
+  listTimeOff: (t: string, from: string) => call<StaffTimeOff[]>('GET', `/admin/time-off?from=${encodeURIComponent(from)}`, t),
+  deleteTimeOff: (t: string, id: number) => call('DELETE', `/admin/time-off/${id}`, t),
+  barbers: (t: string) => call<StaffBarber[]>('GET', '/admin/barbers', t),
+  clients: (t: string, q: string) => call<StaffClient[]>('GET', `/admin/clients?q=${encodeURIComponent(q)}`, t),
+  client: (t: string, id: string) => call<StaffClient>('GET', `/admin/clients/${encodeURIComponent(id)}`, t),
+  saveClient: (t: string, id: string, body: { name?: string; notes?: string }) => call<StaffClient>('PATCH', `/admin/clients/${encodeURIComponent(id)}`, t, body),
+  stats: (t: string) => call<StaffStats>('GET', '/admin/stats', t),
+  orders: (t: string, status: string) => call<StaffOrder[]>('GET', `/admin/orders?status=${status}`, t),
+  setOrderStatus: (t: string, id: string, status: string) => call<StaffOrder>('PATCH', `/admin/orders/${encodeURIComponent(id)}`, t, { status }),
+};
+
+/** Adresa unei pagini din panoul web (ex. „settings”). */
+export const panelUrl = (page = '') => (apiUrl ? `${apiUrl}/${page ? `#/${page}` : ''}` : '');
+
+export type StaffBarber = {
+  id: string;
+  name: string;
+  role: string;
+  photoUrl: string | null;
+  initials: string;
+  active: boolean;
+  hours: Array<{ weekday: number; start: number; end: number }>; // minute de la miezul nopții
+};
+export type StaffTimeOff = { id: number; barberId: string | null; start: string; end: string; reason: string };
+export type StaffClient = {
+  id: string;
+  phone: string;
+  name: string;
+  email: string | null;
+  notes: string;
+  visits?: number;
+  lastVisit?: string | null;
+  bookings?: StaffBooking[];
+};
+export type StaffStats = {
+  upcoming: number;
+  last30: { bookings: number; revenue: number | null; cancelled: number; noShow: number; newClients: number | null };
+};
+export type StaffOrder = {
+  id: string;
+  code: string;
+  status: 'new' | 'ready' | 'picked_up' | 'cancelled';
+  total: number;
+  note: string;
+  createdAt: string;
+  clientName: string;
+  clientPhone: string;
+  items: Array<{ productId: string; name: string; price: number; qty: number }>;
 };

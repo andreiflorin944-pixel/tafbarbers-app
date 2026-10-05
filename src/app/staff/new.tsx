@@ -12,14 +12,15 @@ import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
 export default function StaffNewBooking() {
-  const params = useLocalSearchParams<{ day?: string }>();
+  // Din calendar: ziua, ora și frizerul slotului atins vin precompletate.
+  const params = useLocalSearchParams<{ day?: string; time?: string; barberId?: string }>();
   const { staff, staffToken } = useStaff();
   const { services, barbers } = useApp();
   const canPickBarber = !!staff && (staff.permissions.bookings_all || !staff.barberId);
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
-  const [barberId, setBarberId] = useState(staff?.barberId ?? barbers[0]?.id ?? '');
+  const [barberId, setBarberId] = useState((canPickBarber && params.barberId) || staff?.barberId || barbers[0]?.id || '');
   const firstDay = params.day && params.day >= dayKey(new Date()) ? params.day : dayKey(new Date());
   const days = useMemo(() => Array.from({ length: 30 }, (_, i) => addDays(startOfDay(fromDayKey(firstDay)), i)), [firstDay]);
   const [day, setDay] = useState(firstDay);
@@ -33,7 +34,14 @@ export default function StaffNewBooking() {
     if (!serviceId || !barberId) return;
     setSlots(null);
     setStart(null);
-    api.getAvailability({ serviceId, barberId, day }).then(setSlots, () => setSlots([]));
+    api.getAvailability({ serviceId, barberId, day }).then(
+      (list) => {
+        setSlots(list);
+        const wanted = day === params.day && params.time ? list.find((x) => formatTime(new Date(x.start)) === params.time) : undefined;
+        if (wanted) setStart(wanted.start);
+      },
+      () => setSlots([]),
+    );
   }, [serviceId, barberId, day]);
 
   if (!staff || !staffToken) return null;

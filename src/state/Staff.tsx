@@ -7,6 +7,8 @@ import { storage } from '@/lib/storage';
 type StaffState = {
   staff: StaffMe | null;
   staffToken: string | null;
+  /** true după ce s-a verificat sesiunea salvată. */
+  staffReady: boolean;
   staffSignIn: (email: string, password: string) => Promise<void>;
   staffSignOut: () => Promise<void>;
 };
@@ -17,16 +19,18 @@ const Ctx = createContext<StaffState | null>(null);
 export function StaffProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<StaffMe | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     storage.get(KEY).then(async (t) => {
-      if (!t) return;
+      if (!t) return setReady(true);
       try {
         setStaff(await staffApi.me(t));
         setToken(t);
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) await storage.set(KEY, null);
       }
+      setReady(true);
     });
   }, []);
 
@@ -34,6 +38,7 @@ export function StaffProvider({ children }: { children: ReactNode }) {
     () => ({
       staff,
       staffToken: token,
+      staffReady: ready,
       staffSignIn: async (email, password) => {
         const { token: t } = await staffApi.login(email.trim().toLowerCase(), password);
         const me = await staffApi.me(t);
@@ -48,7 +53,7 @@ export function StaffProvider({ children }: { children: ReactNode }) {
         setStaff(null);
       },
     }),
-    [staff, token],
+    [staff, token, ready],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
