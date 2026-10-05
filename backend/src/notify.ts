@@ -33,8 +33,16 @@ export async function sendSms(env: Env, l: Omit<Log, 'channel'>, text: string): 
       headers: { Authorization: env.SMSADVERT_TOKEN, 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone: l.recipient, shortTextMessage: text, sendAsShort: true }),
     });
-    const ok = res.ok;
-    await log(env, entry, ok, ok ? undefined : `HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    // Răspuns OK: {"successMessage": "...", "msgId": "..."}; altfel apare un mesaj de eroare.
+    const raw = await res.text();
+    let json: { successMessage?: string; errorMessage?: string } = {};
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      // răspuns ne-JSON: îl păstrăm în jurnal
+    }
+    const ok = res.ok && !!json.successMessage;
+    await log(env, entry, ok, ok ? undefined : `HTTP ${res.status}: ${(json.errorMessage ?? raw).slice(0, 300)}`);
     return ok;
   } catch (e) {
     await log(env, entry, false, String(e));

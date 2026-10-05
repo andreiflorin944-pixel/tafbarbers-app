@@ -18,7 +18,7 @@ app.use('*', async (c, next) => {
   })(c, next);
 });
 
-app.get('/', (c) => c.json({ name: 'tafbarbers-api', ok: true }));
+app.get('/v1', (c) => c.json({ name: 'tafbarbers-api', ok: true }));
 app.route('/v1', publicRoutes);
 app.route('/v1/admin', adminRoutes);
 app.route('/v1', clientRoutes);
