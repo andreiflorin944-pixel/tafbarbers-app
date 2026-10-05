@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
+import { router } from 'expo-router';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { Card, Logo, Screen, SectionTitle, styles } from '@/components/ui';
 import { useApp } from '@/state/AppState';
@@ -18,9 +19,10 @@ export default function About() {
       </View>
 
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: space.md, marginBottom: space.md }}>
-        <Social icon="logo-instagram" url={`https://instagram.com/${business.instagram}`} />
-        {/* Facebook și TikTok: adăugăm când avem linkurile exacte */}
-        <Social icon="globe-outline" url={business.website} />
+        {business.instagram ? <Social icon="logo-instagram" url={`https://instagram.com/${business.instagram}`} /> : null}
+        {business.facebook ? <Social icon="logo-facebook" url={business.facebook} /> : null}
+        {business.tiktok ? <Social icon="logo-tiktok" url={business.tiktok} /> : null}
+        {business.website ? <Social icon="globe-outline" url={business.website} /> : null}
       </View>
 
       <Card style={{ gap: space.sm }}>
@@ -44,10 +46,30 @@ export default function About() {
         })}
       </Card>
 
-      <SectionTitle>Locație</SectionTitle>
-      <Card style={styles.row}>
-        <Ionicons name="location" size={18} color={colors.gold} />
-        <Text style={styles.text}>{business.address}</Text>
+      {business.address ? (
+        <>
+          <SectionTitle>Locație</SectionTitle>
+          <Card style={styles.row} onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(business.address)}`)}>
+            <Ionicons name="location" size={18} color={colors.gold} />
+            <Text style={[styles.text, { flex: 1 }]}>{business.address}</Text>
+          </Card>
+        </>
+      ) : null}
+      {business.phone ? (
+        <Card style={[styles.row, { marginTop: space.sm }]} onPress={() => Linking.openURL(`tel:${business.phone}`)}>
+          <Ionicons name="call" size={18} color={colors.gold} />
+          <Text style={styles.text}>{business.phone}</Text>
+        </Card>
+      ) : null}
+
+      <SectionTitle>Informații legale</SectionTitle>
+      <Card style={{ gap: space.sm }}>
+        <Text style={[styles.text, { color: colors.gold }]} onPress={() => router.push('/legal/terms')}>
+          Termeni și condiții
+        </Text>
+        <Text style={[styles.text, { color: colors.gold }]} onPress={() => router.push('/legal/privacy')}>
+          Politica de confidențialitate (GDPR)
+        </Text>
       </Card>
     </Screen>
   );

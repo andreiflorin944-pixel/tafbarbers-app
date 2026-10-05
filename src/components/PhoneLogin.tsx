@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { api, usingMock } from '@/api';
@@ -16,6 +18,7 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
   const [code, setCode] = useState('');
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [devCode, setDevCode] = useState<string | undefined>();
+  const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +43,7 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
     setBusy(true);
     setError(null);
     try {
-      const { token } = await api.verifyCode({ phone: sentTo!, code, name: name.trim(), lang });
+      const { token } = await api.verifyCode({ phone: sentTo!, code, name: name.trim(), lang, acceptTerms: accepted });
       await signIn(token);
       await onDone(token);
     } catch (e) {
@@ -88,13 +91,34 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
         </>
       ) : null}
 
+      <Pressable
+        onPress={() => setAccepted((a) => !a)}
+        style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', marginTop: space.md }}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: accepted }}
+        accessibilityLabel="Sunt de acord cu termenii și politica de confidențialitate"
+      >
+        <Ionicons name={accepted ? 'checkbox' : 'square-outline'} size={22} color={accepted ? colors.gold : colors.muted} />
+        <Text style={[styles.muted, { flex: 1, fontSize: 13, lineHeight: 19 }]}>
+          Sunt de acord cu{' '}
+          <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/terms')}>
+            Termenii și condițiile
+          </Text>{' '}
+          și cu{' '}
+          <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/privacy')}>
+            Politica de confidențialitate
+          </Text>
+          .
+        </Text>
+      </Pressable>
+
       {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
 
       <View style={{ marginTop: space.lg }}>
         {sentTo ? (
-          <Button title={submitTitle ?? 'Confirmă'} disabled={code.length !== 4} loading={busy} onPress={verify} />
+          <Button title={submitTitle ?? 'Confirmă'} disabled={code.length !== 4 || !accepted} loading={busy} onPress={verify} />
         ) : (
-          <Button title="Trimite codul pe SMS" disabled={!phoneOk} loading={busy} onPress={send} />
+          <Button title="Trimite codul pe SMS" disabled={!phoneOk || !accepted} loading={busy} onPress={send} />
         )}
       </View>
     </View>

@@ -73,6 +73,7 @@ const MESSAGES: Record<string, string> = {
   cannot_delete_self: 'Nu îți poți șterge propriul cont.',
   no_permission: 'Nu ai drept pentru asta. Cere-i proprietarului.',
   cannot_demote_self: 'Nu îți poți lua singur drepturile de proprietar.',
+  ro_required: 'Completează titlul și textul în română.',
   not_cancellable: 'Programarea nu mai poate fi anulată.',
   barber_required: 'Alege frizerul.',
 };

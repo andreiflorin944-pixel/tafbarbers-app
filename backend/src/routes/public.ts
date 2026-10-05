@@ -6,6 +6,7 @@ import { HttpError, type AppEnv } from '../env';
 import { msg } from '../messages';
 import { sendSms } from '../notify';
 import { addDays, iso, isDay, localDay } from '../time';
+import { DOCS, legalDoc, type Doc } from '../legal';
 
 export const publicRoutes = new Hono<AppEnv>();
 
@@ -59,6 +60,12 @@ publicRoutes.get('/availability', async (c) => {
   return c.json(await availability(c.env, { serviceId, barberId: barberId || null, day }));
 });
 
+publicRoutes.get('/legal/:doc', async (c) => {
+  const doc = c.req.param('doc') as Doc;
+  if (!DOCS.includes(doc)) throw new HttpError(404, 'not_found');
+  return c.json(await legalDoc(c.env, doc, c.req.query('lang') ?? 'ro'));
+});
+
 // --- Login cu cod SMS ---
 
 const OTP_TTL = 10 * 60_000;
@@ -96,7 +103,7 @@ publicRoutes.post('/auth/otp', async (c) => {
 });
 
 publicRoutes.post('/auth/verify', async (c) => {
-  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string }>();
+  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean }>();
   const phone = normalizePhone(body.phone);
   const row = await c.env.DB.prepare('SELECT code_hash, expires_at, attempts FROM otp_codes WHERE phone = ?')
     .bind(phone)
@@ -108,18 +115,26 @@ publicRoutes.post('/auth/verify', async (c) => {
     await c.env.DB.prepare('UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = ?').bind(phone).run();
     throw new HttpError(400, 'wrong_code');
   }
-  await c.env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(phone).run();
-
   let client = await c.env.DB.prepare('SELECT id, name FROM clients WHERE phone = ?')
     .bind(phone)
     .first<{ id: string; name: string }>();
+  // Cont nou: acordul pentru termeni și confidențialitate e obligatoriu (codul rămâne valabil).
+  if (!client && body.acceptTerms !== true) throw new HttpError(400, 'terms_required');
+  await c.env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(phone).run();
+
   if (!client) {
     client = { id: newId('cl'), name: (body.name ?? '').trim().slice(0, 80) };
-    await c.env.DB.prepare('INSERT INTO clients (id, phone, name, lang) VALUES (?, ?, ?, ?)')
-      .bind(client.id, phone, client.name, ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro')
+    await c.env.DB.prepare('INSERT INTO clients (id, phone, name, lang, terms_accepted_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(client.id, phone, client.name, ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro', iso(new Date()))
       .run();
-  } else if (!client.name && body.name?.trim()) {
-    await c.env.DB.prepare('UPDATE clients SET name = ? WHERE id = ?').bind(body.name.trim().slice(0, 80), client.id).run();
+  } else {
+    if (!client.name && body.name?.trim()) {
+      await c.env.DB.prepare('UPDATE clients SET name = ? WHERE id = ?').bind(body.name.trim().slice(0, 80), client.id).run();
+    }
+    // Clienții adăugați din panou își dau acordul la prima intrare în aplicație.
+    if (body.acceptTerms === true) {
+      await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = coalesce(terms_accepted_at, ?) WHERE id = ?').bind(iso(new Date()), client.id).run();
+    }
   }
   const token = await createSession(c.env.DB, 'client', client.id);
   return c.json({ token, clientId: client.id });

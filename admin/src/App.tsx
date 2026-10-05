@@ -9,6 +9,7 @@ import { TimeOffPage } from './pages/TimeOff';
 import { PromosPage } from './pages/Promos';
 import { CampaignsPage } from './pages/Campaigns';
 import { SettingsPage } from './pages/Settings';
+import { LegalPage } from './pages/Legal';
 
 const PAGES = [
   { key: 'calendar', label: 'Programări', show: () => true, el: CalendarPage },
@@ -18,6 +19,7 @@ const PAGES = [
   { key: 'timeoff', label: 'Concedii', show: (m: Me) => m.permissions.timeoff, el: TimeOffPage },
   { key: 'promos', label: 'Bannere aplicație', show: (m: Me) => m.owner, el: PromosPage },
   { key: 'campaigns', label: 'Campanii', show: (m: Me) => m.owner, el: CampaignsPage },
+  { key: 'legal', label: 'Regulamente și GDPR', show: (m: Me) => m.owner, el: LegalPage },
   { key: 'settings', label: 'Setări', show: () => true, el: SettingsPage },
 ];
 

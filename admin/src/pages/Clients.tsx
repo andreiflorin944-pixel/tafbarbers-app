@@ -1,9 +1,20 @@
 import { useEffect, useState } from 'react';
-import { api, type Client, type Me } from '../api';
+import { api, getToken, type Client, type Me } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
 import { date, lei, STATUS, time } from '../util';
 
-export function ClientsPage(_: { me: Me }) {
+async function downloadCsv() {
+  const res = await fetch('/v1/admin/clients.csv', { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) return alert('Exportul nu a mers.');
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `clienti-tafbarbers-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function ClientsPage({ me }: { me: Me }) {
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<string | null>(null);
@@ -19,7 +30,12 @@ export function ClientsPage(_: { me: Me }) {
     <>
       <div className="head">
         <h1>Clienți</h1>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Caută după nume, telefon sau e-mail" style={{ maxWidth: 320 }} />
+        <div className="row">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Caută după nume, telefon sau e-mail" style={{ maxWidth: 320 }} />
+          <button className="ghost" onClick={downloadCsv}>
+            Export Excel (CSV)
+          </button>
+        </div>
       </div>
       {!list.data ? (
         <Loading error={list.error} />
@@ -56,12 +72,12 @@ export function ClientsPage(_: { me: Me }) {
           </table>
         </div>
       )}
-      {open ? <ClientModal id={open} onClose={() => setOpen(null)} onChange={list.reload} /> : null}
+      {open ? <ClientModal id={open} canDelete={me.owner} onClose={() => setOpen(null)} onChange={list.reload} /> : null}
     </>
   );
 }
 
-function ClientModal({ id, onClose, onChange }: { id: string; onClose: () => void; onChange: () => void }) {
+function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDelete: boolean; onClose: () => void; onChange: () => void }) {
   const c = useLoad(() => api<Client>('GET', `/admin/clients/${id}`), [id]);
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
@@ -104,6 +120,24 @@ function ClientModal({ id, onClose, onChange }: { id: string; onClose: () => voi
                 }
               >
                 Salvează
+              </button>
+            </div>
+          ) : null}
+          {canDelete ? (
+            <div>
+              <button
+                className="danger sm"
+                disabled={busy}
+                onClick={() =>
+                  confirm('Ștergi datele clientului (GDPR)? Numele, telefonul și e-mailul dispar definitiv, programările viitoare se anulează, istoricul rămâne anonim.') &&
+                  run(async () => {
+                    await api('DELETE', `/admin/clients/${id}`);
+                    onChange();
+                    onClose();
+                  })
+                }
+              >
+                Șterge datele clientului (GDPR)
               </button>
             </div>
           ) : null}

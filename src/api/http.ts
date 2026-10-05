@@ -37,6 +37,11 @@ export function httpApi(baseUrl: string): BookingApi {
       await call('POST', '/auth/logout', { token }).catch(() => undefined);
     },
     me: (token) => call('GET', '/me', { token }),
+    getLegal: (doc, lang) => call('GET', `/legal/${doc}?lang=${lang}`),
+    exportMe: (token) => call('GET', '/me/export', { token }),
+    deleteMe: async (token) => {
+      await call('DELETE', '/me', { token });
+    },
     updateMe: (token, patch) => call('PATCH', '/me', { token, body: patch }),
 
     listBookings: (token) => call('GET', '/me/bookings', { token }),

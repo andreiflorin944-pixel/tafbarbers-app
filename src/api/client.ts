@@ -16,7 +16,10 @@ export interface BookingApi {
 
   /** Trimite codul pe SMS. `devCode` vine doar de la serverul de test. */
   requestCode(phone: string, lang: string): Promise<{ phone: string; devCode?: string }>;
-  verifyCode(input: { phone: string; code: string; name: string; lang: string }): Promise<{ token: string }>;
+  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean }): Promise<{ token: string }>;
+  getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null }>;
+  exportMe(token: string): Promise<unknown>;
+  deleteMe(token: string): Promise<void>;
   logout(token: string): Promise<void>;
   me(token: string): Promise<Me>;
   updateMe(

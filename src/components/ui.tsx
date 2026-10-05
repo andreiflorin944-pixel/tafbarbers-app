@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps, ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Barber, Service } from '@/data/types';
 import { colors, radius, space } from '@/theme';
@@ -32,7 +32,7 @@ export function SectionTitle({ children }: { children: ReactNode }) {
   return <Text style={styles.section}>{children}</Text>;
 }
 
-export function Card({ children, style, onPress, selected }: { children: ReactNode; style?: ViewStyle; onPress?: () => void; selected?: boolean }) {
+export function Card({ children, style, onPress, selected }: { children: ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; selected?: boolean }) {
   const s = [styles.card, selected && styles.cardSelected, style];
   if (!onPress) return <View style={s}>{children}</View>;
   return (

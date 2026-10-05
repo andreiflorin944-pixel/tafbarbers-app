@@ -16,6 +16,7 @@ const RO: Record<string, string> = {
   no_permission: 'Contul tău nu are drept pentru asta. Cere-i proprietarului.',
   no_server: 'Partea de echipă merge după ce serverul e online.',
   barber_required: 'Alege frizerul.',
+  terms_required: 'Bifează acordul pentru termeni și confidențialitate.',
   unauthorized: 'Sesiunea a expirat. Intră din nou în cont.',
 };
 

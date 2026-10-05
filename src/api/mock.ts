@@ -83,6 +83,19 @@ export const mockApi: BookingApi = {
     return delay({ token: p });
   },
   logout: () => delay(undefined),
+  getLegal: (doc) =>
+    delay({
+      title: doc === 'terms' ? 'Termeni și condiții' : 'Politica de confidențialitate',
+      body: 'Versiune de test. Textul real se editează din panou, la Regulamente, după ce aplicația e legată de server.',
+      updatedAt: null,
+    }),
+  async exportMe(token) {
+    return delay({ profile: users.get(token), bookings: bookings.filter((b) => b.phone === token) });
+  },
+  async deleteMe(token) {
+    users.delete(token);
+    return delay(undefined);
+  },
   async me(token) {
     const u = users.get(token);
     if (!u) throw new ApiError('unauthorized', 401);

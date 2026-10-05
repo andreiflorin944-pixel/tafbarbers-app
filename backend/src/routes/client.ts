@@ -4,6 +4,7 @@ import { BOOKING_SELECT, cancelBooking, createBooking } from '../bookings';
 import { booking, client, type BookingRow, type ClientRow } from '../db';
 import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
+import { deleteClient, exportClient } from '../gdpr';
 
 export const clientRoutes = new Hono<AppEnv>();
 // Pe căi anume: rutele publice sunt montate tot sub /v1.
@@ -37,6 +38,13 @@ clientRoutes.patch('/me', async (c) => {
   if (sets.length) await c.env.DB.prepare(`UPDATE clients SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
   const r = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(id).first<ClientRow>();
   return c.json(client(r!));
+});
+
+clientRoutes.get('/me/export', async (c) => c.json(await exportClient(c.env, c.get('client').clientId)));
+
+clientRoutes.delete('/me', async (c) => {
+  await deleteClient(c.env, c.get('client').clientId);
+  return c.json({ ok: true });
 });
 
 clientRoutes.get('/me/bookings', async (c) => {

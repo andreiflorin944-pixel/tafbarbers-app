@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Share, Switch, Text, TextInput, View } from 'react-native';
+import { api } from '@/api';
 import { Avatar, Button, Card, Icon, Screen, Segmented, styles } from '@/components/ui';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
@@ -55,7 +56,7 @@ function StaffAccount() {
 }
 
 function ClientAccount() {
-  const { user, signOut, bookings, updateMe } = useApp();
+  const { user, token, signOut, bookings, updateMe } = useApp();
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [saving, setSaving] = useState(false);
@@ -88,6 +89,47 @@ function ClientAccount() {
       setMsg({ ok: false, text: errorMessage(e) });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const downloadData = async () => {
+    if (!token) return;
+    setMsg(null);
+    try {
+      const json = JSON.stringify(await api.exportMe(token), null, 2);
+      if (Platform.OS === 'web') {
+        const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'datele-mele-tafbarbers.json';
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        await Share.share({ title: 'Datele mele', message: json });
+      }
+    } catch (e) {
+      setMsg({ ok: false, text: errorMessage(e) });
+    }
+  };
+
+  const deleteAccount = () => {
+    const text = 'Contul, numele, telefonul și e-mailul tău se șterg definitiv, iar programările viitoare se anulează.';
+    const go = async () => {
+      if (!token) return;
+      try {
+        await api.deleteMe(token);
+        await signOut();
+      } catch (e) {
+        setMsg({ ok: false, text: errorMessage(e) });
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Ștergi contul?\n\n${text}`)) go();
+    } else {
+      Alert.alert('Ștergi contul?', text, [
+        { text: 'Renunță', style: 'cancel' },
+        { text: 'Șterge', style: 'destructive', onPress: go },
+      ]);
     }
   };
 
@@ -150,6 +192,13 @@ function ClientAccount() {
 
       <View style={{ marginTop: space.lg }}>
         <Button title="Ieși din cont" variant="ghost" onPress={signOut} />
+      </View>
+
+      <Text style={[styles.label, { marginTop: space.lg }]}>Datele mele</Text>
+      <View style={{ gap: space.sm }}>
+        <Button title="Descarcă datele mele" variant="ghost" onPress={downloadData} />
+        <Button title="Șterge contul" variant="ghost" onPress={deleteAccount} />
+        <Button title="Confidențialitate" variant="ghost" onPress={() => router.push('/legal/privacy')} />
       </View>
     </>
   );

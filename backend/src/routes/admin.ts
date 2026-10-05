@@ -28,6 +28,8 @@ import {
 import { HttpError, PERMS, parsePerms, type AppEnv, type Perm } from '../env';
 import { runCampaign } from '../campaigns';
 import { iso, isDay, localToUtc } from '../time';
+import { clientsCsv, deleteClient } from '../gdpr';
+import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
 
 export const adminRoutes = new Hono<AppEnv>();
 
@@ -460,12 +462,25 @@ adminRoutes.get('/clients', async (c) => {
     `SELECT c.*,
        (SELECT count(*) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS visits,
        (SELECT max(starts_at) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS last_visit
-     FROM clients c ${q ? 'WHERE c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?' : ''}
+     FROM clients c WHERE c.deleted_at IS NULL ${q ? 'AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)' : ''}
      ORDER BY c.created_at DESC LIMIT 500`,
   )
     .bind(...(q ? [like, like, like] : []))
     .all<ClientRow & { visits: number; last_visit: string | null }>();
   return c.json(r.results.map((x) => ({ ...client(x), visits: x.visits, lastVisit: x.last_visit })));
+});
+
+adminRoutes.get('/clients.csv', async (c) => {
+  need(c, 'clients');
+  return c.body(await clientsCsv(c.env), 200, {
+    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': `attachment; filename="clienti-tafbarbers-${iso(new Date()).slice(0, 10)}.csv"`,
+  });
+});
+
+adminRoutes.delete('/clients/:id', ownerOnly, async (c) => {
+  await deleteClient(c.env, c.req.param('id')!);
+  return c.json({ ok: true });
 });
 
 adminRoutes.get('/clients/:id', async (c) => {
@@ -486,6 +501,34 @@ adminRoutes.patch('/clients/:id', async (c) => {
   if (b.notes !== undefined) v.notes = String(b.notes).slice(0, 2000);
   await update(c.env.DB, 'clients', c.req.param('id')!, v);
   return c.json({ ok: true });
+});
+
+// --- Regulamente (termeni, confidențialitate) ---
+
+adminRoutes.get('/legal', async (c) => {
+  const store = await getLegal(c.env);
+  const out: Record<string, unknown> = {};
+  for (const d of DOCS) {
+    const ro = await legalDoc(c.env, d, 'ro');
+    out[d] = { updatedAt: store[d]?.updatedAt ?? null, isDefault: ro.isDefault, versions: { ro: store[d]?.versions?.ro ?? { title: ro.title, body: ro.body }, en: store[d]?.versions?.en ?? null, fr: store[d]?.versions?.fr ?? null } };
+  }
+  return c.json(out);
+});
+
+adminRoutes.put('/legal/:doc', ownerOnly, async (c) => {
+  const doc = c.req.param('doc') as (typeof DOCS)[number];
+  if (!DOCS.includes(doc)) throw new HttpError(404, 'not_found');
+  const b = await c.req.json<{ versions?: Record<string, { title?: string; body?: string } | null> }>();
+  const store = await getLegal(c.env);
+  const versions: Record<string, { title: string; body: string }> = {};
+  for (const l of ['ro', 'en', 'fr']) {
+    const v = b.versions?.[l];
+    if (v?.title?.trim() && v.body?.trim()) versions[l] = { title: v.title.trim().slice(0, 120), body: v.body.slice(0, 50_000) };
+  }
+  if (!versions.ro) throw new HttpError(400, 'ro_required');
+  store[doc] = { updatedAt: iso(new Date()), versions };
+  await saveLegal(c.env, store);
+  return c.json({ ok: true, updatedAt: store[doc].updatedAt });
 });
 
 // --- Bannere de marketing ---
