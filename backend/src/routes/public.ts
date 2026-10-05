@@ -1,0 +1,132 @@
+import { Hono } from 'hono';
+import { availability } from '../availability';
+import { createSession, deleteSession, normalizePhone, randomCode, sha256, newId, timingSafeEqual, tokenFrom } from '../auth';
+import { barber, getBusiness, promo, service, type BarberRow, type PromoRow, type ServiceRow } from '../db';
+import { HttpError, type AppEnv } from '../env';
+import { msg } from '../messages';
+import { sendSms } from '../notify';
+import { addDays, iso, isDay, localDay } from '../time';
+
+export const publicRoutes = new Hono<AppEnv>();
+
+publicRoutes.get('/business', async (c) => {
+  const biz = await getBusiness(c.env);
+  // Programul salonului = reuniunea programului frizerilor, pe zile (0 = duminică).
+  const rows = await c.env.DB.prepare(
+    `SELECT h.weekday, MIN(h.start_min) AS s, MAX(h.end_min) AS e
+     FROM working_hours h JOIN barbers b ON b.id = h.barber_id WHERE b.active = 1 GROUP BY h.weekday`,
+  ).all<{ weekday: number; s: number; e: number }>();
+  const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const hours = Array.from({ length: 7 }, (_, wd) => {
+    const r = rows.results.find((x) => x.weekday === wd);
+    return r ? { open: hm(r.s), close: hm(r.e) } : null;
+  });
+  return c.json({ ...biz, hours });
+});
+
+publicRoutes.get('/services', async (c) => {
+  const r = await c.env.DB.prepare('SELECT * FROM services WHERE active = 1 ORDER BY sort, name').all<ServiceRow>();
+  return c.json(r.results.map(service));
+});
+
+publicRoutes.get('/barbers', async (c) => {
+  const r = await c.env.DB.prepare(
+    `SELECT b.*, (SELECT group_concat(service_id) FROM barber_services WHERE barber_id = b.id) AS service_ids
+     FROM barbers b WHERE b.active = 1 ORDER BY b.sort, b.name`,
+  ).all<BarberRow>();
+  return c.json(r.results.map(barber));
+});
+
+publicRoutes.get('/promos', async (c) => {
+  const now = iso(new Date());
+  const lang = c.req.query('lang') ?? 'ro';
+  const r = await c.env.DB.prepare(
+    `SELECT * FROM promos WHERE active = 1
+     AND (starts_at IS NULL OR starts_at <= ?) AND (ends_at IS NULL OR ends_at > ?) ORDER BY sort`,
+  )
+    .bind(now, now)
+    .all<PromoRow>();
+  return c.json(r.results.map((p) => promo(p, lang)));
+});
+
+/** GET /availability?serviceId=…&barberId=…&day=YYYY-MM-DD */
+publicRoutes.get('/availability', async (c) => {
+  const { serviceId, barberId, day } = c.req.query();
+  if (!serviceId || !isDay(day)) throw new HttpError(400, 'invalid_query');
+  const biz = await getBusiness(c.env);
+  const today = localDay(c.env.TIMEZONE, new Date());
+  if (day < today || day > addDays(today, biz.maxDaysAhead ?? 30)) return c.json([]);
+  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, day }));
+});
+
+// --- Login cu cod SMS ---
+
+const OTP_TTL = 10 * 60_000;
+// RO, MD, FR, BE, CH, LU, IT, ES, DE, AT, UK, IE, NL.
+const OTP_PREFIXES = ['+40', '+373', '+33', '+32', '+41', '+352', '+39', '+34', '+49', '+43', '+44', '+353', '+31'];
+
+publicRoutes.post('/auth/otp', async (c) => {
+  const body = await c.req.json<{ phone?: string }>().catch(() => ({}) as { phone?: string });
+  const phone = normalizePhone(body.phone);
+  // Protecție contra abuzului de SMS: doar prefixe europene uzuale și o limită zilnică totală.
+  if (!OTP_PREFIXES.some((p) => phone.startsWith(p))) throw new HttpError(400, 'country_not_supported');
+  const today = await c.env.DB.prepare(
+    `SELECT count(*) AS n FROM message_log WHERE kind = 'otp' AND created_at > ?`,
+  )
+    .bind(iso(new Date(Date.now() - 86_400_000)))
+    .first<{ n: number }>();
+  if ((today?.n ?? 0) >= 500) throw new HttpError(429, 'too_many_requests');
+  const prev = await c.env.DB.prepare('SELECT expires_at FROM otp_codes WHERE phone = ?')
+    .bind(phone)
+    .first<{ expires_at: string }>();
+  // Cel mult un cod la 45 de secunde pe număr.
+  if (prev && Date.parse(prev.expires_at) - OTP_TTL + 45_000 > Date.now()) throw new HttpError(429, 'too_many_requests');
+
+  const code = randomCode();
+  await c.env.DB.prepare(
+    `INSERT INTO otp_codes (phone, code_hash, expires_at, attempts) VALUES (?, ?, ?, 0)
+     ON CONFLICT(phone) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0`,
+  )
+    .bind(phone, await sha256(`${phone}:${code}`), iso(new Date(Date.now() + OTP_TTL)))
+    .run();
+  const biz = await getBusiness(c.env);
+  const lang = c.req.query('lang') ?? 'ro';
+  await sendSms(c.env, { kind: 'otp', recipient: phone }, msg(lang, 'otp', { shop: biz.name, code }));
+  return c.json({ ok: true, phone, ...(c.env.DEV_OTP === '1' && { devCode: code }) });
+});
+
+publicRoutes.post('/auth/verify', async (c) => {
+  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string }>();
+  const phone = normalizePhone(body.phone);
+  const row = await c.env.DB.prepare('SELECT code_hash, expires_at, attempts FROM otp_codes WHERE phone = ?')
+    .bind(phone)
+    .first<{ code_hash: string; expires_at: string; attempts: number }>();
+  if (!row || Date.parse(row.expires_at) < Date.now()) throw new HttpError(400, 'code_expired');
+  if (row.attempts >= 5) throw new HttpError(429, 'too_many_attempts');
+  const ok = timingSafeEqual(await sha256(`${phone}:${String(body.code ?? '')}`), row.code_hash);
+  if (!ok) {
+    await c.env.DB.prepare('UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = ?').bind(phone).run();
+    throw new HttpError(400, 'wrong_code');
+  }
+  await c.env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(phone).run();
+
+  let client = await c.env.DB.prepare('SELECT id, name FROM clients WHERE phone = ?')
+    .bind(phone)
+    .first<{ id: string; name: string }>();
+  if (!client) {
+    client = { id: newId('cl'), name: (body.name ?? '').trim().slice(0, 80) };
+    await c.env.DB.prepare('INSERT INTO clients (id, phone, name, lang) VALUES (?, ?, ?, ?)')
+      .bind(client.id, phone, client.name, ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro')
+      .run();
+  } else if (!client.name && body.name?.trim()) {
+    await c.env.DB.prepare('UPDATE clients SET name = ? WHERE id = ?').bind(body.name.trim().slice(0, 80), client.id).run();
+  }
+  const token = await createSession(c.env.DB, 'client', client.id);
+  return c.json({ token, clientId: client.id });
+});
+
+publicRoutes.post('/auth/logout', async (c) => {
+  const t = tokenFrom(c);
+  if (t) await deleteSession(c.env.DB, t);
+  return c.json({ ok: true });
+});

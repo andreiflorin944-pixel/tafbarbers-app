@@ -1,0 +1,21 @@
+{
+  "name": "tafbarbers-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "node test-api.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply tafbarbers --local",
+    "db:migrate:remote": "wrangler d1 migrations apply tafbarbers --remote"
+  },
+  "dependencies": {
+    "hono": "^4.13.13"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261005.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.147.0"
+  }
+}

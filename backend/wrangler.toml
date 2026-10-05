@@ -1,0 +1,24 @@
+name = "tafbarbers-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tafbarbers"
+database_id = "4590bbc5-67f3-4b9b-94f9-ffb7bbda5efc"
+migrations_dir = "migrations"
+
+# Reminder-ele SMS/push rulează la fiecare 5 minute.
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+TIMEZONE = "Europe/Bucharest"
+# Domenii permise pentru panoul admin și aplicația web (separate prin virgulă).
+CORS_ORIGINS = "*"
+
+# Secrete (se pun cu `npx wrangler secret put NUME`, niciodată în cod):
+#   SMSADVERT_TOKEN   cheia API de la smsadvert.ro
+#   EMAIL_API_KEY     cheia furnizorului de e-mail
+#   ADMIN_SETUP_KEY   parolă unică pentru crearea primului cont de admin
