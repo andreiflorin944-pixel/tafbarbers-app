@@ -25,6 +25,8 @@ type AppState = {
   setDraft: (patch: Partial<Draft>) => void;
   resetDraft: () => void;
   user: Me | null;
+  /** true după ce s-a verificat sesiunea salvată (până atunci nu știm dacă e logat). */
+  sessionReady: boolean;
   token: string | null;
   /** Salvează sesiunea primită după verificarea codului SMS. */
   signIn: (token: string) => Promise<void>;
@@ -54,6 +56,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [draft, setDraftState] = useState<Draft>(emptyDraft);
   const [user, setUser] = useState<Me | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
 
   useEffect(() => {
@@ -76,7 +79,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // Sesiunea salvată de data trecută.
   useEffect(() => {
     storage.get(TOKEN_KEY).then(async (t) => {
-      if (!t) return;
+      if (!t) return setSessionReady(true);
       try {
         const me = await api.me(t);
         if (me.lang === 'ro' || me.lang === 'en' || me.lang === 'fr') setLang(me.lang);
@@ -85,6 +88,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) await storage.set(TOKEN_KEY, null);
       }
+      setSessionReady(true);
     });
   }, []);
 
@@ -120,6 +124,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       resetDraft: () => setDraftState(emptyDraft),
       user,
       token,
+      sessionReady,
       signIn: async (t) => {
         const me = await api.me(t);
         await storage.set(TOKEN_KEY, t);
@@ -147,7 +152,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       serviceById: (id) => services.find((s) => s.id === id),
       barberById: (id) => barbers.find((b) => b.id === id),
     }),
-    [business, services, barbers, promos, loading, loadError, draft, user, token, bookings, refreshBookings],
+    [business, services, barbers, promos, loading, loadError, draft, user, token, sessionReady, bookings, refreshBookings],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

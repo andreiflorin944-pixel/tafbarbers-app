@@ -2,21 +2,23 @@ import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { api, ApiError } from '@/api';
-import { PhoneLogin } from '@/components/PhoneLogin';
 import { Button, Card, Icon, Screen, Steps, styles } from '@/components/ui';
 import { formatDate, formatTime } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
+import { useLoginGate } from '@/components/LoginGate';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function Confirm() {
   const { draft, serviceById, barberById, user, token, addBooking, business } = useApp();
+  const gate = useLoginGate();
   const service = serviceById(draft.serviceId);
   const barber = barberById(draft.slotBarberId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [slotTaken, setSlotTaken] = useState(false);
 
+  if (gate) return gate;
   if (!service || !draft.start || !barber) return <Redirect href="/book/service" />;
   const start = new Date(draft.start);
 
@@ -76,12 +78,7 @@ export default function Confirm() {
             <Button title="Confirmă programarea" onPress={() => book(token)} loading={saving} />
           )}
         </View>
-      ) : (
-        <View style={{ marginTop: space.md }}>
-          <Text style={[styles.muted, { marginBottom: space.xs }]}>Îți confirmăm numărul printr-un cod pe SMS, o singură dată.</Text>
-          <PhoneLogin submitTitle="Confirmă programarea" onDone={book} />
-        </View>
-      )}
+      ) : null}
     </Screen>
   );
 }

@@ -5,6 +5,7 @@ import { api } from '@/api';
 import { Button, Empty, Screen, Steps, styles as ui } from '@/components/ui';
 import type { Slot } from '@/data/types';
 import { addDays, dayKey, formatTime, shortDay, shortMonth, startOfDay } from '@/lib/dates';
+import { useLoginGate } from '@/components/LoginGate';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
 
@@ -12,6 +13,7 @@ const DAYS_AHEAD = 21;
 
 export default function ChooseTime() {
   const { draft, setDraft, serviceById, barberById, business } = useApp();
+  const gate = useLoginGate();
   const service = serviceById(draft.serviceId);
   const days = useMemo(() => Array.from({ length: DAYS_AHEAD }, (_, i) => addDays(startOfDay(new Date()), i)), []);
   const [day, setDay] = useState(dayKey(days[0]));
@@ -25,6 +27,7 @@ export default function ChooseTime() {
     api.getAvailability({ serviceId: service.id, barberId: draft.barberId, day }).then(setSlots);
   }, [service, draft.barberId, day]);
 
+  if (gate) return gate;
   if (!service) return <Redirect href="/book/service" />;
 
   const barber = barberById(draft.barberId);

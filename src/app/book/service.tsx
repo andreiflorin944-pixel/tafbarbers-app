@@ -1,9 +1,12 @@
 import { router } from 'expo-router';
 import { Screen, ServiceRow, Steps } from '@/components/ui';
+import { useLoginGate } from '@/components/LoginGate';
 import { useApp } from '@/state/AppState';
 
 export default function ChooseService() {
   const { services, setDraft, draft } = useApp();
+  const gate = useLoginGate();
+  if (gate) return gate;
 
   return (
     <Screen edges={[]}>

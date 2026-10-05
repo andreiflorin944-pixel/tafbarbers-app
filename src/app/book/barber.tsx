@@ -1,12 +1,15 @@
 import { Redirect, router } from 'expo-router';
 import { Text, View } from 'react-native';
 import { Avatar, Card, Screen, Steps, styles } from '@/components/ui';
+import { useLoginGate } from '@/components/LoginGate';
 import { useApp } from '@/state/AppState';
 import { space } from '@/theme';
 
 export default function ChooseBarber() {
   const { barbers, draft, setDraft, serviceById } = useApp();
+  const gate = useLoginGate();
   const service = serviceById(draft.serviceId);
+  if (gate) return gate;
   if (!service) return <Redirect href="/book/service" />;
 
   const pick = (barberId: string | null) => {
