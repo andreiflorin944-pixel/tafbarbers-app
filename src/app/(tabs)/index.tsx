@@ -5,7 +5,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LangButton } from '@/components/LangButton';
 import { PromoCarousel } from '@/components/PromoCarousel';
 import { Avatar, Button, SectionTitle, styles as ui } from '@/components/ui';
-import { promos } from '@/data/mock';
 import type { Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
 import { formatDate, formatTime } from '@/lib/dates';
@@ -13,7 +12,7 @@ import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
 
 export default function Home() {
-  const { loading, user, bookings, services, barbers, serviceById, barberById, resetDraft, setDraft } = useApp();
+  const { loading, loadError, reload, user, bookings, services, barbers, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
   const { t } = useT();
 
   const next = bookings
@@ -44,12 +43,22 @@ export default function Home() {
     );
   }
 
+  if (loadError) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, padding: space.lg, justifyContent: 'center', gap: space.md }}>
+        <Ionicons name="cloud-offline-outline" size={48} color={colors.gold} style={{ alignSelf: 'center' }} />
+        <Text style={[ui.text, { textAlign: 'center' }]}>Nu ne putem conecta la server. Verifică internetul.</Text>
+        <Button title="Încearcă din nou" onPress={reload} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={s.content}>
         <View style={s.topBar}>
           <View>
-            <Text style={ui.muted}>{user ? t('home.hi', { name: user.name.split(' ')[0] }) : t('home.welcome')}</Text>
+            <Text style={ui.muted}>{user ? t('home.hi', { name: (user.name || user.phone).split(' ')[0] }) : t('home.welcome')}</Text>
             <Text style={s.brand}>
               TAF <Text style={s.brandItalic}>Barber’s</Text>
             </Text>
@@ -62,7 +71,7 @@ export default function Home() {
           </View>
         </View>
 
-        <PromoCarousel promos={promos} onPress={openPromo} />
+        {promos.length ? <PromoCarousel promos={promos} onPress={openPromo} /> : null}
 
         {next ? (
           <Pressable onPress={() => router.push('/bookings')} style={s.hero}>

@@ -1,5 +1,4 @@
-// Shapes mirror what we expect from the Barberly Booking API (catalog + bookings).
-// Adjust field names once the OpenAPI document is in hand.
+// Formele datelor, la fel ca în răspunsurile serverului nostru (backend/src/db.ts).
 
 export type Service = {
   id: string;
@@ -8,6 +7,7 @@ export type Service = {
   price: number; // lei
   durationMin: number;
   color: string;
+  imageUrl?: string | null;
 };
 
 export type Barber = {
@@ -15,6 +15,8 @@ export type Barber = {
   name: string;
   role: string;
   initials: string;
+  photoUrl?: string | null;
+  serviceIds?: string[];
 };
 
 export type Slot = {
@@ -22,25 +24,41 @@ export type Slot = {
   barberId: string;
 };
 
+export type BookingStatus = 'confirmed' | 'cancelled' | 'completed' | 'no_show';
+
 export type Booking = {
   id: string;
   serviceId: string;
   barberId: string;
   start: string; // ISO datetime
-  clientName: string;
-  clientPhone: string;
-  status: 'confirmed' | 'cancelled';
+  end?: string;
+  price?: number;
+  status: BookingStatus;
+  serviceName?: string;
+  barberName?: string;
+};
+
+export type Me = {
+  id: string;
+  phone: string;
+  name: string;
+  email: string | null;
+  lang: string;
+  marketing: { sms: boolean; email: boolean; push: boolean };
 };
 
 export type Business = {
   name: string;
   tagline: string;
-  description: string;
+  description?: string;
   address: string;
   phone: string;
   website: string;
   instagram: string;
-  cancellationPolicy: string;
+  facebook?: string;
+  tiktok?: string;
+  cancelHours?: number;
+  cancellationPolicy?: string;
   // 0 = duminică ... 6 = sâmbătă; null = închis
   hours: Array<{ open: string; close: string } | null>;
 };
@@ -52,6 +70,6 @@ export type Promo = {
   text: string;
   cta: string;
   icon: 'pricetag' | 'flame' | 'school' | 'bag-handle';
-  // what the button does
+  // ce face butonul
   action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'book' };
 };

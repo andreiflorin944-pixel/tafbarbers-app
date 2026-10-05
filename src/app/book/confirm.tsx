@@ -1,46 +1,44 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
-import { api } from '@/api';
+import { Text, View } from 'react-native';
+import { api, ApiError } from '@/api';
+import { PhoneLogin } from '@/components/PhoneLogin';
 import { Button, Card, Icon, Screen, Steps, styles } from '@/components/ui';
 import { formatDate, formatTime } from '@/lib/dates';
+import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function Confirm() {
-  const { draft, serviceById, barberById, user, signIn, addBooking, business } = useApp();
+  const { draft, serviceById, barberById, user, token, addBooking, business } = useApp();
   const service = serviceById(draft.serviceId);
   const barber = barberById(draft.slotBarberId);
-  const [name, setName] = useState(user?.name ?? '');
-  const [phone, setPhone] = useState(user?.phone ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [slotTaken, setSlotTaken] = useState(false);
 
   if (!service || !draft.start || !barber) return <Redirect href="/book/service" />;
   const start = new Date(draft.start);
-  const valid = name.trim().length >= 2 && /^\+?\d{9,13}$/.test(phone.replace(/\s/g, ''));
 
-  const submit = async () => {
+  const book = async (t: string) => {
     setSaving(true);
     setError(null);
     try {
-      const clientPhone = phone.replace(/\s/g, '');
-      const booking = await api.createBooking({
-        serviceId: service.id,
-        barberId: barber.id,
-        start: draft.start!,
-        clientName: name.trim(),
-        clientPhone,
-      });
-      if (!user) signIn({ name: name.trim(), phone: clientPhone });
+      // Trimitem frizerul ales efectiv la ora respectivă, ca serverul să verifice exact acel loc.
+      const booking = await api.createBooking(t, { serviceId: service.id, barberId: barber.id, start: draft.start! });
       addBooking(booking);
       router.replace({ pathname: '/book/success', params: { id: booking.id } });
-    } catch {
-      setError('Nu am putut face programarea. Încearcă din nou.');
+    } catch (e) {
+      setError(errorMessage(e, 'Nu am putut face programarea. Încearcă din nou.'));
+      setSlotTaken(e instanceof ApiError && e.code === 'slot_unavailable');
     } finally {
       setSaving(false);
     }
   };
+
+  const policy =
+    business?.cancellationPolicy ||
+    (business?.cancelHours ? `Poți anula programarea din aplicație cu cel puțin ${business.cancelHours} ore înainte.` : null);
 
   return (
     <Screen edges={['bottom']}>
@@ -57,23 +55,33 @@ export default function Confirm() {
         </View>
       </Card>
 
-      <Text style={styles.label}>Nume</Text>
-      <TextInput value={name} onChangeText={setName} placeholder="Numele tău" placeholderTextColor={colors.muted} style={styles.input} autoComplete="name" />
-      <Text style={styles.label}>Telefon</Text>
-      <TextInput value={phone} onChangeText={setPhone} placeholder="07xx xxx xxx" placeholderTextColor={colors.muted} style={styles.input} keyboardType="phone-pad" autoComplete="tel" />
-      <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>Plata se face la locație. Vei primi o confirmare pe SMS.</Text>
-      {business ? (
+      <Text style={[styles.muted, { fontSize: 12, marginTop: space.sm }]}>Plata se face la locație. Vei primi o confirmare pe SMS.</Text>
+      {policy ? (
         <Text style={[styles.muted, { fontSize: 12, marginTop: space.sm, lineHeight: 18 }]}>
           <Text style={{ color: colors.gold, fontWeight: '700' }}>Atenție! </Text>
-          {business.cancellationPolicy}
+          {policy}
         </Text>
       ) : null}
 
-      {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
+      {error ? <Text style={{ color: colors.danger, marginTop: space.md }}>{error}</Text> : null}
 
-      <View style={{ marginTop: space.lg }}>
-        <Button title="Confirmă programarea" onPress={submit} disabled={!valid} loading={saving} />
-      </View>
+      {user && token ? (
+        <View style={{ marginTop: space.lg, gap: space.sm }}>
+          <Text style={styles.muted}>
+            Rezervi ca {user.name || user.phone} · {user.phone}
+          </Text>
+          {slotTaken ? (
+            <Button title="Alege altă oră" onPress={() => router.back()} />
+          ) : (
+            <Button title="Confirmă programarea" onPress={() => book(token)} loading={saving} />
+          )}
+        </View>
+      ) : (
+        <View style={{ marginTop: space.md }}>
+          <Text style={[styles.muted, { marginBottom: space.xs }]}>Îți confirmăm numărul printr-un cod pe SMS, o singură dată.</Text>
+          <PhoneLogin submitTitle="Confirmă programarea" onDone={book} />
+        </View>
+      )}
     </Screen>
   );
 }

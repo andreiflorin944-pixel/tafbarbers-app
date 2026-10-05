@@ -1,10 +1,13 @@
-import { barbers, business, services } from '@/data/mock';
-import type { Booking, Slot } from '@/data/types';
-import { formatTime, fromDayKey, parseHM } from '@/lib/dates';
-import type { BookingApi } from './client';
+import { barbers, business, promos, services } from '@/data/mock';
+import type { Booking, Me, Slot } from '@/data/types';
+import { dayKey, formatTime, fromDayKey, parseHM } from '@/lib/dates';
+import { ApiError, type BookingApi } from './client';
 
 const STEP_MIN = 15;
-const bookings: Booking[] = [];
+// Varianta de test, fără server: totul stă în memorie, orice cod din 4 cifre e acceptat.
+// Token-ul e chiar numărul de telefon.
+const bookings: Array<Booking & { phone: string }> = [];
+const users = new Map<string, Me>();
 
 const delay = <T,>(value: T, ms = 250) => new Promise<T>((r) => setTimeout(() => r(value), ms));
 
@@ -69,18 +72,55 @@ export const mockApi: BookingApi = {
     return delay([...byTime.values()].sort((a, b) => a.start.localeCompare(b.start)));
   },
 
-  async createBooking(input) {
-    const booking: Booking = { ...input, id: `bk-${Date.now()}`, status: 'confirmed' };
+  getPromos: () => delay(promos),
+
+  requestCode: (phone) => delay({ phone: phone.replace(/\s/g, ''), devCode: undefined }),
+  async verifyCode({ phone, code, name, lang }) {
+    if (!/^\d{4}$/.test(code)) throw new ApiError('wrong_code', 400);
+    const p = phone.replace(/\s/g, '');
+    if (!users.has(p))
+      users.set(p, { id: p, phone: p, name, email: null, lang, marketing: { sms: false, email: false, push: true } });
+    return delay({ token: p });
+  },
+  logout: () => delay(undefined),
+  async me(token) {
+    const u = users.get(token);
+    if (!u) throw new ApiError('unauthorized', 401);
+    return delay({ ...u });
+  },
+  async updateMe(token, patch) {
+    const u = users.get(token);
+    if (!u) throw new ApiError('unauthorized', 401);
+    const next = { ...u, ...patch, marketing: { ...u.marketing, ...patch.marketing } };
+    users.set(token, next);
+    return delay({ ...next });
+  },
+
+  async createBooking(token, input) {
+    const service = services.find((s) => s.id === input.serviceId);
+    const slots = await mockApi.getAvailability({ serviceId: input.serviceId, barberId: input.barberId, day: dayKey(new Date(input.start)) });
+    const slot = slots.find((s) => s.start === input.start);
+    if (!slot || !service) throw new ApiError('slot_unavailable', 409);
+    const booking = {
+      id: `bk-${Date.now()}`,
+      serviceId: input.serviceId,
+      barberId: slot.barberId,
+      start: input.start,
+      price: service.price,
+      status: 'confirmed' as const,
+      phone: token,
+    };
     bookings.push(booking);
-    return delay(booking, 500);
+    return delay({ ...booking }, 500);
   },
 
-  listBookings: (clientPhone) =>
-    delay(bookings.filter((b) => b.clientPhone === clientPhone).map((b) => ({ ...b }))),
+  listBookings: (token) => delay(bookings.filter((b) => b.phone === token).map((b) => ({ ...b }))),
 
-  async cancelBooking(id) {
-    const b = bookings.find((x) => x.id === id);
-    if (b) b.status = 'cancelled';
-    return delay(undefined);
+  async cancelBooking(token, id) {
+    const b = bookings.find((x) => x.id === id && x.phone === token);
+    if (!b) throw new ApiError('booking_not_found', 404);
+    b.status = 'cancelled';
+    return delay({ ...b });
   },
+  registerPushToken: () => delay(undefined),
 };
