@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { errorText } from './api';
+import { errorText, uploadImage } from './api';
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
@@ -73,4 +73,56 @@ export function useAction() {
 
 export function Loading({ error }: { error?: string | null }) {
   return <p className={error ? 'err' : 'muted'}>{error ?? 'Se încarcă…'}</p>;
+}
+
+/** Poză: previzualizare, urcare de pe calculator și scoatere. */
+export function ImagePicker({
+  value,
+  onChange,
+  keepAlpha,
+  maxPx,
+  round,
+}: {
+  value: string | null;
+  onChange: (url: string | null) => void;
+  keepAlpha?: boolean;
+  maxPx?: number;
+  round?: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="row" style={{ alignItems: 'center', gap: 12 }}>
+      <div className={`thumb${round ? ' round' : ''}`}>{value ? <img src={value} alt="" /> : <span className="muted small">fără poză</span>}</div>
+      <label className={`btn ghost sm${busy ? ' disabled' : ''}`}>
+        {busy ? 'Se urcă…' : value ? 'Schimbă poza' : 'Încarcă poză'}
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          hidden
+          disabled={busy}
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (!f) return;
+            setBusy(true);
+            setError(null);
+            try {
+              onChange(await uploadImage(f, { keepAlpha, maxPx }));
+            } catch (err) {
+              setError(errorText(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      </label>
+      {value ? (
+        <button className="ghost sm" type="button" onClick={() => onChange(null)}>
+          Scoate
+        </button>
+      ) : null}
+      {error ? <span className="err small">{error}</span> : null}
+    </div>
+  );
 }

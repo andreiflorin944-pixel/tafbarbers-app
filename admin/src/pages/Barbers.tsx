@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, type Barber, type Hours, type Me, type Service } from '../api';
-import { Field, Loading, Modal, useAction, useLoad } from '../ui';
+import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
 import { hm, parseHm, WEEKDAYS } from '../util';
 
 // Luni primul, duminica la final.
@@ -108,8 +108,8 @@ function BarberModal({ b, services, onClose, onDone }: { b: Partial<Barber>; ser
           <textarea value={bio} onChange={(e) => setBio(e.target.value)} style={{ minHeight: 60 }} />
         </Field>
         <div className="grid two">
-          <Field label="Link poză (opțional)">
-            <input value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} placeholder="https://…" />
+          <Field label="Poză (opțional)">
+            <ImagePicker value={photoUrl || null} onChange={(u) => setPhotoUrl(u ?? '')} round maxPx={600} />
           </Field>
           <Field label="Ordine">
             <input type="number" value={sort} onChange={(e) => setSort(Number(e.target.value))} />

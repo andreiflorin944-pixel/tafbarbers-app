@@ -76,9 +76,45 @@ const MESSAGES: Record<string, string> = {
   ro_required: 'Completează titlul și textul în română.',
   not_cancellable: 'Programarea nu mai poate fi anulată.',
   barber_required: 'Alege frizerul.',
+  unsupported_image: 'Poza trebuie să fie JPG, PNG sau WebP.',
+  image_too_large: 'Poza e prea mare.',
+  invalid_url: 'Linkul pozei nu e corect (trebuie să înceapă cu https://).',
+  invalid_color: 'Culoarea nu e corectă.',
 };
 export const errorText = (e: unknown) =>
   e instanceof ApiError ? (MESSAGES[e.code] ?? `Eroare: ${e.code}`) : 'A apărut o problemă.';
+
+/** Micșorează poza în browser (max `maxPx` pe latura mare) și o urcă. Întoarce adresa ei. */
+export async function uploadImage(file: File, opts: { maxPx?: number; keepAlpha?: boolean } = {}): Promise<string> {
+  const maxPx = opts.maxPx ?? 1000;
+  const bmp = await createImageBitmap(file).catch(() => {
+    throw new ApiError('unsupported_image', 400);
+  });
+  const k = Math.min(1, maxPx / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bmp.width * k);
+  canvas.height = Math.round(bmp.height * k);
+  canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  const type = opts.keepAlpha ? 'image/png' : 'image/jpeg';
+  const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, type, 0.85));
+  if (!blob) throw new ApiError('unsupported_image', 400);
+  let res: Response;
+  try {
+    res = await fetch('/v1/admin/media', { method: 'POST', headers: { 'Content-Type': type, Authorization: `Bearer ${getToken()}` }, body: blob });
+  } catch {
+    throw new ApiError('network', 0);
+  }
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+  return json.url as string;
+}
+
+export type Appearance = {
+  accent: string;
+  logoUrl: string | null;
+  title: string;
+  welcome: { ro: string; en: string; fr: string };
+};
 
 // --- Tipuri (la fel ca răspunsurile serverului) ---
 

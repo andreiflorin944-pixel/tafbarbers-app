@@ -30,6 +30,7 @@ import { runCampaign } from '../campaigns';
 import { iso, isDay, localToUtc } from '../time';
 import { clientsCsv, deleteClient } from '../gdpr';
 import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
+import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
 
@@ -185,6 +186,25 @@ adminRoutes.put('/settings', ownerOnly, async (c) => {
   return c.json(next);
 });
 
+// --- Aspectul aplicației și poze ---
+
+adminRoutes.get('/appearance', async (c) => c.json(await getAppearance(c.env)));
+adminRoutes.put('/appearance', ownerOnly, async (c) => c.json(await saveAppearance(c.env, await c.req.json())));
+
+/** Urcă o poză (corpul cererii = fișierul). Întoarce adresa ei, de pus la logo, serviciu sau frizer. */
+adminRoutes.post('/media', ownerOnly, async (c) => {
+  const mime = (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  if (!MEDIA_TYPES[mime]) throw new HttpError(400, 'unsupported_image');
+  const buf = await c.req.arrayBuffer();
+  if (!buf.byteLength) throw new HttpError(400, 'empty_file');
+  if (buf.byteLength > MEDIA_MAX) throw new HttpError(400, 'image_too_large');
+  const id = newId('m');
+  await c.env.DB.prepare('INSERT INTO media (id, mime, data, size, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(id, mime, buf, buf.byteLength, iso(new Date()))
+    .run();
+  return c.json({ id, url: `/v1/media/${id}` }, 201);
+});
+
 // --- Servicii ---
 
 adminRoutes.get('/services', async (c) => {
@@ -248,7 +268,10 @@ function serviceValues(b: ServiceInput, create: boolean) {
   }
   if (b.description !== undefined) v.description = String(b.description).slice(0, 2000);
   if (b.color !== undefined) v.color = String(b.color).slice(0, 20);
-  if (b.imageUrl !== undefined) v.image_url = b.imageUrl;
+  if (b.imageUrl !== undefined) {
+    if (b.imageUrl && !isImageUrl(b.imageUrl)) throw new HttpError(400, 'invalid_url');
+    v.image_url = b.imageUrl || null;
+  }
   if (b.sort !== undefined) v.sort = Number(b.sort) || 0;
   if (b.active !== undefined) v.active = b.active ? 1 : 0;
   return v as { name: string; description?: string; duration_min: number; price_bani: number; color?: string; image_url?: string | null; sort?: number; active?: number };
@@ -290,6 +313,7 @@ type BarberInput = {
 adminRoutes.post('/barbers', ownerOnly, async (c) => {
   const b = await c.req.json<BarberInput>();
   if (!b.name?.trim()) throw new HttpError(400, 'name_required');
+  if (b.photoUrl && !isImageUrl(b.photoUrl)) throw new HttpError(400, 'invalid_url');
   const id = newId('br');
   await c.env.DB.prepare('INSERT INTO barbers (id, name, role, bio, photo_url, sort) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, b.name.trim().slice(0, 80), (b.role ?? 'Barber').slice(0, 60), (b.bio ?? '').slice(0, 1000), b.photoUrl ?? null, b.sort ?? 0)
@@ -308,7 +332,10 @@ adminRoutes.patch('/barbers/:id', ownerOnly, async (c) => {
   if (b.name !== undefined) v.name = String(b.name).trim().slice(0, 80);
   if (b.role !== undefined) v.role = String(b.role).slice(0, 60);
   if (b.bio !== undefined) v.bio = String(b.bio).slice(0, 1000);
-  if (b.photoUrl !== undefined) v.photo_url = b.photoUrl;
+  if (b.photoUrl !== undefined) {
+    if (b.photoUrl && !isImageUrl(b.photoUrl)) throw new HttpError(400, 'invalid_url');
+    v.photo_url = b.photoUrl || null;
+  }
   if (b.sort !== undefined) v.sort = Number(b.sort) || 0;
   if (b.active !== undefined) v.active = b.active ? 1 : 0;
   await update(c.env.DB, 'barbers', id, v);

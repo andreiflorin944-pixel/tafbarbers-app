@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { mediaUrl } from '@/api/staff';
 import { LangButton } from '@/components/LangButton';
 import { PromoCarousel } from '@/components/PromoCarousel';
 import { Avatar, Button, SectionTitle, styles as ui } from '@/components/ui';
@@ -13,9 +14,12 @@ import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
 export default function Home() {
-  const { loading, loadError, reload, user, bookings, services, barbers, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
-  const { t } = useT();
+  const { business, loading, loadError, reload, user, bookings, services, barbers, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
+  const { t, lang } = useT();
   const { staff } = useStaff();
+  const look = business?.appearance;
+  const logo = mediaUrl(look?.logoUrl);
+  const welcome = look?.welcome?.[lang as 'ro' | 'en' | 'fr'];
 
   const next = bookings
     .filter((b) => b.status === 'confirmed' && new Date(b.start).getTime() > Date.now())
@@ -60,10 +64,16 @@ export default function Home() {
       <ScrollView contentContainerStyle={s.content}>
         <View style={s.topBar}>
           <View>
-            <Text style={ui.muted}>{user ? t('home.hi', { name: (user.name || user.phone).split(' ')[0] }) : t('home.welcome')}</Text>
-            <Text style={s.brand}>
-              TAF <Text style={s.brandItalic}>Barber’s</Text>
-            </Text>
+            <Text style={ui.muted}>{user ? t('home.hi', { name: (user.name || user.phone).split(' ')[0] }) : welcome || t('home.welcome')}</Text>
+            {logo ? (
+              <Image source={{ uri: logo }} style={s.logo} resizeMode="contain" accessibilityLabel={look?.title} />
+            ) : look?.title && look.title !== 'TAF Barber’s' ? (
+              <Text style={s.brand}>{look.title}</Text>
+            ) : (
+              <Text style={s.brand}>
+                TAF <Text style={s.brandItalic}>Barber’s</Text>
+              </Text>
+            )}
           </View>
           <View style={{ flexDirection: 'row', gap: space.sm }}>
             {staff ? (
@@ -106,7 +116,11 @@ export default function Home() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingRight: space.md }}>
           {services.map((sv) => (
             <Pressable key={sv.id} onPress={() => startBooking(sv)} style={({ pressed }) => [s.svcCard, pressed && { opacity: 0.85 }]}>
-              <View style={[s.svcBadge, { backgroundColor: sv.color }]} />
+              {sv.imageUrl ? (
+                <Image source={{ uri: mediaUrl(sv.imageUrl)! }} style={s.svcImg} />
+              ) : (
+                <View style={[s.svcBadge, { backgroundColor: sv.color }]} />
+              )}
               <Text style={s.svcName} numberOfLines={2}>
                 {sv.name}
               </Text>
@@ -156,6 +170,8 @@ const s = StyleSheet.create({
   link: { color: colors.gold, fontSize: 13, fontWeight: '600', marginBottom: space.xs },
   svcCard: { width: 168, height: 150, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.border, justifyContent: 'space-between' },
   svcBadge: { width: 28, height: 6, borderRadius: 3 },
+  svcImg: { width: 44, height: 44, borderRadius: radius.sm },
+  logo: { width: 170, height: 40, marginTop: 2 },
   svcName: { color: colors.text, fontSize: 15, fontWeight: '700' },
   svcFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   svcPrice: { color: colors.gold, fontSize: 16, fontWeight: '800' },

@@ -7,11 +7,12 @@ import { msg } from '../messages';
 import { sendSms } from '../notify';
 import { addDays, iso, isDay, localDay } from '../time';
 import { DOCS, legalDoc, type Doc } from '../legal';
+import { getAppearance } from '../appearance';
 
 export const publicRoutes = new Hono<AppEnv>();
 
 publicRoutes.get('/business', async (c) => {
-  const biz = await getBusiness(c.env);
+  const [biz, appearance] = await Promise.all([getBusiness(c.env), getAppearance(c.env)]);
   // Programul salonului = reuniunea programului frizerilor, pe zile (0 = duminică).
   const rows = await c.env.DB.prepare(
     `SELECT h.weekday, MIN(h.start_min) AS s, MAX(h.end_min) AS e
@@ -22,7 +23,19 @@ publicRoutes.get('/business', async (c) => {
     const r = rows.results.find((x) => x.weekday === wd);
     return r ? { open: hm(r.s), close: hm(r.e) } : null;
   });
-  return c.json({ ...biz, hours });
+  return c.json({ ...biz, hours, appearance });
+});
+
+// Pozele urcate din panou. Id-ul e nou la fiecare urcare, deci se pot ține în cache oricât.
+publicRoutes.get('/media/:id', async (c) => {
+  const r = await c.env.DB.prepare('SELECT mime, data FROM media WHERE id = ?').bind(c.req.param('id')).first<{ mime: string; data: ArrayBuffer | number[] }>();
+  if (!r) throw new HttpError(404, 'not_found');
+  const body = r.data instanceof ArrayBuffer ? r.data : new Uint8Array(r.data).buffer;
+  return c.body(body as ArrayBuffer, 200, {
+    'Content-Type': r.mime,
+    'Cache-Control': 'public, max-age=31536000, immutable',
+    'X-Content-Type-Options': 'nosniff',
+  });
 });
 
 publicRoutes.get('/services', async (c) => {

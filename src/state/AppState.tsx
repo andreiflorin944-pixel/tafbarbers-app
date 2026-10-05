@@ -3,6 +3,8 @@ import { api, ApiError } from '@/api';
 import type { Barber, Booking, Business, Me, Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
 import { storage } from '@/lib/storage';
+import { ACCENT_KEY, colors, readSavedAccent } from '@/theme';
+import { Platform } from 'react-native';
 
 type Draft = {
   serviceId: string | null;
@@ -59,6 +61,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     Promise.all([api.getBusiness(), api.getServices(), api.getBarbers()])
       .then(([b, s, br]) => {
         setBusiness(b);
+        rememberAccent(b.appearance?.accent);
         setServices(s);
         setBarbers(br);
       })
@@ -148,6 +151,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+/** Ține minte culoarea din panou pentru pornirea următoare. Pe web reîncarcă o dată pagina, ca să se vadă imediat. */
+async function rememberAccent(accent: string | undefined) {
+  if (!accent || !/^#[0-9A-Fa-f]{6}$/.test(accent)) return;
+  accent = accent.toUpperCase();
+  if (accent === colors.gold.toUpperCase()) return;
+  await storage.set(ACCENT_KEY, accent);
+  // Doar dacă s-a salvat, altfel s-ar reîncărca la nesfârșit.
+  if (Platform.OS === 'web' && readSavedAccent() === accent) globalThis.location?.reload();
 }
 
 export function useApp() {

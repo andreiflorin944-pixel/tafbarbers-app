@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, type Me, type Service } from '../api';
-import { Field, Loading, Modal, useAction, useLoad } from '../ui';
+import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
 import { lei } from '../util';
 
 export function ServicesPage(_: { me: Me }) {
@@ -99,8 +99,8 @@ function ServiceModal({ s, onClose, onDone }: { s: Partial<Service>; onClose: ()
             <input type="number" value={v.sort ?? 0} onChange={(e) => set({ sort: Number(e.target.value) })} />
           </Field>
         </div>
-        <Field label="Link poză (opțional)">
-          <input value={v.imageUrl ?? ''} onChange={(e) => set({ imageUrl: e.target.value })} placeholder="https://…" />
+        <Field label="Poză (opțional)">
+          <ImagePicker value={v.imageUrl ?? null} onChange={(imageUrl) => set({ imageUrl })} />
         </Field>
         <label className="check">
           <input type="checkbox" checked={v.active !== false} onChange={(e) => set({ active: e.target.checked })} /> Vizibil în aplicație

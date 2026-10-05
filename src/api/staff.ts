@@ -2,6 +2,9 @@ import Constants from 'expo-constants';
 import { ApiError } from './client';
 
 // Partea de echipă a aplicației (proprietar și frizeri) vorbește cu /v1/admin, cu contul din panou.
+/** Pozele urcate din panou au adrese relative la server (/v1/media/...). */
+export const mediaUrl = (u: string | null | undefined): string | null => (!u ? null : u.startsWith('/') ? `${apiUrl}${u}` : u);
+
 export const apiUrl: string = (process.env.EXPO_PUBLIC_API_URL || (Constants.expoConfig?.extra?.apiUrl as string | undefined) || '').replace(/\/+$/, '');
 
 export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'timeoff' | 'stats';

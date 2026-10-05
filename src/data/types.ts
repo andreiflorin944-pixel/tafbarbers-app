@@ -61,6 +61,14 @@ export type Business = {
   cancellationPolicy?: string;
   // 0 = duminică ... 6 = sâmbătă; null = închis
   hours: Array<{ open: string; close: string } | null>;
+  appearance?: Appearance;
+};
+
+export type Appearance = {
+  accent: string;
+  logoUrl: string | null;
+  title: string;
+  welcome: { ro: string; en: string; fr: string };
 };
 
 export type Promo = {

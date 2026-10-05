@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps, ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Barber, Service } from '@/data/types';
+import { mediaUrl } from '@/api/staff';
 import { colors, radius, space } from '@/theme';
 
 // `tab` leaves room for the floating tab bar.
@@ -67,7 +68,9 @@ export function Icon(props: ComponentProps<typeof Ionicons>) {
 export function Avatar({ barber, size = 56 }: { barber?: Barber; size?: number }) {
   return (
     <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
-      {barber ? (
+      {barber?.photoUrl ? (
+        <Image source={{ uri: mediaUrl(barber.photoUrl)! }} style={{ width: size, height: size, borderRadius: size / 2 }} accessibilityLabel={barber.name} />
+      ) : barber ? (
         <Text style={[styles.avatarText, { fontSize: size * 0.4 }]}>{barber.initials}</Text>
       ) : (
         <Ionicons name="people" size={size * 0.45} color={colors.gold} />
@@ -79,7 +82,11 @@ export function Avatar({ barber, size = 56 }: { barber?: Barber; size?: number }
 export function ServiceRow({ service, onPress, selected }: { service: Service; onPress?: () => void; selected?: boolean }) {
   return (
     <Card onPress={onPress} selected={selected} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-      <View style={[styles.swatch, { backgroundColor: service.color }]} />
+      {service.imageUrl ? (
+        <Image source={{ uri: mediaUrl(service.imageUrl)! }} style={styles.thumb} />
+      ) : (
+        <View style={[styles.swatch, { backgroundColor: service.color }]} />
+      )}
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{service.name}</Text>
         <Text style={styles.muted} numberOfLines={2}>
@@ -129,9 +136,10 @@ export const styles = StyleSheet.create({
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '600', marginBottom: 2 },
   price: { color: colors.gold, fontSize: 16, fontWeight: '700' },
   swatch: { width: 6, alignSelf: 'stretch', borderRadius: 3 },
+  thumb: { width: 52, height: 52, borderRadius: radius.sm },
   button: { height: 52, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', borderWidth: 1, paddingHorizontal: space.lg },
   buttonText: { fontSize: 16, fontWeight: '700' },
-  avatar: { backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.goldDark, alignItems: 'center', justifyContent: 'center' },
+  avatar: { overflow: 'hidden', backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.goldDark, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.gold, fontWeight: '700' },
   steps: { flexDirection: 'row', gap: space.sm, marginBottom: space.md },
   stepBar: { height: 4, borderRadius: 2, backgroundColor: colors.border },
