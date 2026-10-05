@@ -5,13 +5,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Barber, Service } from '@/data/types';
 import { colors, radius, space } from '@/theme';
 
-export function Screen({ children, scroll = true, edges }: { children: ReactNode; scroll?: boolean; edges?: Array<'top' | 'bottom'> }) {
+// `tab` leaves room for the floating tab bar.
+export function Screen({ children, scroll = true, edges, tab }: { children: ReactNode; scroll?: boolean; edges?: Array<'top' | 'bottom'>; tab?: boolean }) {
+  const pad = tab ? { paddingBottom: 120 } : null;
   return (
     <SafeAreaView style={styles.screen} edges={edges ?? ['top']}>
       {scroll ? (
-        <ScrollView contentContainerStyle={styles.scroll}>{children}</ScrollView>
+        <ScrollView contentContainerStyle={[styles.scroll, pad]}>{children}</ScrollView>
       ) : (
-        <View style={[styles.scroll, { flex: 1 }]}>{children}</View>
+        <View style={[styles.scroll, pad, { flex: 1 }]}>{children}</View>
       )}
     </SafeAreaView>
   );

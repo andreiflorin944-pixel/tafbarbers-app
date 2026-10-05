@@ -6,7 +6,7 @@ export default function Services() {
   const { services } = useApp();
 
   return (
-    <Screen>
+    <Screen tab>
       <Title sub="Prețuri și durate">Servicii</Title>
       {services.map((s) => (
         <ServiceRow key={s.id} service={s} onPress={() => router.push({ pathname: '/service/[id]', params: { id: s.id } })} />

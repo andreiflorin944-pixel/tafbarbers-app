@@ -19,12 +19,24 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.gold,
-        tabBarInactiveTintColor: colors.text,
-        tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.border, height: 84, paddingTop: 6 },
+        tabBarInactiveTintColor: colors.muted,
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
+        tabBarStyle: {
+          position: 'absolute',
+          left: 12,
+          right: 12,
+          bottom: 16,
+          height: 68,
+          paddingTop: 8,
+          paddingBottom: 8,
+          borderRadius: 24,
+          borderTopWidth: 0,
+          backgroundColor: colors.cardAlt,
+        },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Acasă', tabBarIcon: icon('home') }} />
-      <Tabs.Screen name="services" options={{ title: 'Servicii', tabBarIcon: icon('cut') }} />
+      <Tabs.Screen name="index" options={{ title: 'Acasă', tabBarIcon: icon('home-outline') }} />
+      <Tabs.Screen name="services" options={{ title: 'Servicii', tabBarIcon: icon('cut-outline') }} />
       <Tabs.Screen
         name="new"
         options={{
@@ -38,24 +50,26 @@ export default function TabsLayout() {
                   router.push('/book/service');
                 }}
                 style={({ pressed }) => ({
-                  width: 64,
-                  height: 64,
-                  borderRadius: 32,
-                  marginTop: -22,
+                  width: 56,
+                  height: 56,
+                  borderRadius: 18,
+                  marginTop: -18,
+                  borderWidth: 4,
+                  borderColor: colors.bg,
                   backgroundColor: colors.gold,
                   alignItems: 'center',
                   justifyContent: 'center',
                   opacity: pressed ? 0.85 : 1,
                 })}
               >
-                <Ionicons name="add" size={38} color={colors.onGold} />
+                <Ionicons name="add" size={32} color={colors.onGold} />
               </Pressable>
             </View>
           ),
         }}
       />
-      <Tabs.Screen name="bookings" options={{ title: 'Programări', tabBarIcon: icon('calendar') }} />
-      <Tabs.Screen name="about" options={{ title: 'Despre', tabBarIcon: icon('storefront') }} />
+      <Tabs.Screen name="bookings" options={{ title: 'Programări', tabBarIcon: icon('calendar-outline') }} />
+      <Tabs.Screen name="about" options={{ title: 'Despre', tabBarIcon: icon('storefront-outline') }} />
     </Tabs>
   );
 }

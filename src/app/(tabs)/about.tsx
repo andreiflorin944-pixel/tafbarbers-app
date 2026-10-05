@@ -12,7 +12,7 @@ export default function About() {
   if (!business) return null;
 
   return (
-    <Screen>
+    <Screen tab>
       <View style={{ paddingHorizontal: 72, paddingVertical: space.lg }}>
         <Logo size={0.6} />
       </View>

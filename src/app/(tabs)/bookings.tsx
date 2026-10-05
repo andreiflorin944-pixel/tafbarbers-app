@@ -17,7 +17,7 @@ export default function Bookings() {
 
   if (!user) {
     return (
-      <Screen>
+      <Screen tab>
         <Title>Programările mele</Title>
         <Empty icon="calendar-outline" text="Intră în cont ca să-ți vezi programările." />
         <Button title="Intră în cont" onPress={() => router.push('/login')} />
@@ -69,7 +69,7 @@ export default function Bookings() {
   const list = tab === 0 ? upcoming : past;
 
   return (
-    <Screen>
+    <Screen tab>
       <Title>Programările mele</Title>
       <Segmented options={['Urmează', 'Trecut']} value={tab} onChange={setTab} />
       {list.length === 0 ? (

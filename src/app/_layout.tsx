@@ -17,10 +17,10 @@ export default function RootLayout() {
           <StatusBar style="light" />
           <Stack
             screenOptions={{
-              headerStyle: { backgroundColor: colors.gold },
-              headerTintColor: colors.onGold,
+              headerStyle: { backgroundColor: colors.bg },
+              headerTintColor: colors.gold,
               headerTitleAlign: 'center',
-              headerTitleStyle: { fontWeight: '700' },
+              headerTitleStyle: { fontWeight: '700', color: colors.text },
               headerShadowVisible: false,
               headerBackTitle: 'Înapoi',
               contentStyle: { backgroundColor: colors.bg },
