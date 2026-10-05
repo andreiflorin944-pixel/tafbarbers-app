@@ -14,8 +14,11 @@ export interface BookingApi {
     day: string; // YYYY-MM-DD
   }): Promise<Slot[]>;
 
-  /** Trimite codul pe SMS. `devCode` vine doar de la serverul de test. */
-  requestCode(phone: string, lang: string): Promise<{ phone: string; devCode?: string }>;
+  /** Trimite codul pe e-mail (principal) sau SMS (alternativă). `devCode` vine doar de la serverul de test. */
+  requestCode(
+    input: { phone: string; email?: string; channel: 'email' | 'sms' },
+    lang: string,
+  ): Promise<{ phone: string; channel: 'email' | 'sms'; sentTo: string; devCode?: string }>;
   verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean }): Promise<{ token: string }>;
   getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null }>;
   exportMe(token: string): Promise<unknown>;

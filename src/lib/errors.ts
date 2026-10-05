@@ -12,6 +12,8 @@ const RO: Record<string, string> = {
   country_not_supported: 'Momentan acceptăm doar numere din România și Europa.',
   invalid_phone: 'Numărul de telefon nu pare corect.',
   invalid_email: 'Adresa de e-mail nu pare corectă.',
+  email_not_on_account: 'Contul acestui număr nu are încă un e-mail salvat. Primește codul pe SMS, iar e-mailul scris se salvează în cont.',
+  email_mismatch: 'E-mailul nu corespunde contului acestui număr. Scrie e-mailul contului sau primește codul pe SMS.',
   wrong_credentials: 'E-mail sau parolă greșită.',
   no_permission: 'Contul tău nu are drept pentru asta. Cere-i proprietarului.',
   no_server: 'Partea de echipă merge după ce serverul e online.',

@@ -31,7 +31,7 @@ export function httpApi(baseUrl: string): BookingApi {
     getAvailability: ({ serviceId, barberId, day }) =>
       call('GET', `/availability?serviceId=${encodeURIComponent(serviceId)}&barberId=${encodeURIComponent(barberId ?? '')}&day=${day}`),
 
-    requestCode: (phone, lang) => call('POST', `/auth/otp?lang=${lang}`, { body: { phone } }),
+    requestCode: (input, lang) => call('POST', `/auth/otp?lang=${lang}`, { body: input }),
     verifyCode: (input) => call('POST', '/auth/verify', { body: input }),
     logout: async (token) => {
       await call('POST', '/auth/logout', { token }).catch(() => undefined);

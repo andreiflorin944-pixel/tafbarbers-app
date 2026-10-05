@@ -7,7 +7,7 @@ import { LangButton } from '@/components/LangButton';
 import { PromoCarousel } from '@/components/PromoCarousel';
 import { ProductImage } from '@/components/Shop';
 import { useCart } from '@/state/Cart';
-import { Avatar, Button, SectionTitle, styles as ui } from '@/components/ui';
+import { Button, SectionTitle, styles as ui } from '@/components/ui';
 import type { Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
 import { formatDate, formatTime } from '@/lib/dates';
@@ -16,7 +16,7 @@ import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
 export default function Home() {
-  const { business, loading, loadError, reload, user, bookings, services, barbers, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
+  const { business, loading, loadError, reload, user, bookings, services, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
   const { t, lang } = useT();
   const { staff } = useStaff();
   const { products, count: cartCount } = useCart();
@@ -157,19 +157,6 @@ export default function Home() {
           </>
         ) : null}
 
-        <SectionTitle>{t('home.team')}</SectionTitle>
-        <View style={{ flexDirection: 'row', gap: space.sm }}>
-          {barbers.map((b) => (
-            <Pressable key={b.id} onPress={() => router.push('/barbers')} style={s.barber}>
-              <Avatar barber={b} size={52} />
-              <View>
-                <Text style={ui.cardTitle}>{b.name}</Text>
-                <Text style={ui.muted}>{b.role}</Text>
-              </View>
-            </Pressable>
-          ))}
-        </View>
-
         {!next ? null : (
           <View style={{ marginTop: space.lg }}>
             <Button title={t('home.newBooking')} onPress={() => startBooking()} />
@@ -202,5 +189,4 @@ const s = StyleSheet.create({
   svcName: { color: colors.text, fontSize: 15, fontWeight: '700' },
   svcFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   svcPrice: { color: colors.gold, fontSize: 16, fontWeight: '800' },
-  barber: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.sm, borderWidth: 1, borderColor: colors.border },
 });

@@ -9,28 +9,35 @@ import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
-/** Login cu numărul de telefon și cod primit pe SMS. Folosit la „Intră în cont” și la confirmarea programării. */
+/** Login cu numărul de telefon și un cod primit pe e-mail (principal) sau pe SMS (alternativă). */
 export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDone: (token: string) => void | Promise<void> }) {
   const { signIn } = useApp();
   const { lang } = useT();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [channel, setChannel] = useState<'email' | 'sms'>('email');
   const [code, setCode] = useState('');
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [phoneSent, setPhoneSent] = useState<string | null>(null);
   const [devCode, setDevCode] = useState<string | undefined>();
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const cleanPhone = phone.replace(/[\s\-().]/g, '');
+  const cleanEmail = email.trim().toLowerCase();
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail);
   const phoneOk = /^\+?\d{9,15}$/.test(cleanPhone) && name.trim().length >= 2;
 
-  const send = async () => {
+  const send = async (via: 'email' | 'sms') => {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.requestCode(cleanPhone, lang);
-      setSentTo(r.phone);
+      const r = await api.requestCode({ phone: cleanPhone, email: emailOk ? cleanEmail : undefined, channel: via }, lang);
+      setChannel(r.channel);
+      setSentTo(r.sentTo);
+      setPhoneSent(r.phone);
       setDevCode(r.devCode);
     } catch (e) {
       setError(errorMessage(e));
@@ -43,7 +50,7 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
     setBusy(true);
     setError(null);
     try {
-      const { token } = await api.verifyCode({ phone: sentTo!, code, name: name.trim(), lang, acceptTerms: accepted });
+      const { token } = await api.verifyCode({ phone: phoneSent!, code, name: name.trim(), lang, acceptTerms: accepted });
       await signIn(token);
       await onDone(token);
     } catch (e) {
@@ -59,10 +66,23 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
       <TextInput value={name} onChangeText={setName} editable={!sentTo} placeholder="Numele tău" placeholderTextColor={colors.muted} style={styles.input} autoComplete="name" />
       <Text style={styles.label}>Telefon</Text>
       <TextInput value={phone} onChangeText={setPhone} editable={!sentTo} placeholder="07xx xxx xxx" placeholderTextColor={colors.muted} style={styles.input} keyboardType="phone-pad" autoComplete="tel" />
+      <Text style={styles.label}>E-mail</Text>
+      <TextInput
+        value={email}
+        onChangeText={setEmail}
+        editable={!sentTo}
+        placeholder="nume@exemplu.ro"
+        placeholderTextColor={colors.muted}
+        style={styles.input}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="email"
+      />
 
       {sentTo ? (
         <>
-          <Text style={styles.label}>Codul primit pe SMS la {sentTo}</Text>
+          <Text style={styles.label}>Codul primit pe {channel === 'email' ? 'e-mail' : 'SMS'} la {sentTo}</Text>
           <TextInput
             value={code}
             onChangeText={(v) => setCode(v.replace(/\D/g, ''))}
@@ -70,7 +90,7 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
             placeholderTextColor={colors.muted}
             style={styles.input}
             keyboardType="number-pad"
-            autoComplete="sms-otp"
+            autoComplete={channel === 'sms' ? 'sms-otp' : 'one-time-code'}
             textContentType="oneTimeCode"
             maxLength={4}
           />
@@ -86,7 +106,7 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
             }}
             style={{ marginTop: space.sm }}
           >
-            <Text style={{ color: colors.gold, fontSize: 13 }}>Schimbă numărul sau retrimite codul</Text>
+            <Text style={{ color: colors.gold, fontSize: 13 }}>Schimbă datele sau retrimite codul</Text>
           </Pressable>
         </>
       ) : null}
@@ -118,7 +138,17 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
         {sentTo ? (
           <Button title={submitTitle ?? 'Confirmă'} disabled={code.length !== 4 || !accepted} loading={busy} onPress={verify} />
         ) : (
-          <Button title="Trimite codul pe SMS" disabled={!phoneOk || !accepted} loading={busy} onPress={send} />
+          <>
+            <Button title="Trimite codul pe e-mail" disabled={!phoneOk || !emailOk || !accepted} loading={busy} onPress={() => send('email')} />
+            <Pressable
+              onPress={() => send('sms')}
+              disabled={!phoneOk || !accepted || busy}
+              style={{ marginTop: space.md, alignItems: 'center', opacity: !phoneOk || !accepted ? 0.4 : 1 }}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: colors.gold, fontSize: 14, fontWeight: '600' }}>Nu ai acces la e-mail? Primește codul pe SMS</Text>
+            </Pressable>
+          </>
         )}
       </View>
     </View>

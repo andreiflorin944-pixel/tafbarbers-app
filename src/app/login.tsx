@@ -12,7 +12,7 @@ export default function Login() {
     <Screen edges={['bottom']}>
       {reason === 'book' ? (
         <Text style={[styles.muted, { marginBottom: space.md }]}>
-          Programările se fac din contul tău. Intri o singură dată cu numărul de telefon, apoi alegi serviciul, frizerul și ora.
+          Programările se fac din contul tău. Intri o singură dată cu un cod primit pe e-mail, apoi alegi serviciul, frizerul și ora.
         </Text>
       ) : null}
       <PhoneLogin onDone={() => (safeNext ? router.replace(safeNext as Href) : router.canGoBack() ? router.back() : router.replace('/'))} />

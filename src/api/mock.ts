@@ -74,7 +74,10 @@ export const mockApi: BookingApi = {
 
   getPromos: () => delay(promos),
 
-  requestCode: (phone) => delay({ phone: phone.replace(/\s/g, ''), devCode: undefined }),
+  requestCode: ({ phone, email, channel }) => {
+    const p = phone.replace(/\s/g, '');
+    return delay({ phone: p, channel, sentTo: channel === 'email' && email ? email : p, devCode: undefined });
+  },
   async verifyCode({ phone, code, name, lang }) {
     if (!/^\d{4}$/.test(code)) throw new ApiError('wrong_code', 400);
     const p = phone.replace(/\s/g, '');
