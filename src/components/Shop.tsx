@@ -55,7 +55,7 @@ export function CartBar() {
         <Text style={s.barCountText}>{count}</Text>
       </View>
       <Text style={s.barText}>Vezi coșul</Text>
-      <Text style={[s.barText, { flex: 0 }]}>{total} lei</Text>
+      <Text style={s.barTotal} numberOfLines={1}>{total} lei</Text>
     </Pressable>
   );
 }
@@ -72,4 +72,5 @@ const s = StyleSheet.create({
   barCount: { backgroundColor: colors.onGold, borderRadius: 12, minWidth: 24, height: 24, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   barCountText: { color: colors.gold, fontWeight: '800' },
   barText: { color: colors.onGold, fontWeight: '800', fontSize: 16, flex: 1 },
+  barTotal: { color: colors.onGold, fontWeight: '800', fontSize: 16 },
 });

@@ -23,14 +23,32 @@ export const space = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 };
 // dată, la pornire, așa că o citim aici, sincron, din ce a salvat aplicația data trecută.
 // O culoare nouă se vede de la următoarea deschidere a aplicației.
 export const ACCENT_KEY = 'taf.accent';
+export const BG_KEY = 'taf.bg';
 
-export function readSavedAccent(): string | null {
+function readSaved(key: string): string | null {
   try {
-    const v = Platform.OS === 'web' ? globalThis.localStorage?.getItem(ACCENT_KEY) : SecureStore.getItem(ACCENT_KEY);
+    const v = Platform.OS === 'web' ? globalThis.localStorage?.getItem(key) : SecureStore.getItem(key);
     return v && /^#[0-9A-Fa-f]{6}$/.test(v) ? v.toUpperCase() : null;
   } catch {
     return null;
   }
+}
+export const readSavedAccent = () => readSaved(ACCENT_KEY);
+export const readSavedBackground = () => readSaved(BG_KEY);
+
+const rgb = (hex: string) => {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const toHex = (c: number[]) => `#${c.map((x) => Math.round(x).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+/** Amestecă fundalul cu alb: carduri și margini puțin mai deschise decât fundalul. */
+const lighten = (hex: string, k: number) => toHex(rgb(hex).map((x) => x + (255 - x) * k));
+
+function applyBackground(hex: string) {
+  colors.bg = hex;
+  colors.card = lighten(hex, 0.06);
+  colors.cardAlt = lighten(hex, 0.1);
+  colors.border = lighten(hex, 0.15);
 }
 
 function applyAccent(hex: string) {
@@ -44,3 +62,5 @@ function applyAccent(hex: string) {
 
 const saved = readSavedAccent();
 if (saved) applyAccent(saved);
+const savedBg = readSavedBackground();
+if (savedBg && savedBg !== '#000000') applyBackground(savedBg);

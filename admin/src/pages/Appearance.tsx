@@ -4,6 +4,11 @@ import { Field, ImagePicker, Loading, useAction, useLoad } from '../ui';
 
 // Culori sugerate; se poate alege orice altă culoare.
 const PRESETS = ['#F9A11B', '#E8C547', '#D64545', '#2E86DE', '#1ABC9C', '#27AE60', '#9B59B6', '#FFFFFF'];
+const BACKGROUNDS = [
+  { hex: '#000000', label: 'Negru' },
+  { hex: '#1E1F22', label: 'Gri foarte închis' },
+  { hex: '#2B2D31', label: 'Gri antracit' },
+];
 const LANGS = [
   { code: 'ro', label: 'Română', ph: 'Bine ai venit' },
   { code: 'en', label: 'English', ph: 'Welcome' },
@@ -24,7 +29,7 @@ export function AppearancePage() {
   const { busy, error, run } = useAction();
 
   useEffect(() => {
-    if (data.data) setV(data.data);
+    if (data.data) setV({ ...data.data, background: data.data.background ?? '#000000' });
   }, [data.data]);
 
   if (!v) return <Loading error={data.error} />;
@@ -63,6 +68,16 @@ export function AppearancePage() {
               <input type="color" value={v.accent} onChange={(e) => set({ accent: e.target.value.toUpperCase() })} style={{ width: 52, height: 36, padding: 2 }} aria-label="Altă culoare" />
             </div>
           </Field>
+          <Field label="Fundalul aplicației">
+            <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {BACKGROUNDS.map((b) => (
+                <button key={b.hex} type="button" className={b.hex === v.background ? 'on sm' : 'ghost sm'} onClick={() => set({ background: b.hex })}>
+                  <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: 4, background: b.hex, border: '1px solid #555' }} /> {b.label}
+                </button>
+              ))}
+              <input type="color" value={v.background} onChange={(e) => set({ background: e.target.value.toUpperCase() })} style={{ width: 52, height: 32, padding: 2 }} aria-label="Alt fundal" />
+            </div>
+          </Field>
           <Field label="Logo (PNG cu fundal transparent arată cel mai bine)">
             <ImagePicker value={v.logoUrl} onChange={(logoUrl) => set({ logoUrl })} keepAlpha maxPx={600} />
           </Field>
@@ -95,7 +110,7 @@ export function AppearancePage() {
           <div className="muted small" style={{ marginBottom: 8 }}>
             Previzualizare
           </div>
-          <div className="phone">
+          <div className="phone" style={{ background: v.background }}>
             <div className="muted small">{v.welcome.ro || 'Bine ai venit'}</div>
             {v.logoUrl ? <img className="logo" src={v.logoUrl} alt="Logo" /> : <div className="brand">{v.title}</div>}
             <div className="hero" style={{ background: v.accent, color: on }}>

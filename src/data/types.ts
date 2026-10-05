@@ -66,6 +66,7 @@ export type Business = {
 
 export type Appearance = {
   accent: string;
+  background?: string;
   logoUrl: string | null;
   title: string;
   welcome: { ro: string; en: string; fr: string };

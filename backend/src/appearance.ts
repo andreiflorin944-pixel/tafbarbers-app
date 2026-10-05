@@ -4,6 +4,7 @@ import { HttpError, type Env } from './env';
 // Aspectul aplicației, modificat din panou (Aspect).
 export type Appearance = {
   accent: string; // culoarea principală, #RRGGBB
+  background: string; // fundalul aplicației, #RRGGBB (negru sau gri închis)
   logoUrl: string | null; // /v1/media/... sau https://...
   title: string; // numele de pe prima pagină, când nu e logo
   welcome: { ro: string; en: string; fr: string }; // gol = textul standard
@@ -11,6 +12,7 @@ export type Appearance = {
 
 export const DEFAULT_APPEARANCE: Appearance = {
   accent: '#F9A11B',
+  background: '#000000',
   logoUrl: null,
   title: 'TAF Barber’s',
   welcome: { ro: '', en: '', fr: '' },
@@ -26,6 +28,10 @@ export async function saveAppearance(env: Env, b: Partial<Appearance>): Promise<
   if (b.accent !== undefined) {
     if (typeof b.accent !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(b.accent)) throw new HttpError(400, 'invalid_color');
     next.accent = b.accent.toUpperCase();
+  }
+  if (b.background !== undefined) {
+    if (typeof b.background !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(b.background)) throw new HttpError(400, 'invalid_color');
+    next.background = b.background.toUpperCase();
   }
   if (b.logoUrl !== undefined) {
     if (b.logoUrl !== null && !isImageUrl(b.logoUrl)) throw new HttpError(400, 'invalid_url');
