@@ -1,0 +1,38 @@
+import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppStateProvider } from '@/state/AppState';
+import { colors } from '@/theme';
+
+const theme = {
+  ...DarkTheme,
+  colors: { ...DarkTheme.colors, background: colors.bg, card: colors.bg, primary: colors.gold, text: colors.text, border: colors.border },
+};
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <AppStateProvider>
+        <ThemeProvider value={theme}>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerStyle: { backgroundColor: colors.bg },
+              headerTintColor: colors.text,
+              headerShadowVisible: false,
+              headerBackTitle: 'Înapoi',
+              contentStyle: { backgroundColor: colors.bg },
+            }}
+          >
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="book/barber" options={{ title: 'Alege frizerul' }} />
+            <Stack.Screen name="book/time" options={{ title: 'Alege ora' }} />
+            <Stack.Screen name="book/confirm" options={{ title: 'Confirmare' }} />
+            <Stack.Screen name="book/success" options={{ headerShown: false, gestureEnabled: false }} />
+            <Stack.Screen name="login" options={{ title: 'Intră în cont', presentation: 'modal' }} />
+          </Stack>
+        </ThemeProvider>
+      </AppStateProvider>
+    </SafeAreaProvider>
+  );
+}
