@@ -1,6 +1,7 @@
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { I18nProvider } from '@/i18n';
 import { AppStateProvider } from '@/state/AppState';
 import { colors } from '@/theme';
 
@@ -12,6 +13,7 @@ const theme = {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
+      <I18nProvider>
       <AppStateProvider>
         <ThemeProvider value={theme}>
           <StatusBar style="light" />
@@ -39,6 +41,7 @@ export default function RootLayout() {
           </Stack>
         </ThemeProvider>
       </AppStateProvider>
+      </I18nProvider>
     </SafeAreaProvider>
   );
 }

@@ -4,12 +4,14 @@ import { Alert, Platform, Text, View } from 'react-native';
 import { Button, Card, Empty, Screen, Segmented, Title, styles } from '@/components/ui';
 import type { Booking } from '@/data/types';
 import { formatDate, formatTime } from '@/lib/dates';
+import { useT } from '@/i18n';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function Bookings() {
   const { user, bookings, cancelBooking, serviceById, barberById, resetDraft } = useApp();
   const [tab, setTab] = useState(0);
+  const { t } = useT();
   const book = () => {
     resetDraft();
     router.push('/book/service');
@@ -18,7 +20,7 @@ export default function Bookings() {
   if (!user) {
     return (
       <Screen tab>
-        <Title>Programările mele</Title>
+        <Title>{t('bookings.title')}</Title>
         <Empty icon="calendar-outline" text="Intră în cont ca să-ți vezi programările." />
         <Button title="Intră în cont" onPress={() => router.push('/login')} />
       </Screen>
@@ -70,8 +72,8 @@ export default function Bookings() {
 
   return (
     <Screen tab>
-      <Title>Programările mele</Title>
-      <Segmented options={['Urmează', 'Trecut']} value={tab} onChange={setTab} />
+      <Title>{t('bookings.title')}</Title>
+      <Segmented options={[t('bookings.upcoming'), t('bookings.past')]} value={tab} onChange={setTab} />
       {list.length === 0 ? (
         <Card style={{ alignItems: 'center', gap: space.md, paddingVertical: space.lg }}>
           <Text style={[styles.title, { fontSize: 22, textAlign: 'center' }]}>Nu s-au găsit programări</Text>

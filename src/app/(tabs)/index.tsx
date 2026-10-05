@@ -1,18 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import type { ComponentProps } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LangButton } from '@/components/LangButton';
+import { PromoCarousel } from '@/components/PromoCarousel';
 import { Avatar, Button, SectionTitle, styles as ui } from '@/components/ui';
-import type { Service } from '@/data/types';
+import { promos } from '@/data/mock';
+import type { Promo, Service } from '@/data/types';
+import { useT } from '@/i18n';
 import { formatDate, formatTime } from '@/lib/dates';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
 
-type IconName = ComponentProps<typeof Ionicons>['name'];
-
 export default function Home() {
   const { loading, user, bookings, services, barbers, serviceById, barberById, resetDraft, setDraft } = useApp();
+  const { t } = useT();
 
   const next = bookings
     .filter((b) => b.status === 'confirmed' && new Date(b.start).getTime() > Date.now())
@@ -28,6 +30,12 @@ export default function Home() {
     }
   };
 
+  const openPromo = (p: Promo) => {
+    if (p.action.type === 'service') return startBooking(serviceById(p.action.serviceId));
+    if (p.action.type === 'url') return Linking.openURL(p.action.url);
+    startBooking();
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -41,19 +49,24 @@ export default function Home() {
       <ScrollView contentContainerStyle={s.content}>
         <View style={s.topBar}>
           <View>
-            <Text style={ui.muted}>{user ? `Salut, ${user.name.split(' ')[0]}` : 'Bine ai venit la'}</Text>
+            <Text style={ui.muted}>{user ? t('home.hi', { name: user.name.split(' ')[0] }) : t('home.welcome')}</Text>
             <Text style={s.brand}>
               TAF <Text style={s.brandItalic}>Barber’s</Text>
             </Text>
           </View>
-          <Pressable onPress={() => router.push('/account')} hitSlop={10} accessibilityLabel="Cont" style={s.iconBtn}>
-            <Ionicons name="person-outline" size={20} color={colors.text} />
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <LangButton />
+            <Pressable onPress={() => router.push('/account')} hitSlop={10} accessibilityLabel="Cont" style={s.iconBtn}>
+              <Ionicons name="person-outline" size={20} color={colors.text} />
+            </Pressable>
+          </View>
         </View>
+
+        <PromoCarousel promos={promos} onPress={openPromo} />
 
         {next ? (
           <Pressable onPress={() => router.push('/bookings')} style={s.hero}>
-            <Text style={s.heroLabel}>URMĂTOAREA PROGRAMARE</Text>
+            <Text style={s.heroLabel}>{t('home.next')}</Text>
             <Text style={s.heroTitle}>{formatTime(new Date(next.start))}</Text>
             <Text style={s.heroText}>{formatDate(new Date(next.start))}</Text>
             <View style={s.heroRow}>
@@ -64,32 +77,18 @@ export default function Home() {
             </View>
           </Pressable>
         ) : (
-          <View style={s.hero}>
-            <Text style={s.heroLabel}>TUNS · BARBĂ · STIL</Text>
-            <Text style={s.heroTitle}>Rezervă în 30 de secunde</Text>
-            <Text style={[s.heroText, { marginBottom: space.md }]}>Alegi serviciul, frizerul și ora. Restul e treaba noastră.</Text>
-            <Pressable onPress={() => startBooking()} style={({ pressed }) => [s.heroBtn, pressed && { opacity: 0.85 }]}>
-              <Text style={s.heroBtnText}>Programează-te</Text>
-              <Ionicons name="arrow-forward" size={18} color={colors.gold} />
-            </Pressable>
-          </View>
+          <Button title={t('home.book')} onPress={() => startBooking()} />
         )}
 
-        <View style={s.quickRow}>
-          <Quick icon="calendar-outline" label="Programări" onPress={() => router.push('/bookings')} />
-          <Quick icon="people-outline" label="Frizeri" onPress={() => router.push('/barbers')} />
-          <Quick icon="cut-outline" label="Servicii" onPress={() => router.push('/services')} />
-          <Quick icon="location-outline" label="Despre" onPress={() => router.push('/about')} />
-        </View>
 
         <View style={s.sectionHead}>
-          <SectionTitle>Servicii populare</SectionTitle>
+          <SectionTitle>{t('home.services')}</SectionTitle>
           <Text style={s.link} onPress={() => router.push('/services')}>
-            Vezi toate
+            {t('home.seeAll')}
           </Text>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingRight: space.md }}>
-          {services.slice(0, 4).map((sv) => (
+          {services.map((sv) => (
             <Pressable key={sv.id} onPress={() => startBooking(sv)} style={({ pressed }) => [s.svcCard, pressed && { opacity: 0.85 }]}>
               <View style={[s.svcBadge, { backgroundColor: sv.color }]} />
               <Text style={s.svcName} numberOfLines={2}>
@@ -103,7 +102,7 @@ export default function Home() {
           ))}
         </ScrollView>
 
-        <SectionTitle>Echipa</SectionTitle>
+        <SectionTitle>{t('home.team')}</SectionTitle>
         <View style={{ flexDirection: 'row', gap: space.sm }}>
           {barbers.map((b) => (
             <Pressable key={b.id} onPress={() => router.push('/barbers')} style={s.barber}>
@@ -118,22 +117,11 @@ export default function Home() {
 
         {!next ? null : (
           <View style={{ marginTop: space.lg }}>
-            <Button title="Programare nouă" onPress={() => startBooking()} />
+            <Button title={t('home.newBooking')} onPress={() => startBooking()} />
           </View>
         )}
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function Quick({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [s.quick, pressed && { opacity: 0.8 }]}>
-      <View style={s.quickIcon}>
-        <Ionicons name={icon} size={22} color={colors.gold} />
-      </View>
-      <Text style={s.quickLabel}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -148,12 +136,6 @@ const s = StyleSheet.create({
   heroTitle: { color: colors.onGold, fontSize: 30, fontWeight: '800', marginVertical: 2 },
   heroText: { color: colors.onGold, fontSize: 15, flexShrink: 1 },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: space.sm },
-  heroBtn: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: space.sm, backgroundColor: colors.bg, borderRadius: radius.pill, paddingHorizontal: space.lg, height: 48 },
-  heroBtnText: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  quickRow: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
-  quick: { flex: 1, alignItems: 'center', gap: 6, backgroundColor: colors.card, borderRadius: radius.md, paddingVertical: space.md, borderWidth: 1, borderColor: colors.border },
-  quickIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(249,161,27,0.12)', alignItems: 'center', justifyContent: 'center' },
-  quickLabel: { color: colors.text, fontSize: 12, fontWeight: '600' },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   link: { color: colors.gold, fontSize: 13, fontWeight: '600', marginBottom: space.xs },
   svcCard: { width: 168, height: 150, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.border, justifyContent: 'space-between' },

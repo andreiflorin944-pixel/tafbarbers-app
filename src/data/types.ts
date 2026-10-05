@@ -44,3 +44,14 @@ export type Business = {
   // 0 = duminică ... 6 = sâmbătă; null = închis
   hours: Array<{ open: string; close: string } | null>;
 };
+
+export type Promo = {
+  id: string;
+  kicker: string;
+  title: string;
+  text: string;
+  cta: string;
+  icon: 'pricetag' | 'flame' | 'school' | 'bag-handle';
+  // what the button does
+  action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'book' };
+};

@@ -1,4 +1,4 @@
-import type { Barber, Business, Service } from './types';
+import type { Barber, Business, Promo, Service } from './types';
 
 // Date de test preluate din panoul Barberly (capturi din 5 oct 2026).
 // Adresa, telefonul și programul sunt provizorii până le citim din API.
@@ -87,4 +87,45 @@ export const services: Service[] = [
 export const barbers: Barber[] = [
   { id: 'barber-florin', name: 'Florin', role: 'Barber', initials: 'F' },
   { id: 'barber-andrei', name: 'Andrei', role: 'Barber', initials: 'A' },
+];
+
+// Bannere de marketing pentru prima pagină. Textele sunt de test: le schimbăm
+// cu oferta reală, produsul vedetă și datele academiei.
+export const promos: Promo[] = [
+  {
+    id: 'promo-week',
+    kicker: 'OFERTA SĂPTĂMÂNII',
+    title: '-15% la Haircut & Beard',
+    text: 'De luni până miercuri, la orice frizer. Locuri limitate.',
+    cta: 'Rezervă oferta',
+    icon: 'pricetag',
+    action: { type: 'service', serviceId: 'svc-haircut-beard-skin-fade' },
+  },
+  {
+    id: 'promo-bestseller',
+    kicker: 'CEL MAI CERUT SERVICIU',
+    title: 'Skin Fade Haircut',
+    text: 'Alegerea nr. 1 a clienților noștri săptămâna aceasta.',
+    cta: 'Programează-te',
+    icon: 'flame',
+    action: { type: 'service', serviceId: 'svc-skin-fade' },
+  },
+  {
+    id: 'promo-product',
+    kicker: 'PRODUSUL SĂPTĂMÂNII',
+    title: 'Ceară de păr mată',
+    text: 'Fixare puternică, aspect natural. O găsești în salon.',
+    cta: 'Întreabă frizerul',
+    icon: 'bag-handle',
+    action: { type: 'book' },
+  },
+  {
+    id: 'promo-academy',
+    kicker: 'ACADEMIA TAF',
+    title: 'Devino barber',
+    text: 'Curs pentru începători, grupă nouă în curând. Rezervă-ți locul.',
+    cta: 'Află mai mult',
+    icon: 'school',
+    action: { type: 'url', url: 'https://www.tafbarbers.ro' },
+  },
 ];

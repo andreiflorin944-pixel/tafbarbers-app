@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
 import type { ComponentProps } from 'react';
 import { Pressable, View, type ColorValue } from 'react-native';
+import { useT } from '@/i18n';
 import { useApp } from '@/state/AppState';
 import { colors } from '@/theme';
 
@@ -13,6 +14,7 @@ const icon = (name: IconName) => ({ color, size }: { color: ColorValue; size: nu
 
 export default function TabsLayout() {
   const { resetDraft } = useApp();
+  const { t } = useT();
 
   return (
     <Tabs
@@ -35,8 +37,8 @@ export default function TabsLayout() {
         },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Acasă', tabBarIcon: icon('home-outline') }} />
-      <Tabs.Screen name="services" options={{ title: 'Servicii', tabBarIcon: icon('cut-outline') }} />
+      <Tabs.Screen name="index" options={{ title: t('tab.home'), tabBarIcon: icon('home-outline') }} />
+      <Tabs.Screen name="services" options={{ title: t('tab.services'), tabBarIcon: icon('cut-outline') }} />
       <Tabs.Screen
         name="new"
         options={{
@@ -68,8 +70,8 @@ export default function TabsLayout() {
           ),
         }}
       />
-      <Tabs.Screen name="bookings" options={{ title: 'Programări', tabBarIcon: icon('calendar-outline') }} />
-      <Tabs.Screen name="about" options={{ title: 'Despre', tabBarIcon: icon('storefront-outline') }} />
+      <Tabs.Screen name="bookings" options={{ title: t('tab.bookings'), tabBarIcon: icon('calendar-outline') }} />
+      <Tabs.Screen name="about" options={{ title: t('tab.about'), tabBarIcon: icon('storefront-outline') }} />
     </Tabs>
   );
 }
