@@ -18,6 +18,10 @@ const RO: Record<string, string> = {
   barber_required: 'Alege frizerul.',
   terms_required: 'Bifează acordul pentru termeni și confidențialitate.',
   unauthorized: 'Sesiunea a expirat. Intră din nou în cont.',
+  out_of_stock: 'Unul dintre produse nu mai e pe stoc în cantitatea aleasă. Am actualizat lista, verifică coșul.',
+  product_unavailable: 'Unul dintre produse nu mai e disponibil. Am actualizat coșul.',
+  too_many_open_orders: 'Ai deja 3 comenzi nepreluate. Ridică-le sau anulează una ca să faci alta.',
+  not_cancellable: 'Comanda e deja pregătită și nu mai poate fi anulată din aplicație. Sună-ne, te rog.',
 };
 
 /** Mesaj pe înțelesul clientului pentru o eroare de la server. */

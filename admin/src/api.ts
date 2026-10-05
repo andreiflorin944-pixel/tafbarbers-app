@@ -80,6 +80,8 @@ const MESSAGES: Record<string, string> = {
   image_too_large: 'Poza e prea mare.',
   invalid_url: 'Linkul pozei nu e corect (trebuie să înceapă cu https://).',
   invalid_color: 'Culoarea nu e corectă.',
+  invalid_stock: 'Stocul trebuie să fie un număr întreg (sau gol, fără limită).',
+  invalid_transition: 'Comanda și-a schimbat deja starea. Reîncarcă pagina.',
 };
 export const errorText = (e: unknown) =>
   e instanceof ApiError ? (MESSAGES[e.code] ?? `Eroare: ${e.code}`) : 'A apărut o problemă.';
@@ -108,6 +110,29 @@ export async function uploadImage(file: File, opts: { maxPx?: number; keepAlpha?
   if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
   return json.url as string;
 }
+
+export type Product = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  imageUrl: string | null;
+  stock: number | null;
+  sort: number;
+  active: boolean;
+};
+export type OrderStatus = 'new' | 'ready' | 'picked_up' | 'cancelled';
+export type Order = {
+  id: string;
+  code: string;
+  status: OrderStatus;
+  total: number;
+  note: string;
+  createdAt: string;
+  clientName: string;
+  clientPhone: string;
+  items: Array<{ productId: string; name: string; price: number; qty: number }>;
+};
 
 export type Appearance = {
   accent: string;
@@ -201,7 +226,7 @@ export type Business = {
   maxDaysAhead?: number;
   cancellationPolicy?: string;
 };
-export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'timeoff' | 'stats';
+export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'timeoff' | 'stats' | 'shop';
 export type Me = { id: string; email: string; name: string; barberId: string | null; owner: boolean; permissions: Record<Perm, boolean> };
 export const PERM_LABELS: Record<Perm, string> = {
   bookings_all: 'Vede programările tuturor frizerilor',
@@ -210,6 +235,7 @@ export const PERM_LABELS: Record<Perm, string> = {
   clients: 'Vede lista de clienți și istoricul lor',
   timeoff: 'Își pune singur concedii și pauze',
   stats: 'Vede încasările',
+  shop: 'Vede și pregătește comenzile din magazin',
 };
 export type TimeOff = { id: number; barberId: string | null; start: string; end: string; reason: string };
 export type Campaign = {

@@ -81,3 +81,23 @@ export type Promo = {
   // ce face butonul
   action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'book' };
 };
+
+export type Product = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  imageUrl: string | null;
+  stock: number | null; // null = fără limită
+};
+
+export type OrderStatus = 'new' | 'ready' | 'picked_up' | 'cancelled';
+export type Order = {
+  id: string;
+  code: string; // codul spus la ridicare
+  status: OrderStatus;
+  total: number;
+  note: string;
+  createdAt: string;
+  items: Array<{ productId: string; name: string; price: number; qty: number }>;
+};

@@ -1,4 +1,4 @@
-import type { Barber, Booking, Business, Me, Promo, Service, Slot } from '@/data/types';
+import type { Barber, Booking, Business, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
 
 // Singura legătură dintre interfață și server. `http.ts` vorbește cu serverul nostru
 // (Cloudflare Worker); `mock.ts` e varianta de test, folosită cât timp aplicația nu are
@@ -34,6 +34,12 @@ export interface BookingApi {
   ): Promise<Booking>;
   cancelBooking(token: string, id: string): Promise<Booking>;
   registerPushToken(token: string, pushToken: string, platform: string): Promise<void>;
+
+  // Magazin: plata la ridicare din salon.
+  getProducts(): Promise<Product[]>;
+  listOrders(token: string): Promise<Order[]>;
+  createOrder(token: string, input: { items: Array<{ productId: string; qty: number }>; note?: string }): Promise<Order>;
+  cancelOrder(token: string, id: string): Promise<Order>;
 }
 
 /** Eroare de la server, cu codul lui (ex. `slot_unavailable`). */

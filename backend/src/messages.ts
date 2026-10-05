@@ -1,6 +1,6 @@
 // Textele SMS. Fără diacritice: un SMS cu diacritice are 70 de caractere în loc de 160.
 
-type Kind = 'otp' | 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h';
+type Kind = 'otp' | 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'order_ready';
 type Vars = Record<string, string>;
 
 const T: Record<string, Record<Kind, string>> = {
@@ -10,6 +10,7 @@ const T: Record<string, Record<Kind, string>> = {
     cancel: 'Programarea ta la {shop} din {when} a fost anulata. Ne pare rau! Poti reprograma din aplicatie.',
     reminder_24h: 'Reminder {shop}: maine, {when}, ai programare la {barber}. Daca nu poti ajunge, anuleaz-o din aplicatie.',
     reminder_2h: 'Te asteptam la {shop} in curand: {when}, cu {barber}.',
+    order_ready: 'Comanda ta {code} de la {shop} e gata. O poti ridica din salon, plata la ridicare.',
   },
   en: {
     otp: 'Your {shop} code: {code}. It expires in 10 minutes.',
@@ -17,6 +18,7 @@ const T: Record<string, Record<Kind, string>> = {
     cancel: 'Your {shop} booking on {when} was cancelled. Sorry! You can rebook in the app.',
     reminder_24h: 'Reminder from {shop}: tomorrow, {when}, with {barber}. Cannot make it? Cancel in the app.',
     reminder_2h: 'See you soon at {shop}: {when}, with {barber}.',
+    order_ready: 'Your {shop} order {code} is ready. Pick it up at the shop and pay there.',
   },
   fr: {
     otp: 'Votre code {shop} : {code}. Il expire dans 10 minutes.',
@@ -24,6 +26,7 @@ const T: Record<string, Record<Kind, string>> = {
     cancel: 'Votre rendez-vous chez {shop} du {when} a ete annule. Desole ! Reprenez RDV dans l app.',
     reminder_24h: 'Rappel {shop} : demain, {when}, avec {barber}. Empeche ? Annulez dans l app.',
     reminder_2h: 'A tout a l heure chez {shop} : {when}, avec {barber}.',
+    order_ready: 'Votre commande {code} chez {shop} est prete. Retrait et paiement au salon.',
   },
 };
 

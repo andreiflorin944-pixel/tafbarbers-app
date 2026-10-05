@@ -5,10 +5,11 @@ import { booking, client, type BookingRow, type ClientRow } from '../db';
 import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
 import { deleteClient, exportClient } from '../gdpr';
+import { createOrder, getOrder, getOrders, setOrderStatus } from '../shop';
 
 export const clientRoutes = new Hono<AppEnv>();
 // Pe căi anume: rutele publice sunt montate tot sub /v1.
-for (const p of ['/me', '/me/*', '/bookings', '/bookings/*', '/push-tokens']) clientRoutes.use(p, requireClient);
+for (const p of ['/me', '/me/*', '/bookings', '/bookings/*', '/orders', '/orders/*', '/push-tokens']) clientRoutes.use(p, requireClient);
 
 clientRoutes.get('/me', async (c) => {
   const r = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(c.get('client').clientId).first<ClientRow>();
@@ -77,6 +78,26 @@ clientRoutes.post('/bookings', async (c) => {
 
 clientRoutes.post('/bookings/:id/cancel', async (c) => {
   return c.json(await cancelBooking(c.env, c.req.param('id'), 'client', c.get('client').clientId));
+});
+
+// --- Magazin ---
+
+const stripClient = <T extends { clientName: string; clientPhone: string }>({ clientName: _n, clientPhone: _p, ...o }: T) => o;
+
+clientRoutes.get('/me/orders', async (c) => c.json((await getOrders(c.env, 'o.client_id = ?', [c.get('client').clientId], 50)).map(stripClient)));
+
+clientRoutes.post('/orders', async (c) => {
+  const o = await createOrder(c.env, c.get('client').clientId, await c.req.json());
+  return c.json(stripClient(o), 201);
+});
+
+clientRoutes.post('/orders/:id/cancel', async (c) => {
+  const id = c.req.param('id')!;
+  const o = await getOrder(c.env, id);
+  if (o.clientId !== c.get('client').clientId) throw new HttpError(404, 'not_found');
+  // Clientul poate anula doar până când salonul o pregătește.
+  if (!(await setOrderStatus(c.env, id, 'cancelled', ['new']))) throw new HttpError(409, 'not_cancellable');
+  return c.json(stripClient(await getOrder(c.env, id)));
 });
 
 clientRoutes.post('/push-tokens', async (c) => {

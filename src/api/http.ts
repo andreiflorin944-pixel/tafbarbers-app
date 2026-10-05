@@ -50,5 +50,10 @@ export function httpApi(baseUrl: string): BookingApi {
     registerPushToken: async (token, pushToken, platform) => {
       await call('POST', '/push-tokens', { token, body: { token: pushToken, platform } });
     },
+
+    getProducts: () => call('GET', '/products'),
+    listOrders: (token) => call('GET', '/me/orders', { token }),
+    createOrder: (token, input) => call('POST', '/orders', { token, body: input }),
+    cancelOrder: (token, id) => call('POST', `/orders/${encodeURIComponent(id)}/cancel`, { token }),
   };
 }

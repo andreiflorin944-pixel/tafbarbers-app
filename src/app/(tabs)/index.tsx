@@ -5,6 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { mediaUrl } from '@/api/staff';
 import { LangButton } from '@/components/LangButton';
 import { PromoCarousel } from '@/components/PromoCarousel';
+import { ProductImage } from '@/components/Shop';
+import { useCart } from '@/state/Cart';
 import { Avatar, Button, SectionTitle, styles as ui } from '@/components/ui';
 import type { Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
@@ -17,6 +19,7 @@ export default function Home() {
   const { business, loading, loadError, reload, user, bookings, services, barbers, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
   const { t, lang } = useT();
   const { staff } = useStaff();
+  const { products, count: cartCount } = useCart();
   const look = business?.appearance;
   const logo = mediaUrl(look?.logoUrl);
   const welcome = look?.welcome?.[lang as 'ro' | 'en' | 'fr'];
@@ -132,6 +135,28 @@ export default function Home() {
           ))}
         </ScrollView>
 
+        {products.length ? (
+          <>
+            <View style={s.sectionHead}>
+              <SectionTitle>Magazin</SectionTitle>
+              <Text style={s.link} onPress={() => router.push(cartCount ? '/shop/cart' : '/shop')}>
+                {cartCount ? `Coș (${cartCount})` : t('home.seeAll')}
+              </Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingRight: space.md }}>
+              {products.slice(0, 8).map((p) => (
+                <Pressable key={p.id} onPress={() => router.push('/shop')} style={({ pressed }) => [s.prodCard, pressed && { opacity: 0.85 }]}>
+                  <ProductImage product={p} size={112} />
+                  <Text style={s.prodName} numberOfLines={2}>
+                    {p.name}
+                  </Text>
+                  <Text style={s.svcPrice}>{p.price} lei</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </>
+        ) : null}
+
         <SectionTitle>{t('home.team')}</SectionTitle>
         <View style={{ flexDirection: 'row', gap: space.sm }}>
           {barbers.map((b) => (
@@ -170,6 +195,8 @@ const s = StyleSheet.create({
   link: { color: colors.gold, fontSize: 13, fontWeight: '600', marginBottom: space.xs },
   svcCard: { width: 168, height: 150, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.border, justifyContent: 'space-between' },
   svcBadge: { width: 28, height: 6, borderRadius: 3 },
+  prodCard: { width: 136, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.sm + 4, gap: 6, borderWidth: 1, borderColor: colors.border },
+  prodName: { color: colors.text, fontSize: 14, fontWeight: '700', minHeight: 36 },
   svcImg: { width: 44, height: 44, borderRadius: radius.sm },
   logo: { width: 170, height: 40, marginTop: 2 },
   svcName: { color: colors.text, fontSize: 15, fontWeight: '700' },

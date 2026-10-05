@@ -30,6 +30,7 @@ import { runCampaign } from '../campaigns';
 import { iso, isDay, localToUtc } from '../time';
 import { clientsCsv, deleteClient } from '../gdpr';
 import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
+import { getOrder, getOrders, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -203,6 +204,88 @@ adminRoutes.post('/media', ownerOnly, async (c) => {
     .bind(id, mime, buf, buf.byteLength, iso(new Date()))
     .run();
   return c.json({ id, url: `/v1/media/${id}` }, 201);
+});
+
+// --- Magazin: produse și comenzi ---
+
+type ProductInput = { name?: string; description?: string; price?: number; imageUrl?: string | null; stock?: number | null; sort?: number; active?: boolean };
+function productValues(b: ProductInput, create: boolean) {
+  const v: Record<string, unknown> = {};
+  if (b.name !== undefined || create) {
+    if (!b.name?.trim()) throw new HttpError(400, 'name_required');
+    v.name = b.name.trim().slice(0, 120);
+  }
+  if (b.description !== undefined) v.description = String(b.description).slice(0, 1000);
+  if (b.price !== undefined || create) {
+    const p = Math.round(Number(b.price) * 100);
+    if (!(p >= 0 && p <= 10_000_00)) throw new HttpError(400, 'invalid_price');
+    v.price_bani = p;
+  }
+  if (b.imageUrl !== undefined) {
+    if (b.imageUrl && !isImageUrl(b.imageUrl)) throw new HttpError(400, 'invalid_url');
+    v.image_url = b.imageUrl || null;
+  }
+  if (b.stock !== undefined) {
+    if (b.stock !== null && !(Number.isInteger(b.stock) && b.stock >= 0 && b.stock <= 100000)) throw new HttpError(400, 'invalid_stock');
+    v.stock = b.stock;
+  }
+  if (b.sort !== undefined) v.sort = Math.floor(Number(b.sort)) || 0;
+  if (b.active !== undefined) v.active = b.active ? 1 : 0;
+  return v;
+}
+
+adminRoutes.get('/products', async (c) => {
+  const r = await c.env.DB.prepare('SELECT * FROM products ORDER BY sort, name').all<ProductRow>();
+  return c.json(r.results.map(product));
+});
+
+adminRoutes.post('/products', ownerOnly, async (c) => {
+  const v = productValues(await c.req.json<ProductInput>(), true);
+  const id = newId('p');
+  await c.env.DB.prepare(
+    'INSERT INTO products (id, name, description, price_bani, image_url, stock, sort, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  )
+    .bind(id, v.name, v.description ?? '', v.price_bani, v.image_url ?? null, v.stock ?? null, v.sort ?? 0, v.active ?? 1, iso(new Date()))
+    .run();
+  return c.json(product((await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>())!), 201);
+});
+
+adminRoutes.patch('/products/:id', ownerOnly, async (c) => {
+  const id = c.req.param('id')!;
+  await update(c.env.DB, 'products', id, productValues(await c.req.json<ProductInput>(), false));
+  const r = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>();
+  if (!r) throw new HttpError(404, 'not_found');
+  return c.json(product(r));
+});
+
+// Un produs care apare în comenzi doar se ascunde, ca istoricul să rămână corect.
+adminRoutes.delete('/products/:id', ownerOnly, async (c) => {
+  const id = c.req.param('id')!;
+  const used = await c.env.DB.prepare('SELECT 1 FROM order_items WHERE product_id = ? LIMIT 1').bind(id).first();
+  if (used) await c.env.DB.prepare('UPDATE products SET active = 0 WHERE id = ?').bind(id).run();
+  else await c.env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id).run();
+  return c.json({ ok: true, deactivated: !!used });
+});
+
+adminRoutes.get('/orders', async (c) => {
+  need(c, 'shop');
+  const status = c.req.query('status');
+  if (status === 'open') return c.json(await getOrders(c.env, `o.status IN ('new', 'ready')`, [], 200));
+  if (status && ['new', 'ready', 'picked_up', 'cancelled'].includes(status)) return c.json(await getOrders(c.env, 'o.status = ?', [status], 200));
+  return c.json(await getOrders(c.env, '1 = 1', [], 200));
+});
+
+// Tranziții permise: nouă → gata (SMS la client) → ridicată; anulare cât timp nu e ridicată.
+const ORDER_FROM: Record<string, OrderStatus[]> = { ready: ['new'], picked_up: ['new', 'ready'], cancelled: ['new', 'ready'] };
+adminRoutes.patch('/orders/:id', async (c) => {
+  need(c, 'shop');
+  const id = c.req.param('id')!;
+  const { status } = await c.req.json<{ status?: string }>();
+  const from = status ? ORDER_FROM[status] : undefined;
+  if (!from) throw new HttpError(400, 'invalid_status');
+  await getOrder(c.env, id);
+  if (!(await setOrderStatus(c.env, id, status as OrderStatus, from))) throw new HttpError(409, 'invalid_transition');
+  return c.json(await getOrder(c.env, id));
 });
 
 // --- Servicii ---
@@ -713,7 +796,7 @@ function validPassword(p: unknown) {
   if (typeof p !== 'string' || p.length < 10) throw new HttpError(400, 'password_too_short');
 }
 
-const TABLES = new Set(['services', 'barbers', 'bookings', 'clients', 'promos']);
+const TABLES = new Set(['services', 'barbers', 'bookings', 'clients', 'promos', 'products']);
 async function update(db: D1Database, table: string, id: string, v: Record<string, unknown>) {
   if (!TABLES.has(table)) throw new Error('bad table');
   const keys = Object.keys(v);

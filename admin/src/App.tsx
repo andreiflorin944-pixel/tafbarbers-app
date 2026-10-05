@@ -11,12 +11,14 @@ import { CampaignsPage } from './pages/Campaigns';
 import { SettingsPage } from './pages/Settings';
 import { LegalPage } from './pages/Legal';
 import { AppearancePage } from './pages/Appearance';
+import { ShopPage } from './pages/Shop';
 
 const PAGES = [
   { key: 'calendar', label: 'Programări', show: () => true, el: CalendarPage },
   { key: 'clients', label: 'Clienți', show: (m: Me) => m.permissions.clients, el: ClientsPage },
   { key: 'services', label: 'Servicii', show: (m: Me) => m.owner, el: ServicesPage },
   { key: 'barbers', label: 'Frizeri și program', show: (m: Me) => m.owner, el: BarbersPage },
+  { key: 'shop', label: 'Magazin', show: (m: Me) => m.owner || m.permissions.shop, el: ShopPage },
   { key: 'timeoff', label: 'Concedii', show: (m: Me) => m.permissions.timeoff, el: TimeOffPage },
   { key: 'appearance', label: 'Aspect aplicație', show: (m: Me) => m.owner, el: AppearancePage },
   { key: 'promos', label: 'Bannere aplicație', show: (m: Me) => m.owner, el: PromosPage },

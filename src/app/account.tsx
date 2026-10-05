@@ -180,6 +180,10 @@ function ClientAccount() {
       ) : null}
       {msg ? <Text style={{ color: msg.ok ? colors.success : colors.danger, marginTop: space.sm }}>{msg.text}</Text> : null}
 
+      <View style={{ marginTop: space.md }}>
+        <Button title="Comenzile mele din magazin" variant="ghost" onPress={() => router.push('/shop/orders')} />
+      </View>
+
       <Text style={[styles.label, { marginTop: space.lg }]}>Vreau să primesc oferte prin</Text>
       <Card style={{ gap: space.sm }}>
         <Toggle label="Notificări în aplicație" value={user.marketing.push} onChange={toggle('push')} />

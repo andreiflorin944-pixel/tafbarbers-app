@@ -8,6 +8,7 @@ import { sendSms } from '../notify';
 import { addDays, iso, isDay, localDay } from '../time';
 import { DOCS, legalDoc, type Doc } from '../legal';
 import { getAppearance } from '../appearance';
+import { product, type ProductRow } from '../shop';
 
 export const publicRoutes = new Hono<AppEnv>();
 
@@ -36,6 +37,11 @@ publicRoutes.get('/media/:id', async (c) => {
     'Cache-Control': 'public, max-age=31536000, immutable',
     'X-Content-Type-Options': 'nosniff',
   });
+});
+
+publicRoutes.get('/products', async (c) => {
+  const r = await c.env.DB.prepare('SELECT * FROM products WHERE active = 1 ORDER BY sort, name').all<ProductRow>();
+  return c.json(r.results.map(product));
 });
 
 publicRoutes.get('/services', async (c) => {

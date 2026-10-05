@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { I18nProvider } from '@/i18n';
 import { AppStateProvider } from '@/state/AppState';
+import { CartProvider } from '@/state/Cart';
 import { StaffProvider } from '@/state/Staff';
 import { colors } from '@/theme';
 
@@ -17,6 +18,7 @@ export default function RootLayout() {
       <I18nProvider>
       <AppStateProvider>
       <StaffProvider>
+      <CartProvider>
         <ThemeProvider value={theme}>
           <StatusBar style="light" />
           <Stack
@@ -44,8 +46,12 @@ export default function RootLayout() {
             <Stack.Screen name="staff/login" options={{ title: 'Intră ca echipă', presentation: 'modal' }} />
             <Stack.Screen name="staff/index" options={{ title: 'Agenda echipei' }} />
             <Stack.Screen name="staff/new" options={{ title: 'Programare nouă' }} />
+            <Stack.Screen name="shop/index" options={{ title: 'Magazin' }} />
+            <Stack.Screen name="shop/cart" options={{ title: 'Coșul meu' }} />
+            <Stack.Screen name="shop/orders" options={{ title: 'Comenzile mele' }} />
           </Stack>
         </ThemeProvider>
+      </CartProvider>
       </StaffProvider>
       </AppStateProvider>
       </I18nProvider>

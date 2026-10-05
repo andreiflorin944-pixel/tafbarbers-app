@@ -12,7 +12,7 @@ export type Env = {
 
 export type ClientSession = { kind: 'client'; clientId: string };
 // Drepturi configurabile pentru conturile de frizer. Proprietarul le are pe toate.
-export const PERMS = ['bookings_all', 'bookings_create', 'bookings_manage', 'clients', 'timeoff', 'stats'] as const;
+export const PERMS = ['bookings_all', 'bookings_create', 'bookings_manage', 'clients', 'timeoff', 'stats', 'shop'] as const;
 export type Perm = (typeof PERMS)[number];
 export type Perms = Record<Perm, boolean>;
 export const DEFAULT_BARBER_PERMS: Perms = {
@@ -22,6 +22,7 @@ export const DEFAULT_BARBER_PERMS: Perms = {
   clients: false, // lista de clienți și istoricul lor
   timeoff: true, // își pune concedii și pauze
   stats: false, // vede încasările
+  shop: false, // vede și pregătește comenzile din magazin
 };
 export function parsePerms(raw: string | null | undefined, owner: boolean): Perms {
   if (owner) return Object.fromEntries(PERMS.map((p) => [p, true])) as Perms;

@@ -136,4 +136,10 @@ export const mockApi: BookingApi = {
     return delay({ ...b });
   },
   registerPushToken: () => delay(undefined),
+
+  // Magazinul există doar cu serverul real; în modul de test lista e goală și secțiunea nu apare.
+  getProducts: () => delay([]),
+  listOrders: () => delay([]),
+  createOrder: () => Promise.reject(new ApiError('no_server', 0)),
+  cancelOrder: () => Promise.reject(new ApiError('no_server', 0)),
 };
