@@ -675,6 +675,8 @@ type PromoInput = {
   text?: string;
   cta?: string;
   icon?: string;
+  imageUrl?: string | null;
+  color?: string | null;
   action?: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'book' };
   translations?: Record<string, Record<string, string>>;
   startsAt?: string | null;
@@ -691,6 +693,14 @@ function promoValues(b: PromoInput, create: boolean) {
     }
   }
   if (b.text !== undefined) v.text = String(b.text).slice(0, 400);
+  if (b.imageUrl !== undefined) {
+    if (b.imageUrl && !isImageUrl(b.imageUrl)) throw new HttpError(400, 'invalid_url');
+    v.image_url = b.imageUrl || null;
+  }
+  if (b.color !== undefined) {
+    if (b.color && !/^#[0-9a-fA-F]{6}$/.test(b.color)) throw new HttpError(400, 'invalid_color');
+    v.color = b.color ? b.color.toUpperCase() : null;
+  }
   if (b.icon !== undefined) v.icon = ['pricetag', 'flame', 'school', 'bag-handle'].includes(b.icon) ? b.icon : 'pricetag';
   if (b.action !== undefined || create) {
     const a = b.action ?? { type: 'book' };

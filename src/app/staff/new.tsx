@@ -71,7 +71,7 @@ export default function StaffNewBooking() {
       <View style={s.wrap}>
         {services.map((sv) => (
           <Pressable key={sv.id} onPress={() => setServiceId(sv.id)} style={[s.chip, sv.id === serviceId && s.chipOn]}>
-            <Text style={[s.chipText, sv.id === serviceId && { color: colors.bg }]}>
+            <Text style={[s.chipText, sv.id === serviceId && { color: colors.onGold }]}>
               {sv.name.split(' / ')[0]} · {sv.durationMin}m
             </Text>
           </Pressable>
@@ -84,7 +84,7 @@ export default function StaffNewBooking() {
           <View style={s.wrap}>
             {barbers.map((b) => (
               <Pressable key={b.id} onPress={() => setBarberId(b.id)} style={[s.chip, b.id === barberId && s.chipOn]}>
-                <Text style={[s.chipText, b.id === barberId && { color: colors.bg }]}>{b.name}</Text>
+                <Text style={[s.chipText, b.id === barberId && { color: colors.onGold }]}>{b.name}</Text>
               </Pressable>
             ))}
           </View>
@@ -98,9 +98,9 @@ export default function StaffNewBooking() {
           const on = key === day;
           return (
             <Pressable key={key} onPress={() => setDay(key)} style={[s.day, on && s.dayOn]}>
-              <Text style={[s.small, on && { color: colors.bg }]}>{shortDay(d)}</Text>
-              <Text style={[s.num, on && { color: colors.bg }]}>{d.getDate()}</Text>
-              <Text style={[s.small, on && { color: colors.bg }]}>{shortMonth(d)}</Text>
+              <Text style={[s.small, on && { color: colors.onGold }]}>{shortDay(d)}</Text>
+              <Text style={[s.num, on && { color: colors.onGold }]}>{d.getDate()}</Text>
+              <Text style={[s.small, on && { color: colors.onGold }]}>{shortMonth(d)}</Text>
             </Pressable>
           );
         })}
@@ -115,7 +115,7 @@ export default function StaffNewBooking() {
         <View style={s.wrap}>
           {slots.map((sl) => (
             <Pressable key={sl.start} onPress={() => setStart(sl.start)} style={[s.chip, sl.start === start && s.chipOn]}>
-              <Text style={[s.chipText, sl.start === start && { color: colors.bg }]}>{formatTime(new Date(sl.start))}</Text>
+              <Text style={[s.chipText, sl.start === start && { color: colors.onGold }]}>{formatTime(new Date(sl.start))}</Text>
             </Pressable>
           ))}
         </View>

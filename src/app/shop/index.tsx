@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Backdrop } from '@/components/Backdrop';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CartBar, ProductImage, QtyControl } from '@/components/Shop';
 import { styles } from '@/components/ui';
@@ -12,6 +13,7 @@ export default function Shop() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <Backdrop />
       <ScrollView contentContainerStyle={s.content}>
         <Text style={[styles.muted, { marginBottom: space.sm }]}>Comanzi din aplicație, ridici din salon și plătești acolo.</Text>
         {products.length === 0 ? <Text style={styles.muted}>Momentan nu sunt produse în magazin.</Text> : null}

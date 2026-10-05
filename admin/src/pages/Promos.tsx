@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, type Me, type Promo, type Service } from '../api';
-import { Field, Loading, Modal, useAction, useLoad } from '../ui';
+import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
 
 const ICONS: Record<string, string> = { pricetag: 'Etichetă (ofertă)', flame: 'Flacără (popular)', 'bag-handle': 'Sacoșă (produs)', school: 'Academie' };
 const LANGS = [
@@ -75,6 +75,8 @@ function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; servi
     fr: { kicker: '', title: '', text: '', cta: '', ...p.translations?.fr },
   });
   const [icon, setIcon] = useState(p.icon ?? 'pricetag');
+  const [imageUrl, setImageUrl] = useState<string | null>(p.imageUrl ?? null);
+  const [color, setColor] = useState<string | null>(p.color ?? null);
   const [actionType, setActionType] = useState(p.action?.type ?? 'book');
   const [serviceId, setServiceId] = useState(p.action?.type === 'service' ? p.action.serviceId : (services[0]?.id ?? ''));
   const [url, setUrl] = useState(p.action?.type === 'url' ? p.action.url : 'https://');
@@ -93,6 +95,8 @@ function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; servi
       const body = {
         ...texts.ro,
         icon,
+        imageUrl,
+        color,
         action: actionType === 'service' ? { type: 'service', serviceId } : actionType === 'url' ? { type: 'url', url } : { type: 'book' },
         translations: { en: clean(texts.en), fr: clean(texts.fr) },
         startsAt: startsAt ? new Date(startsAt + 'T00:00:00').toISOString() : null,
@@ -127,6 +131,20 @@ function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; servi
         <Field label="Text buton">
           <input value={t.cta} onChange={(e) => setT({ cta: e.target.value })} placeholder={lang !== 'ro' ? texts.ro.cta : ''} />
         </Field>
+        <Field label="Poză de fundal (opțional; textul apare alb peste poză)">
+          <ImagePicker value={imageUrl} onChange={setImageUrl} maxPx={1200} />
+        </Field>
+        {!imageUrl ? (
+          <Field label="Culoarea bannerului">
+            <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className={color === null ? 'on sm' : 'ghost sm'} onClick={() => setColor(null)}>
+                Automat
+              </button>
+              <input type="color" value={color ?? '#F9A11B'} onChange={(e) => setColor(e.target.value.toUpperCase())} style={{ width: 52, height: 32, padding: 2 }} aria-label="Culoarea bannerului" />
+              <span className="muted small">{color ?? 'alternativ: culoarea principală / închis'}</span>
+            </div>
+          </Field>
+        ) : null}
         <div className="grid two">
           <Field label="Iconiță">
             <select value={icon} onChange={(e) => setIcon(e.target.value)}>

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Barber, Service } from '@/data/types';
 import { mediaUrl } from '@/api/staff';
 import { usePriceLabel } from '@/lib/price';
+import { Backdrop } from '@/components/Backdrop';
 import { colors, radius, space } from '@/theme';
 
 // `tab` leaves room for the floating tab bar.
@@ -12,6 +13,7 @@ export function Screen({ children, scroll = true, edges, tab }: { children: Reac
   const pad = tab ? { paddingBottom: 120 } : null;
   return (
     <SafeAreaView style={styles.screen} edges={edges ?? ['top']}>
+      <Backdrop />
       {scroll ? (
         <ScrollView contentContainerStyle={[styles.scroll, pad]}>{children}</ScrollView>
       ) : (

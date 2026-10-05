@@ -181,6 +181,8 @@ export type PromoRow = {
   ends_at: string | null;
   sort: number;
   active: number;
+  image_url?: string | null;
+  color?: string | null;
 };
 /** Cu `lang`, textele se înlocuiesc cu traducerea (unde există). */
 export const promo = (r: PromoRow, lang?: string) => {
@@ -200,6 +202,8 @@ export const promo = (r: PromoRow, lang?: string) => {
     text: tr?.text || r.text,
     cta: tr?.cta || r.cta,
     icon: r.icon,
+    imageUrl: r.image_url ?? null,
+    color: r.color ?? null,
     action,
     ...(lang === undefined && {
       translations: JSON.parse(r.translations || '{}'),

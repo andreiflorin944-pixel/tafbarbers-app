@@ -57,7 +57,7 @@ export default function TabsLayout() {
                   borderRadius: 18,
                   marginTop: -18,
                   borderWidth: 4,
-                  borderColor: colors.bg,
+                  borderColor: colors.bgSolid,
                   backgroundColor: colors.gold,
                   alignItems: 'center',
                   justifyContent: 'center',

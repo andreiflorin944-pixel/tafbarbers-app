@@ -53,9 +53,9 @@ export default function ChooseTime() {
                 onPress={() => setDay(key)}
                 style={[s.day, active && s.dayActive, closed && { opacity: 0.35 }]}
               >
-                <Text style={[s.dayName, active && { color: colors.bg }]}>{shortDay(d)}</Text>
-                <Text style={[s.dayNum, active && { color: colors.bg }]}>{d.getDate()}</Text>
-                <Text style={[s.dayName, active && { color: colors.bg }]}>{shortMonth(d)}</Text>
+                <Text style={[s.dayName, active && { color: colors.onGold }]}>{shortDay(d)}</Text>
+                <Text style={[s.dayNum, active && { color: colors.onGold }]}>{d.getDate()}</Text>
+                <Text style={[s.dayName, active && { color: colors.onGold }]}>{shortMonth(d)}</Text>
               </Pressable>
             );
           })}
@@ -76,7 +76,7 @@ export default function ChooseTime() {
                   const active = selected?.start === slot.start;
                   return (
                     <Pressable key={slot.start} onPress={() => setSelected(slot)} style={[s.slot, active && s.slotActive]}>
-                      <Text style={[s.slotText, active && { color: colors.bg }]}>{formatTime(new Date(slot.start))}</Text>
+                      <Text style={[s.slotText, active && { color: colors.onGold }]}>{formatTime(new Date(slot.start))}</Text>
                     </Pressable>
                   );
                 })}

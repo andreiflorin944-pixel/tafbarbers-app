@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { mediaUrl } from '@/api/staff';
+import { Backdrop } from '@/components/Backdrop';
 import { LangButton } from '@/components/LangButton';
 import { PromoCarousel } from '@/components/PromoCarousel';
 import { ProductImage } from '@/components/Shop';
@@ -66,6 +67,7 @@ export default function Home() {
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
+      <Backdrop />
       <ScrollView contentContainerStyle={s.content}>
         <View style={s.topBar}>
           <View>

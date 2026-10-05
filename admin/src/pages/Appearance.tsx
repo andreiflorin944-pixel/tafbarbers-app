@@ -15,6 +15,37 @@ const LANGS = [
   { code: 'fr', label: 'Français', ph: 'Bienvenue' },
 ] as const;
 
+const DEFAULTS: Omit<Appearance, 'logoUrl' | 'title' | 'welcome'> = {
+  accent: '#F9A11B',
+  background: '#000000',
+  buttonText: null,
+  text: '#FFFFFF',
+  muted: '#A3A09A',
+  card: null,
+  backgroundImage: null,
+  backgroundDim: 60,
+};
+
+/** Amestecă cu alb, ca în aplicație: cardurile automate sunt puțin mai deschise decât fundalul. */
+function lighten(hex: string, k: number) {
+  const n = parseInt(hex.slice(1), 16);
+  return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((x) => Math.round(x + (255 - x) * k).toString(16).padStart(2, '0')).join('');
+}
+
+function ColorRow({ value, onChange, label, auto }: { value: string | null; onChange: (v: string | null) => void; label: string; auto?: string }) {
+  return (
+    <div className="row" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      {auto ? (
+        <button type="button" className={value === null ? 'on sm' : 'ghost sm'} onClick={() => onChange(null)}>
+          Automat
+        </button>
+      ) : null}
+      <input type="color" value={value ?? auto ?? '#FFFFFF'} onChange={(e) => onChange(e.target.value.toUpperCase())} style={{ width: 52, height: 32, padding: 2 }} aria-label={label} />
+      <span className="muted small">{value ?? 'ales automat'}</span>
+    </div>
+  );
+}
+
 /** Text negru pe culori deschise, alb pe cele închise. */
 export function textOn(hex: string) {
   const n = parseInt(hex.slice(1), 16);
@@ -29,7 +60,7 @@ export function AppearancePage() {
   const { busy, error, run } = useAction();
 
   useEffect(() => {
-    if (data.data) setV({ ...data.data, background: data.data.background ?? '#000000' });
+    if (data.data) setV({ ...DEFAULTS, ...data.data });
   }, [data.data]);
 
   if (!v) return <Loading error={data.error} />;
@@ -37,8 +68,9 @@ export function AppearancePage() {
     setSaved(false);
     setV({ ...v, ...patch });
   };
-  const dirty = JSON.stringify(v) !== JSON.stringify(data.data);
-  const on = textOn(v.accent);
+  const dirty = JSON.stringify(v) !== JSON.stringify({ ...DEFAULTS, ...data.data });
+  const on = v.buttonText ?? textOn(v.accent);
+  const card = v.card ?? lighten(v.background, 0.06);
 
   return (
     <>
@@ -46,12 +78,12 @@ export function AppearancePage() {
         <h1>Aspect aplicație</h1>
       </div>
       <p className="muted small" style={{ marginTop: -8, maxWidth: 760 }}>
-        Culoarea, logo-ul și textul de bun venit din aplicație. Pozele serviciilor și ale frizerilor le pui la Servicii și la Frizeri. Clienții văd
-        culoarea nouă de la următoarea deschidere a aplicației.
+        Culorile, poza de fundal, logo-ul și textul de bun venit din aplicație. Pozele serviciilor le pui la Servicii, ale frizerilor la Frizeri, iar
+        pozele bannerelor la Bannere aplicație. Clienții văd aspectul nou de la următoarea deschidere a aplicației.
       </p>
       <div className="row" style={{ alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' }}>
         <div className="card grid" style={{ flex: '1 1 380px', maxWidth: 560 }}>
-          <Field label="Culoarea principală">
+          <Field label="Culoarea butoanelor și a accentelor (prețuri, iconițe)">
             <div className="row" style={{ alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div className="swatches">
                 {PRESETS.map((c) => (
@@ -78,6 +110,28 @@ export function AppearancePage() {
               <input type="color" value={v.background} onChange={(e) => set({ background: e.target.value.toUpperCase() })} style={{ width: 52, height: 32, padding: 2 }} aria-label="Alt fundal" />
             </div>
           </Field>
+          <Field label="Textul de pe butoane">
+            <ColorRow value={v.buttonText} onChange={(buttonText) => set({ buttonText })} label="Textul de pe butoane" auto={textOn(v.accent)} />
+          </Field>
+          <Field label="Poză de fundal (opțional, pentru toată aplicația)">
+            <ImagePicker value={v.backgroundImage} onChange={(backgroundImage) => set({ backgroundImage })} maxPx={1400} />
+          </Field>
+          {v.backgroundImage ? (
+            <Field label={`Cât de întunecată e poza: ${v.backgroundDim}% (mai întunecată = textul se citește mai ușor)`}>
+              <input type="range" min={0} max={90} step={5} value={v.backgroundDim} onChange={(e) => set({ backgroundDim: Number(e.target.value) })} />
+            </Field>
+          ) : null}
+          <Field label="Cardurile (servicii, programări)">
+            <ColorRow value={v.card} onChange={(c) => set({ card: c })} label="Cardurile" auto={lighten(v.background, 0.06).toUpperCase()} />
+          </Field>
+          <div className="grid two">
+            <Field label="Textul principal">
+              <ColorRow value={v.text} onChange={(text) => set({ text: text ?? DEFAULTS.text })} label="Textul principal" />
+            </Field>
+            <Field label="Textul secundar">
+              <ColorRow value={v.muted} onChange={(muted) => set({ muted: muted ?? DEFAULTS.muted })} label="Textul secundar" />
+            </Field>
+          </div>
           <Field label="Logo (PNG cu fundal transparent arată cel mai bine)">
             <ImagePicker value={v.logoUrl} onChange={(logoUrl) => set({ logoUrl })} keepAlpha maxPx={600} />
           </Field>
@@ -103,6 +157,9 @@ export function AppearancePage() {
             >
               Salvează
             </button>
+            <button className="ghost" type="button" disabled={busy} onClick={() => confirm('Revii la culorile standard? Logo-ul și textele rămân.') && set(DEFAULTS)}>
+              Culorile standard
+            </button>
             {saved && !dirty ? <span className="success small">Salvat.</span> : null}
           </div>
         </div>
@@ -110,9 +167,16 @@ export function AppearancePage() {
           <div className="muted small" style={{ marginBottom: 8 }}>
             Previzualizare
           </div>
-          <div className="phone" style={{ background: v.background }}>
-            <div className="muted small">{v.welcome.ro || 'Bine ai venit'}</div>
-            {v.logoUrl ? <img className="logo" src={v.logoUrl} alt="Logo" /> : <div className="brand">{v.title}</div>}
+          <div
+            className="phone"
+            style={{
+              background: v.backgroundImage
+                ? `linear-gradient(rgba(0,0,0,${v.backgroundDim / 100}), rgba(0,0,0,${v.backgroundDim / 100})), url(${v.backgroundImage}) center / cover, ${v.background}`
+                : v.background,
+            }}
+          >
+            <div className="small" style={{ color: v.muted }}>{v.welcome.ro || 'Bine ai venit'}</div>
+            {v.logoUrl ? <img className="logo" src={v.logoUrl} alt="Logo" /> : <div className="brand" style={{ color: v.text }}>{v.title}</div>}
             <div className="hero" style={{ background: v.accent, color: on }}>
               <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: 1.5 }}>URMĂTOAREA PROGRAMARE</div>
               <div style={{ fontSize: 24 }}>10:30</div>
@@ -120,7 +184,13 @@ export function AppearancePage() {
             <div className="cta" style={{ background: v.accent, color: on }}>
               Rezervă o programare
             </div>
-            <div style={{ color: v.accent, fontWeight: 700 }}>60 lei</div>
+            <div style={{ background: card, borderRadius: 16, padding: 12, border: `1px solid ${lighten(card, 0.1)}` }}>
+              <div style={{ color: v.text, fontWeight: 700 }}>Tuns clasic</div>
+              <div className="row" style={{ justifyContent: 'space-between', marginTop: 4 }}>
+                <span style={{ color: v.muted, fontSize: 13 }}>30 min</span>
+                <span style={{ color: v.accent, fontWeight: 800 }}>60 lei</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { api, ApiError } from '@/api';
 import type { Barber, Booking, Business, Me, Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
 import { storage } from '@/lib/storage';
-import { ACCENT_KEY, BG_KEY, colors, readSavedAccent, readSavedBackground } from '@/theme';
+import { LOOK_KEY, normalizeLook, readSavedLook, type SavedLook } from '@/theme';
 import { Platform } from 'react-native';
 
 type Draft = {
@@ -64,7 +64,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     Promise.all([api.getBusiness(), api.getServices(), api.getBarbers()])
       .then(([b, s, br]) => {
         setBusiness(b);
-        rememberLook(b.appearance?.accent, b.appearance?.background);
+        rememberLook(b.appearance);
         setServices(s);
         setBarbers(br);
       })
@@ -158,17 +158,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
-/** Ține minte culorile din panou pentru pornirea următoare. Pe web reîncarcă o dată pagina, ca să se vadă imediat. */
-async function rememberLook(accent: string | undefined, background: string | undefined) {
-  const hex = (v: string | undefined) => (v && /^#[0-9A-Fa-f]{6}$/.test(v) ? v.toUpperCase() : null);
-  const a = hex(accent);
-  const bg = hex(background) ?? '#000000';
-  const changed = (a && a !== colors.gold.toUpperCase()) || bg !== colors.bg.toUpperCase();
-  if (!changed) return;
-  if (a) await storage.set(ACCENT_KEY, a);
-  await storage.set(BG_KEY, bg);
+/** Ține minte aspectul din panou pentru pornirea următoare. Pe web reîncarcă o dată pagina, ca să se vadă imediat. */
+async function rememberLook(look: SavedLook | undefined) {
+  if (!look) return;
+  const next = JSON.stringify(normalizeLook(look));
+  if (next === JSON.stringify(normalizeLook(readSavedLook()))) return;
+  await storage.set(LOOK_KEY, next);
   // Doar dacă s-a salvat, altfel s-ar reîncărca la nesfârșit.
-  if (Platform.OS === 'web' && (!a || readSavedAccent() === a) && (readSavedBackground() ?? '#000000') === bg) globalThis.location?.reload();
+  if (Platform.OS === 'web' && JSON.stringify(normalizeLook(readSavedLook())) === next) globalThis.location?.reload();
 }
 
 export function useApp() {

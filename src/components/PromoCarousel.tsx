@@ -1,10 +1,28 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { mediaUrl } from '@/api/staff';
 import type { Promo } from '@/data/types';
 import { colors, radius, space } from '@/theme';
 
 const AUTO_MS = 5000;
+
+const isLight = (hex: string) => {
+  const n = parseInt(hex.slice(1), 16);
+  return 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 150;
+};
+
+/** Culorile unui banner: cu poză (text alb peste poză întunecată), cu culoare proprie, sau alternativ ca până acum. */
+function slideLook(p: Promo, i: number) {
+  if (p.imageUrl) return { bg: 'transparent', fg: '#FFFFFF', title: '#FFFFFF', icon: '', btnBg: colors.gold, btnFg: colors.onGold };
+  if (p.color) {
+    const fg = isLight(p.color) ? '#000000' : '#FFFFFF';
+    return { bg: p.color, fg, title: fg, icon: 'rgba(127,127,127,0.12)', btnBg: fg, btnFg: p.color };
+  }
+  return i % 2 === 0
+    ? { bg: colors.gold, fg: colors.onGold, title: colors.onGold, icon: 'rgba(0,0,0,0.08)', btnBg: colors.bgSolid, btnFg: colors.text }
+    : { bg: colors.cardAlt, fg: colors.text, title: colors.gold, icon: 'rgba(249,161,27,0.10)', btnBg: colors.gold, btnFg: colors.onGold };
+}
 
 export function PromoCarousel({ promos, onPress }: { promos: Promo[]; onPress: (p: Promo) => void }) {
   const { width: screen } = useWindowDimensions();
@@ -43,21 +61,28 @@ export function PromoCarousel({ promos, onPress }: { promos: Promo[]; onPress: (
         style={{ width, borderRadius: radius.lg }}
       >
         {promos.map((p, i) => {
-          const accent = i % 2 === 0;
-          const fg = accent ? colors.onGold : colors.text;
-          return (
-            <View key={p.id} style={[s.slide, { width, backgroundColor: accent ? colors.gold : colors.cardAlt }]}>
-              <Ionicons name={p.icon} size={120} color={accent ? 'rgba(0,0,0,0.08)' : 'rgba(249,161,27,0.10)'} style={s.bgIcon} />
-              <Text style={[s.kicker, { color: fg }]}>{p.kicker}</Text>
-              <Text style={[s.title, { color: accent ? fg : colors.gold }]}>{p.title}</Text>
-              <Text style={[s.text, { color: fg }]}>{p.text}</Text>
-              <Pressable
-                onPress={() => onPress(p)}
-                style={({ pressed }) => [s.btn, { backgroundColor: accent ? colors.bg : colors.gold }, pressed && { opacity: 0.85 }]}
-              >
-                <Text style={[s.btnText, { color: accent ? colors.text : colors.onGold }]}>{p.cta}</Text>
-                <Ionicons name="arrow-forward" size={16} color={accent ? colors.gold : colors.onGold} />
+          const look = slideLook(p, i);
+          const body = (
+            <>
+              {p.imageUrl ? <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} /> : (
+                <Ionicons name={p.icon} size={120} color={look.icon} style={s.bgIcon} />
+              )}
+              <Text style={[s.kicker, { color: look.fg }]}>{p.kicker}</Text>
+              <Text style={[s.title, { color: look.title }]}>{p.title}</Text>
+              <Text style={[s.text, { color: look.fg }]}>{p.text}</Text>
+              <Pressable onPress={() => onPress(p)} style={({ pressed }) => [s.btn, { backgroundColor: look.btnBg }, pressed && { opacity: 0.85 }]}>
+                <Text style={[s.btnText, { color: look.btnFg }]}>{p.cta}</Text>
+                <Ionicons name="arrow-forward" size={16} color={look.btnFg} />
               </Pressable>
+            </>
+          );
+          return p.imageUrl ? (
+            <ImageBackground key={p.id} source={{ uri: mediaUrl(p.imageUrl)! }} resizeMode="cover" style={[s.slide, { width }]} imageStyle={{ borderRadius: radius.lg }}>
+              {body}
+            </ImageBackground>
+          ) : (
+            <View key={p.id} style={[s.slide, { width, backgroundColor: look.bg }]}>
+              {body}
             </View>
           );
         })}

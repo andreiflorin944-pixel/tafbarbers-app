@@ -140,6 +140,12 @@ export type Appearance = {
   logoUrl: string | null;
   title: string;
   welcome: { ro: string; en: string; fr: string };
+  buttonText: string | null;
+  text: string;
+  muted: string;
+  card: string | null;
+  backgroundImage: string | null;
+  backgroundDim: number;
 };
 
 // --- Tipuri (la fel ca răspunsurile serverului) ---
@@ -206,6 +212,8 @@ export type Promo = {
   text: string;
   cta: string;
   icon: string;
+  imageUrl: string | null;
+  color: string | null;
   action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'book' };
   translations: Record<string, Partial<Record<'kicker' | 'title' | 'text' | 'cta', string>>>;
   startsAt: string | null;

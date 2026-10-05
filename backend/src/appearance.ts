@@ -8,6 +8,12 @@ export type Appearance = {
   logoUrl: string | null; // /v1/media/... sau https://...
   title: string; // numele de pe prima pagină, când nu e logo
   welcome: { ro: string; en: string; fr: string }; // gol = textul standard
+  buttonText: string | null; // textul de pe butoane; null = automat (negru/alb după culoarea butonului)
+  text: string; // textul principal
+  muted: string; // textul secundar (descrieri, durate)
+  card: string | null; // cardurile; null = automat, puțin mai deschise decât fundalul
+  backgroundImage: string | null; // poză de fundal pentru toată aplicația
+  backgroundDim: number; // cât de întunecată e poza de fundal, 0–90 (%)
 };
 
 export const DEFAULT_APPEARANCE: Appearance = {
@@ -16,23 +22,32 @@ export const DEFAULT_APPEARANCE: Appearance = {
   logoUrl: null,
   title: 'TAF Barber’s',
   welcome: { ro: '', en: '', fr: '' },
+  buttonText: null,
+  text: '#FFFFFF',
+  muted: '#A3A09A',
+  card: null,
+  backgroundImage: null,
+  backgroundDim: 60,
 };
 
-export const getAppearance = (env: Env) => getSetting(env, 'appearance', DEFAULT_APPEARANCE);
+export const getAppearance = async (env: Env): Promise<Appearance> => ({ ...DEFAULT_APPEARANCE, ...(await getSetting(env, 'appearance', DEFAULT_APPEARANCE)) });
 
 export const isImageUrl = (u: unknown): u is string =>
   typeof u === 'string' && u.length <= 500 && (/^\/v1\/media\/[\w-]+$/.test(u) || /^https:\/\/\S+$/.test(u));
 
 export async function saveAppearance(env: Env, b: Partial<Appearance>): Promise<Appearance> {
   const next = { ...(await getAppearance(env)) };
-  if (b.accent !== undefined) {
-    if (typeof b.accent !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(b.accent)) throw new HttpError(400, 'invalid_color');
-    next.accent = b.accent.toUpperCase();
+  const color = (v: unknown) => {
+    if (typeof v !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(v)) throw new HttpError(400, 'invalid_color');
+    return v.toUpperCase();
+  };
+  for (const k of ['accent', 'background', 'text', 'muted'] as const) if (b[k] !== undefined) next[k] = color(b[k]);
+  for (const k of ['buttonText', 'card'] as const) if (b[k] !== undefined) next[k] = b[k] === null ? null : color(b[k]);
+  if (b.backgroundImage !== undefined) {
+    if (b.backgroundImage !== null && !isImageUrl(b.backgroundImage)) throw new HttpError(400, 'invalid_url');
+    next.backgroundImage = b.backgroundImage;
   }
-  if (b.background !== undefined) {
-    if (typeof b.background !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(b.background)) throw new HttpError(400, 'invalid_color');
-    next.background = b.background.toUpperCase();
-  }
+  if (b.backgroundDim !== undefined) next.backgroundDim = Math.max(0, Math.min(90, Math.round(Number(b.backgroundDim) || 0)));
   if (b.logoUrl !== undefined) {
     if (b.logoUrl !== null && !isImageUrl(b.logoUrl)) throw new HttpError(400, 'invalid_url');
     next.logoUrl = b.logoUrl;
