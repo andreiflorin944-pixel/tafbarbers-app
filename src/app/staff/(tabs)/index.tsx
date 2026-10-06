@@ -19,6 +19,7 @@ export default function StaffHome() {
   const [orders, setOrders] = useState<number | null>(null);
   const [open, setOpen] = useState<StaffBooking | null>(null);
   const [unclosed, setUnclosed] = useState<StaffBooking[]>([]);
+  const [todo, setTodo] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -27,6 +28,7 @@ export default function StaffHome() {
       staffApi.bookings(staffToken, d0.toISOString(), addDays(d0, 1).toISOString()).then(setToday, () => setToday([]));
       staffApi.stats(staffToken).then(setStats, () => undefined);
       staffApi.unclosed(staffToken).then(setUnclosed, () => undefined);
+      staffApi.notes(staffToken, 'open').then((n) => setTodo(n.length), () => undefined);
       if (staff.permissions.shop) staffApi.orders(staffToken, 'open').then((o) => setOrders(o.length), () => undefined);
     }, [staffToken, staff]),
   );
@@ -56,6 +58,16 @@ export default function StaffHome() {
           )}
           {orders !== null ? <Tile label="Comenzi" value={String(orders)} sub="de pregătit" onPress={() => router.push('/staff/orders')} /> : null}
         </View>
+
+        {todo ? (
+          <Pressable onPress={() => router.push('/staff/notes')} style={{ marginTop: space.md }}>
+            <Card style={[s.row, { borderLeftWidth: 5, borderLeftColor: colors.gold }]}>
+              <Ionicons name="clipboard-outline" size={22} color={colors.gold} />
+              <Text style={[ui.cardTitle, { flex: 1 }]}>{todo === 1 ? 'Ai o sarcină de făcut' : `Ai ${todo} sarcini de făcut`}</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+            </Card>
+          </Pressable>
+        ) : null}
 
         {unclosed.length ? (
           <>

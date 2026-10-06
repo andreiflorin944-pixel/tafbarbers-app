@@ -20,6 +20,7 @@ export default function StaffMenu() {
   const owner = staff.owner;
 
   const items: Item[] = [
+    { icon: 'clipboard-outline', label: staff.role === 'barber' ? 'Notițele mele' : 'Notițe echipă', sub: 'Sarcini și scripturi de filmat', to: '/staff/notes', show: true },
     { icon: 'stats-chart-outline', label: 'Tablou de bord', sub: 'Grafice, clienții de azi, păstrare', to: '/staff/stats', show: p.reports },
     { icon: 'document-text-outline', label: 'Rapoarte', sub: 'Vânzări, rezervări, anulări, plăți, bacșiș', to: '/staff/reports', show: p.reports },
     { icon: 'cash-outline', label: 'Registrul de încasări', sub: 'Programările zilei și ce s-a încasat', to: '/staff/register', show: p.reports || !!staff.barberId },

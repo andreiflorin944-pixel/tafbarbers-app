@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from 'hono';
+import { notesRoutes } from '../notes';
 import {
   createSession,
   deleteSession,
@@ -106,6 +107,9 @@ adminRoutes.use('*', async (c, next) => {
   headers.delete('Content-Length');
   c.res = new Response(JSON.stringify(body), { status: c.res.status, headers });
 });
+
+// Notițe pentru echipă (sarcini, scripturi de filmat).
+adminRoutes.route('/', notesRoutes);
 
 adminRoutes.post('/logout', async (c) => {
   const t = tokenFrom(c);

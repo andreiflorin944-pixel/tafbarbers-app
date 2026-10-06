@@ -57,6 +57,21 @@ async function call<T>(method: string, path: string, token: string | null, body?
   return json as T;
 }
 
+/** Sarcină, script de filmat sau notiță dată de admin. barberId null = pentru toată echipa. */
+export type StaffNote = {
+  id: string;
+  kind: 'task' | 'script' | 'note';
+  title: string;
+  body: string;
+  barberId: string | null;
+  barberName: string | null;
+  dueDay: string | null;
+  doneAt: string | null;
+  doneByName: string | null;
+  authorName: string | null;
+  createdAt: string;
+};
+
 export const staffApi = {
   login: (email: string, password: string) => call<{ token: string }>('POST', '/admin/login', null, { email, password }),
   logout: (t: string) => call('POST', '/admin/logout', t).catch(() => undefined),
@@ -109,6 +124,8 @@ export const staffApi = {
     call<{ id: string }>('POST', `/admin/clients/${encodeURIComponent(id)}/before-after`, t, { before, after }),
   deleteBeforeAfter: (t: string, pid: string) => call<{ ok: true }>('DELETE', `/admin/before-after/${encodeURIComponent(pid)}`, t),
   unclosed: (t: string) => call<StaffBooking[]>('GET', '/admin/bookings/unclosed', t),
+  notes: (t: string, status = 'open') => call<StaffNote[]>('GET', `/admin/notes?status=${status}`, t),
+  setNoteDone: (t: string, id: string, done: boolean) => call<StaffNote>('PATCH', `/admin/notes/${encodeURIComponent(id)}`, t, { done }),
   checkGiftCard: (t: string, code: string) =>
     call<{ code: string; balance: number; amount: number; status: string; expiresAt: string | null }>('GET', `/admin/gift-cards/check?code=${encodeURIComponent(code)}`, t),
   checkout: (t: string, id: string) => call<StaffCheckout>('GET', `/admin/bookings/${encodeURIComponent(id)}/checkout`, t),

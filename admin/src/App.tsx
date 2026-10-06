@@ -20,11 +20,13 @@ import { ReportsPage } from './pages/Reports';
 import { NotificationsPage } from './pages/Notifications';
 import { GiftCardsPage } from './pages/GiftCards';
 import { StockPage } from './pages/Stock';
+import { NotesPage } from './pages/Notes';
 
 const PAGES = [
   { key: 'calendar', label: 'Programări', show: () => true, el: CalendarPage },
   { key: 'dashboard', label: 'Tablou de bord', show: (m: Me) => m.permissions.reports, el: DashboardPage },
   { key: 'reports', label: 'Rapoarte', show: (m: Me) => m.permissions.reports, el: ReportsPage },
+  { key: 'notes', label: 'Notițe echipă', show: () => true, el: NotesPage },
   { key: 'clients', label: 'Clienți', show: (m: Me) => m.permissions.clients, el: ClientsPage },
   { key: 'services', label: 'Servicii', show: (m: Me) => m.owner, el: ServicesPage },
   { key: 'barbers', label: 'Frizeri și program', show: (m: Me) => m.owner, el: BarbersPage },

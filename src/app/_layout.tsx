@@ -56,6 +56,7 @@ export default function RootLayout() {
             <Stack.Screen name="staff/stats" options={{ title: 'Tablou de bord' }} />
             <Stack.Screen name="staff/reports" options={{ title: 'Rapoarte' }} />
             <Stack.Screen name="staff/register" options={{ title: 'Registrul de încasări' }} />
+            <Stack.Screen name="staff/notes" options={{ title: 'Notițele mele' }} />
             <Stack.Screen name="staff/hours" options={{ title: 'Ore de lucru și concedii' }} />
             <Stack.Screen name="staff/services" options={{ title: 'Servicii' }} />
             <Stack.Screen name="staff/new" options={{ title: 'Programare nouă' }} />

@@ -107,6 +107,7 @@ const MESSAGES: Record<string, string> = {
   invalid_qty: 'Cantitatea nu e corectă.',
   invalid_vat: 'Cota de TVA nu e corectă.',
   invalid_day: 'Data nu e corectă.',
+  invalid_barber: 'Frizerul ales nu mai există.',
   product_not_found: 'Produsul nu mai există.',
   stock_too_low: 'Nu e destul stoc (produsele s-au vândut sau folosit între timp).',
   stock_not_tracked: 'Produsul nu are stoc urmărit.',
