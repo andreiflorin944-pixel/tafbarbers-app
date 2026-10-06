@@ -17,13 +17,11 @@ type Settings = {
   reward: Reward;
 };
 type Upcoming = Array<{ day: string; clients: Array<{ id: string; name: string; phone: string; birthDate: string }> }>;
-const LANGS: Record<Lang, string> = { ro: 'Română', en: 'Engleză (automat)', fr: 'Franceză (automat)' };
 
 export function BirthdaysPage() {
   const settings = useLoad(() => api<Settings>('GET', '/admin/birthday-settings'));
   const upcoming = useLoad(() => api<Upcoming>('GET', '/admin/birthdays?days=14'));
   const [s, setS] = useState<Settings | null>(null);
-  const [lang, setLang] = useState<Lang>('ro');
   const [saved, setSaved] = useState(false);
   const { busy, error, run } = useAction();
 
@@ -73,19 +71,13 @@ export function BirthdaysPage() {
               ))}
             </select>
           </Field>
-          <div className="row" style={{ gap: 6 }}>
-            {(Object.keys(LANGS) as Lang[]).map((l) => (
-              <button key={l} className={l === lang ? 'sm' : 'ghost sm'} onClick={() => setLang(l)}>
-                {LANGS[l]}
-              </button>
-            ))}
-          </div>
-          <Field label={`Titlu · ${LANGS[lang]}`}>
-            <input value={s.title[lang]} onChange={(e) => set({ title: { ...s.title, [lang]: e.target.value } })} maxLength={80} />
+          <Field label="Titlu">
+            <input value={s.title.ro} onChange={(e) => set({ title: { ...s.title, ro: e.target.value } })} maxLength={80} />
           </Field>
-          <Field label={`Mesaj · ${LANGS[lang]}. {nume} = prenumele clientului, {salon} = numele salonului`}>
-            <textarea value={s.message[lang]} onChange={(e) => set({ message: { ...s.message, [lang]: e.target.value } })} maxLength={300} />
+          <Field label="Mesaj. {nume} = prenumele clientului, {salon} = numele salonului">
+            <textarea value={s.message.ro} onChange={(e) => set({ message: { ...s.message, ro: e.target.value } })} maxLength={300} />
           </Field>
+          <div className="muted small">Scrii doar în română. Se traduce singur în engleză și franceză când salvezi.</div>
           <label className="check">
             <input type="checkbox" checked={s.bonus} onChange={(e) => set({ bonus: e.target.checked })} /> Dă și un bonus de ziua lui (apare în contul clientului)
           </label>

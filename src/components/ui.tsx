@@ -89,7 +89,9 @@ export function ServiceRow({ service, onPress, selected }: { service: Service; o
       {service.imageUrl ? (
         <Image source={{ uri: mediaUrl(service.imageUrl)! }} style={styles.thumb} />
       ) : (
-        <View style={[styles.swatch, { backgroundColor: service.color }]} />
+        <View style={[styles.thumb, { backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 4, borderLeftColor: service.color }]}>
+          <Ionicons name="cut-outline" size={24} color={colors.gold} />
+        </View>
       )}
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{service.name}</Text>

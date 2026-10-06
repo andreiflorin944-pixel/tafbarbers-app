@@ -3,11 +3,6 @@ import { api, type Me, type Promo, type Service } from '../api';
 import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
 
 const ICONS: Record<string, string> = { pricetag: 'Etichetă (ofertă)', flame: 'Flacără (popular)', 'bag-handle': 'Sacoșă (produs)', school: 'Academie' };
-const LANGS = [
-  { code: 'ro', label: 'Română' },
-  { code: 'en', label: 'Engleză (automat)' },
-  { code: 'fr', label: 'Franceză (automat)' },
-] as const;
 type Texts = { kicker: string; title: string; text: string; cta: string };
 
 export function PromosPage(_: { me: Me }) {
@@ -22,7 +17,7 @@ export function PromosPage(_: { me: Me }) {
         <button onClick={() => setEdit({ icon: 'pricetag', action: { type: 'book' }, active: true, sort: promos.length + 1, translations: {} })}>+ Banner nou</button>
       </div>
       <p className="muted small" style={{ marginTop: -8 }}>
-        Apar sus pe prima pagină a aplicației, în ordinea de mai jos, și se schimbă singure. Scrii doar în română; engleza și franceza se traduc singure la salvare (le poți corecta pe tabul limbii).
+        Apar sus pe prima pagină a aplicației, în ordinea de mai jos, și se schimbă singure. Scrii doar în română; engleza și franceza se traduc singure la salvare.
       </p>
       {!data.data ? (
         <Loading error={data.error} />
@@ -68,7 +63,7 @@ export function PromosPage(_: { me: Me }) {
 }
 
 function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; services: Service[]; onClose: () => void; onDone: () => void }) {
-  const [lang, setLang] = useState<'ro' | 'en' | 'fr'>('ro');
+  const lang = 'ro';
   const [texts, setTexts] = useState<Record<string, Texts>>({
     ro: { kicker: p.kicker ?? '', title: p.title ?? '', text: p.text ?? '', cta: p.cta ?? '' },
     en: { kicker: '', title: '', text: '', cta: '', ...p.translations?.en },
@@ -112,24 +107,18 @@ function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; servi
   return (
     <Modal title={p.id ? 'Editează bannerul' : 'Banner nou'} onClose={onClose}>
       <div className="grid">
-        <div className="tabs">
-          {LANGS.map((l) => (
-            <button key={l.code} className={l.code === lang ? 'on sm' : 'sm'} onClick={() => setLang(l.code)}>
-              {l.label}
-            </button>
-          ))}
-        </div>
+        <div className="muted small">Scrii doar în română. Se traduce singur în engleză și franceză când salvezi.</div>
         <Field label="Etichetă mică (ex. OFERTA SĂPTĂMÂNII)">
-          <input value={t.kicker} onChange={(e) => setT({ kicker: e.target.value })} placeholder={lang !== 'ro' ? texts.ro.kicker : ''} />
+          <input value={t.kicker} onChange={(e) => setT({ kicker: e.target.value })} />
         </Field>
         <Field label="Titlu">
-          <input value={t.title} onChange={(e) => setT({ title: e.target.value })} placeholder={lang !== 'ro' ? texts.ro.title : ''} />
+          <input value={t.title} onChange={(e) => setT({ title: e.target.value })} />
         </Field>
         <Field label="Text">
-          <textarea value={t.text} onChange={(e) => setT({ text: e.target.value })} placeholder={lang !== 'ro' ? texts.ro.text : ''} style={{ minHeight: 60 }} />
+          <textarea value={t.text} onChange={(e) => setT({ text: e.target.value })} style={{ minHeight: 60 }} />
         </Field>
         <Field label="Text buton">
-          <input value={t.cta} onChange={(e) => setT({ cta: e.target.value })} placeholder={lang !== 'ro' ? texts.ro.cta : ''} />
+          <input value={t.cta} onChange={(e) => setT({ cta: e.target.value })} />
         </Field>
         <Field label="Poză de fundal (opțional; textul apare alb peste poză)">
           <ImagePicker value={imageUrl} onChange={setImageUrl} maxPx={1200} />

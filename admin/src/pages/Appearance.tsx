@@ -9,11 +9,6 @@ const BACKGROUNDS = [
   { hex: '#1E1F22', label: 'Gri foarte închis' },
   { hex: '#2B2D31', label: 'Gri antracit' },
 ];
-const LANGS = [
-  { code: 'ro', label: 'Română', ph: 'Bine ai venit' },
-  { code: 'en', label: 'Engleză (automat)', ph: 'Welcome' },
-  { code: 'fr', label: 'Franceză (automat)', ph: 'Bienvenue' },
-] as const;
 
 const DEFAULTS: Omit<Appearance, 'logoUrl' | 'title' | 'welcome'> = {
   accent: '#F9A11B',
@@ -138,11 +133,10 @@ export function AppearancePage() {
           <Field label="Nume pe prima pagină (apare când nu ai logo)">
             <input value={v.title} onChange={(e) => set({ title: e.target.value })} maxLength={40} />
           </Field>
-          {LANGS.map((l) => (
-            <Field key={l.code} label={`Mesaj de bun venit, ${l.label} (gol = „${l.ph}”)`}>
-              <input value={v.welcome[l.code]} onChange={(e) => set({ welcome: { ...v.welcome, [l.code]: e.target.value } })} placeholder={l.ph} maxLength={60} />
-            </Field>
-          ))}
+          <Field label="Mesaj de bun venit (gol = „Bine ai venit”)">
+            <input value={v.welcome.ro} onChange={(e) => set({ welcome: { ...v.welcome, ro: e.target.value } })} placeholder="Bine ai venit" maxLength={60} />
+          </Field>
+          <div className="muted small">Scrii doar în română. Se traduce singur în engleză și franceză când salvezi.</div>
           {error ? <div className="err">{error}</div> : null}
           <div className="row">
             <button

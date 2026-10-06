@@ -9,16 +9,11 @@ const DOCS = [
   { key: 'terms', label: 'Termeni și condiții' },
   { key: 'privacy', label: 'Confidențialitate (GDPR)' },
 ] as const;
-const LANGS = [
-  { code: 'ro', label: 'Română' },
-  { code: 'en', label: 'English' },
-  { code: 'fr', label: 'Français' },
-] as const;
 
 export function LegalPage({ me }: { me: Me }) {
   const data = useLoad(() => api<Record<string, DocData>>('GET', '/admin/legal'));
   const [doc, setDoc] = useState<'terms' | 'privacy'>('terms');
-  const [lang, setLang] = useState<'ro' | 'en' | 'fr'>('ro');
+  const lang = 'ro';
   const [versions, setVersions] = useState<Record<string, { title: string; body: string }>>({});
   const [saved, setSaved] = useState(false);
   const { busy, error, run } = useAction();
@@ -66,18 +61,11 @@ export function LegalPage({ me }: { me: Me }) {
       </div>
       <div className="card grid" style={{ maxWidth: 820 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <div className="tabs" style={{ marginBottom: 0 }}>
-            {LANGS.map((l) => (
-              <button key={l.code} className={l.code === lang ? 'on sm' : 'sm'} onClick={() => setLang(l.code)}>
-                {l.label}
-              </button>
-            ))}
-          </div>
+          <span className="muted small">Scrii doar în română. Regulamentele rămân în română, varianta oficială, și în aplicația în engleză sau franceză.</span>
           <span className="muted small">
             {d.isDefault ? 'Model standard, încă nesalvat de tine' : d.updatedAt ? `Actualizat ${date(d.updatedAt)}` : ''}
           </span>
         </div>
-        {lang !== 'ro' ? <p className="muted small" style={{ margin: 0 }}>Opțional. Dacă lași gol, clienții cu limba asta văd textul în română.</p> : null}
         <Field label="Titlu">
           <input value={v.title} onChange={(e) => set({ title: e.target.value })} disabled={!me.owner} />
         </Field>
