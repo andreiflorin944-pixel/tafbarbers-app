@@ -33,10 +33,17 @@ export function ClientsPage({ me }: { me: Me }) {
       <div className="head">
         <h1>Clienți</h1>
         <div className="row">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Caută după nume, telefon sau e-mail" style={{ maxWidth: 320 }} />
-          <button className="ghost" onClick={downloadCsv}>
-            Export Excel (CSV)
-          </button>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={me.permissions.contacts ? 'Caută după nume, telefon sau e-mail' : 'Caută după nume sau numărul complet'}
+            style={{ maxWidth: 320 }}
+          />
+          {me.permissions.contacts ? (
+            <button className="ghost" onClick={downloadCsv}>
+              Export Excel (CSV)
+            </button>
+          ) : null}
         </div>
       </div>
       {!list.data ? (
@@ -93,7 +100,7 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
   }, [c.data]);
 
   return (
-    <Modal title={c.data ? c.data.name || c.data.phone : 'Client'} onClose={onClose}>
+    <Modal title={c.data ? c.data.name || c.data.phone || 'Client' : 'Client'} onClose={onClose}>
       {!c.data ? (
         <Loading error={c.error} />
       ) : (
@@ -101,7 +108,7 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
           <div className="row" style={{ alignItems: 'center', gap: 14 }}>
             {c.data.photoUrl ? <img src={c.data.photoUrl} alt="" style={{ width: 64, height: 64, borderRadius: 32, objectFit: 'cover' }} /> : null}
             <div className="muted">
-              <a href={`tel:${c.data.phone}`}>{c.data.phone}</a>
+              {c.data.phone ? <a href={`tel:${c.data.phone}`}>{c.data.phone}</a> : 'Telefon și e-mail ascunse'}
               {c.data.email ? ` · ${c.data.email}` : ''} · limba {c.data.lang.toUpperCase()}
               {c.data.birthDate ? <div>Data nașterii: {c.data.birthDate.split('-').reverse().join('.')}</div> : null}
             </div>

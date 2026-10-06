@@ -1,5 +1,5 @@
 import type { Context, Next } from 'hono';
-import { HttpError, parsePerms, type AppEnv } from './env';
+import { HttpError, isRole, parsePerms, type AppEnv } from './env';
 import { iso } from './time';
 
 const enc = new TextEncoder();
@@ -102,12 +102,13 @@ export async function requireClient(c: Context<AppEnv>, next: Next) {
 export async function requireAdmin(c: Context<AppEnv>, next: Next) {
   const s = await lookup(c, 'admin');
   if (!s) throw new HttpError(401, 'unauthorized');
-  const a = await c.env.DB.prepare('SELECT id, barber_id, permissions FROM admins WHERE id = ?')
+  const a = await c.env.DB.prepare('SELECT id, barber_id, permissions, role FROM admins WHERE id = ?')
     .bind(s.subject_id)
-    .first<{ id: string; barber_id: string | null; permissions: string }>();
+    .first<{ id: string; barber_id: string | null; permissions: string; role: string }>();
   if (!a) throw new HttpError(401, 'unauthorized');
-  const owner = !a.barber_id;
-  c.set('admin', { kind: 'admin', adminId: a.id, barberId: a.barber_id, owner, perms: parsePerms(a.permissions, owner) });
+  const role = isRole(a.role) ? a.role : 'barber';
+  const owner = role === 'org_admin';
+  c.set('admin', { kind: 'admin', adminId: a.id, barberId: a.barber_id, role, owner, perms: parsePerms(a.permissions, role) });
   await next();
 }
 

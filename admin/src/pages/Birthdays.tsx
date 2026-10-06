@@ -119,8 +119,13 @@ export function BirthdaysPage() {
                 <b className={d.day === today() ? 'success' : undefined}>{d.day === today() ? 'Azi 🕯️' : longDate(`${d.day}T12:00:00Z`)}</b>
                 {d.clients.map((c) => (
                   <div key={c.id} className="small">
-                    {c.name || 'Client'} · {age(c.birthDate, d.day)} ani ·{' '}
-                    <a href={`tel:${c.phone}`}>{c.phone}</a>
+                    {c.name || 'Client'} · {age(c.birthDate, d.day)} ani
+                    {c.phone ? (
+                      <>
+                        {' · '}
+                        <a href={`tel:${c.phone}`}>{c.phone}</a>
+                      </>
+                    ) : null}
                   </div>
                 ))}
               </div>

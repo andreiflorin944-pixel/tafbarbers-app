@@ -3,7 +3,7 @@ import { router, type Href } from 'expo-router';
 import type { ComponentProps } from 'react';
 import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { panelUrl } from '@/api/staff';
+import { panelUrl, ROLE_LABELS } from '@/api/staff';
 import { styles as ui } from '@/components/ui';
 import { useStaff } from '@/state/Staff';
 import { colors, space } from '@/theme';
@@ -75,7 +75,7 @@ export default function StaffMenu() {
           </View>
         </Pressable>
         <Text style={[ui.muted, { fontSize: 12, textAlign: 'center', marginTop: space.lg }]}>
-          {staff.name || staff.email} · {owner ? 'Proprietar' : 'Frizer'}
+          {staff.name || staff.email} · {ROLE_LABELS[staff.role ?? (owner ? 'org_admin' : 'barber')]}
         </Text>
       </ScrollView>
     </SafeAreaView>

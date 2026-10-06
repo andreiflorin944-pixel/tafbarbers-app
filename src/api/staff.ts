@@ -8,8 +8,10 @@ export const mediaUrl = (u: string | null | undefined): string | null => (!u ? n
 
 export const apiUrl: string = (process.env.EXPO_PUBLIC_API_URL || (Constants.expoConfig?.extra?.apiUrl as string | undefined) || '').replace(/\/+$/, '');
 
-export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'timeoff' | 'stats' | 'shop';
-export type StaffMe = { id: string; email: string; name: string; barberId: string | null; owner: boolean; permissions: Record<Perm, boolean> };
+export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'contacts' | 'timeoff' | 'stats' | 'shop';
+export type StaffRole = 'org_admin' | 'location_admin' | 'barber';
+export const ROLE_LABELS: Record<StaffRole, string> = { org_admin: 'Administrator', location_admin: 'Administrator de locație', barber: 'Frizer' };
+export type StaffMe = { id: string; email: string; name: string; barberId: string | null; role?: StaffRole; owner: boolean; permissions: Record<Perm, boolean> };
 export type StaffBooking = {
   id: string;
   clientId: string;
@@ -22,7 +24,7 @@ export type StaffBooking = {
   source: string;
   note: string;
   clientName: string;
-  clientPhone: string;
+  clientPhone?: string; // lipsește fără dreptul „contacts”
   serviceName: string;
   barberName: string;
   // Confirmarea frizerului la finalizare: suma plătită sau pe abonament.
@@ -111,7 +113,7 @@ export type StaffBarber = {
 export type StaffTimeOff = { id: number; barberId: string | null; start: string; end: string; reason: string };
 export type StaffClient = {
   id: string;
-  phone: string;
+  phone?: string; // lipsește fără dreptul „contacts”
   name: string;
   email: string | null;
   notes: string;
@@ -138,6 +140,6 @@ export type StaffOrder = {
   note: string;
   createdAt: string;
   clientName: string;
-  clientPhone: string;
+  clientPhone?: string; // lipsește fără dreptul „contacts”
   items: Array<{ productId: string; name: string; price: number; qty: number }>;
 };

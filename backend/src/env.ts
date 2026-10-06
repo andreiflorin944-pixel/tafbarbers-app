@@ -11,31 +11,43 @@ export type Env = {
 };
 
 export type ClientSession = { kind: 'client'; clientId: string };
-// Drepturi configurabile pentru conturile de frizer. Proprietarul le are pe toate.
-export const PERMS = ['bookings_all', 'bookings_create', 'bookings_manage', 'clients', 'timeoff', 'stats', 'shop'] as const;
+// Drepturi configurabile pe conturile echipei. Administratorul de organizație le are pe toate;
+// celelalte roluri pornesc de la drepturile implicite ale rolului, iar adminul le poate schimba pe fiecare cont.
+export const PERMS = ['bookings_all', 'bookings_create', 'bookings_manage', 'clients', 'contacts', 'timeoff', 'stats', 'shop'] as const;
 export type Perm = (typeof PERMS)[number];
 export type Perms = Record<Perm, boolean>;
-export const DEFAULT_BARBER_PERMS: Perms = {
-  bookings_all: false, // vede programările tuturor frizerilor
-  bookings_create: true, // adaugă programări
-  bookings_manage: true, // anulează / marchează finalizată sau neprezentare
-  clients: false, // lista de clienți și istoricul lor
-  timeoff: true, // își pune concedii și pauze
-  stats: false, // vede încasările
-  shop: false, // vede și pregătește comenzile din magazin
+export const ROLES = ['org_admin', 'location_admin', 'barber'] as const;
+export type Role = (typeof ROLES)[number];
+export const ROLE_PERMS: Record<Exclude<Role, 'org_admin'>, Perms> = {
+  // Frizerul: își vede programările, caută clienți și le completează fișa, dar fără telefon și e-mail.
+  barber: {
+    bookings_all: false, // vede programările tuturor frizerilor
+    bookings_create: true, // adaugă programări
+    bookings_manage: true, // anulează / marchează finalizată sau neprezentare
+    clients: true, // caută clienți și le vede fișa și istoricul
+    contacts: false, // vede telefonul și e-mailul clienților
+    timeoff: true, // își pune concedii și pauze
+    stats: false, // vede încasările
+    shop: false, // vede și pregătește comenzile din magazin
+  },
+  // Administratorul de locație: vede toate programările și datele de contact.
+  location_admin: { bookings_all: true, bookings_create: true, bookings_manage: true, clients: true, contacts: true, timeoff: true, stats: true, shop: true },
 };
-export function parsePerms(raw: string | null | undefined, owner: boolean): Perms {
-  if (owner) return Object.fromEntries(PERMS.map((p) => [p, true])) as Perms;
+export const DEFAULT_BARBER_PERMS = ROLE_PERMS.barber;
+export const isRole = (r: unknown): r is Role => ROLES.includes(r as Role);
+export function parsePerms(raw: string | null | undefined, role: Role): Perms {
+  if (role === 'org_admin') return Object.fromEntries(PERMS.map((p) => [p, true])) as Perms;
   let saved: Partial<Perms> = {};
   try {
     saved = JSON.parse(raw || '{}');
   } catch {
     // valori stricate: rămân cele implicite
   }
-  return Object.fromEntries(PERMS.map((p) => [p, typeof saved[p] === 'boolean' ? saved[p] : DEFAULT_BARBER_PERMS[p]])) as Perms;
+  const base = ROLE_PERMS[role] ?? ROLE_PERMS.barber;
+  return Object.fromEntries(PERMS.map((p) => [p, typeof saved[p] === 'boolean' ? saved[p] : base[p]])) as Perms;
 }
 
-export type AdminSession = { kind: 'admin'; adminId: string; barberId: string | null; owner: boolean; perms: Perms };
+export type AdminSession = { kind: 'admin'; adminId: string; barberId: string | null; role: Role; owner: boolean; perms: Perms };
 
 export type AppEnv = {
   Bindings: Env;

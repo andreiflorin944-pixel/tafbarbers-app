@@ -88,6 +88,7 @@ const MESSAGES: Record<string, string> = {
   plan_not_found: 'Abonamentul nu mai există sau e ascuns.',
   invalid_amount: 'Suma nu e corectă.',
   bonus_not_active: 'Bonusul nu mai e activ.',
+  invalid_role: 'Rolul nu e corect.',
   invalid_hour: 'Alege o oră între 06:00 și 21:00.',
   invalid_period: 'Perioada trebuie să fie între 1 și 3650 de zile.',
   invalid_cuts: 'Numărul de tunsori trebuie să fie între 1 și 1000 (sau bifează Nelimitat).',
@@ -307,13 +308,25 @@ export type Business = {
   maxDaysAhead?: number;
   cancellationPolicy?: string;
 };
-export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'timeoff' | 'stats' | 'shop';
-export type Me = { id: string; email: string; name: string; barberId: string | null; owner: boolean; permissions: Record<Perm, boolean> };
+export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'contacts' | 'timeoff' | 'stats' | 'shop';
+export type Role = 'org_admin' | 'location_admin' | 'barber';
+export const ROLE_LABELS: Record<Role, string> = {
+  org_admin: 'Administrator de organizație',
+  location_admin: 'Administrator de locație',
+  barber: 'Frizer',
+};
+export const ROLE_HELP: Record<Role, string> = {
+  org_admin: 'Vede și schimbă tot, inclusiv setările, serviciile și echipa.',
+  location_admin: 'Vede toate programările și datele de contact ale clienților. Nu schimbă setările afacerii.',
+  barber: 'Își vede programările, caută clienți și le completează fișa. Fără telefon și e-mail, dacă nu bifezi.',
+};
+export type Me = { id: string; email: string; name: string; barberId: string | null; role?: Role; owner: boolean; permissions: Record<Perm, boolean> };
 export const PERM_LABELS: Record<Perm, string> = {
   bookings_all: 'Vede programările tuturor frizerilor',
   bookings_create: 'Adaugă programări',
   bookings_manage: 'Anulează și marchează programări (finalizată, neprezentare)',
-  clients: 'Vede lista de clienți și istoricul lor',
+  clients: 'Caută clienți, le vede fișa și istoricul',
+  contacts: 'Vede telefonul și e-mailul clienților (și exportă lista)',
   timeoff: 'Își pune singur concedii și pauze',
   stats: 'Vede încasările',
   shop: 'Vede și pregătește comenzile din magazin',

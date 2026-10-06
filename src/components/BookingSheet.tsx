@@ -130,15 +130,17 @@ export function BookingSheet({
             <Line icon="chatbubble-outline" text={`„${b.note}”`} />
           ) : null}
           <View style={{ gap: space.sm, marginTop: space.md }}>
-            {b.clientPhone ? (
+            {b.clientPhone || b.clientId ? (
               <View style={{ flexDirection: "row", gap: space.sm }}>
-                <View style={{ flex: 1 }}>
-                  <Button
-                    title="Sună"
-                    variant="ghost"
-                    onPress={() => Linking.openURL(`tel:${b.clientPhone}`)}
-                  />
-                </View>
+                {b.clientPhone ? (
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      title="Sună"
+                      variant="ghost"
+                      onPress={() => Linking.openURL(`tel:${b.clientPhone}`)}
+                    />
+                  </View>
+                ) : null}
                 {b.clientId ? (
                   <View style={{ flex: 1 }}>
                     <Button

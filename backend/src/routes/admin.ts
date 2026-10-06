@@ -26,7 +26,7 @@ import {
   type ServiceRow,
   BARBER_SERVICE_COLS,
 } from '../db';
-import { HttpError, PERMS, parsePerms, type AppEnv, type Perm } from '../env';
+import { HttpError, PERMS, isRole, parsePerms, type AppEnv, type Perm, type Role } from '../env';
 import { runCampaign } from '../campaigns';
 import { iso, isBirthdayOn, isDay, localDay, localToUtc } from '../time';
 import { clientsCsv, deleteClient } from '../gdpr';
@@ -62,7 +62,7 @@ adminRoutes.post('/setup', async (c) => {
   const email = validEmail(b.email);
   validPassword(b.password);
   const id = newId('ad');
-  await c.env.DB.prepare('INSERT INTO admins (id, email, name, password_hash) VALUES (?, ?, ?, ?)')
+  await c.env.DB.prepare(`INSERT INTO admins (id, email, name, password_hash, role) VALUES (?, ?, ?, ?, 'org_admin')`)
     .bind(id, email, (b.name ?? '').slice(0, 80), await hashPassword(b.password!))
     .run();
   return c.json({ token: await createSession(c.env.DB, 'admin', id) }, 201);
@@ -83,6 +83,25 @@ const DUMMY_HASH = 'pbkdf2$100000$00000000000000000000000000000000$' + '0'.repea
 
 adminRoutes.use('*', requireAdmin);
 
+// Fără dreptul „contacts”, telefonul și e-mailul clienților nu pleacă de pe server: le scoatem din
+// toate răspunsurile cu date de clienți (programări, fișe, comenzi, abonamente, recomandări, zile de naștere).
+const CLIENT_DATA = /^\/v1\/admin\/(bookings|clients|referrals|subscriptions|birthdays|orders)(\/|$)/;
+const CONTACT_KEYS = new Set(['phone', 'email', 'clientPhone', 'clientEmail']);
+function stripContacts(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(stripContacts);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).filter(([k]) => !CONTACT_KEYS.has(k)).map(([k, x]) => [k, stripContacts(x)]));
+  return v;
+}
+adminRoutes.use('*', async (c, next) => {
+  await next();
+  if (c.get('admin').perms.contacts || !CLIENT_DATA.test(c.req.path)) return;
+  if (!(c.res.headers.get('Content-Type') ?? '').includes('application/json')) return;
+  const body = stripContacts(await c.res.json());
+  const headers = new Headers(c.res.headers);
+  headers.delete('Content-Length');
+  c.res = new Response(JSON.stringify(body), { status: c.res.status, headers });
+});
+
 adminRoutes.post('/logout', async (c) => {
   const t = tokenFrom(c);
   if (t) await deleteSession(c.env.DB, t);
@@ -94,7 +113,7 @@ adminRoutes.get('/me', async (c) => {
     .bind(c.get('admin').adminId)
     .first<{ id: string; email: string; name: string; barber_id: string | null }>();
   const s = c.get('admin');
-  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, owner: s.owner, permissions: s.perms });
+  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, role: s.role, owner: s.owner, permissions: s.perms });
 });
 
 /** Catalogul, campaniile și setările sunt doar pentru proprietar. */
@@ -107,10 +126,10 @@ function need(c: Context<AppEnv>, perm: Perm) {
   if (!c.get('admin').perms[perm]) throw new HttpError(403, 'no_permission');
 }
 
-/** Frizerul fără dreptul „bookings_all” lucrează doar pe programările lui. */
+/** Fără dreptul „bookings_all”, contul lucrează doar pe programările frizerului lui (sau pe niciuna, dacă nu e legat de un frizer). */
 function ownBarber(c: Context<AppEnv>): string | null {
   const a = c.get('admin');
-  return a.perms.bookings_all ? null : a.barberId;
+  return a.perms.bookings_all ? null : (a.barberId ?? '__niciunul__');
 }
 
 function cleanPerms(raw: unknown): Record<string, boolean> {
@@ -121,25 +140,24 @@ function cleanPerms(raw: unknown): Record<string, boolean> {
 // --- Echipa (conturi admin) ---
 
 adminRoutes.get('/admins', ownerOnly, async (c) => {
-  const r = await c.env.DB.prepare('SELECT id, email, name, barber_id, permissions FROM admins ORDER BY email').all();
+  const r = await c.env.DB.prepare('SELECT id, email, name, barber_id, permissions, role FROM admins ORDER BY email').all();
   return c.json(
-    r.results.map((a: any) => ({
-      id: a.id,
-      email: a.email,
-      name: a.name,
-      barberId: a.barber_id,
-      permissions: parsePerms(a.permissions, !a.barber_id),
-    })),
+    r.results.map((a: any) => {
+      const role: Role = isRole(a.role) ? a.role : 'barber';
+      return { id: a.id, email: a.email, name: a.name, barberId: a.barber_id, role, permissions: parsePerms(a.permissions, role) };
+    }),
   );
 });
 
 adminRoutes.post('/admins', ownerOnly, async (c) => {
-  const b = await c.req.json<{ email?: string; password?: string; name?: string; barberId?: string | null; permissions?: unknown }>();
+  const b = await c.req.json<{ email?: string; password?: string; name?: string; barberId?: string | null; role?: string; permissions?: unknown }>();
   const email = validEmail(b.email);
   validPassword(b.password);
+  // Fără rol trimis: cont legat de un frizer = frizer, altfel administrator de organizație (ca înainte).
+  const role: Role = b.role === undefined ? (b.barberId ? 'barber' : 'org_admin') : isRole(b.role) ? b.role : (() => { throw new HttpError(400, 'invalid_role'); })();
   const id = newId('ad');
-  await c.env.DB.prepare('INSERT INTO admins (id, email, name, password_hash, barber_id, permissions) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, email, (b.name ?? '').slice(0, 80), await hashPassword(b.password!), b.barberId || null, JSON.stringify(cleanPerms(b.permissions)))
+  await c.env.DB.prepare('INSERT INTO admins (id, email, name, password_hash, barber_id, role, permissions) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, email, (b.name ?? '').slice(0, 80), await hashPassword(b.password!), b.barberId || null, role, JSON.stringify(cleanPerms(b.permissions)))
     .run()
     .catch(() => {
       throw new HttpError(409, 'email_taken');
@@ -149,10 +167,12 @@ adminRoutes.post('/admins', ownerOnly, async (c) => {
 
 adminRoutes.patch('/admins/:id', ownerOnly, async (c) => {
   const id = c.req.param('id')!;
-  const b = await c.req.json<{ name?: string; barberId?: string | null; permissions?: unknown; password?: string }>();
-  if (id === c.get('admin').adminId && b.barberId) throw new HttpError(400, 'cannot_demote_self');
+  const b = await c.req.json<{ name?: string; barberId?: string | null; role?: string; permissions?: unknown; password?: string }>();
+  if (b.role !== undefined && !isRole(b.role)) throw new HttpError(400, 'invalid_role');
+  if (id === c.get('admin').adminId && b.role !== undefined && b.role !== 'org_admin') throw new HttpError(400, 'cannot_demote_self');
   const sets: string[] = [];
   const vals: unknown[] = [];
+  if (b.role !== undefined) sets.push('role = ?'), vals.push(b.role);
   if (b.name !== undefined) sets.push('name = ?'), vals.push(String(b.name).slice(0, 80));
   if (b.barberId !== undefined) sets.push('barber_id = ?'), vals.push(b.barberId || null);
   if (b.permissions !== undefined) sets.push('permissions = ?'), vals.push(JSON.stringify(cleanPerms(b.permissions)));
@@ -694,6 +714,27 @@ adminRoutes.get('/clients', async (c) => {
   need(c, 'clients');
   const q = (c.req.query('q') ?? '').trim();
   const like = `%${q.replace(/[%_]/g, '')}%`;
+  if (q && !c.get('admin').perms.contacts) {
+    // Fără dreptul „contacts”: după nume, sau după numărul de telefon complet (nu după bucăți din el).
+    const digits = q.replace(/[^\d+]/g, '');
+    let phone: string | null = null;
+    if (digits.length >= 9 && /^[\d+\s().-]+$/.test(q)) {
+      try {
+        phone = normalizePhone(q);
+      } catch {
+        phone = null;
+      }
+    }
+    const r = await c.env.DB.prepare(
+      `SELECT c.*,
+         (SELECT count(*) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS visits,
+         (SELECT max(starts_at) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS last_visit
+       FROM clients c WHERE c.deleted_at IS NULL AND ${phone ? 'c.phone = ?' : 'c.name LIKE ?'} ORDER BY c.created_at DESC LIMIT 100`,
+    )
+      .bind(phone ?? like)
+      .all<ClientRow & { visits: number; last_visit: string | null }>();
+    return c.json(r.results.map((x) => ({ ...client(x), visits: x.visits, lastVisit: x.last_visit })));
+  }
   const r = await c.env.DB.prepare(
     `SELECT c.*,
        (SELECT count(*) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS visits,
@@ -708,6 +749,7 @@ adminRoutes.get('/clients', async (c) => {
 
 adminRoutes.get('/clients.csv', async (c) => {
   need(c, 'clients');
+  need(c, 'contacts');
   return c.body(await clientsCsv(c.env), 200, {
     'Content-Type': 'text/csv; charset=utf-8',
     'Content-Disposition': `attachment; filename="clienti-tafbarbers-${iso(new Date()).slice(0, 10)}.csv"`,

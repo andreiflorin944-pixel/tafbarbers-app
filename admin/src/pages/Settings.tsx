@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, PERM_LABELS, type Barber, type Business, type Me, type Perm } from '../api';
+import { api, PERM_LABELS, ROLE_HELP, ROLE_LABELS, type Barber, type Business, type Me, type Perm, type Role } from '../api';
 import { Field, Loading, useAction, useLoad } from '../ui';
 import { date, time } from '../util';
 
@@ -95,32 +95,31 @@ function BusinessForm() {
   );
 }
 
+type TeamMember = { id: string; email: string; name: string; barberId: string | null; role: Role; permissions: Record<Perm, boolean> };
+
 function Team({ me }: { me: Me }) {
-  const data = useLoad(() =>
-    Promise.all([
-      api<Array<{ id: string; email: string; name: string; barberId: string | null; permissions: Record<Perm, boolean> }>>('GET', '/admin/admins'),
-      api<Barber[]>('GET', '/admin/barbers'),
-    ]),
-  );
+  const data = useLoad(() => Promise.all([api<TeamMember[]>('GET', '/admin/admins'), api<Barber[]>('GET', '/admin/barbers')]));
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<Role>('barber');
   const [barberId, setBarberId] = useState('');
   const { busy, error, run } = useAction();
   const [admins, barbers] = data.data ?? [[], []];
+  const patch = (id: string, body: object) => run(async () => (await api('PATCH', `/admin/admins/${id}`, body), data.reload()));
 
   return (
     <div className="card grid">
-      <h2 style={{ margin: 0 }}>Echipa (conturi în panou)</h2>
+      <h2 style={{ margin: 0 }}>Utilizatori și roluri</h2>
       <p className="muted small" style={{ margin: 0 }}>
-        Contul unui frizer are doar drepturile bifate mai jos (le poți schimba oricând). Fără frizer = proprietar, vede tot. Același cont merge și în aplicație, la Cont → Echipă.
+        Fiecare cont are un rol, iar drepturile rolului le poți schimba pe fiecare om în parte. Același cont merge în panou și în aplicație, la Cont → Echipă.
+        Legătura cu un frizer arată în ce coloană din calendar lucrează contul.
       </p>
       {admins.map((a) => (
         <div key={a.id} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
+          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
             <span>
-              {a.name || a.email} <span className="muted small">{a.email}</span>{' '}
-              <span className="pill">{a.barberId ? `frizer: ${barbers.find((b) => b.id === a.barberId)?.name ?? '?'}` : 'proprietar, vede tot'}</span>
+              {a.name || a.email} <span className="muted small">{a.email}</span>
             </span>
             {a.id !== me.id ? (
               <button className="danger sm" onClick={() => confirm(`Ștergi contul ${a.email}?`) && run(async () => (await api('DELETE', `/admin/admins/${a.id}`), data.reload()))}>
@@ -130,15 +129,33 @@ function Team({ me }: { me: Me }) {
               <span className="muted small">tu</span>
             )}
           </div>
-          {a.barberId ? (
+          <div className="grid two" style={{ marginTop: 8 }}>
+            <Field label="Rol">
+              <select value={a.role} disabled={a.id === me.id || busy} onChange={(e) => patch(a.id, { role: e.target.value, permissions: {} })}>
+                {(Object.keys(ROLE_LABELS) as Role[]).map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Frizer în calendar">
+              <select value={a.barberId ?? ''} disabled={busy} onChange={(e) => patch(a.id, { barberId: e.target.value || null })}>
+                <option value="">Niciunul</option>
+                {barbers.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div className="muted small">{ROLE_HELP[a.role]}</div>
+          {a.role !== 'org_admin' ? (
             <div className="grid" style={{ gap: 4, marginTop: 8 }}>
               {(Object.keys(PERM_LABELS) as Perm[]).map((p) => (
                 <label key={p} className="check small">
-                  <input
-                    type="checkbox"
-                    checked={a.permissions[p]}
-                    onChange={(e) => run(async () => (await api('PATCH', `/admin/admins/${a.id}`, { permissions: { ...a.permissions, [p]: e.target.checked } }), data.reload()))}
-                  />
+                  <input type="checkbox" checked={a.permissions[p]} disabled={busy} onChange={(e) => patch(a.id, { permissions: { ...a.permissions, [p]: e.target.checked } })} />
                   {PERM_LABELS[p]}
                 </label>
               ))}
@@ -146,6 +163,7 @@ function Team({ me }: { me: Me }) {
           ) : null}
         </div>
       ))}
+      <h3 style={{ margin: '6px 0 0' }}>Cont nou</h3>
       <div className="grid two">
         <Field label="Nume">
           <input value={name} onChange={(e) => setName(e.target.value)} />
@@ -156,9 +174,18 @@ function Team({ me }: { me: Me }) {
         <Field label="Parolă inițială (minim 10 caractere)">
           <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </Field>
-        <Field label="Frizer">
+        <Field label="Rol">
+          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+            {(Object.keys(ROLE_LABELS) as Role[]).map((r) => (
+              <option key={r} value={r}>
+                {ROLE_LABELS[r]}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Frizer în calendar">
           <select value={barberId} onChange={(e) => setBarberId(e.target.value)}>
-            <option value="">Niciunul (proprietar, vede tot)</option>
+            <option value="">Niciunul</option>
             {barbers.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -167,13 +194,14 @@ function Team({ me }: { me: Me }) {
           </select>
         </Field>
       </div>
+      <div className="muted small">{ROLE_HELP[role]}</div>
       {error ? <div className="err">{error}</div> : null}
       <div>
         <button
           disabled={busy || !email || password.length < 10}
           onClick={() =>
             run(async () => {
-              await api('POST', '/admin/admins', { email, name, password, barberId: barberId || null });
+              await api('POST', '/admin/admins', { email, name, password, role, barberId: barberId || null });
               setEmail('');
               setName('');
               setPassword('');

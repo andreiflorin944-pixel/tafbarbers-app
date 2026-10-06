@@ -228,8 +228,13 @@ function BookingModal({ b, canManage, owner, onClose, onChange }: { b: Booking; 
     <Modal title={`${time(b.start)} · ${b.serviceName}`} onClose={onClose}>
       <div className="grid" style={{ gap: 8 }}>
         <div>
-          <strong>{b.clientName || 'Client fără nume'}</strong> ·{' '}
-          <a href={`tel:${b.clientPhone}`}>{b.clientPhone}</a>
+          <strong>{b.clientName || 'Client fără nume'}</strong>
+          {b.clientPhone ? (
+            <>
+              {' · '}
+              <a href={`tel:${b.clientPhone}`}>{b.clientPhone}</a>
+            </>
+          ) : null}
         </div>
         {b.clientBirthday ? <div className="bday-note">🕯️ E ziua lui de naștere! Urează-i „La mulți ani” și, dacă vrei, fă-i o reducere.</div> : null}
         <div className="muted">

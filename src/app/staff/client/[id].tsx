@@ -148,10 +148,13 @@ export default function StaffClient() {
         <Avatar barber={{ id: c.id, name: c.name, role: '', initials: (c.name || '?').charAt(0).toUpperCase(), photoUrl: c.photoUrl }} size={64} />
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.text, fontSize: 24, fontWeight: '800' }}>{c.name || 'Client'}</Text>
-          <Text style={ui.muted}>
-            {c.phone}
-            {c.email ? ` · ${c.email}` : ''}
-          </Text>
+          {c.phone || c.email ? (
+            <Text style={ui.muted}>
+              {[c.phone, c.email].filter(Boolean).join(' · ')}
+            </Text>
+          ) : (
+            <Text style={ui.muted}>Telefonul și e-mailul sunt ascunse pentru contul tău.</Text>
+          )}
           {c.birthDate ? (
             <Text style={ui.muted}>
               Născut pe {formatBirth(c.birthDate)}

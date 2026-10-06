@@ -28,7 +28,7 @@ export default function StaffClients() {
   if (!staff.permissions.clients)
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, padding: space.md }}>
-        <Text style={ui.muted}>Contul tău nu are acces la lista de clienți. Cere-i proprietarului.</Text>
+        <Text style={ui.muted}>Contul tău nu are acces la clienți. Cere-i administratorului.</Text>
       </SafeAreaView>
     );
 
@@ -38,7 +38,7 @@ export default function StaffClients() {
         <Text style={s.title}>Clienți</Text>
         <View style={s.search}>
           <Ionicons name="search" size={18} color={colors.muted} />
-          <TextInput value={q} onChangeText={setQ} placeholder="Caută după nume sau telefon" placeholderTextColor={colors.muted} style={s.input} autoCorrect={false} />
+          <TextInput value={q} onChangeText={setQ} placeholder={staff.permissions.contacts ? 'Caută după nume sau telefon' : 'Caută după nume sau numărul complet'} placeholderTextColor={colors.muted} style={s.input} autoCorrect={false} />
         </View>
       </View>
       {error ? <Text style={{ color: colors.danger, paddingHorizontal: space.md }}>{error}</Text> : null}
@@ -60,9 +60,9 @@ export default function StaffClients() {
                   {c.name || 'fără nume'}
                 </Text>
                 <Text style={ui.muted}>
-                  {c.phone}
-                  {c.visits ? ` · ${c.visits} ${c.visits === 1 ? 'vizită' : 'vizite'}` : ''}
-                  {c.lastVisit ? ` · ultima ${formatDate(new Date(c.lastVisit))}` : ''}
+                  {[c.phone, c.visits ? `${c.visits} ${c.visits === 1 ? 'vizită' : 'vizite'}` : '', c.lastVisit ? `ultima ${formatDate(new Date(c.lastVisit))}` : '']
+                    .filter(Boolean)
+                    .join(' · ')}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.muted} />

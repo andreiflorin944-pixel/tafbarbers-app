@@ -3,7 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { staffApi, type StaffBooking, type StaffStats } from '@/api/staff';
+import { ROLE_LABELS, staffApi, type StaffBooking, type StaffStats } from '@/api/staff';
 import { BOOKING_STATUS, BookingSheet } from '@/components/BookingSheet';
 import { BirthdayGlow, Candle } from '@/components/Birthday';
 import { Card, styles as ui } from '@/components/ui';
@@ -42,7 +42,7 @@ export default function StaffHome() {
       <ScrollView contentContainerStyle={s.content}>
         <Text style={ui.muted}>{hello},</Text>
         <Text style={s.name}>{staff.name || staff.email}</Text>
-        <Text style={[ui.muted, { marginBottom: space.md }]}>{staff.owner ? 'Proprietar' : 'Frizer'}</Text>
+        <Text style={[ui.muted, { marginBottom: space.md }]}>{ROLE_LABELS[staff.role ?? (staff.owner ? 'org_admin' : 'barber')]}</Text>
 
         <View style={s.tiles}>
           <Tile label="Azi" value={String(list.length)} sub={list.length === 1 ? 'programare' : 'programări'} onPress={() => router.push('/staff/calendar')} />
