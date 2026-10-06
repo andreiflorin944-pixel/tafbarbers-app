@@ -1,19 +1,35 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, usingMock } from '@/api';
 import { Button, styles } from '@/components/ui';
 import { useT } from '@/i18n';
 import { parseBirth } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
-import { colors, space } from '@/theme';
+import { colors, radius, space } from '@/theme';
 
-/** Login cu numărul de telefon și un cod primit pe e-mail (principal) sau pe SMS (alternativă). */
-export function PhoneLogin({ submitTitle, onDone, initialRef }: { submitTitle?: string; onDone: (token: string) => void | Promise<void>; initialRef?: string }) {
+type Mode = 'login' | 'register';
+
+/**
+ * Intrare în cont și cont nou, pe două taburi clare. Intrarea: telefon + e-mailul din cont, apoi codul primit.
+ * Contul nou: nume, telefon, e-mail, ziua de naștere și (opțional) codul de recomandare de la un prieten.
+ */
+export function PhoneLogin({
+  submitTitle,
+  onDone,
+  initialRef,
+  initialMode,
+}: {
+  submitTitle?: string;
+  onDone: (token: string) => void | Promise<void>;
+  initialRef?: string;
+  initialMode?: Mode;
+}) {
   const { signIn } = useApp();
   const { lang } = useT();
+  const [mode, setMode] = useState<Mode>(initialMode ?? (initialRef ? 'register' : 'login'));
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -21,31 +37,48 @@ export function PhoneLogin({ submitTitle, onDone, initialRef }: { submitTitle?: 
   const [code, setCode] = useState('');
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [phoneSent, setPhoneSent] = useState<string | null>(null);
-  const [isNew, setIsNew] = useState(false);
   const [birth, setBirth] = useState('');
   const [ref, setRef] = useState(initialRef?.toUpperCase() ?? '');
   const [devCode, setDevCode] = useState<string | undefined>();
   const [accepted, setAccepted] = useState(false);
   const [marketing, setMarketing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const register = mode === 'register';
   const cleanPhone = phone.replace(/[\s\-().]/g, '');
   const cleanEmail = email.trim().toLowerCase();
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail);
   const birthOk = !!parseBirth(birth);
-  const phoneOk = /^\+?\d{9,15}$/.test(cleanPhone) && name.trim().length >= 2;
+  const phoneOk = /^\+?\d{9,15}$/.test(cleanPhone);
+  const nameOk = name.trim().length >= 2;
+  const canSend = register ? phoneOk && nameOk && emailOk && birthOk && accepted : phoneOk;
+
+  const switchMode = (m: Mode) => {
+    setMode(m);
+    setError(null);
+    setNotice(null);
+  };
 
   const send = async (via: 'email' | 'sms') => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const r = await api.requestCode({ phone: cleanPhone, email: emailOk ? cleanEmail : undefined, channel: via }, lang);
       setChannel(r.channel);
       setSentTo(r.sentTo);
       setPhoneSent(r.phone);
-      setIsNew(!!r.newAccount);
       setDevCode(r.devCode);
+      // Numărul spune dacă e cont nou sau nu; trecem singuri pe tabul potrivit, fără să pierdem ce ai scris.
+      if (r.newAccount && !register) {
+        setMode('register');
+        setNotice('Nu ai încă un cont pe numărul ăsta. Mai completează câteva date mai jos și e gata.');
+      } else if (!r.newAccount && register) {
+        setMode('login');
+        setNotice('Ai deja cont pe numărul ăsta. Scrie codul și intri direct.');
+      }
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -62,11 +95,12 @@ export function PhoneLogin({ submitTitle, onDone, initialRef }: { submitTitle?: 
         code,
         name: name.trim(),
         lang,
-        acceptTerms: accepted,
-        marketing,
-        birthDate: parseBirth(birth) ?? undefined,
+        // La intrare, acordul e cel din textul de sub buton (pentru clienții adăugați din panou, care nu l-au dat încă).
+        acceptTerms: register ? accepted : true,
+        marketing: register ? marketing : false,
+        birthDate: register ? (parseBirth(birth) ?? undefined) : undefined,
         email: emailOk ? cleanEmail : undefined,
-        ref: ref.trim() || undefined,
+        ref: register ? ref.trim() || undefined : undefined,
       });
       await signIn(token);
       await onDone(token);
@@ -77,137 +111,221 @@ export function PhoneLogin({ submitTitle, onDone, initialRef }: { submitTitle?: 
     }
   };
 
+  const field = (label: string, el: ReactNode, hint?: string | null) => (
+    <View style={{ marginTop: space.md }}>
+      <Text style={local.label}>{label}</Text>
+      {el}
+      {hint ? <Text style={local.hint}>{hint}</Text> : null}
+    </View>
+  );
+
   return (
     <View>
-      <Text style={styles.label}>Nume</Text>
-      <TextInput value={name} onChangeText={setName} editable={!sentTo} placeholder="Numele tău" placeholderTextColor={colors.muted} style={styles.input} autoComplete="name" />
-      <Text style={styles.label}>Telefon</Text>
-      <TextInput value={phone} onChangeText={setPhone} editable={!sentTo} placeholder="07xx xxx xxx" placeholderTextColor={colors.muted} style={styles.input} keyboardType="phone-pad" autoComplete="tel" />
-      <Text style={styles.label}>E-mail</Text>
-      <TextInput
-        value={email}
-        onChangeText={setEmail}
-        editable={!sentTo}
-        placeholder="nume@exemplu.ro"
-        placeholderTextColor={colors.muted}
-        style={styles.input}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="email"
-      />
+      <View style={local.tabs} accessibilityRole="tablist">
+        {(['login', 'register'] as const).map((m) => (
+          <Pressable
+            key={m}
+            onPress={() => switchMode(m)}
+            style={[local.tab, mode === m && local.tabOn]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: mode === m }}
+          >
+            <Text style={[local.tabText, mode === m && local.tabTextOn]}>{m === 'login' ? 'Intră în cont' : 'Creează cont'}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={local.headline}>{register ? 'Hai în echipa TAF.' : 'Bine ai revenit.'}</Text>
+      <Text style={local.sub}>
+        {register
+          ? 'Contul e gratuit. Rezervi în câteva secunde, strângi bonusuri și primești cadou de ziua ta.'
+          : 'Fără parole. Îți trimitem un cod de 4 cifre și ești înăuntru.'}
+      </Text>
+
+      {notice ? (
+        <View style={local.notice}>
+          <Ionicons name="information-circle" size={18} color={colors.gold} />
+          <Text style={[styles.text, { flex: 1, fontSize: 13 }]}>{notice}</Text>
+        </View>
+      ) : null}
+
+      {register
+        ? field('Cum te cheamă', <TextInput value={name} onChangeText={setName} placeholder="Prenume și nume" placeholderTextColor={colors.muted} style={styles.input} autoComplete="name" />)
+        : null}
+      {field(
+        'Telefon',
+        <TextInput value={phone} onChangeText={setPhone} editable={!sentTo} placeholder="07xx xxx xxx" placeholderTextColor={colors.muted} style={[styles.input, sentTo ? local.locked : null]} keyboardType="phone-pad" autoComplete="tel" />,
+      )}
+      {field(
+        register ? 'E-mail' : 'E-mailul din cont',
+        <TextInput
+          value={email}
+          onChangeText={setEmail}
+          editable={!sentTo}
+          placeholder="nume@exemplu.ro"
+          placeholderTextColor={colors.muted}
+          style={[styles.input, sentTo ? local.locked : null]}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+        />,
+        register ? 'Aici primești codul și confirmările.' : 'Codul vine pe e-mail. N-ai acces la e-mail? Îl poți primi și pe SMS.',
+      )}
+      {register ? (
+        <>
+          {field(
+            'Ziua de naștere',
+            <TextInput value={birth} onChangeText={setBirth} placeholder="ZZ.LL.AAAA" placeholderTextColor={colors.muted} style={styles.input} keyboardType="numbers-and-punctuation" maxLength={10} />,
+            birth.length >= 8 && !birthOk ? 'Scrie data așa: 17.05.1990' : 'Ca să-ți trimitem o surpriză de ziua ta.',
+          )}
+          {field(
+            'Cod de recomandare (opțional)',
+            <TextInput
+              value={ref}
+              onChangeText={(v) => setRef(v.toUpperCase())}
+              placeholder="Ex. ANDREI7K"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={12}
+            />,
+            'Te-a trimis un prieten? Scrie codul lui și primiți amândoi bonus.',
+          )}
+        </>
+      ) : null}
 
       {sentTo ? (
-        <>
-          {isNew ? (
-            <>
-              <Text style={styles.label}>Data nașterii (cont nou)</Text>
-              <TextInput
-                value={birth}
-                onChangeText={setBirth}
-                placeholder="ZZ.LL.AAAA"
-                placeholderTextColor={colors.muted}
-                style={styles.input}
-                keyboardType="numbers-and-punctuation"
-                maxLength={10}
-              />
-              {birth.length >= 8 && !birthOk ? <Text style={{ color: colors.danger, fontSize: 12, marginTop: 4 }}>Scrie data așa: 17.05.1990</Text> : null}
-              <Text style={styles.label}>Cod de recomandare (opțional)</Text>
-              <TextInput
-                value={ref}
-                onChangeText={(v) => setRef(v.toUpperCase())}
-                placeholder="Codul primit de la un prieten"
-                placeholderTextColor={colors.muted}
-                style={styles.input}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                maxLength={12}
-              />
-              {!emailOk ? <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>Pentru cont nou avem nevoie și de e-mail. Apasă „Schimbă datele” și completează-l.</Text> : null}
-            </>
-          ) : null}
-          <Text style={styles.label}>Codul primit pe {channel === 'email' ? 'e-mail' : 'SMS'} la {sentTo}</Text>
+        <View style={local.codeBox}>
+          <Text style={local.label}>
+            Codul trimis pe {channel === 'email' ? 'e-mail' : 'SMS'} la {sentTo}
+          </Text>
           <TextInput
             value={code}
             onChangeText={(v) => setCode(v.replace(/\D/g, ''))}
-            placeholder="1234"
+            placeholder="• • • •"
             placeholderTextColor={colors.muted}
-            style={styles.input}
+            style={[styles.input, local.code]}
             keyboardType="number-pad"
             autoComplete={channel === 'sms' ? 'sms-otp' : 'one-time-code'}
             textContentType="oneTimeCode"
             maxLength={4}
+            autoFocus
           />
           {usingMock ? (
-            <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>Versiune de test: orice cod din 4 cifre e acceptat.</Text>
+            <Text style={local.hint}>Versiune de test: orice cod din 4 cifre e acceptat.</Text>
           ) : devCode ? (
-            <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>Server de test, codul este {devCode}.</Text>
+            <Text style={local.hint}>Server de test, codul este {devCode}.</Text>
           ) : null}
           <Pressable
             onPress={() => {
               setSentTo(null);
               setCode('');
+              setNotice(null);
             }}
             style={{ marginTop: space.sm }}
           >
-            <Text style={{ color: colors.gold, fontSize: 13 }}>Schimbă datele sau retrimite codul</Text>
+            <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Schimbă numărul sau retrimite codul</Text>
           </Pressable>
-        </>
+        </View>
       ) : null}
 
-      <Pressable
-        onPress={() => setAccepted((a) => !a)}
-        style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', marginTop: space.md }}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: accepted }}
-        accessibilityLabel="Sunt de acord cu termenii și politica de confidențialitate"
-      >
-        <Ionicons name={accepted ? 'checkbox' : 'square-outline'} size={22} color={accepted ? colors.gold : colors.muted} />
-        <Text style={[styles.muted, { flex: 1, fontSize: 13, lineHeight: 19 }]}>
-          Sunt de acord cu{' '}
-          <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/terms')}>
-            Termenii și condițiile
-          </Text>{' '}
-          și cu{' '}
-          <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/privacy')}>
-            Politica de confidențialitate
-          </Text>
-          .
-        </Text>
-      </Pressable>
-
-      <Pressable
-        onPress={() => setMarketing((m) => !m)}
-        style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', marginTop: space.sm }}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: marketing }}
-        accessibilityLabel="Vreau să primesc oferte și noutăți"
-      >
-        <Ionicons name={marketing ? 'checkbox' : 'square-outline'} size={22} color={marketing ? colors.gold : colors.muted} />
-        <Text style={[styles.muted, { flex: 1, fontSize: 13, lineHeight: 19 }]}>
-          Vreau să primesc oferte și noutăți (notificări, e-mail, SMS). Opțional; se poate schimba oricând din cont.
-        </Text>
-      </Pressable>
+      {register ? (
+        <>
+          <Check checked={accepted} onPress={() => setAccepted((a) => !a)} label="Sunt de acord cu termenii și politica de confidențialitate">
+            Sunt de acord cu{' '}
+            <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/terms')}>
+              Termenii și condițiile
+            </Text>{' '}
+            și cu{' '}
+            <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/privacy')}>
+              Politica de confidențialitate
+            </Text>
+            .
+          </Check>
+          <Check checked={marketing} onPress={() => setMarketing((m) => !m)} label="Vreau să primesc oferte și noutăți">
+            Vreau oferte și noutăți (notificări, e-mail, SMS). Opțional, oprești oricând din cont.
+          </Check>
+        </>
+      ) : null}
 
       {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
 
       <View style={{ marginTop: space.lg }}>
         {sentTo ? (
-          <Button title={submitTitle ?? 'Confirmă'} disabled={code.length !== 4 || !accepted || (isNew && (!birthOk || !emailOk))} loading={busy} onPress={verify} />
+          <Button
+            title={submitTitle ?? (register ? 'Creează contul' : 'Intră')}
+            disabled={code.length !== 4 || (register && (!accepted || !birthOk || !emailOk || !nameOk))}
+            loading={busy}
+            onPress={verify}
+          />
         ) : (
           <>
-            <Button title="Trimite codul pe e-mail" disabled={!phoneOk || !emailOk || !accepted} loading={busy} onPress={() => send('email')} />
+            <Button title={register ? 'Creează contul' : 'Trimite-mi codul'} disabled={!canSend || !emailOk} loading={busy} onPress={() => send('email')} />
             <Pressable
               onPress={() => send('sms')}
-              disabled={!phoneOk || !accepted || busy}
-              style={{ marginTop: space.md, alignItems: 'center', opacity: !phoneOk || !accepted ? 0.4 : 1 }}
+              disabled={!canSend || busy}
+              style={{ marginTop: space.md, alignItems: 'center', opacity: !canSend ? 0.4 : 1 }}
               accessibilityRole="button"
             >
-              <Text style={{ color: colors.gold, fontSize: 14, fontWeight: '600' }}>Nu ai acces la e-mail? Primește codul pe SMS</Text>
+              <Text style={{ color: colors.gold, fontSize: 14, fontWeight: '600' }}>Primește codul pe SMS</Text>
             </Pressable>
           </>
         )}
       </View>
+
+      {!register ? (
+        <Text style={[local.hint, { textAlign: 'center', marginTop: space.md }]}>
+          Intrând în cont, ești de acord cu{' '}
+          <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/terms')}>
+            Termenii
+          </Text>{' '}
+          și{' '}
+          <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/privacy')}>
+            Politica de confidențialitate
+          </Text>
+          .
+        </Text>
+      ) : null}
+
+      <Pressable onPress={() => switchMode(register ? 'login' : 'register')} style={{ marginTop: space.lg, alignItems: 'center' }} accessibilityRole="button">
+        <Text style={styles.muted}>
+          {register ? 'Ai deja cont? ' : 'Prima dată la TAF? '}
+          <Text style={{ color: colors.gold, fontWeight: '700' }}>{register ? 'Intră în cont' : 'Creează cont'}</Text>
+        </Text>
+      </Pressable>
     </View>
   );
 }
+
+function Check({ checked, onPress, label, children }: { checked: boolean; onPress: () => void; label: string; children: ReactNode }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', marginTop: space.md }}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={label}
+    >
+      <Ionicons name={checked ? 'checkbox' : 'square-outline'} size={22} color={checked ? colors.gold : colors.muted} />
+      <Text style={[styles.muted, { flex: 1, fontSize: 13, lineHeight: 19 }]}>{children}</Text>
+    </Pressable>
+  );
+}
+
+const local = StyleSheet.create({
+  tabs: { flexDirection: 'row', backgroundColor: colors.cardAlt, borderRadius: radius.pill, padding: 4, marginBottom: space.lg },
+  tab: { flex: 1, paddingVertical: 11, borderRadius: radius.pill, alignItems: 'center' },
+  tabOn: { backgroundColor: colors.gold },
+  tabText: { color: colors.muted, fontWeight: '700', fontSize: 15 },
+  tabTextOn: { color: colors.onGold },
+  headline: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
+  sub: { color: colors.muted, fontSize: 15, lineHeight: 21, marginTop: 6 },
+  label: { color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: 6 },
+  hint: { color: colors.muted, fontSize: 12, marginTop: 5 },
+  locked: { opacity: 0.6 },
+  notice: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', backgroundColor: colors.cardAlt, borderRadius: radius.md, padding: space.sm, marginTop: space.md, borderWidth: 1, borderColor: colors.goldDark },
+  codeBox: { marginTop: space.lg, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.card },
+  code: { fontSize: 26, letterSpacing: 12, textAlign: 'center', fontWeight: '800' },
+});

@@ -38,7 +38,7 @@ export default function RootLayout() {
             <Stack.Screen name="book/time" options={{ title: 'Alege ora' }} />
             <Stack.Screen name="book/confirm" options={{ title: 'Confirmare' }} />
             <Stack.Screen name="book/success" options={{ headerShown: false, gestureEnabled: false }} />
-            <Stack.Screen name="login" options={{ title: 'Intră în cont', presentation: 'modal' }} />
+            <Stack.Screen name="login" options={{ title: 'TAF Barber’s', presentation: 'modal' }} />
             <Stack.Screen name="identity" options={{ title: 'TAF Identity' }} />
             <Stack.Screen name="rewards" options={{ title: 'Bonusuri și recomandări' }} />
             <Stack.Screen name="subscriptions" options={{ title: 'Abonamente' }} />

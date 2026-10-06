@@ -28,7 +28,7 @@ import {
   type ServiceRow,
   BARBER_SERVICE_COLS,
 } from '../db';
-import { HttpError, PERMS, isRole, parsePerms, type AppEnv, type Perm, type Role } from '../env';
+import { HttpError, PERMS, isRole, parsePerms, type AppEnv, type Env, type Perm, type Role } from '../env';
 import { runCampaign } from '../campaigns';
 import { iso, isBirthdayOn, isDay, localDay, localToUtc } from '../time';
 import { clientsCells, clientsCsv, deleteClient } from '../gdpr';
@@ -53,6 +53,7 @@ import { xlsx } from '../xlsx';
 import { adjustMove, cancelNir, createNir, getNir, listNir, stockOut, type NirInput } from '../stock';
 import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCard, saveAutomations, type GiftCardRow } from '../growth';
 import { sendPush, sendSms } from '../notify';
+import { autoTranslate } from '../translate';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -1364,8 +1365,28 @@ function promoValues(b: PromoInput, create: boolean) {
   return v;
 }
 
+/** Engleza și franceza bannerului se completează singure din română (cele corectate de mână rămân). */
+async function translatePromo(env: Env, v: Record<string, unknown>, prev: PromoRow | null) {
+  type Tr = Partial<Record<'en' | 'fr', Record<string, string>>>;
+  const prevTr = JSON.parse(prev?.translations || '{}') as Tr;
+  const nextTr = (v.translations !== undefined ? JSON.parse(v.translations as string) : prevTr) as Tr;
+  const out = { en: { ...nextTr.en }, fr: { ...nextTr.fr } };
+  for (const k of ['kicker', 'title', 'text', 'cta'] as const) {
+    const ro = (v[k] as string | undefined) ?? prev?.[k] ?? '';
+    const r = await autoTranslate(
+      env,
+      { ro: prev?.[k] ?? '', en: prevTr.en?.[k] ?? '', fr: prevTr.fr?.[k] ?? '' },
+      { ro, en: out.en[k] ?? '', fr: out.fr[k] ?? '' },
+    );
+    if (r.en) out.en[k] = r.en;
+    if (r.fr) out.fr[k] = r.fr;
+  }
+  v.translations = JSON.stringify(out);
+}
+
 adminRoutes.post('/promos', ownerOnly, async (c) => {
   const v = promoValues(await c.req.json<PromoInput>(), true);
+  await translatePromo(c.env, v, null);
   const id = newId('pr');
   const cols = ['id', ...Object.keys(v)];
   await c.env.DB.prepare(`INSERT INTO promos (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
@@ -1375,7 +1396,10 @@ adminRoutes.post('/promos', ownerOnly, async (c) => {
 });
 
 adminRoutes.patch('/promos/:id', ownerOnly, async (c) => {
-  await update(c.env.DB, 'promos', c.req.param('id')!, promoValues(await c.req.json<PromoInput>(), false));
+  const v = promoValues(await c.req.json<PromoInput>(), false);
+  const prev = await c.env.DB.prepare('SELECT * FROM promos WHERE id = ?').bind(c.req.param('id')!).first<PromoRow>();
+  if (prev) await translatePromo(c.env, v, prev);
+  await update(c.env.DB, 'promos', c.req.param('id')!, v);
   return c.json({ ok: true });
 });
 

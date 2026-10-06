@@ -24,7 +24,7 @@ const EVENTS: Array<{ k: Ev; label: string }> = [
   { k: 'gift_card', label: 'Codul cardului cadou (către cine îl primește)' },
 ];
 type Slot = { start: string; barberName: string };
-const LANGS: Record<Lang, string> = { ro: 'Română', en: 'English', fr: 'Français' };
+const LANGS: Record<Lang, string> = { ro: 'Română', en: 'Engleză (automat)', fr: 'Franceză (automat)' };
 const TAB_SUBS = ['canale', 'dor', 'ore-libere', 'card-cadou', 'linkuri'];
 const TABS = ['Ce se trimite și pe unde', 'Ne e dor de tine', 'Ore libere azi', 'Card cadou', 'Butonul „Programează”'] as const;
 const SOURCES = [
@@ -68,8 +68,7 @@ export function NotificationsPage() {
         <h1>Notificări automate</h1>
       </div>
       <p className="muted small" style={{ marginTop: -8, maxWidth: 760 }}>
-        Mesajele pe care aplicația le trimite singură. Scrii textul o dată, în română (engleza și franceza sunt pentru clienții care au aplicația în acele
-        limbi). Urarea de ziua clientului se setează la <a href="#/birthdays">Zile de naștere</a>.
+        Mesajele pe care aplicația le trimite singură. Scrii textul doar în română: la salvare se traduce singur în engleză și franceză, pentru clienții care au aplicația în acele limbi. Dacă vrei, corectezi traducerea pe tabul limbii și salvezi din nou. Urarea de ziua clientului se setează la <a href="#/birthdays">Zile de naștere</a>.
       </p>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
         {TABS.map((t, i) => (
@@ -293,10 +292,10 @@ function TextsEditor({ title, message, vars, onChange }: { title: Texts; message
           </button>
         ))}
       </div>
-      <Field label={`Titlu (${LANGS[lang]})`}>
+      <Field label={`Titlu · ${LANGS[lang]}`}>
         <input value={title[lang]} onChange={(e) => onChange({ title: { ...title, [lang]: e.target.value } })} maxLength={80} />
       </Field>
-      <Field label={`Mesaj (${LANGS[lang]})`}>
+      <Field label={`Mesaj · ${LANGS[lang]}`}>
         <textarea value={message[lang]} onChange={(e) => onChange({ message: { ...message, [lang]: e.target.value } })} maxLength={300} />
       </Field>
       <div className="muted small" style={{ marginTop: -6 }}>

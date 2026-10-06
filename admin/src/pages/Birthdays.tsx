@@ -17,7 +17,7 @@ type Settings = {
   reward: Reward;
 };
 type Upcoming = Array<{ day: string; clients: Array<{ id: string; name: string; phone: string; birthDate: string }> }>;
-const LANGS: Record<Lang, string> = { ro: 'Română', en: 'English', fr: 'Français' };
+const LANGS: Record<Lang, string> = { ro: 'Română', en: 'Engleză (automat)', fr: 'Franceză (automat)' };
 
 export function BirthdaysPage() {
   const settings = useLoad(() => api<Settings>('GET', '/admin/birthday-settings'));
@@ -80,10 +80,10 @@ export function BirthdaysPage() {
               </button>
             ))}
           </div>
-          <Field label={`Titlu (${LANGS[lang]})`}>
+          <Field label={`Titlu · ${LANGS[lang]}`}>
             <input value={s.title[lang]} onChange={(e) => set({ title: { ...s.title, [lang]: e.target.value } })} maxLength={80} />
           </Field>
-          <Field label={`Mesaj (${LANGS[lang]}). {nume} = prenumele clientului, {salon} = numele salonului`}>
+          <Field label={`Mesaj · ${LANGS[lang]}. {nume} = prenumele clientului, {salon} = numele salonului`}>
             <textarea value={s.message[lang]} onChange={(e) => set({ message: { ...s.message, [lang]: e.target.value } })} maxLength={300} />
           </Field>
           <label className="check">

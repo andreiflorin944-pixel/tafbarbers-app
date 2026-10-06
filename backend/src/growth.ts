@@ -1,5 +1,6 @@
 // Mesajele automate care aduc clienții înapoi și umplu programul: „Ne e dor de tine”, ore libere de ultim moment,
 // textul cardului cadou și linkurile „Programează” (Google Maps, Instagram). Textele se editează din panou, Setări → Notificări.
+import { autoTranslate } from './translate';
 import { availability } from './availability';
 import { emailHtml } from './campaigns';
 import { getBusiness, getSetting, setSetting } from './db';
@@ -206,6 +207,11 @@ export async function saveAutomations(env: Env, b: Partial<Automations>) {
       }),
     ) as Automations['channels'],
   };
+  // Engleza și franceza se completează singure din română.
+  for (const k of ['winback', 'lastMinute', 'giftCard'] as const) {
+    next[k].title = await autoTranslate(env, cur[k].title, next[k].title);
+    next[k].message = await autoTranslate(env, cur[k].message, next[k].message);
+  }
   await setSetting(env, 'automations', next);
   return next;
 }

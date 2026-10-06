@@ -23,7 +23,10 @@ export default function Bookings() {
       <Screen tab>
         <Title>{t('bookings.title')}</Title>
         <Empty icon="calendar-outline" text="Intră în cont ca să-ți vezi programările." />
-        <Button title="Intră în cont" onPress={() => router.push('/login')} />
+        <View style={{ gap: space.sm }}>
+          <Button title="Intră în cont" onPress={() => router.push('/login')} />
+          <Button title="Creează cont" variant="ghost" onPress={() => router.push({ pathname: '/login', params: { mode: 'register' } })} />
+        </View>
       </Screen>
     );
   }

@@ -11,8 +11,8 @@ const BACKGROUNDS = [
 ];
 const LANGS = [
   { code: 'ro', label: 'Română', ph: 'Bine ai venit' },
-  { code: 'en', label: 'English', ph: 'Welcome' },
-  { code: 'fr', label: 'Français', ph: 'Bienvenue' },
+  { code: 'en', label: 'Engleză (automat)', ph: 'Welcome' },
+  { code: 'fr', label: 'Franceză (automat)', ph: 'Bienvenue' },
 ] as const;
 
 const DEFAULTS: Omit<Appearance, 'logoUrl' | 'title' | 'welcome'> = {

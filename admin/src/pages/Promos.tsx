@@ -5,8 +5,8 @@ import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
 const ICONS: Record<string, string> = { pricetag: 'Etichetă (ofertă)', flame: 'Flacără (popular)', 'bag-handle': 'Sacoșă (produs)', school: 'Academie' };
 const LANGS = [
   { code: 'ro', label: 'Română' },
-  { code: 'en', label: 'English' },
-  { code: 'fr', label: 'Français' },
+  { code: 'en', label: 'Engleză (automat)' },
+  { code: 'fr', label: 'Franceză (automat)' },
 ] as const;
 type Texts = { kicker: string; title: string; text: string; cta: string };
 
@@ -22,7 +22,7 @@ export function PromosPage(_: { me: Me }) {
         <button onClick={() => setEdit({ icon: 'pricetag', action: { type: 'book' }, active: true, sort: promos.length + 1, translations: {} })}>+ Banner nou</button>
       </div>
       <p className="muted small" style={{ marginTop: -8 }}>
-        Apar sus pe prima pagină a aplicației, în ordinea de mai jos, și se schimbă singure. Textele în engleză și franceză sunt opționale; unde lipsesc, apare româna.
+        Apar sus pe prima pagină a aplicației, în ordinea de mai jos, și se schimbă singure. Scrii doar în română; engleza și franceza se traduc singure la salvare (le poți corecta pe tabul limbii).
       </p>
       {!data.data ? (
         <Loading error={data.error} />

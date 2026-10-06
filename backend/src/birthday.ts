@@ -1,3 +1,4 @@
+import { autoTranslate } from './translate';
 import { emailHtml } from './campaigns';
 import { getBusiness, getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
@@ -65,6 +66,8 @@ export async function saveBirthdaySettings(env: Env, b: Partial<BirthdaySettings
     bonus: bool(b.bonus, cur.bonus),
     reward: b.reward ? parseReward(b.reward) : cur.reward,
   };
+  next.title = await autoTranslate(env, cur.title, next.title);
+  next.message = await autoTranslate(env, cur.message, next.message);
   await setSetting(env, 'birthday', next);
   return next;
 }

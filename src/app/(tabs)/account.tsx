@@ -78,10 +78,11 @@ function ClientAccount() {
     return (
       <>
         <Text style={[styles.muted, { marginBottom: space.md }]}>
-          Intră cu telefonul ca să ai TAF Identity, bonusuri și recomandări, abonamente, carduri cadou și istoricul programărilor.
+          Cu un cont ai TAF Identity, bonusuri și recomandări, abonamente, carduri cadou și istoricul programărilor.
         </Text>
-        <Button title="Intră în cont cu telefonul" onPress={() => router.push('/login')} />
+        <Button title="Creează cont" onPress={() => router.push({ pathname: '/login', params: { mode: 'register' } })} />
         <View style={{ marginTop: space.sm, gap: space.sm }}>
+          <Button title="Am deja cont, intru" variant="ghost" onPress={() => router.push('/login')} />
           <Button title="Magazin" variant="ghost" onPress={() => router.push('/shop')} />
           <Button title="Despre salon" variant="ghost" onPress={() => router.push('/about')} />
         </View>

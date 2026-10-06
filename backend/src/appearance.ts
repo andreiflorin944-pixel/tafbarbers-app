@@ -1,3 +1,4 @@
+import { autoTranslate } from './translate';
 import { getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
 
@@ -37,6 +38,7 @@ export const isImageUrl = (u: unknown): u is string =>
 
 export async function saveAppearance(env: Env, b: Partial<Appearance>): Promise<Appearance> {
   const next = { ...(await getAppearance(env)) };
+  const prevWelcome = next.welcome;
   const color = (v: unknown) => {
     if (typeof v !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(v)) throw new HttpError(400, 'invalid_color');
     return v.toUpperCase();
@@ -58,6 +60,7 @@ export async function saveAppearance(env: Env, b: Partial<Appearance>): Promise<
     for (const l of ['ro', 'en', 'fr'] as const) {
       if (typeof b.welcome[l] === 'string') next.welcome[l] = b.welcome[l].trim().slice(0, 60);
     }
+    next.welcome = await autoTranslate(env, prevWelcome, next.welcome);
   }
   await setSetting(env, 'appearance', next);
   return next;

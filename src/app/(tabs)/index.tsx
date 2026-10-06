@@ -8,7 +8,7 @@ import { LangButton } from '@/components/LangButton';
 import { PromoCarousel } from '@/components/PromoCarousel';
 import { ProductImage } from '@/components/Shop';
 import { useCart } from '@/state/Cart';
-import { Button, SectionTitle, styles as ui } from '@/components/ui';
+import { Avatar, Button, SectionTitle, styles as ui } from '@/components/ui';
 import type { Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
 import { formatDate, formatTime } from '@/lib/dates';
@@ -18,7 +18,7 @@ import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
 export default function Home() {
-  const { business, loading, loadError, reload, user, bookings, services, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
+  const { business, loading, loadError, reload, user, bookings, services, barbers, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
   const { t, lang } = useT();
   const priceText = usePriceLabel();
   const { staff } = useStaff();
@@ -113,6 +113,25 @@ export default function Home() {
           <Button title={t('home.book')} onPress={() => startBooking()} />
         )}
 
+        <View style={s.quick}>
+          {(
+            [
+              ['gift-outline', 'home.q.rewards', '/rewards'],
+              ['card-outline', 'home.q.gift', '/gift-cards'],
+              ['ribbon-outline', 'home.q.subs', '/subscriptions'],
+              ['bag-handle-outline', 'home.q.shop', '/shop'],
+            ] as const
+          ).map(([icon, key, to]) => (
+            <Pressable key={key} onPress={() => router.push(to)} style={({ pressed }) => [s.quickItem, pressed && { opacity: 0.7 }]} accessibilityRole="button">
+              <View style={s.quickIcon}>
+                <Ionicons name={icon} size={22} color={colors.gold} />
+              </View>
+              <Text style={s.quickText} numberOfLines={1}>
+                {t(key)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
 
         <View style={s.sectionHead}>
           <SectionTitle>{t('home.services')}</SectionTitle>
@@ -126,7 +145,9 @@ export default function Home() {
               {sv.imageUrl ? (
                 <Image source={{ uri: mediaUrl(sv.imageUrl)! }} style={s.svcImg} />
               ) : (
-                <View style={[s.svcBadge, { backgroundColor: sv.color }]} />
+                <View style={[s.svcIcon, { backgroundColor: sv.color + '26' }]}>
+                  <Ionicons name="cut" size={20} color={sv.color} />
+                </View>
               )}
               <Text style={s.svcName} numberOfLines={2}>
                 {sv.name}
@@ -138,6 +159,49 @@ export default function Home() {
             </Pressable>
           ))}
         </ScrollView>
+
+        {barbers.length ? (
+          <>
+            <View style={s.sectionHead}>
+              <SectionTitle>{t('home.team')}</SectionTitle>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingRight: space.md }}>
+              {barbers.map((b) => (
+                <Pressable
+                  key={b.id}
+                  onPress={() => {
+                    resetDraft();
+                    setDraft({ barberId: b.id });
+                    router.push('/book/service');
+                  }}
+                  style={({ pressed }) => [s.barberCard, pressed && { opacity: 0.85 }]}
+                >
+                  <Avatar barber={b} size={64} />
+                  <Text style={s.svcName} numberOfLines={1}>
+                    {b.name}
+                  </Text>
+                  <Text style={[ui.muted, { fontSize: 12 }]} numberOfLines={1}>
+                    {b.role}
+                  </Text>
+                  <Text style={s.barberCta}>{t('home.bookWith')} ›</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </>
+        ) : null}
+
+        {user ? (
+          <Pressable onPress={() => router.push('/rewards')} style={({ pressed }) => [s.invite, pressed && { opacity: 0.85 }]}>
+            <View style={s.quickIcon}>
+              <Ionicons name="people-outline" size={22} color={colors.gold} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.svcName}>{t('home.invite')}</Text>
+              <Text style={[ui.muted, { fontSize: 13 }]}>{t('home.inviteText')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          </Pressable>
+        ) : null}
 
         {products.length ? (
           <>
@@ -166,6 +230,31 @@ export default function Home() {
             <Button title={t('home.newBooking')} onPress={() => startBooking()} />
           </View>
         )}
+
+        {business?.address || business?.phone ? (
+          <View style={s.visit}>
+            <Text style={s.visitLabel}>{t('home.visit')}</Text>
+            {business.address ? <Text style={[ui.text, { fontSize: 15 }]}>{business.address}</Text> : null}
+            <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
+              {business.phone ? (
+                <Pressable onPress={() => Linking.openURL(`tel:${business.phone}`)} style={s.pill} accessibilityRole="button">
+                  <Ionicons name="call-outline" size={16} color={colors.gold} />
+                  <Text style={s.pillText}>{t('home.call')}</Text>
+                </Pressable>
+              ) : null}
+              {business.address ? (
+                <Pressable
+                  onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${business.name} ${business.address}`)}`)}
+                  style={s.pill}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="navigate-outline" size={16} color={colors.gold} />
+                  <Text style={s.pillText}>{t('home.directions')}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -185,7 +274,18 @@ const s = StyleSheet.create({
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   link: { color: colors.gold, fontSize: 13, fontWeight: '600', marginBottom: space.xs },
   svcCard: { width: 168, height: 150, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.border, justifyContent: 'space-between' },
-  svcBadge: { width: 28, height: 6, borderRadius: 3 },
+  svcIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  quick: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: space.sm },
+  quickItem: { alignItems: 'center', gap: 6, flex: 1 },
+  quickIcon: { width: 52, height: 52, borderRadius: 18, backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  quickText: { color: colors.text, fontSize: 12, fontWeight: '600' },
+  barberCard: { width: 132, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, gap: 4, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+  barberCta: { color: colors.gold, fontSize: 13, fontWeight: '700', marginTop: 4 },
+  invite: { flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.goldDark, marginTop: space.sm },
+  visit: { backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.border, marginTop: space.lg, gap: 4 },
+  visitLabel: { color: colors.gold, fontSize: 12, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase' },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+  pillText: { color: colors.text, fontWeight: '700', fontSize: 14 },
   prodCard: { width: 136, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.sm + 4, gap: 6, borderWidth: 1, borderColor: colors.border },
   prodName: { color: colors.text, fontSize: 14, fontWeight: '700', minHeight: 36 },
   svcImg: { width: 44, height: 44, borderRadius: radius.sm },

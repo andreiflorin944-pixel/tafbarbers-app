@@ -13,6 +13,8 @@ export type Env = {
   PUBLIC_URL?: string;
   // Contul demo pentru verificarea din magazine, „telefon:cod” (ex. 0700000000:4826).
   REVIEW_LOGIN?: string;
+  // Workers AI (legătura „AI” din wrangler.toml): traducerea automată a textelor în engleză și franceză.
+  AI?: { run(model: string, input: Record<string, unknown>): Promise<unknown> };
   // Doar pentru dezvoltare locală: codul OTP se întoarce în răspuns în loc de SMS.
   DEV_OTP?: string;
 };
