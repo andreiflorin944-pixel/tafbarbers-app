@@ -720,6 +720,16 @@ export async function buildDashboard(env: Env, scope: Scope) {
     for (const b of visits) if (b.client_id === cid && b.starts_at < t && b.day !== dayOf(t) && b.starts_at > last) last = b.starts_at;
     return last;
   };
+  // „În situație de risc” (cum cere florin): a lipsit fără să anunțe sau a anulat de mai multe ori.
+  const misses = new Map<string, { noShow: number; cancelled: number }>();
+  for (const b of bk) {
+    if (b.starts_at > now || (b.status !== 'no_show' && !(b.status === 'cancelled' && b.cancelled_by === 'client'))) continue;
+    const m = misses.get(b.client_id) ?? { noShow: 0, cancelled: 0 };
+    if (b.status === 'no_show') m.noShow++;
+    else m.cancelled++;
+    misses.set(b.client_id, m);
+  }
+  const m0 = (id: string) => misses.get(id) ?? { noShow: 0, cancelled: 0 };
   const todayList = bk
     .filter((b) => b.day === today && b.status !== 'cancelled')
     .map((b) => {
@@ -729,6 +739,8 @@ export async function buildDashboard(env: Env, scope: Scope) {
       if (!f || f === today) tags.push('new');
       if (topSet.has(b.client_id)) tags.push('top');
       if (prev && Date.parse(b.starts_at) - Date.parse(prev) > 60 * 86_400_000) tags.push('back');
+      const m = misses.get(b.client_id);
+      if (m && (m.noShow >= 1 || m.cancelled >= 2)) tags.push('risk');
       return {
         bookingId: b.id,
         clientId: b.client_id,
@@ -738,6 +750,8 @@ export async function buildDashboard(env: Env, scope: Scope) {
         barberName: b.barber_name,
         serviceName: b.service_name,
         visits: visitCount.get(b.client_id) ?? 0,
+        noShows: m0(b.client_id).noShow,
+        cancellations: m0(b.client_id).cancelled,
         tags,
       };
     });

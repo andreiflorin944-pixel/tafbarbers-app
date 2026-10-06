@@ -15,6 +15,7 @@ const TAGS: Record<string, { label: string; color: string }> = {
   new: { label: 'Client nou', color: '#7FB6E6' },
   top: { label: 'Client de top', color: colors.gold },
   back: { label: 'Revine după mult timp', color: '#8FC79A' },
+  risk: { label: 'În situație de risc', color: colors.danger },
 };
 
 // Tabloul de bord în aplicația echipei: aceleași cifre ca în panou, limitate de drepturile contului.
@@ -74,6 +75,11 @@ export default function StaffStats() {
             <Text style={ui.muted}>
               {c.serviceName} · {c.barberName}
             </Text>
+            {c.noShows || c.cancellations ? (
+              <Text style={[ui.muted, { fontSize: 12 }]}>
+                {c.noShows} neprezentări · {c.cancellations} anulări în ultimul an
+              </Text>
+            ) : null}
             {c.tags.length ? (
               <View style={[ui.row, { flexWrap: 'wrap', gap: 6, marginTop: 6 }]}>
                 {c.tags.map((t) => (
@@ -89,7 +95,7 @@ export default function StaffStats() {
 
       {staff.permissions.clients && d.atRisk.length ? (
         <>
-          <Text style={ui.section}>Clienți în pericol</Text>
+          <Text style={ui.section}>Clienți care nu mai vin</Text>
           <Text style={ui.muted}>Veneau regulat, dar nu au mai venit de mult și nu au nicio programare.</Text>
           <View style={{ gap: space.sm }}>
             {d.atRisk.map((c) => (

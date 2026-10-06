@@ -13,7 +13,7 @@ export type Dashboard = {
   week: { current: Week; previous: Week };
   last30: { clients: number; newClients: number; returning: number };
   retention: { base: number; returned: number; rate: number };
-  todayClients: Array<{ bookingId: string; name: string; start: string; status: string; barberName: string; serviceName: string; visits: number; tags: string[] }>;
+  todayClients: Array<{ bookingId: string; name: string; start: string; status: string; barberName: string; serviceName: string; visits: number; noShows: number; cancellations: number; tags: string[] }>;
   atRisk: Array<{ clientId: string; name: string; visits: number; lastVisit: string; avgGapDays: number; daysSince: number; spent: number | null }>;
   topClients: Array<{ clientId: string; name: string; visits: number; spent: number | null }>;
 };
@@ -21,7 +21,7 @@ export type Dashboard = {
 const MONTHS = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 const shortDay = (d: string) => `${Number(d.slice(8))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
 const monthName = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`;
-export const TAGS: Record<string, string> = { new: 'Client nou', top: 'Client de top', back: 'Revine după mult timp' };
+export const TAGS: Record<string, string> = { new: 'Client nou', top: 'Client de top', back: 'Revine după mult timp', risk: 'În situație de risc' };
 
 export function DashboardPage({ me }: { me: Me }) {
   const d = useLoad(() => api<Dashboard>('GET', '/admin/dashboard'));
@@ -113,6 +113,11 @@ export function DashboardPage({ me }: { me: Me }) {
                   <td style={{ width: 70 }}>{time(c.start)}</td>
                   <td>
                     <b>{c.name}</b> <span className="muted small">· {c.tags.includes('new') ? 'prima vizită' : c.visits === 1 ? 'o vizită' : `${c.visits} vizite`}</span>
+                    {c.noShows || c.cancellations ? (
+                      <div className="muted small">
+                        {c.noShows} neprezentări · {c.cancellations} anulări în ultimul an
+                      </div>
+                    ) : null}
                     <div className="row" style={{ gap: 4, marginTop: 4 }}>
                       {c.tags.map((t) => (
                         <span key={t} className={`pill tag-${t}`}>
@@ -136,7 +141,7 @@ export function DashboardPage({ me }: { me: Me }) {
       {me.permissions.clients ? (
         <div className="grid two">
           <div className="card">
-            <h2>Clienți în pericol</h2>
+            <h2>Clienți care nu mai vin</h2>
             <p className="muted small" style={{ marginTop: -6 }}>
               Veneau regulat, dar nu au mai venit de mult și nu au nicio programare. Merită un mesaj sau o ofertă.
             </p>

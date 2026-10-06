@@ -176,6 +176,7 @@ tr.click:hover td { background: var(--card-alt); }
 .dot.alt { background: #7fb6e6; }
 .pill.tag-new { background: #13283a; color: #7fb6e6; }
 .pill.tag-top { background: #3a2a0d; color: var(--gold); }
+.pill.tag-risk { background: #3a1a19; color: var(--danger); }
 .pill.tag-back { background: #1d2b1f; color: #8fc79a; }
 .reports { display: grid; grid-template-columns: 240px 1fr; gap: 18px; align-items: start; }
 .report-list { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 12px; }

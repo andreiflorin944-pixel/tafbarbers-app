@@ -160,7 +160,7 @@ export type StaffDashboard = {
   week: { current: WeekStats; previous: WeekStats };
   last30: { clients: number; newClients: number; returning: number };
   retention: { base: number; returned: number; rate: number };
-  todayClients: Array<{ bookingId: string; clientId: string; name: string; start: string; status: string; barberName: string; serviceName: string; visits: number; tags: string[] }>;
+  todayClients: Array<{ bookingId: string; clientId: string; name: string; start: string; status: string; barberName: string; serviceName: string; visits: number; noShows: number; cancellations: number; tags: string[] }>;
   atRisk: Array<{ clientId: string; name: string; visits: number; lastVisit: string; avgGapDays: number; daysSince: number; spent: number | null }>;
   topClients: Array<{ clientId: string; name: string; visits: number; spent: number | null }>;
 };
