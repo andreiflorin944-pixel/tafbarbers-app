@@ -47,7 +47,13 @@ export type Me = {
   email: string | null;
   lang: string;
   marketing: { sms: boolean; email: boolean; push: boolean };
+  birthDate?: string | null; // AAAA-LL-ZZ
+  photoUrl?: string | null;
 };
+
+/** O poză din TAF Identity. `addedBy` apare doar la pozele urcate de echipă. */
+export type IdentityPhoto = { id: string; url: string; caption: string; createdAt?: string; addedBy?: string | null };
+export type Identity = { note: string; photos: IdentityPhoto[]; staffPhotos?: IdentityPhoto[] };
 
 export type Business = {
   name: string;

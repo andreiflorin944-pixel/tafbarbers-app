@@ -6,6 +6,7 @@ import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
 import { deleteClient, exportClient } from '../gdpr';
 import { createOrder, getOrder, getOrders, setOrderStatus } from '../shop';
+import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
 
 export const clientRoutes = new Hono<AppEnv>();
 // Pe căi anume: rutele publice sunt montate tot sub /v1.
@@ -22,6 +23,7 @@ clientRoutes.patch('/me', async (c) => {
     name?: string;
     email?: string | null;
     lang?: string;
+    birthDate?: string | null;
     marketing?: { sms?: boolean; email?: boolean; push?: boolean };
   }>();
   const id = c.get('client').clientId;
@@ -33,12 +35,62 @@ clientRoutes.patch('/me', async (c) => {
     sets.push('email = ?'), vals.push(b.email || null);
   }
   if (b.lang && ['ro', 'en', 'fr'].includes(b.lang)) sets.push('lang = ?'), vals.push(b.lang);
+  if (b.birthDate !== undefined) sets.push('birth_date = ?'), vals.push(parseBirthDate(b.birthDate));
   for (const ch of ['sms', 'email', 'push'] as const) {
     if (typeof b.marketing?.[ch] === 'boolean') sets.push(`marketing_${ch} = ?`), vals.push(b.marketing[ch] ? 1 : 0);
   }
   if (sets.length) await c.env.DB.prepare(`UPDATE clients SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
   const r = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(id).first<ClientRow>();
   return c.json(client(r!));
+});
+
+// --- Poza de profil și TAF Identity ---
+
+const mimeOf = (h: string | undefined) => (h ?? '').split(';')[0].trim().toLowerCase();
+
+clientRoutes.put('/me/photo', async (c) => {
+  const id = c.get('client').clientId;
+  const mediaId = await saveMedia(c.env, mimeOf(c.req.header('Content-Type')), await c.req.arrayBuffer(), id);
+  const old = await c.env.DB.prepare('SELECT photo_url FROM clients WHERE id = ?').bind(id).first<{ photo_url: string | null }>();
+  await c.env.DB.prepare('UPDATE clients SET photo_url = ? WHERE id = ?').bind(mediaUrl(mediaId), id).run();
+  await deleteMediaUrl(c.env, old?.photo_url ?? null);
+  return c.json({ photoUrl: mediaUrl(mediaId) });
+});
+
+clientRoutes.delete('/me/photo', async (c) => {
+  const id = c.get('client').clientId;
+  const old = await c.env.DB.prepare('SELECT photo_url FROM clients WHERE id = ?').bind(id).first<{ photo_url: string | null }>();
+  await c.env.DB.prepare('UPDATE clients SET photo_url = NULL WHERE id = ?').bind(id).run();
+  await deleteMediaUrl(c.env, old?.photo_url ?? null);
+  return c.json({ ok: true });
+});
+
+clientRoutes.get('/me/identity', async (c) => c.json(await getIdentity(c.env, c.get('client').clientId, false)));
+
+clientRoutes.put('/me/identity', async (c) => {
+  const b = await c.req.json<{ note?: string }>();
+  const id = c.get('client').clientId;
+  await c.env.DB.prepare('UPDATE clients SET identity_note = ? WHERE id = ?').bind(String(b.note ?? '').slice(0, 1000), id).run();
+  return c.json(await getIdentity(c.env, id, false));
+});
+
+clientRoutes.post('/me/identity/photos', async (c) => {
+  const caption = (c.req.query('caption') ?? '').trim();
+  const p = await addPhoto(c.env, c.get('client').clientId, mimeOf(c.req.header('Content-Type')), await c.req.arrayBuffer(), null, caption);
+  return c.json(p, 201);
+});
+
+clientRoutes.patch('/me/identity/photos/:pid', async (c) => {
+  const b = await c.req.json<{ caption?: string }>();
+  await c.env.DB.prepare('UPDATE client_photos SET caption = ? WHERE id = ? AND client_id = ? AND private = 0')
+    .bind(String(b.caption ?? '').slice(0, 200), c.req.param('pid'), c.get('client').clientId)
+    .run();
+  return c.json({ ok: true });
+});
+
+clientRoutes.delete('/me/identity/photos/:pid', async (c) => {
+  await deletePhoto(c.env, c.get('client').clientId, c.req.param('pid'), false);
+  return c.json({ ok: true });
 });
 
 clientRoutes.get('/me/export', async (c) => c.json(await exportClient(c.env, c.get('client').clientId)));

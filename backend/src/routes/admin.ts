@@ -32,6 +32,7 @@ import { iso, isDay, localToUtc } from '../time';
 import { clientsCsv, deleteClient } from '../gdpr';
 import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
+import { addPhoto, deletePhoto, getIdentity, parseBirthDate } from '../identity';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -614,22 +615,57 @@ adminRoutes.delete('/clients/:id', ownerOnly, async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Fișa unui client: cu dreptul „clients”, oricare client; fără el, frizerul vede fișa (TAF Identity
+ * și notițele) doar pentru clienții care au programare la el.
+ */
+async function needClient(c: Context<AppEnv>, clientId: string) {
+  const a = c.get('admin');
+  if (a.perms.clients) return;
+  const mine = a.barberId
+    ? await c.env.DB.prepare('SELECT 1 FROM bookings WHERE client_id = ? AND barber_id = ? LIMIT 1').bind(clientId, a.barberId).first()
+    : null;
+  if (!mine) throw new HttpError(403, 'no_permission');
+}
+
 adminRoutes.get('/clients/:id', async (c) => {
-  need(c, 'clients');
   const id = c.req.param('id')!;
+  await needClient(c, id);
   const r = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(id).first<ClientRow>();
   if (!r) throw new HttpError(404, 'not_found');
-  const bk = await c.env.DB.prepare(`${BOOKING_SELECT} WHERE b.client_id = ? ORDER BY b.starts_at DESC LIMIT 200`).bind(id).all<BookingRow>();
-  return c.json({ ...client(r), bookings: bk.results.map(booking) });
+  const own = ownBarber(c);
+  const bk = await c.env.DB.prepare(`${BOOKING_SELECT} WHERE b.client_id = ? ${own ? 'AND b.barber_id = ?' : ''} ORDER BY b.starts_at DESC LIMIT 200`)
+    .bind(...(own ? [id, own] : [id]))
+    .all<BookingRow>();
+  return c.json({ ...client(r), bookings: bk.results.map(booking), identity: await getIdentity(c.env, id, true) });
+});
+
+// Poze despre client urcate de echipă: le vede doar echipa.
+adminRoutes.post('/clients/:id/photos', async (c) => {
+  const id = c.req.param('id')!;
+  await needClient(c, id);
+  const mime = (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  const p = await addPhoto(c.env, id, mime, await c.req.arrayBuffer(), { adminId: c.get('admin').adminId }, (c.req.query('caption') ?? '').trim());
+  return c.json(p, 201);
+});
+
+adminRoutes.delete('/clients/:id/photos/:pid', async (c) => {
+  const id = c.req.param('id')!;
+  await needClient(c, id);
+  await deletePhoto(c.env, id, c.req.param('pid')!, true);
+  return c.json({ ok: true });
 });
 
 adminRoutes.patch('/clients/:id', async (c) => {
-  need(c, 'clients');
-  const b = await c.req.json<{ name?: string; email?: string | null; notes?: string }>();
+  await needClient(c, c.req.param('id')!);
+  const b = await c.req.json<{ name?: string; email?: string | null; notes?: string; birthDate?: string | null }>();
+  // Fără dreptul „clients”, frizerul poate doar să scrie notițe despre clienții lui.
+  if (!c.get('admin').perms.clients && (b.name !== undefined || b.email !== undefined || b.birthDate !== undefined)) throw new HttpError(403, 'no_permission');
   const v: Record<string, unknown> = {};
   if (b.name !== undefined) v.name = String(b.name).slice(0, 80);
   if (b.email !== undefined) v.email = b.email || null;
   if (b.notes !== undefined) v.notes = String(b.notes).slice(0, 2000);
+  if (b.birthDate !== undefined) v.birth_date = parseBirthDate(b.birthDate);
   await update(c.env.DB, 'clients', c.req.param('id')!, v);
   return c.json({ ok: true });
 });

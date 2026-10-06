@@ -87,7 +87,12 @@ export const errorText = (e: unknown) =>
   e instanceof ApiError ? (MESSAGES[e.code] ?? `Eroare: ${e.code}`) : 'A apărut o problemă.';
 
 /** Micșorează poza în browser (max `maxPx` pe latura mare) și o urcă. Întoarce adresa ei. */
-export async function uploadImage(file: File, opts: { maxPx?: number; keepAlpha?: boolean } = {}): Promise<string> {
+export async function uploadImage(file: File, opts: { maxPx?: number; keepAlpha?: boolean; path?: string } = {}): Promise<string> {
+  return ((await uploadImageTo(opts.path ?? '/v1/admin/media', file, opts)) as { url: string }).url;
+}
+
+/** Ca `uploadImage`, dar spre altă adresă; întoarce răspunsul serverului. */
+export async function uploadImageTo(path: string, file: File, opts: { maxPx?: number; keepAlpha?: boolean } = {}): Promise<unknown> {
   const maxPx = opts.maxPx ?? 1000;
   const bmp = await createImageBitmap(file).catch(() => {
     throw new ApiError('unsupported_image', 400);
@@ -102,13 +107,13 @@ export async function uploadImage(file: File, opts: { maxPx?: number; keepAlpha?
   if (!blob) throw new ApiError('unsupported_image', 400);
   let res: Response;
   try {
-    res = await fetch('/v1/admin/media', { method: 'POST', headers: { 'Content-Type': type, Authorization: `Bearer ${getToken()}` }, body: blob });
+    res = await fetch(path, { method: 'POST', headers: { 'Content-Type': type, Authorization: `Bearer ${getToken()}` }, body: blob });
   } catch {
     throw new ApiError('network', 0);
   }
   const json = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
-  return json.url as string;
+  return json;
 }
 
 export type Product = {
@@ -192,6 +197,7 @@ export type Booking = {
   serviceName: string;
   barberName: string;
 };
+export type ClientPhoto = { id: string; url: string; caption: string; createdAt?: string; addedBy?: string | null };
 export type Client = {
   id: string;
   phone: string;
@@ -201,6 +207,9 @@ export type Client = {
   marketing: { sms: boolean; email: boolean; push: boolean };
   notes: string;
   createdAt: string;
+  birthDate?: string | null;
+  photoUrl?: string | null;
+  identity?: { note: string; photos: ClientPhoto[]; staffPhotos?: ClientPhoto[] };
   visits?: number;
   lastVisit?: string | null;
   bookings?: Booking[];

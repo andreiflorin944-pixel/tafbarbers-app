@@ -9,6 +9,7 @@ import { addDays, iso, isDay, localDay } from '../time';
 import { DOCS, legalDoc, type Doc } from '../legal';
 import { getAppearance } from '../appearance';
 import { product, type ProductRow } from '../shop';
+import { parseBirthDate } from '../identity';
 
 export const publicRoutes = new Hono<AppEnv>();
 
@@ -136,11 +137,11 @@ publicRoutes.post('/auth/otp', async (c) => {
   } else {
     await sendSms(c.env, { kind: 'otp', recipient: phone }, msg(lang, 'otp', { shop: biz.name, code }));
   }
-  return c.json({ ok: true, phone, channel, sentTo: channel === 'email' ? email : phone, ...(c.env.DEV_OTP === '1' && { devCode: code }) });
+  return c.json({ ok: true, phone, channel, newAccount: !client, sentTo: channel === 'email' ? email : phone, ...(c.env.DEV_OTP === '1' && { devCode: code }) });
 });
 
 publicRoutes.post('/auth/verify', async (c) => {
-  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean }>();
+  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string }>();
   const phone = normalizePhone(body.phone);
   const row = await c.env.DB.prepare('SELECT code_hash, expires_at, attempts, email FROM otp_codes WHERE phone = ?')
     .bind(phone)
@@ -157,20 +158,29 @@ publicRoutes.post('/auth/verify', async (c) => {
     .first<{ id: string; name: string; email: string | null }>();
   // Cont nou: acordul pentru termeni și confidențialitate e obligatoriu (codul rămâne valabil).
   if (!client && body.acceptTerms !== true) throw new HttpError(400, 'terms_required');
+  // Cont nou: cerem și data nașterii și un e-mail (vine din cererea codului sau din formular).
+  const birthDate = body.birthDate ? parseBirthDate(body.birthDate) : null;
+  const formEmail = typeof body.email === 'string' && EMAIL_RE.test(body.email.trim()) ? body.email.trim().toLowerCase() : null;
+  const email = row.email ?? formEmail;
+  if (!client && !birthDate) throw new HttpError(400, 'birth_date_required');
+  if (!client && !email) throw new HttpError(400, 'email_required');
   await c.env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(phone).run();
 
   if (!client) {
-    client = { id: newId('cl'), name: (body.name ?? '').trim().slice(0, 80), email: row.email };
-    await c.env.DB.prepare('INSERT INTO clients (id, phone, name, email, lang, terms_accepted_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(client.id, phone, client.name, row.email, ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro', iso(new Date()))
+    client = { id: newId('cl'), name: (body.name ?? '').trim().slice(0, 80), email };
+    await c.env.DB.prepare('INSERT INTO clients (id, phone, name, email, lang, terms_accepted_at, birth_date) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(client.id, phone, client.name, email, ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro', iso(new Date()), birthDate)
       .run();
   } else {
     if (!client.name && body.name?.trim()) {
       await c.env.DB.prepare('UPDATE clients SET name = ? WHERE id = ?').bind(body.name.trim().slice(0, 80), client.id).run();
     }
     // Cont fără e-mail (ex. adăugat din panou): îl salvăm pe cel scris la intrare.
-    if (!client.email && row.email) {
-      await c.env.DB.prepare('UPDATE clients SET email = ? WHERE id = ?').bind(row.email, client.id).run();
+    if (!client.email && email) {
+      await c.env.DB.prepare('UPDATE clients SET email = ? WHERE id = ?').bind(email, client.id).run();
+    }
+    if (birthDate) {
+      await c.env.DB.prepare('UPDATE clients SET birth_date = coalesce(birth_date, ?) WHERE id = ?').bind(birthDate, client.id).run();
     }
     // Clienții adăugați din panou își dau acordul la prima intrare în aplicație.
     if (body.acceptTerms === true) {

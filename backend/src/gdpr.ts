@@ -3,6 +3,7 @@ import { booking, client, type BookingRow, type ClientRow } from './db';
 import { HttpError, type Env } from './env';
 import { iso } from './time';
 import { getOrders, setOrderStatus } from './shop';
+import { getIdentity, wipeIdentity } from './identity';
 
 /** Toate datele unui client, pentru „Descarcă datele mele” (portabilitate, art. 20 GDPR). */
 export async function exportClient(env: Env, id: string) {
@@ -15,6 +16,7 @@ export async function exportClient(env: Env, id: string) {
   ]);
   const orders = (await getOrders(env, 'o.client_id = ?', [id], 1000)).map(({ clientName: _n, clientPhone: _p, ...o }) => o);
   const { notes: _internal, ...profile } = client(c);
+  const identity = await getIdentity(env, id, false);
   return {
     exportedAt: iso(new Date()),
     profile: { ...profile, termsAcceptedAt: c.terms_accepted_at },
@@ -24,6 +26,7 @@ export async function exportClient(env: Env, id: string) {
     }),
     messages: msgs.results,
     orders,
+    tafIdentity: identity,
     devices: tokens.results,
   };
 }
@@ -39,6 +42,7 @@ export async function deleteClient(env: Env, id: string) {
   // Comenzile nepreluate se anulează (stocul revine).
   const open = await env.DB.prepare(`SELECT id FROM orders WHERE client_id = ? AND status IN ('new', 'ready')`).bind(id).all<{ id: string }>();
   for (const o of open.results) await setOrderStatus(env, o.id, 'cancelled', ['new', 'ready']);
+  await wipeIdentity(env, id);
   await env.DB.batch([
     env.DB.prepare(`UPDATE orders SET note = '' WHERE client_id = ?`).bind(id),
     env.DB.prepare(`UPDATE bookings SET status = 'cancelled', cancelled_at = ? WHERE client_id = ? AND status = 'confirmed' AND starts_at > ?`).bind(now, id, now),

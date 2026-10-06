@@ -40,3 +40,23 @@ export function parseHM(base: Date, hm: string) {
   c.setHours(h, m, 0, 0);
   return c;
 }
+
+/** Data nașterii scrisă ZZ.LL.AAAA → AAAA-LL-ZZ; null dacă nu e o dată reală. */
+export function parseBirth(text: string): string | null {
+  const m = text.trim().match(/^(\d{1,2})[./\-\s](\d{1,2})[./\-\s](\d{4})$/);
+  if (!m) return null;
+  const iso = `${m[3]}-${pad(Number(m[2]))}-${pad(Number(m[1]))}`;
+  const d = new Date(iso + 'T00:00:00Z');
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso && iso >= '1900-01-01' && d.getTime() <= Date.now() ? iso : null;
+}
+
+/** AAAA-LL-ZZ → ZZ.LL.AAAA */
+export const formatBirth = (iso: string | null | undefined) => (iso ? iso.split('-').reverse().join('.') : '');
+
+/** Vârsta în ani, pentru fișa clientului. */
+export function ageFrom(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  const now = new Date();
+  return now.getFullYear() - y - (now.getMonth() + 1 < m || (now.getMonth() + 1 === m && now.getDate() < d) ? 1 : 0);
+}

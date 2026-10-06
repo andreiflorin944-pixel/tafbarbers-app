@@ -5,6 +5,7 @@ import { Pressable, Text, TextInput, View } from 'react-native';
 import { api, usingMock } from '@/api';
 import { Button, styles } from '@/components/ui';
 import { useT } from '@/i18n';
+import { parseBirth } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
@@ -20,6 +21,8 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
   const [code, setCode] = useState('');
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [phoneSent, setPhoneSent] = useState<string | null>(null);
+  const [isNew, setIsNew] = useState(false);
+  const [birth, setBirth] = useState('');
   const [devCode, setDevCode] = useState<string | undefined>();
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -28,6 +31,7 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
   const cleanPhone = phone.replace(/[\s\-().]/g, '');
   const cleanEmail = email.trim().toLowerCase();
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail);
+  const birthOk = !!parseBirth(birth);
   const phoneOk = /^\+?\d{9,15}$/.test(cleanPhone) && name.trim().length >= 2;
 
   const send = async (via: 'email' | 'sms') => {
@@ -38,6 +42,7 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
       setChannel(r.channel);
       setSentTo(r.sentTo);
       setPhoneSent(r.phone);
+      setIsNew(!!r.newAccount);
       setDevCode(r.devCode);
     } catch (e) {
       setError(errorMessage(e));
@@ -50,7 +55,15 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
     setBusy(true);
     setError(null);
     try {
-      const { token } = await api.verifyCode({ phone: phoneSent!, code, name: name.trim(), lang, acceptTerms: accepted });
+      const { token } = await api.verifyCode({
+        phone: phoneSent!,
+        code,
+        name: name.trim(),
+        lang,
+        acceptTerms: accepted,
+        birthDate: parseBirth(birth) ?? undefined,
+        email: emailOk ? cleanEmail : undefined,
+      });
       await signIn(token);
       await onDone(token);
     } catch (e) {
@@ -82,6 +95,22 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
 
       {sentTo ? (
         <>
+          {isNew ? (
+            <>
+              <Text style={styles.label}>Data nașterii (cont nou)</Text>
+              <TextInput
+                value={birth}
+                onChangeText={setBirth}
+                placeholder="ZZ.LL.AAAA"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+                keyboardType="numbers-and-punctuation"
+                maxLength={10}
+              />
+              {birth.length >= 8 && !birthOk ? <Text style={{ color: colors.danger, fontSize: 12, marginTop: 4 }}>Scrie data așa: 17.05.1990</Text> : null}
+              {!emailOk ? <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>Pentru cont nou avem nevoie și de e-mail. Apasă „Schimbă datele” și completează-l.</Text> : null}
+            </>
+          ) : null}
           <Text style={styles.label}>Codul primit pe {channel === 'email' ? 'e-mail' : 'SMS'} la {sentTo}</Text>
           <TextInput
             value={code}
@@ -136,7 +165,7 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
 
       <View style={{ marginTop: space.lg }}>
         {sentTo ? (
-          <Button title={submitTitle ?? 'Confirmă'} disabled={code.length !== 4 || !accepted} loading={busy} onPress={verify} />
+          <Button title={submitTitle ?? 'Confirmă'} disabled={code.length !== 4 || !accepted || (isNew && (!birthOk || !emailOk))} loading={busy} onPress={verify} />
         ) : (
           <>
             <Button title="Trimite codul pe e-mail" disabled={!phoneOk || !emailOk || !accepted} loading={busy} onPress={() => send('email')} />

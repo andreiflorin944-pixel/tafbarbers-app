@@ -1,7 +1,10 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Platform, Share, Switch, Text, TextInput, View } from 'react-native';
-import { api } from '@/api';
+import { Ionicons } from '@expo/vector-icons';
+import { ActivityIndicator, Alert, Platform, Pressable, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { api, ApiError } from '@/api';
+import { formatBirth, parseBirth } from '@/lib/dates';
+import { pickImage } from '@/lib/pickImage';
 import { Avatar, Button, Card, Icon, Screen, Segmented, styles } from '@/components/ui';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
@@ -59,12 +62,15 @@ function ClientAccount() {
   const { user, token, signOut, bookings, updateMe } = useApp();
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
+  const [birth, setBirth] = useState(formatBirth(user?.birthDate));
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     setName(user?.name ?? '');
     setEmail(user?.email ?? '');
+    setBirth(formatBirth(user?.birthDate));
   }, [user?.id]);
 
   if (!user) {
@@ -77,13 +83,15 @@ function ClientAccount() {
   }
 
   const active = bookings.filter((b) => b.status === 'confirmed' && new Date(b.start).getTime() > Date.now()).length;
-  const dirty = name.trim() !== user.name || (email.trim() || null) !== (user.email || null);
+  const birthIso = birth.trim() ? parseBirth(birth) : null;
+  const dirty = name.trim() !== user.name || (email.trim() || null) !== (user.email || null) || (birthIso ?? null) !== (user.birthDate ?? null);
 
   const save = async () => {
     setSaving(true);
     setMsg(null);
     try {
-      await updateMe({ name: name.trim(), email: email.trim() || null });
+      if (birth.trim() && !birthIso) throw new ApiError('invalid_birth_date', 400);
+      await updateMe({ name: name.trim(), email: email.trim() || null, birthDate: birthIso });
       setMsg({ ok: true, text: 'Salvat.' });
     } catch (e) {
       setMsg({ ok: false, text: errorMessage(e) });
@@ -133,6 +141,22 @@ function ClientAccount() {
     }
   };
 
+  const changePhoto = async () => {
+    if (!token) return;
+    setMsg(null);
+    try {
+      const uri = await pickImage({ square: true });
+      if (!uri) return;
+      setPhotoBusy(true);
+      await api.setProfilePhoto(token, uri);
+      await updateMe({});
+    } catch (e) {
+      setMsg({ ok: false, text: errorMessage(e) });
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
   const toggle = (ch: 'sms' | 'email' | 'push') => (v: boolean) => {
     updateMe({ marketing: { [ch]: v } }).catch((e) => setMsg({ ok: false, text: errorMessage(e) }));
   };
@@ -140,12 +164,26 @@ function ClientAccount() {
   return (
     <>
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-        <Avatar barber={{ id: 'me', name: user.name, role: '', initials: (user.name || '?').charAt(0).toUpperCase() }} />
+        <Pressable onPress={changePhoto} accessibilityLabel="Schimbă poza de profil">
+          <Avatar barber={{ id: 'me', name: user.name, role: '', initials: (user.name || '?').charAt(0).toUpperCase(), photoUrl: user.photoUrl }} size={64} />
+          <View style={s.camBadge}>{photoBusy ? <ActivityIndicator size="small" color={colors.onGold} /> : <Ionicons name="camera" size={14} color={colors.onGold} />}</View>
+        </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.cardTitle}>{user.name || 'Client'}</Text>
           <Text style={styles.muted}>{user.phone}</Text>
         </View>
       </Card>
+
+      <Pressable onPress={() => router.push('/identity')}>
+        <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, borderColor: colors.gold }}>
+          <Ionicons name="images" size={26} color={colors.gold} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>TAF Identity</Text>
+            <Text style={styles.muted}>Pozele și descrierea tunsorii tale, ca să le arăți simplu frizerului</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Card>
+      </Pressable>
 
       <Card style={{ gap: space.sm }}>
         <View style={styles.row}>
@@ -162,7 +200,9 @@ function ClientAccount() {
 
       <Text style={styles.label}>Nume</Text>
       <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Numele tău" placeholderTextColor={colors.muted} />
-      <Text style={styles.label}>E-mail (pentru oferte)</Text>
+      <Text style={styles.label}>Data nașterii</Text>
+      <TextInput value={birth} onChangeText={setBirth} style={styles.input} placeholder="ZZ.LL.AAAA" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" maxLength={10} />
+      <Text style={styles.label}>E-mail</Text>
       <TextInput
         value={email}
         onChangeText={setEmail}
@@ -225,3 +265,7 @@ function Toggle({ label, value, onChange, disabled }: { label: string; value: bo
     </View>
   );
 }
+
+const s = StyleSheet.create({
+  camBadge: { position: 'absolute', right: -2, bottom: -2, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.card },
+});

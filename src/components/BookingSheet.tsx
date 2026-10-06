@@ -107,7 +107,7 @@ export function BookingSheet({
                     onPress={() => Linking.openURL(`tel:${b.clientPhone}`)}
                   />
                 </View>
-                {p.clients ? (
+                {b.clientId ? (
                   <View style={{ flex: 1 }}>
                     <Button
                       title="Fișa clientului"

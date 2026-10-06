@@ -155,6 +155,9 @@ export type ClientRow = {
   marketing_push: number;
   notes: string;
   created_at: string;
+  birth_date?: string | null;
+  photo_url?: string | null;
+  identity_note?: string;
 };
 export const client = (r: ClientRow) => ({
   id: r.id,
@@ -165,6 +168,8 @@ export const client = (r: ClientRow) => ({
   marketing: { sms: !!r.marketing_sms, email: !!r.marketing_email, push: !!r.marketing_push },
   notes: r.notes,
   createdAt: r.created_at,
+  birthDate: r.birth_date ?? null,
+  photoUrl: r.photo_url ?? null,
 });
 
 export type PromoRow = {

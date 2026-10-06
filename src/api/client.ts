@@ -1,4 +1,4 @@
-import type { Barber, Booking, Business, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
+import type { Barber, Booking, Business, Identity, IdentityPhoto, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
 
 // Singura legătură dintre interfață și server. `http.ts` vorbește cu serverul nostru
 // (Cloudflare Worker); `mock.ts` e varianta de test, folosită cât timp aplicația nu are
@@ -18,8 +18,8 @@ export interface BookingApi {
   requestCode(
     input: { phone: string; email?: string; channel: 'email' | 'sms' },
     lang: string,
-  ): Promise<{ phone: string; channel: 'email' | 'sms'; sentTo: string; devCode?: string }>;
-  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean }): Promise<{ token: string }>;
+  ): Promise<{ phone: string; channel: 'email' | 'sms'; sentTo: string; newAccount?: boolean; devCode?: string }>;
+  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; birthDate?: string; email?: string }): Promise<{ token: string }>;
   getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null }>;
   exportMe(token: string): Promise<unknown>;
   deleteMe(token: string): Promise<void>;
@@ -27,8 +27,16 @@ export interface BookingApi {
   me(token: string): Promise<Me>;
   updateMe(
     token: string,
-    patch: Partial<Pick<Me, 'name' | 'email' | 'lang'>> & { marketing?: Partial<Me['marketing']> },
+    patch: Partial<Pick<Me, 'name' | 'email' | 'lang' | 'birthDate'>> & { marketing?: Partial<Me['marketing']> },
   ): Promise<Me>;
+
+  // Poza de profil și TAF Identity. `uri` = poza locală aleasă de pe telefon.
+  setProfilePhoto(token: string, uri: string): Promise<{ photoUrl: string }>;
+  removeProfilePhoto(token: string): Promise<void>;
+  getIdentity(token: string): Promise<Identity>;
+  saveIdentityNote(token: string, note: string): Promise<Identity>;
+  addIdentityPhoto(token: string, uri: string): Promise<IdentityPhoto>;
+  removeIdentityPhoto(token: string, id: string): Promise<void>;
 
   listBookings(token: string): Promise<Booking[]>;
   createBooking(

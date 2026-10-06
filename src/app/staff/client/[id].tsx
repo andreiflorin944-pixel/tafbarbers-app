@@ -1,15 +1,18 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Text, TextInput, View } from 'react-native';
 import { staffApi, type StaffClient } from '@/api/staff';
 import { BOOKING_STATUS } from '@/components/BookingSheet';
-import { Button, Card, Screen, styles as ui } from '@/components/ui';
-import { formatDate, formatTime } from '@/lib/dates';
+import { PhotoGrid, PhotoViewer } from '@/components/PhotoViewer';
+import { Avatar, Button, Card, Screen, styles as ui } from '@/components/ui';
+import type { IdentityPhoto } from '@/data/types';
+import { ageFrom, formatBirth, formatDate, formatTime } from '@/lib/dates';
+import { pickImage } from '@/lib/pickImage';
 import { errorMessage } from '@/lib/errors';
 import { useStaff } from '@/state/Staff';
 import { colors, space } from '@/theme';
 
-// Fișa clientului: contact, notițe interne și istoricul programărilor.
+// Fișa clientului: contact, TAF Identity (de la client), poze și notițe doar pentru echipă, istoric.
 export default function StaffClient() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { staff, staffToken } = useStaff();
@@ -17,6 +20,8 @@ export default function StaffClient() {
   const [notes, setNotes] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [view, setView] = useState<{ list: IdentityPhoto[]; i: number } | null>(null);
 
   useEffect(() => {
     if (!staffToken || !id) return;
@@ -49,16 +54,79 @@ export default function StaffClient() {
     }
   };
 
+  const identity = c.identity ?? { note: '', photos: [], staffPhotos: [] };
+  const staffPhotos = identity.staffPhotos ?? [];
+  const age = ageFrom(c.birthDate);
+
+  const addPhoto = async () => {
+    setMsg(null);
+    try {
+      const uri = await pickImage();
+      if (!uri) return;
+      setPhotoBusy(true);
+      const p = await staffApi.addClientPhoto(staffToken, c.id, uri);
+      setC({ ...c, identity: { ...identity, staffPhotos: [...staffPhotos, { ...p, addedBy: staff.name }] } });
+    } catch (e) {
+      setMsg({ ok: false, text: errorMessage(e) });
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const removeStaffPhoto = (p: IdentityPhoto) => {
+    const go = async () => {
+      try {
+        await staffApi.deleteClientPhoto(staffToken, c.id, p.id);
+        setView(null);
+        setC({ ...c, identity: { ...identity, staffPhotos: staffPhotos.filter((x) => x.id !== p.id) } });
+      } catch (e) {
+        setMsg({ ok: false, text: errorMessage(e) });
+      }
+    };
+    if (Platform.OS === 'web') return window.confirm('Ștergi poza?') && go();
+    Alert.alert('Ștergi poza?', undefined, [
+      { text: 'Nu', style: 'cancel' },
+      { text: 'Șterge', style: 'destructive', onPress: go },
+    ]);
+  };
+
   return (
     <Screen edges={['bottom']}>
-      <Text style={{ color: colors.text, fontSize: 24, fontWeight: '800' }}>{c.name || 'Client'}</Text>
-      <Text style={[ui.muted, { marginBottom: space.md }]}>
-        {c.phone}
-        {c.email ? ` · ${c.email}` : ''}
-      </Text>
+      <View style={[ui.row, { gap: space.md, marginBottom: space.md }]}>
+        <Avatar barber={{ id: c.id, name: c.name, role: '', initials: (c.name || '?').charAt(0).toUpperCase(), photoUrl: c.photoUrl }} size={64} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontSize: 24, fontWeight: '800' }}>{c.name || 'Client'}</Text>
+          <Text style={ui.muted}>
+            {c.phone}
+            {c.email ? ` · ${c.email}` : ''}
+          </Text>
+          {c.birthDate ? (
+            <Text style={ui.muted}>
+              Născut pe {formatBirth(c.birthDate)}
+              {age !== null ? ` · ${age} ani` : ''}
+            </Text>
+          ) : null}
+        </View>
+      </View>
       {c.phone ? <Button title={`Sună ${c.phone}`} variant="ghost" onPress={() => Linking.openURL(`tel:${c.phone}`)} /> : null}
 
-      <Text style={ui.label}>Notițe (le vede doar echipa)</Text>
+      <Text style={[ui.label, { color: colors.gold }]}>TAF Identity (de la client)</Text>
+      {identity.note ? (
+        <Card>
+          <Text style={ui.text}>{identity.note}</Text>
+        </Card>
+      ) : null}
+      {identity.photos.length ? (
+        <View style={{ marginTop: space.sm }}>
+          <PhotoGrid photos={identity.photos} onOpen={(i) => setView({ list: identity.photos, i })} />
+        </View>
+      ) : null}
+      {!identity.note && !identity.photos.length ? <Text style={ui.muted}>Clientul nu a pus încă poze sau o descriere.</Text> : null}
+
+      <Text style={[ui.label, { marginTop: space.lg }]}>Doar pentru echipă: poze</Text>
+      <PhotoGrid photos={staffPhotos} onOpen={(i) => setView({ list: staffPhotos, i })} onAdd={addPhoto} busy={photoBusy} />
+
+      <Text style={ui.label}>Doar pentru echipă: notițe</Text>
       <TextInput
         value={notes}
         onChangeText={setNotes}
@@ -94,6 +162,13 @@ export default function StaffClient() {
           </Card>
         ))}
       </View>
+      <PhotoViewer
+        photos={view?.list ?? []}
+        index={view?.i ?? null}
+        onIndex={(i) => setView((v) => v && { ...v, i })}
+        onClose={() => setView(null)}
+        onDelete={view && view.list === staffPhotos ? removeStaffPhoto : undefined}
+      />
     </Screen>
   );
 }

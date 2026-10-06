@@ -1,3 +1,4 @@
+import type { Identity, IdentityPhoto } from '@/data/types';
 import Constants from 'expo-constants';
 import { ApiError } from './client';
 
@@ -62,6 +63,21 @@ export const staffApi = {
   clients: (t: string, q: string) => call<StaffClient[]>('GET', `/admin/clients?q=${encodeURIComponent(q)}`, t),
   client: (t: string, id: string) => call<StaffClient>('GET', `/admin/clients/${encodeURIComponent(id)}`, t),
   saveClient: (t: string, id: string, body: { name?: string; notes?: string }) => call<StaffClient>('PATCH', `/admin/clients/${encodeURIComponent(id)}`, t, body),
+  /** Poză despre client, vizibilă doar echipei. `uri` = poza locală deja micșorată. */
+  addClientPhoto: async (t: string, id: string, uri: string): Promise<IdentityPhoto> => {
+    if (!apiUrl) throw new ApiError('no_server', 0);
+    let res: Response;
+    try {
+      const blob = await (await fetch(uri)).blob();
+      res = await fetch(`${apiUrl}/v1/admin/clients/${encodeURIComponent(id)}/photos`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${t}` }, body: blob });
+    } catch {
+      throw new ApiError('network', 0);
+    }
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+    return json as IdentityPhoto;
+  },
+  deleteClientPhoto: (t: string, id: string, pid: string) => call<{ ok: true }>('DELETE', `/admin/clients/${encodeURIComponent(id)}/photos/${encodeURIComponent(pid)}`, t),
   stats: (t: string) => call<StaffStats>('GET', '/admin/stats', t),
   orders: (t: string, status: string) => call<StaffOrder[]>('GET', `/admin/orders?status=${status}`, t),
   setOrderStatus: (t: string, id: string, status: string) => call<StaffOrder>('PATCH', `/admin/orders/${encodeURIComponent(id)}`, t, { status }),
@@ -86,6 +102,9 @@ export type StaffClient = {
   name: string;
   email: string | null;
   notes: string;
+  birthDate?: string | null;
+  photoUrl?: string | null;
+  identity?: Identity;
   visits?: number;
   lastVisit?: string | null;
   bookings?: StaffBooking[];

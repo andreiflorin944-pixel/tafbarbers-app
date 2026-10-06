@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, getToken, type Client, type Me } from '../api';
+import { api, getToken, uploadImageTo, type Client, type ClientPhoto, type Me } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
 import { date, lei, STATUS, time } from '../util';
 
@@ -96,14 +96,40 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
         <Loading error={c.error} />
       ) : (
         <div className="grid">
-          <div className="muted">
-            <a href={`tel:${c.data.phone}`}>{c.data.phone}</a>
-            {c.data.email ? ` · ${c.data.email}` : ''} · limba {c.data.lang.toUpperCase()}
+          <div className="row" style={{ alignItems: 'center', gap: 14 }}>
+            {c.data.photoUrl ? <img src={c.data.photoUrl} alt="" style={{ width: 64, height: 64, borderRadius: 32, objectFit: 'cover' }} /> : null}
+            <div className="muted">
+              <a href={`tel:${c.data.phone}`}>{c.data.phone}</a>
+              {c.data.email ? ` · ${c.data.email}` : ''} · limba {c.data.lang.toUpperCase()}
+              {c.data.birthDate ? <div>Data nașterii: {c.data.birthDate.split('-').reverse().join('.')}</div> : null}
+            </div>
           </div>
+          <h2 style={{ margin: '6px 0 0' }}>TAF Identity (de la client)</h2>
+          {c.data.identity?.note ? <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{c.data.identity.note}</div> : null}
+          <Photos list={c.data.identity?.photos ?? []} />
+          {!c.data.identity?.note && !c.data.identity?.photos.length ? <div className="muted small">Clientul nu a pus încă poze sau o descriere.</div> : null}
+          <h2 style={{ margin: '6px 0 0' }}>Poze doar pentru echipă</h2>
+          <Photos
+            list={c.data.identity?.staffPhotos ?? []}
+            onDelete={(pid) => confirm('Ștergi poza?') && run(async () => { await api('DELETE', `/admin/clients/${id}/photos/${pid}`); c.reload(); })}
+          />
+          <label className="btn ghost sm" style={{ justifySelf: 'start', cursor: 'pointer' }}>
+            + Adaugă poză
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) run(async () => { await uploadImageTo(`/v1/admin/clients/${id}/photos`, f, { maxPx: 1200 }); c.reload(); });
+              }}
+            />
+          </label>
           <Field label="Nume">
             <input value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label="Notițe (doar pentru voi)">
+          <Field label="Notițe (doar pentru echipă)">
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex.: preferă fade 0.5, alergic la..." />
           </Field>
           {error ? <div className="err">{error}</div> : null}
@@ -157,5 +183,26 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
         </div>
       )}
     </Modal>
+  );
+}
+
+/** Poze mici; clic = poza mare într-un tab nou. */
+function Photos({ list, onDelete }: { list: ClientPhoto[]; onDelete?: (id: string) => void }) {
+  if (!list.length) return null;
+  return (
+    <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+      {list.map((p) => (
+        <div key={p.id} style={{ position: 'relative' }}>
+          <a href={p.url} target="_blank" rel="noreferrer" title={[p.caption, p.addedBy && `adăugată de ${p.addedBy}`].filter(Boolean).join(' · ')}>
+            <img src={p.url} alt={p.caption} style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
+          </a>
+          {onDelete ? (
+            <button className="ghost sm" style={{ position: 'absolute', top: 4, right: 4, padding: '2px 8px' }} onClick={() => onDelete(p.id)} aria-label="Șterge poza">
+              ✕
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
   );
 }

@@ -23,6 +23,20 @@ export function httpApi(baseUrl: string): BookingApi {
     return json as T;
   }
 
+  /** Trimite o poză locală (deja micșorată) ca fișier în corpul cererii. */
+  async function upload<T>(method: string, path: string, token: string, uri: string): Promise<T> {
+    let res: Response;
+    try {
+      const blob = await (await fetch(uri)).blob();
+      res = await fetch(base + path, { method, headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${token}` }, body: blob });
+    } catch {
+      throw new ApiError('network', 0);
+    }
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+    return json as T;
+  }
+
   return {
     getBusiness: () => call('GET', '/business'),
     getServices: () => call('GET', '/services'),
@@ -43,6 +57,16 @@ export function httpApi(baseUrl: string): BookingApi {
       await call('DELETE', '/me', { token });
     },
     updateMe: (token, patch) => call('PATCH', '/me', { token, body: patch }),
+    setProfilePhoto: (token, uri) => upload('PUT', '/me/photo', token, uri),
+    removeProfilePhoto: async (token) => {
+      await call('DELETE', '/me/photo', { token });
+    },
+    getIdentity: (token) => call('GET', '/me/identity', { token }),
+    saveIdentityNote: (token, note) => call('PUT', '/me/identity', { token, body: { note } }),
+    addIdentityPhoto: (token, uri) => upload('POST', '/me/identity/photos', token, uri),
+    removeIdentityPhoto: async (token, id) => {
+      await call('DELETE', `/me/identity/photos/${encodeURIComponent(id)}`, { token });
+    },
 
     listBookings: (token) => call('GET', '/me/bookings', { token }),
     createBooking: (token, input) => call('POST', '/bookings', { token, body: input }),

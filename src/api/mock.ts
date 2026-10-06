@@ -1,5 +1,5 @@
 import { barbers, business, promos, services } from '@/data/mock';
-import type { Booking, Me, Slot } from '@/data/types';
+import type { Booking, Identity, Me, Slot } from '@/data/types';
 import { dayKey, formatTime, fromDayKey, parseHM } from '@/lib/dates';
 import { ApiError, type BookingApi } from './client';
 
@@ -31,6 +31,12 @@ function overlaps(aStart: number, aEnd: number, bStart: number, bEnd: number) {
   return aStart < bEnd && bStart < aEnd;
 }
 
+
+const identities = new Map<string, Identity>();
+const identityOf = (token: string) => {
+  if (!identities.has(token)) identities.set(token, { note: '', photos: [] });
+  return identities.get(token)!;
+};
 export const mockApi: BookingApi = {
   getBusiness: () => delay(business),
   getServices: () => delay(services),
@@ -103,6 +109,33 @@ export const mockApi: BookingApi = {
     const u = users.get(token);
     if (!u) throw new ApiError('unauthorized', 401);
     return delay({ ...u });
+  },
+  async setProfilePhoto(token, uri) {
+    const u = users.get(token);
+    if (u) users.set(token, { ...u, photoUrl: uri });
+    return delay({ photoUrl: uri });
+  },
+  async removeProfilePhoto(token) {
+    const u = users.get(token);
+    if (u) users.set(token, { ...u, photoUrl: null });
+    return delay(undefined);
+  },
+  getIdentity: (token) => delay(identityOf(token)),
+  async saveIdentityNote(token, note) {
+    identityOf(token).note = note;
+    return delay(identityOf(token));
+  },
+  async addIdentityPhoto(token, uri) {
+    const id = identityOf(token);
+    if (id.photos.length >= 5) throw new ApiError('too_many_photos', 409);
+    const p = { id: `ph-${Date.now()}`, url: uri, caption: '' };
+    id.photos.push(p);
+    return delay(p);
+  },
+  async removeIdentityPhoto(token, pid) {
+    const id = identityOf(token);
+    id.photos = id.photos.filter((p) => p.id !== pid);
+    return delay(undefined);
   },
   async updateMe(token, patch) {
     const u = users.get(token);
