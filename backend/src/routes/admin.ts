@@ -1,5 +1,6 @@
 import { Hono, type Context, type Next } from 'hono';
 import { notesRoutes } from '../notes';
+import { socialAdmin } from '../social';
 import {
   createSession,
   deleteSession,
@@ -112,6 +113,7 @@ adminRoutes.use('*', async (c, next) => {
 
 // Notițe pentru echipă (sarcini, scripturi de filmat).
 adminRoutes.route('/', notesRoutes);
+adminRoutes.route('/', socialAdmin);
 
 adminRoutes.post('/logout', async (c) => {
   const t = tokenFrom(c);

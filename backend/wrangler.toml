@@ -19,6 +19,11 @@ migrations_dir = "migrations"
 [ai]
 binding = "AI"
 
+# Spațiul de fișiere pentru clipurile postate pe rețele (Cloudflare R2). Se pornește după ce R2 e activat în cont:
+# [[r2_buckets]]
+# binding = "MEDIA"
+# bucket_name = "tafbarbers-media"
+
 # Reminder-ele SMS/push rulează la fiecare 5 minute.
 [triggers]
 crons = ["*/5 * * * *"]
@@ -36,3 +41,5 @@ CORS_ORIGINS = "*"
 #   PUBLIC_URL        adresa publică (ex. https://app.tafbarbers.ro), pentru întoarcerea de la plată
 #   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET   plata online cu cardul (fără ele plata e doar la salon)
 #   REVIEW_LOGIN      contul demo pentru Apple / Google, „telefon:cod”
+#   META_APP_ID, META_APP_SECRET            aplicația Meta pentru postări pe Facebook și Instagram
+#   TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET aplicația TikTok pentru postări

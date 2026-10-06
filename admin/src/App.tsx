@@ -21,6 +21,7 @@ import { NotificationsPage } from './pages/Notifications';
 import { GiftCardsPage } from './pages/GiftCards';
 import { StockPage } from './pages/Stock';
 import { NotesPage } from './pages/Notes';
+import { SocialPage } from './pages/Social';
 
 const PAGES = [
   { key: 'calendar', label: 'Calendar', show: () => true, el: CalendarPage },
@@ -40,13 +41,14 @@ const PAGES = [
   { key: 'appearance', label: 'Aspect aplicație', show: (m: Me) => m.owner, el: AppearancePage },
   { key: 'promos', label: 'Bannere aplicație', show: (m: Me) => m.owner, el: PromosPage },
   { key: 'campaigns', label: 'Campanii', show: (m: Me) => m.owner, el: CampaignsPage },
+  { key: 'social', label: 'Postări pe rețele', show: (m: Me) => m.owner, el: SocialPage },
   { key: 'legal', label: 'Regulamente și GDPR', show: (m: Me) => m.owner, el: LegalPage },
   { key: 'notifications', label: 'Notificări', show: (m: Me) => m.owner, el: NotificationsPage },
   { key: 'settings', label: 'Setări', show: () => true, el: SettingsPage },
 ];
 
-const pageFromHash = () => location.hash.replace(/^#\/?/, '').split('/')[0] || 'calendar';
-const hashNow = () => location.hash.replace(/^#\/?/, '');
+const pageFromHash = () => location.hash.replace(/^#\/?/, '').split('?')[0].split('/')[0] || 'calendar';
+const hashNow = () => location.hash.replace(/^#\/?/, '').split('?')[0];
 
 type NavItem = { label: string; to: string };
 type NavGroup = { title?: string; items: NavItem[] };
@@ -122,7 +124,7 @@ const NAV: NavSection[] = [
     label: 'Marketing',
     icon: 'marketing',
     groups: [
-      { items: [{ label: 'Campanii (SMS, e-mail, push)', to: 'campaigns' }, { label: 'Bannere în aplicație', to: 'promos' }] },
+      { items: [{ label: 'Postări Facebook, Instagram, TikTok', to: 'social' }, { label: 'Campanii (SMS, e-mail, push)', to: 'campaigns' }, { label: 'Bannere în aplicație', to: 'promos' }] },
       { title: 'Automatizări', items: [{ label: 'Ne e dor de tine', to: 'notifications/dor' }, { label: 'Ore libere azi', to: 'notifications/ore-libere' }, { label: 'Card cadou', to: 'notifications/card-cadou' }, { label: 'Zile de naștere', to: 'birthdays' }] },
       { title: 'Fidelizare', items: [{ label: 'Recomandări și bonusuri', to: 'referrals' }, { label: 'Abonamente', to: 'subscriptions' }] },
     ],

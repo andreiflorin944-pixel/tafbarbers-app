@@ -121,6 +121,23 @@ const MESSAGES: Record<string, string> = {
   gift_card_not_found: 'Nu există un card cadou activ cu acest cod.',
   gift_card_expired: 'Cardul cadou a expirat.',
   gift_card_empty: 'Pe cardul cadou nu mai sunt bani.',
+  unsupported_media: 'Merg doar poze și clipuri MP4 sau MOV.',
+  video_too_large: 'Clipul e prea mare (cel mult 95 MB).',
+  video_needs_storage: 'Pentru clipuri trebuie pornit spațiul de fișiere (Cloudflare R2).',
+  one_video_only: 'Un clip se postează singur, fără alte poze.',
+  tiktok_video_only: 'Pe TikTok se pot posta doar clipuri.',
+  media_required: 'Adaugă cel puțin o poză sau un clip.',
+  targets_required: 'Bifează unde să plece postarea.',
+  media_missing: 'O poză sau un clip nu mai există. Încarcă-l din nou.',
+  account_missing: 'Unul dintre conturi a fost deconectat.',
+  public_url_missing: 'Lipsește adresa publică a serverului (PUBLIC_URL).',
+  post_already_sent: 'Postarea a plecat deja și nu se mai poate schimba.',
+  post_in_progress: 'Postarea se trimite acum. Încearcă puțin mai târziu.',
+  meta_not_configured: 'Lipsește aplicația Meta pe server.',
+  tiktok_not_configured: 'Lipsește aplicația TikTok pe server.',
+  social_key_missing: 'Lipsește cheia de criptare pe server.',
+  invalid_date: 'Alege data și ora.',
+  empty_file: 'Fișierul e gol.',
 };
 export const errorText = (e: unknown) =>
   e instanceof ApiError ? (MESSAGES[e.code] ?? `Eroare: ${e.code}`) : 'A apărut o problemă.';

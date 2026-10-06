@@ -15,6 +15,15 @@ export type Env = {
   REVIEW_LOGIN?: string;
   // Workers AI (legătura „AI” din wrangler.toml): traducerea automată a textelor în engleză și franceză.
   AI?: { run(model: string, input: Record<string, unknown>): Promise<unknown> };
+  // Postări pe rețele: aplicația Meta (Facebook + Instagram) și aplicația TikTok, plus spațiul de fișiere R2 pentru clipuri.
+  META_APP_ID?: string;
+  META_APP_SECRET?: string;
+  TIKTOK_CLIENT_KEY?: string;
+  TIKTOK_CLIENT_SECRET?: string;
+  // Cheia cu care se criptează tokenurile conturilor conectate (dacă lipsește, se folosește ADMIN_SETUP_KEY).
+  SOCIAL_KEY?: string;
+  MEDIA?: R2Bucket;
+  SOCIAL_MOCK_BASE?: string;
   // Doar pentru dezvoltare locală: codul OTP se întoarce în răspuns în loc de SMS.
   DEV_OTP?: string;
 };

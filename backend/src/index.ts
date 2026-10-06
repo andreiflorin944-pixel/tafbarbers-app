@@ -5,6 +5,7 @@ import { adminRoutes } from './routes/admin';
 import { clientRoutes } from './routes/client';
 import { publicRoutes } from './routes/public';
 import { scheduled } from './cron';
+import { socialPublic } from './social';
 import { getAutomations } from './growth';
 import { DOCS, legalDoc, type Doc } from './legal';
 import { getBusiness } from './db';
@@ -23,6 +24,7 @@ app.use('*', async (c, next) => {
 
 app.get('/v1', (c) => c.json({ name: 'tafbarbers-api', ok: true }));
 app.route('/v1', publicRoutes);
+app.route('/v1', socialPublic);
 app.route('/v1/admin', adminRoutes);
 app.route('/v1', clientRoutes);
 

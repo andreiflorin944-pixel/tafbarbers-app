@@ -5,6 +5,7 @@ import { runCampaign } from './campaigns';
 import { greetBirthdays } from './birthday';
 import { sendLastMinute, sendWinback } from './growth';
 import { formatLocal, iso } from './time';
+import { runSocial } from './social';
 
 /**
  * Rulează la fiecare 5 minute: reminder-e (24h și 2h înainte), campanii programate, urări de ziua clientului,
@@ -39,6 +40,11 @@ export async function scheduled(env: Env) {
     await sendLastMinute(env, new Date(now));
   } catch (e) {
     console.error('last minute failed', e);
+  }
+  try {
+    await runSocial(env, new Date(now));
+  } catch (e) {
+    console.error('social posts failed', e);
   }
 
   await env.DB.batch([
