@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, errorText, getToken, type Barber, type Me, type Service } from '../api';
-import { Field, Loading, useLoad } from '../ui';
+import { Field, Loading, useLoad, useSub } from '../ui';
 import { addDays, lei, today } from '../util';
 
 type ReportMeta = { kind: string; title: string; range: 'day' | 'period' | 'future' | 'months' };
@@ -73,6 +73,7 @@ export function ReportsPage({ me }: { me: Me }) {
   const [downloading, setDownloading] = useState(false);
 
   const current = list.data?.find((r) => r.kind === kind);
+  const sub = useSub();
   const query = () => {
     const p = new URLSearchParams({ from, to });
     if (filters.barberId) p.set('barberId', filters.barberId);
@@ -91,6 +92,12 @@ export function ReportsPage({ me }: { me: Me }) {
     else if (r?.range === 'months') setFrom(addDays(t, -364).slice(0, 8) + '01'), setTo(t);
     else if (current?.range === 'day' || current?.range === 'future' || current?.range === 'months') setFrom(addDays(t, -29)), setTo(t);
   };
+
+  // Din meniu: #/reports/<raport> deschide direct raportul.
+  useEffect(() => {
+    if (sub && sub !== kind && list.data?.some((r) => r.kind === sub)) pick(sub);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sub, list.data]);
 
   useEffect(() => {
     if (!list.data) return;
@@ -147,7 +154,7 @@ export function ReportsPage({ me }: { me: Me }) {
       <div className="reports">
         <nav className="report-list">
           {list.data.map((r) => (
-            <button key={r.kind} className={r.kind === kind ? 'on' : ''} onClick={() => pick(r.kind)}>
+            <button key={r.kind} className={r.kind === kind ? 'on' : ''} onClick={() => (location.hash = `#/reports/${r.kind}`)}>
               {r.title}
             </button>
           ))}

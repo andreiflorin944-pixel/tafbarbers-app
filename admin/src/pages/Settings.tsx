@@ -1,9 +1,23 @@
 import { useEffect, useState } from 'react';
 import { api, setToken, PERM_LABELS, ROLE_HELP, ROLE_LABELS, type Barber, type Business, type Me, type Perm, type Role } from '../api';
-import { Field, Loading, useAction, useLoad } from '../ui';
+import { Field, Loading, useAction, useLoad, useSub } from '../ui';
 import { date, time } from '../util';
 
 export function SettingsPage({ me }: { me: Me }) {
+  // Din meniu: #/settings/<secțiune> derulează la secțiunea respectivă (după ce s-a încărcat).
+  const sub = useSub();
+  useEffect(() => {
+    if (!sub) return;
+    let tries = 0;
+    const t = setInterval(() => {
+      const el = document.getElementById(`set-${sub}`);
+      if (el || ++tries > 20) {
+        clearInterval(t);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+    return () => clearInterval(t);
+  }, [sub]);
   return (
     <>
       <div className="head">
@@ -48,7 +62,7 @@ function BusinessForm() {
 
   return (
     <div className="card grid">
-      <h2 style={{ margin: 0 }}>Salonul</h2>
+      <h2 id="set-salon" style={{ margin: 0, scrollMarginTop: 16 }}>Salonul</h2>
       <div className="grid two">
         {text('name', 'Nume')}
         {text('tagline', 'Slogan scurt')}
@@ -62,7 +76,7 @@ function BusinessForm() {
       <Field label="Descriere (pagina Despre din aplicație)">
         <textarea value={v.description ?? ''} onChange={(e) => set({ description: e.target.value })} />
       </Field>
-      <h2 style={{ margin: '6px 0 0' }}>Reguli de programare</h2>
+      <h2 id="set-reguli" style={{ margin: '6px 0 0', scrollMarginTop: 16 }}>Reguli de programare</h2>
       <div className="grid two">
         <Field label="Pasul orelor în aplicație (minute)">
           <select value={v.slotStepMin} onChange={(e) => set({ slotStepMin: Number(e.target.value) })}>
@@ -120,7 +134,7 @@ function Team({ me }: { me: Me }) {
 
   return (
     <div className="card grid">
-      <h2 style={{ margin: 0 }}>Utilizatori și roluri</h2>
+      <h2 id="set-echipa" style={{ margin: 0, scrollMarginTop: 16 }}>Utilizatori și roluri</h2>
       <p className="muted small" style={{ margin: 0 }}>
         Fiecare cont are un rol, iar drepturile rolului le poți schimba pe fiecare om în parte. Același cont merge în panou și în aplicație, la Cont → Echipă.
         Legătura cu un frizer arată în ce coloană din calendar lucrează contul.
@@ -248,7 +262,7 @@ function Password() {
   const { busy, error, run } = useAction();
   return (
     <div className="card grid">
-      <h2 style={{ margin: 0 }}>Schimbă parola</h2>
+      <h2 id="set-parola" style={{ margin: 0, scrollMarginTop: 16 }}>Schimbă parola</h2>
       <div className="grid two">
         <Field label="Parola actuală">
           <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
@@ -283,7 +297,7 @@ function Sessions() {
   const { busy, error, run } = useAction();
   return (
     <div className="card grid">
-      <h2 style={{ margin: 0 }}>Deconectare</h2>
+      <h2 id="set-sesiuni" style={{ margin: 0, scrollMarginTop: 16 }}>Deconectare</h2>
       <p className="muted small" style={{ margin: 0 }}>
         Ai uitat contul deschis pe alt calculator sau telefon? Îl poți închide de aici.
       </p>
@@ -332,7 +346,7 @@ function MessageLog() {
   const log = useLoad(() => api<Msg[]>('GET', '/admin/messages'));
   return (
     <div className="card">
-      <h2>Mesaje trimise (ultimele 200)</h2>
+      <h2 id="set-mesaje" style={{ scrollMarginTop: 16 }}>Mesaje trimise (ultimele 200)</h2>
       {!log.data ? (
         <Loading error={log.error} />
       ) : log.data.length === 0 ? (

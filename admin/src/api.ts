@@ -108,6 +108,12 @@ const MESSAGES: Record<string, string> = {
   invalid_vat: 'Cota de TVA nu e corectă.',
   invalid_day: 'Data nu e corectă.',
   invalid_barber: 'Frizerul ales nu mai există.',
+  import_empty: 'Fișierul nu are niciun rând cu clienți.',
+  import_too_big: 'Fișierul are prea multe rânduri (maxim 3000 o dată). Împarte-l în mai multe.',
+  review_not_completed: 'Cererea de recenzie se trimite după ce tunsoarea e încheiată.',
+  review_link_missing: 'Pune întâi linkul de recenzie Google în Aplicații → Linkuri.',
+  review_already_sent: 'Clientul a primit deja cererea de recenzie pentru tunsoarea asta.',
+  send_failed: 'Mesajul nu a putut fi trimis.',
   product_not_found: 'Produsul nu mai există.',
   stock_too_low: 'Nu e destul stoc (produsele s-au vândut sau folosit între timp).',
   stock_not_tracked: 'Produsul nu are stoc urmărit.',
@@ -211,6 +217,8 @@ export type Barber = {
   role: string;
   bio: string;
   photoUrl: string | null;
+  /** Culoarea frizerului în calendar (#RRGGBB); null = una din paleta implicită. */
+  color: string | null;
   initials: string;
   sort: number;
   active: boolean;

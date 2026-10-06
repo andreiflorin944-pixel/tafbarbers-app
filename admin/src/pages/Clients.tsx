@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 import { api, getToken, uploadImageTo, type Client, type ClientPhoto, type Me } from '../api';
-import { Field, Loading, Modal, useAction, useLoad } from '../ui';
+import { Field, Loading, Modal, useAction, useLoad, useSub } from '../ui';
+import { excelDate, readTable } from '../sheet';
 import { date, lei, STATUS, time } from '../util';
 import { ClientBonuses } from './Referrals';
 import { ClientSubscriptions } from './Subscriptions';
 
-async function downloadCsv() {
-  const res = await fetch('/v1/admin/clients.csv', { headers: { Authorization: `Bearer ${getToken()}` } });
+async function download(ext: 'csv' | 'xlsx') {
+  const res = await fetch(`/v1/admin/clients.${ext}`, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) return alert('Exportul nu a mers.');
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement('a');
   a.href = url;
-  a.download = `clienti-tafbarbers-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `clienti-tafbarbers-${new Date().toISOString().slice(0, 10)}.${ext}`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -20,7 +21,13 @@ export function ClientsPage({ me }: { me: Me }) {
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const list = useLoad(() => api<Client[]>('GET', `/admin/clients?q=${encodeURIComponent(query)}`), [query]);
+  // #/clients/<id> deschide direct fișa (de ex. din calendar).
+  const sub = useSub();
+  useEffect(() => {
+    if (sub) setOpen(sub);
+  }, [sub]);
 
   // Căutare după ce te oprești din scris.
   useEffect(() => {
@@ -40,9 +47,17 @@ export function ClientsPage({ me }: { me: Me }) {
             style={{ maxWidth: 320 }}
           />
           {me.permissions.contacts ? (
-            <button className="ghost" onClick={downloadCsv}>
-              Export Excel (CSV)
-            </button>
+            <>
+              <button className="ghost" onClick={() => setImporting(true)}>
+                Importă
+              </button>
+              <button className="ghost" onClick={() => download('xlsx')}>
+                Exportă Excel
+              </button>
+              <button className="ghost" onClick={() => download('csv')}>
+                Exportă CSV
+              </button>
+            </>
           ) : null}
         </div>
       </div>
@@ -81,8 +96,173 @@ export function ClientsPage({ me }: { me: Me }) {
           </table>
         </div>
       )}
-      {open ? <ClientModal id={open} canDelete={me.owner} onClose={() => setOpen(null)} onChange={list.reload} /> : null}
+      {open ? (
+        <ClientModal
+          id={open}
+          canDelete={me.owner}
+          onClose={() => {
+            setOpen(null);
+            if (sub) location.hash = '#/clients';
+          }}
+          onChange={list.reload}
+        />
+      ) : null}
+      {importing ? <ImportModal onClose={() => setImporting(false)} onDone={list.reload} /> : null}
     </>
+  );
+}
+
+const FIELDS = [
+  { key: 'name', label: 'Nume', match: /^(nume|name|client|nume (complet|client)|full ?name|prenume)/i },
+  { key: 'phone', label: 'Telefon', match: /(telefon|phone|mobil|tel\b|nr\.? ?tel)/i },
+  { key: 'email', label: 'E-mail', match: /(e-?mail|mail)/i },
+  { key: 'birthDate', label: 'Data nașterii', match: /(na[șs]ter|birth|zi(ua)? de)/i },
+  { key: 'notes', label: 'Notițe', match: /(noti[țt]|note|observa|comentari)/i },
+] as const;
+type FieldKey = (typeof FIELDS)[number]['key'];
+type ImportResult = { created: number; updated: number; unchanged: number; skipped: Array<{ row: number; reason: string }>; skippedCount: number };
+
+/** Import de clienți din Excel sau CSV: alegi fișierul, verifici coloanele, apoi îi adaugi. Telefonul nu se dublează. */
+function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [rows, setRows] = useState<string[][] | null>(null);
+  const [fileName, setFileName] = useState('');
+  const [header, setHeader] = useState(true);
+  const [map, setMap] = useState<Record<FieldKey, number>>({ name: -1, phone: -1, email: -1, birthDate: -1, notes: -1 });
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const { busy, error, run, setError } = useAction();
+
+  const pick = async (f: File) => {
+    setError(null);
+    setResult(null);
+    try {
+      const t = await readTable(f);
+      if (!t.length) throw new Error('Fișierul e gol.');
+      setRows(t);
+      setFileName(f.name);
+      // Ghicim coloanele după antet; dacă primul rând arată ca un telefon, nu e antet.
+      const first = t[0];
+      const looksHeader = !first.some((c) => /^\+?\d[\d\s.-]{7,}$/.test(c.trim()));
+      setHeader(looksHeader);
+      const m = { name: -1, phone: -1, email: -1, birthDate: -1, notes: -1 } as Record<FieldKey, number>;
+      if (looksHeader) for (const fd of FIELDS) m[fd.key] = first.findIndex((c, i) => fd.match.test(c.trim()) && !Object.values(m).includes(i));
+      else {
+        m.phone = first.findIndex((c) => /^\+?\d[\d\s.-]{7,}$/.test(c.trim()));
+        m.name = first.findIndex((c, i) => i !== m.phone && /[a-zăâîșț]/i.test(c) && !c.includes('@'));
+        m.email = first.findIndex((c) => c.includes('@'));
+      }
+      setMap(m);
+    } catch (e) {
+      setRows(null);
+      setError(e instanceof Error ? e.message : 'Fișierul nu a putut fi citit.');
+    }
+  };
+
+  const data = rows ? (header ? rows.slice(1) : rows) : [];
+  const cols = rows ? Math.max(...rows.slice(0, 50).map((r) => r.length)) : 0;
+  const colName = (i: number) => (header && rows?.[0][i]?.trim()) || `Coloana ${String.fromCharCode(65 + (i % 26))}`;
+  const cell = (r: string[], k: FieldKey) => (map[k] >= 0 ? (r[map[k]] ?? '').trim() : '');
+  const out = data.map((r) => ({
+    name: cell(r, 'name'),
+    phone: cell(r, 'phone'),
+    email: cell(r, 'email'),
+    birthDate: excelDate(cell(r, 'birthDate')),
+    notes: cell(r, 'notes'),
+  }));
+
+  const submit = () =>
+    run(async () => {
+      setResult(await api<ImportResult>('POST', '/admin/clients/import', { rows: out }));
+      onDone();
+    });
+
+  return (
+    <Modal title="Importă clienți" onClose={onClose}>
+      <div className="grid">
+        <p className="muted small" style={{ margin: 0 }}>
+          Alege un fișier Excel (.xlsx) sau CSV cu clienții, de exemplu exportul din Barberly. Ai nevoie cel puțin de telefon. Un număr care există deja nu se dublează: se
+          completează doar ce lipsea. Clienții importați nu primesc oferte până nu își dau singuri acordul (GDPR).
+        </p>
+        <label className="btn ghost" style={{ justifySelf: 'start' }}>
+          {fileName ? `Fișier: ${fileName} (alege altul)` : 'Alege fișierul'}
+          <input type="file" accept=".xlsx,.csv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(e) => e.target.files?.[0] && pick(e.target.files[0])} />
+        </label>
+        {rows && !result ? (
+          <>
+            <label className="check small">
+              <input type="checkbox" checked={header} onChange={(e) => setHeader(e.target.checked)} /> Primul rând e antetul (numele coloanelor)
+            </label>
+            <div className="grid two">
+              {FIELDS.map((fd) => (
+                <Field key={fd.key} label={fd.label + (fd.key === 'phone' ? ' (obligatoriu)' : '')}>
+                  <select value={map[fd.key]} onChange={(e) => setMap({ ...map, [fd.key]: Number(e.target.value) })}>
+                    <option value={-1}>nu importa</option>
+                    {Array.from({ length: cols }, (_, i) => (
+                      <option key={i} value={i}>
+                        {colName(i)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ))}
+            </div>
+            <div className="table-wrap card" style={{ padding: 0 }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nume</th>
+                    <th>Telefon</th>
+                    <th>E-mail</th>
+                    <th>Naștere</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {out.slice(0, 5).map((r, i) => (
+                    <tr key={i}>
+                      <td>{r.name || <span className="muted">–</span>}</td>
+                      <td>{r.phone || <span className="err">lipsă</span>}</td>
+                      <td>{r.email || <span className="muted">–</span>}</td>
+                      <td>{r.birthDate || <span className="muted">–</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="muted small">
+              {data.length} rânduri în fișier{data.length > 5 ? ', mai sus vezi primele 5' : ''}.
+            </div>
+          </>
+        ) : null}
+        {result ? (
+          <div className="card grid" style={{ gap: 4 }}>
+            <b>Gata.</b>
+            <div>{result.created} clienți noi adăugați.</div>
+            {result.updated ? <div>{result.updated} clienți existenți completați (nume, e-mail sau zi de naștere care lipseau).</div> : null}
+            {result.unchanged ? <div className="muted">{result.unchanged} existau deja, neschimbați.</div> : null}
+            {result.skippedCount ? (
+              <details>
+                <summary className="err">{result.skippedCount} rânduri sărite</summary>
+                {result.skipped.map((x) => (
+                  <div key={x.row} className="small muted">
+                    Rândul {x.row + (header ? 1 : 0)}: {x.reason}
+                  </div>
+                ))}
+              </details>
+            ) : null}
+          </div>
+        ) : null}
+        {error ? <div className="err">{error}</div> : null}
+        <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <button className="ghost" onClick={onClose}>
+            {result ? 'Închide' : 'Renunță'}
+          </button>
+          {rows && !result ? (
+            <button disabled={busy || map.phone < 0 || !data.length} onClick={submit}>
+              {busy ? 'Se importă…' : `Importă ${data.length} clienți`}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </Modal>
   );
 }
 

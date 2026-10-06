@@ -79,6 +79,7 @@ export type BarberRow = {
   role: string;
   bio: string;
   photo_url: string | null;
+  color?: string | null;
   sort: number;
   active: number;
   service_ids?: string | null;
@@ -90,6 +91,7 @@ export const barber = (r: BarberRow) => ({
   role: r.role,
   bio: r.bio,
   photoUrl: r.photo_url,
+  color: r.color ?? null,
   initials: r.name
     .split(/\s+/)
     .map((w) => w[0])

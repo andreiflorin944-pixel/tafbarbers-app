@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, type Reward } from '../api';
-import { Field, Loading, useAction, useLoad } from '../ui';
+import { Field, Loading, useAction, useLoad, useSub } from '../ui';
 import { time } from '../util';
 import { RewardFields } from './Referrals';
 
@@ -10,7 +10,7 @@ type Automations = {
   winback: { enabled: boolean; weeks: number; hour: number; push: boolean; email: boolean; sms: boolean; title: Texts; message: Texts; bonus: boolean; reward: Reward };
   lastMinute: { enabled: boolean; hours: number[]; window: number; maxPerWeek: number; push: boolean; email: boolean; sms: boolean; title: Texts; message: Texts };
   giftCard: { enabled: boolean; amounts: number[]; validMonths: number; title: Texts; message: Texts };
-  links: { appStoreUrl: string; playStoreUrl: string };
+  links: { appStoreUrl: string; playStoreUrl: string; googleReviewUrl?: string };
   channels: Record<Ev, Channel>;
 };
 type Ev = 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'order_ready' | 'gift_card';
@@ -25,6 +25,7 @@ const EVENTS: Array<{ k: Ev; label: string }> = [
 ];
 type Slot = { start: string; barberName: string };
 const LANGS: Record<Lang, string> = { ro: 'Română', en: 'English', fr: 'Français' };
+const TAB_SUBS = ['canale', 'dor', 'ore-libere', 'card-cadou', 'linkuri'];
 const TABS = ['Ce se trimite și pe unde', 'Ne e dor de tine', 'Ore libere azi', 'Card cadou', 'Butonul „Programează”'] as const;
 const SOURCES = [
   { src: 'google', label: 'Google Maps (profilul firmei)' },
@@ -43,6 +44,11 @@ export function NotificationsPage() {
   const [a, setA] = useState<Automations | null>(null);
   const [tab, setTab] = useState(0);
   const [saved, setSaved] = useState(false);
+  const sub = useSub();
+  useEffect(() => {
+    const i = TAB_SUBS.indexOf(sub);
+    if (i >= 0) setTab(i);
+  }, [sub]);
   const { busy, error, run } = useAction();
 
   useEffect(() => {
@@ -67,7 +73,7 @@ export function NotificationsPage() {
       </p>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
         {TABS.map((t, i) => (
-          <button key={t} className={i === tab ? 'sm' : 'ghost sm'} onClick={() => setTab(i)}>
+          <button key={t} className={i === tab ? 'sm' : 'ghost sm'} onClick={() => ((location.hash = `#/notifications/${TAB_SUBS[i]}`), setTab(i))}>
             {t}
           </button>
         ))}
@@ -341,6 +347,9 @@ function LinksTab({ links, onChange }: { links: Automations['links']; onChange: 
           </div>
         </Field>
       ))}
+      <Field label="Linkul pentru recenzii Google (din profilul de companie: Cere recenzii → copiază linkul)">
+        <input value={links.googleReviewUrl ?? ''} placeholder="https://g.page/r/..." onChange={(e) => onChange({ googleReviewUrl: e.target.value })} />
+      </Field>
       <Field label="Linkul aplicației în App Store (după publicare)">
         <input value={links.appStoreUrl} placeholder="https://apps.apple.com/..." onChange={(e) => onChange({ appStoreUrl: e.target.value })} />
       </Field>

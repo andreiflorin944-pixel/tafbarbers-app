@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, ApiError, errorText, getToken, type Me, type Product } from '../api';
-import { Field, Loading, Modal, useAction, useLoad } from '../ui';
+import { Field, Loading, Modal, useAction, useLoad, useSub } from '../ui';
 import { addDays, lei, longDate, today } from '../util';
 
 type NirLine = { productId: string; name: string; unit: string; qty: number; unitCost: number; vatPct: number; value: number; vat: number };
@@ -27,8 +27,15 @@ const TABS = ['NIR (intrări de marfă)', 'Ieșire din stoc', 'Situația stoculu
 const VATS = [0, 21, 11];
 
 // Gestiune: NIR la marfa primită, ieșiri (consum în salon, casare), situația stocului și fișa de magazie.
+const TAB_SUBS = ['nir', 'iesire', 'situatie', 'fisa'];
+
 export function StockPage({ me }: { me: Me }) {
   const [tab, setTab] = useState(0);
+  const sub = useSub();
+  useEffect(() => {
+    const i = TAB_SUBS.indexOf(sub);
+    if (i >= 0) setTab(i);
+  }, [sub]);
   return (
     <>
       <div className="head">
@@ -40,7 +47,7 @@ export function StockPage({ me }: { me: Me }) {
       </p>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
         {TABS.map((t, i) => (
-          <button key={t} className={i === tab ? 'sm' : 'ghost sm'} onClick={() => setTab(i)}>
+          <button key={t} className={i === tab ? 'sm' : 'ghost sm'} onClick={() => ((location.hash = `#/stock/${TAB_SUBS[i]}`), setTab(i))}>
             {t}
           </button>
         ))}

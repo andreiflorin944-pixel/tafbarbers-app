@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, ApiError, type Barber, type Hours, type Me, type Service } from '../api';
 import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
 import { hm, parseHm, WEEKDAYS } from '../util';
+import { BARBER_PALETTE, barberColor } from './Calendar';
 
 // Luni primul, duminica la final.
 const ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -21,6 +22,7 @@ export function BarbersPage(_: { me: Me }) {
               role: 'Barber',
               active: true,
               sort: barbers.length + 1,
+              color: BARBER_PALETTE.find((c) => !barbers.some((x, i) => barberColor(x, i) === c)) ?? BARBER_PALETTE[0],
               serviceIds: services.map((s) => s.id),
               hours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, start: 600, end: 1200 })),
             })
@@ -33,10 +35,12 @@ export function BarbersPage(_: { me: Me }) {
         <Loading error={data.error} />
       ) : (
         <div className="grid two">
-          {barbers.map((b) => (
-            <div key={b.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setEdit(b)}>
+          {barbers.map((b, i) => (
+            <div key={b.id} className="card" style={{ cursor: 'pointer', borderTop: `4px solid ${barberColor(b, i)}` }} onClick={() => setEdit({ ...b, color: barberColor(b, i) })}>
               <div className="row" style={{ justifyContent: 'space-between' }}>
-                <h2 style={{ margin: 0 }}>{b.name}</h2>
+                <h2 style={{ margin: 0 }}>
+                  <span className="dot" style={{ background: barberColor(b, i) }} /> {b.name}
+                </h2>
                 {b.active ? <span className="muted small">{b.role}</span> : <span className="pill off">inactiv</span>}
               </div>
               <div className="small" style={{ marginTop: 8 }}>
@@ -79,6 +83,7 @@ function BarberModal({ b, services, onClose, onDone }: { b: Partial<Barber>; ser
   const [photoUrl, setPhotoUrl] = useState(b.photoUrl ?? '');
   const [active, setActive] = useState(b.active !== false);
   const [sort, setSort] = useState(b.sort ?? 0);
+  const [color, setColor] = useState(b.color ?? BARBER_PALETTE[0]);
   const [svc, setSvc] = useState<string[]>(b.serviceIds ?? []);
   const [hours, setHours] = useState<Hours[]>(b.hours ?? []);
   // Preț propriu pe serviciu, ca text; gol = prețul standard al serviciului.
@@ -96,7 +101,7 @@ function BarberModal({ b, services, onClose, onDone }: { b: Partial<Barber>; ser
         }),
       );
       if (Object.values(own).some((v) => v !== null && !(v >= 0))) throw new ApiError('invalid_price', 400);
-      const body = { name, role, bio, photoUrl: photoUrl || null, active, sort, serviceIds: svc, prices: own, hours };
+      const body = { name, role, bio, photoUrl: photoUrl || null, color, active, sort, serviceIds: svc, prices: own, hours };
       if (b.id) await api('PATCH', `/admin/barbers/${b.id}`, body);
       else await api('POST', '/admin/barbers', body);
       onDone();
@@ -124,6 +129,17 @@ function BarberModal({ b, services, onClose, onDone }: { b: Partial<Barber>; ser
             <input type="number" value={sort} onChange={(e) => setSort(Number(e.target.value))} />
           </Field>
         </div>
+
+        <Field label="Culoarea în calendar">
+          <div className="row" style={{ gap: 8 }}>
+            <div className="swatches">
+              {BARBER_PALETTE.map((c) => (
+                <button key={c} type="button" className={c === color.toUpperCase() ? 'on' : ''} style={{ background: c }} onClick={() => setColor(c)} aria-label={`Culoarea ${c}`} />
+              ))}
+            </div>
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value.toUpperCase())} style={{ width: 48, height: 34, padding: 2 }} aria-label="Altă culoare" />
+          </div>
+        </Field>
 
         <h2 style={{ marginTop: 6, marginBottom: 0 }}>Program săptămânal</h2>
         <p className="muted small" style={{ margin: 0 }}>

@@ -126,3 +126,15 @@ export function ImagePicker({
     </div>
   );
 }
+
+/** A doua parte din adresa panoului (#/pagină/sub), ca meniul să deschidă direct un tab sau un raport. */
+export function useSub(): string {
+  const get = () => decodeURIComponent(location.hash.replace(/^#\/?/, '').split('/')[1] ?? '');
+  const [sub, setSub] = useState(get);
+  useEffect(() => {
+    const f = () => setSub(get());
+    window.addEventListener('hashchange', f);
+    return () => window.removeEventListener('hashchange', f);
+  }, []);
+  return sub;
+}

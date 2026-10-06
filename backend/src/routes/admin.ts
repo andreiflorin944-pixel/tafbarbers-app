@@ -31,7 +31,7 @@ import {
 import { HttpError, PERMS, isRole, parsePerms, type AppEnv, type Perm, type Role } from '../env';
 import { runCampaign } from '../campaigns';
 import { iso, isBirthdayOn, isDay, localDay, localToUtc } from '../time';
-import { clientsCsv, deleteClient } from '../gdpr';
+import { clientsCells, clientsCsv, deleteClient } from '../gdpr';
 import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
 import { addPhoto, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
@@ -52,6 +52,7 @@ import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } fr
 import { xlsx } from '../xlsx';
 import { adjustMove, cancelNir, createNir, getNir, listNir, stockOut, type NirInput } from '../stock';
 import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCard, saveAutomations, type GiftCardRow } from '../growth';
+import { sendPush, sendSms } from '../notify';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -512,6 +513,7 @@ type BarberInput = {
   role?: string;
   bio?: string;
   photoUrl?: string | null;
+  color?: string | null;
   sort?: number;
   active?: boolean;
   serviceIds?: string[];
@@ -520,13 +522,19 @@ type BarberInput = {
   hours?: Array<{ weekday: number; start: number; end: number }>;
 };
 
+function barberColor(v: unknown) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(v)) throw new HttpError(400, 'invalid_color');
+  return v.toUpperCase();
+}
+
 adminRoutes.post('/barbers', ownerOnly, async (c) => {
   const b = await c.req.json<BarberInput>();
   if (!b.name?.trim()) throw new HttpError(400, 'name_required');
   if (b.photoUrl && !isImageUrl(b.photoUrl)) throw new HttpError(400, 'invalid_url');
   const id = newId('br');
-  await c.env.DB.prepare('INSERT INTO barbers (id, name, role, bio, photo_url, sort) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, b.name.trim().slice(0, 80), (b.role ?? 'Barber').slice(0, 60), (b.bio ?? '').slice(0, 1000), b.photoUrl ?? null, b.sort ?? 0)
+  await c.env.DB.prepare('INSERT INTO barbers (id, name, role, bio, photo_url, color, sort) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, b.name.trim().slice(0, 80), (b.role ?? 'Barber').slice(0, 60), (b.bio ?? '').slice(0, 1000), b.photoUrl ?? null, barberColor(b.color), b.sort ?? 0)
     .run();
   await saveBarberRelations(c.env.DB, id, {
     prices: b.prices,
@@ -547,6 +555,7 @@ adminRoutes.patch('/barbers/:id', ownerOnly, async (c) => {
     if (b.photoUrl && !isImageUrl(b.photoUrl)) throw new HttpError(400, 'invalid_url');
     v.photo_url = b.photoUrl || null;
   }
+  if (b.color !== undefined) v.color = barberColor(b.color);
   if (b.sort !== undefined) v.sort = Number(b.sort) || 0;
   if (b.active !== undefined) v.active = b.active ? 1 : 0;
   await update(c.env.DB, 'barbers', id, v);
@@ -743,6 +752,26 @@ adminRoutes.delete('/bookings/:id/complete', ownerOnly, async (c) => {
   return c.json(await getBooking(c.env, c.req.param('id')!));
 });
 
+/**
+ * Cerere de recenzie Google după o tunsoare încheiată: SMS (și push, dacă are aplicația) cu linkul recenziei.
+ * O singură cerere pe programare, ca să nu deranjăm clientul.
+ */
+adminRoutes.post('/bookings/:id/review-request', async (c) => {
+  const cur = await bookingForStaff(c);
+  if (cur.status !== 'completed') throw new HttpError(409, 'review_not_completed');
+  const { links } = await getAutomations(c.env);
+  if (!links.googleReviewUrl) throw new HttpError(400, 'review_link_missing');
+  const sent = await c.env.DB.prepare(`SELECT 1 FROM message_log WHERE kind = 'review' AND booking_id = ? AND status = 'sent' LIMIT 1`).bind(cur.id).first();
+  if (sent) throw new HttpError(409, 'review_already_sent');
+  const name = (cur.clientName || '').split(/\s+/)[0];
+  const text = `${name ? `${name}, m` : 'M'}ulțumim că ai fost la TAFBarbers! Ne lași o recenzie? Durează un minut: ${links.googleReviewUrl}`;
+  const ok = cur.clientPhone ? await sendSms(c.env, { kind: 'review', recipient: cur.clientPhone, bookingId: cur.id }, text) : false;
+  const tokens = (await c.env.DB.prepare('SELECT token FROM push_tokens WHERE client_id = ?').bind(cur.clientId).all<{ token: string }>()).results.map((t) => t.token);
+  const pushed = tokens.length ? await sendPush(c.env, { kind: 'review', bookingId: cur.id }, tokens, 'Cum a fost tunsoarea?', 'Ne lași o recenzie pe Google? Durează un minut.', { url: links.googleReviewUrl }) : 0;
+  if (!ok && !pushed) throw new HttpError(500, 'send_failed');
+  return c.json({ ok: true, sms: ok, push: pushed > 0 });
+});
+
 async function bookingForStaff(c: Context<AppEnv>) {
   need(c, 'bookings_manage');
   const cur = await getBooking(c.env, c.req.param('id')!);
@@ -859,6 +888,98 @@ adminRoutes.get('/clients.csv', async (c) => {
     'Content-Type': 'text/csv; charset=utf-8',
     'Content-Disposition': `attachment; filename="clienti-tafbarbers-${iso(new Date()).slice(0, 10)}.csv"`,
   });
+});
+
+adminRoutes.get('/clients.xlsx', async (c) => {
+  need(c, 'clients');
+  need(c, 'contacts');
+  const name = `clienti-tafbarbers-${iso(new Date()).slice(0, 10)}`;
+  return new Response(xlsx('Clienți', await clientsCells(c.env)), {
+    headers: {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${name}.xlsx"`,
+    },
+  });
+});
+
+/**
+ * Import de clienți dintr-un tabel (Excel/CSV citit în panou). Telefonul e cheia: un număr care există deja
+ * nu dublează clientul, doar completează ce lipsea (nume, e-mail, zi de naștere). Ofertele rămân oprite:
+ * acordul de marketing îl dă doar clientul (GDPR).
+ */
+adminRoutes.post('/clients/import', async (c) => {
+  need(c, 'clients');
+  need(c, 'contacts');
+  const b = await c.req.json<{ rows?: Array<{ name?: unknown; phone?: unknown; email?: unknown; birthDate?: unknown; notes?: unknown }> }>();
+  const rows = Array.isArray(b.rows) ? b.rows : [];
+  if (!rows.length) throw new HttpError(400, 'import_empty');
+  if (rows.length > 3000) throw new HttpError(400, 'import_too_big');
+  const str = (v: unknown, max: number) => (v === null || v === undefined ? '' : String(v).trim().slice(0, max));
+  const res = { created: 0, updated: 0, unchanged: 0, skipped: [] as Array<{ row: number; reason: string }> };
+  const seen = new Set<string>();
+  const stmts: D1PreparedStatement[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] ?? {};
+    let phone: string;
+    try {
+      phone = normalizePhone(str(r.phone, 40));
+    } catch {
+      res.skipped.push({ row: i + 1, reason: str(r.phone, 40) ? 'telefon invalid' : 'fără telefon' });
+      continue;
+    }
+    if (seen.has(phone)) {
+      res.skipped.push({ row: i + 1, reason: 'telefon repetat în fișier' });
+      continue;
+    }
+    seen.add(phone);
+    let email: string | null = str(r.email, 120).toLowerCase() || null;
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) email = null;
+    let birth: string | null = null;
+    const rawBirth = str(r.birthDate, 20).replace(/[/.]/g, '-');
+    const dmy = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(rawBirth);
+    try {
+      birth = rawBirth ? parseBirthDate(dmy ? `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}` : rawBirth) : null;
+    } catch {
+      birth = null;
+    }
+    const name = str(r.name, 80);
+    const notes = str(r.notes, 2000);
+    const ex = await c.env.DB.prepare('SELECT id, name, email, birth_date, notes, deleted_at FROM clients WHERE phone = ?')
+      .bind(phone)
+      .first<{ id: string; name: string; email: string | null; birth_date: string | null; notes: string; deleted_at: string | null }>();
+    if (!ex) {
+      stmts.push(
+        c.env.DB.prepare('INSERT INTO clients (id, phone, name, email, birth_date, notes, marketing_push, marketing_email, marketing_sms) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0)').bind(
+          newId('cl'),
+          phone,
+          name,
+          email,
+          birth,
+          notes,
+        ),
+      );
+      res.created++;
+      continue;
+    }
+    if (ex.deleted_at) {
+      res.skipped.push({ row: i + 1, reason: 'clientul și-a șters contul' });
+      continue;
+    }
+    const v: Record<string, unknown> = {};
+    if (!ex.name && name) v.name = name;
+    if (!ex.email && email) v.email = email;
+    if (!ex.birth_date && birth) v.birth_date = birth;
+    if (!ex.notes && notes) v.notes = notes;
+    if (!Object.keys(v).length) {
+      res.unchanged++;
+      continue;
+    }
+    const keys = Object.keys(v);
+    stmts.push(c.env.DB.prepare(`UPDATE clients SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).bind(...keys.map((k) => v[k]), ex.id));
+    res.updated++;
+  }
+  for (let i = 0; i < stmts.length; i += 50) await c.env.DB.batch(stmts.slice(i, i + 50));
+  return c.json({ ...res, skipped: res.skipped.slice(0, 200), skippedCount: res.skipped.length });
 });
 
 adminRoutes.delete('/clients/:id', ownerOnly, async (c) => {

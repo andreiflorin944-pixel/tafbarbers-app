@@ -4,6 +4,9 @@ import { Field, Loading, Modal, useAction, useLoad } from '../ui';
 import { addDays, date, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
 
 const PX = 1.2; // pixeli pe minut
+/** Culorile implicite, dacă frizerul nu are una aleasă în „Frizeri”. */
+export const BARBER_PALETTE = ['#F28C28', '#E5484D', '#3E7BFA', '#30A46C', '#8E4EC6', '#12A594', '#D6409F', '#AD7F58'];
+export const barberColor = (b: Pick<Barber, 'color'>, i: number) => b.color || BARBER_PALETTE[i % BARBER_PALETTE.length];
 
 type Stats = {
   upcoming: number;
@@ -25,7 +28,13 @@ export function CalendarPage({ me }: { me: Me }) {
 
   const [barbers, services] = meta.data ?? [[], []];
   const own = me.permissions.bookings_all ? null : me.barberId;
-  const cols = barbers.filter((b) => b.active && (!own || b.id === own));
+  const [hidden, setHidden] = useState<string[]>([]);
+  const activeBarbers = barbers.filter((b) => b.active && (!own || b.id === own));
+  const cols = activeBarbers.filter((b) => !hidden.includes(b.id));
+  const colorOf = (id: string) => {
+    const i = barbers.findIndex((b) => b.id === id);
+    return i < 0 ? BARBER_PALETTE[0] : barberColor(barbers[i], i);
+  };
   const weekday = new Date(day + 'T12:00:00Z').getUTCDay();
 
   // Intervalul afișat: de la cea mai devreme oră de program până la cea mai târzie (+ programări în afara lui).
@@ -55,7 +64,7 @@ export function CalendarPage({ me }: { me: Me }) {
   return (
     <>
       <div className="head">
-        <h1>Programări</h1>
+        <h1>Calendar</h1>
         {me.permissions.bookings_create ? <button onClick={() => setCreate({})}>+ Programare nouă</button> : null}
       </div>
 
@@ -103,17 +112,40 @@ export function CalendarPage({ me }: { me: Me }) {
         <span className="muted small">{(bookings.data ?? []).filter((b) => b.status !== 'cancelled').length} programări</span>
       </div>
 
+      {activeBarbers.length > 1 ? (
+        <div className="row" style={{ gap: 6, marginBottom: 12 }}>
+          {activeBarbers.map((b) => {
+            const on = !hidden.includes(b.id);
+            return (
+              <button
+                key={b.id}
+                className={`chip${on ? ' on' : ''}`}
+                style={{ ['--c' as string]: colorOf(b.id) }}
+                onClick={() => setHidden(on ? [...hidden, b.id] : hidden.filter((h) => h !== b.id))}
+                aria-pressed={on}
+              >
+                <span className="dot" style={{ background: colorOf(b.id) }} /> {b.name}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       {!meta.data || !bookings.data ? (
         <Loading error={meta.error || bookings.error} />
       ) : !cols.length ? (
-        <p className="muted">Nu există frizeri activi. Adaugă unul în „Frizeri și program”.</p>
+        <p className="muted">{activeBarbers.length ? 'Alege cel puțin un frizer de mai sus.' : 'Nu există frizeri activi. Adaugă unul în Afaceri → Frizeri.'}</p>
       ) : (
         <div className="table-wrap">
           <div className="cal" style={{ minWidth: 60 + cols.length * 160 }}>
             <div className="cal-head" style={{ gridTemplateColumns: `60px repeat(${cols.length}, 1fr)` }}>
               <div />
               {cols.map((b) => (
-                <div key={b.id}>{b.name}</div>
+                <div key={b.id} className="cal-barber">
+                  {b.photoUrl ? <img src={b.photoUrl} alt="" style={{ borderColor: colorOf(b.id) }} /> : <span className="avatar sm" style={{ background: colorOf(b.id) }}>{b.initials}</span>}
+                  <span>{b.name}</span>
+                  <span className="muted small">{(bookings.data ?? []).filter((x) => x.barberId === b.id && x.status !== 'cancelled').length}</span>
+                </div>
               ))}
             </div>
             <div className="cal-body" style={{ gridTemplateColumns: `60px repeat(${cols.length}, 1fr)`, height }}>
@@ -168,13 +200,14 @@ export function CalendarPage({ me }: { me: Me }) {
                         return (
                           <div
                             key={x.id}
-                            className={`cal-ev ${x.status}${x.clientBirthday ? ' bday' : ''}`}
-                            title={x.clientBirthday ? 'E ziua de naștere a clientului' : undefined}
-                            style={{ top: (s - startMin) * PX + 1, height: Math.max(len * PX - 2, 22) }}
+                            className={`cal-ev ${x.status}${x.clientBirthday ? ' bday' : ''}${open?.id === x.id ? ' sel' : ''}`}
+                            title={x.clientBirthday ? 'E ziua de naștere a clientului' : `${STATUS[x.status]} · ${x.serviceName}`}
+                            style={{ top: (s - startMin) * PX + 1, height: Math.max(len * PX - 2, 22), ['--c' as string]: colorOf(b.id) }}
                             onClick={() => setOpen(x)}
                           >
                             <b>
-                              {time(x.start)} {x.clientBirthday ? '🕯️ ' : ''}
+                              {time(x.start)}–{time(x.end)} {x.status === 'completed' ? '✓ ' : x.status === 'no_show' ? '✗ ' : ''}
+                              {x.clientBirthday ? '🕯️ ' : ''}
                               {x.clientName || x.clientPhone}
                             </b>
                             {x.serviceName}
@@ -202,7 +235,17 @@ export function CalendarPage({ me }: { me: Me }) {
         </details>
       ) : null}
 
-      {open ? <BookingModal b={open} canManage={me.permissions.bookings_manage} owner={me.owner} onClose={() => setOpen(null)} onChange={reload} /> : null}
+      {open ? (
+        <BookingPanel
+          key={open.id}
+          b={open}
+          color={colorOf(open.barberId)}
+          canManage={me.permissions.bookings_manage}
+          owner={me.owner}
+          onClose={() => setOpen(null)}
+          onChange={reload}
+        />
+      ) : null}
       {create && meta.data ? (
         <NewBooking
           me={me}
@@ -231,10 +274,17 @@ function Stat({ v, l }: { v: string | number; l: string }) {
   );
 }
 
-function BookingModal({ b, canManage, owner, onClose, onChange }: { b: Booking; canManage: boolean; owner: boolean; onClose: () => void; onChange: () => void }) {
+/** Panoul din dreapta, la click pe o programare: stare, plată și client, ca în Barberly. */
+function BookingPanel({ b, color, canManage, owner, onClose, onChange }: { b: Booking; color: string; canManage: boolean; owner: boolean; onClose: () => void; onChange: () => void }) {
   const { busy, error, run } = useAction();
   const [note, setNote] = useState(b.note);
   const [checkout, setCheckout] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
   const set = (patch: Record<string, string>) =>
     run(async () => {
       await api('PATCH', `/admin/bookings/${b.id}`, patch);
@@ -243,91 +293,189 @@ function BookingModal({ b, canManage, owner, onClose, onChange }: { b: Booking; 
     });
   const past = Date.parse(b.start) < Date.now();
   const canComplete = past && (b.status === 'confirmed' || (b.status === 'completed' && !b.payment));
+  const digits = b.clientPhone?.replace(/[^\d]/g, '') ?? '';
+  const clientLink = `${location.origin}${location.pathname}#/clients/${b.clientId}`;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(clientLink);
+      setMsg('Linkul fișei clientului e copiat.');
+    } catch {
+      prompt('Copiază linkul:', clientLink);
+    }
+  };
+  const review = () =>
+    run(async () => {
+      const r = await api<{ sms: boolean; push: boolean }>('POST', `/admin/bookings/${b.id}/review-request`);
+      setMsg(`Cererea de recenzie a plecat${r.sms && r.push ? ' prin SMS și notificare' : r.push ? ' prin notificare' : ' prin SMS'}.`);
+    });
 
   return (
-    <Modal title={`${time(b.start)} · ${b.serviceName}`} onClose={onClose}>
-      <div className="grid" style={{ gap: 8 }}>
-        <div>
-          <strong>{b.clientName || 'Client fără nume'}</strong>
-          {b.clientPhone ? (
-            <>
-              {' · '}
-              <a href={`tel:${b.clientPhone}`}>{b.clientPhone}</a>
-            </>
-          ) : null}
+    <>
+      <div className="drawer-back" onMouseDown={onClose} />
+      <aside className="drawer" role="dialog" aria-label="Programare">
+        <div className="drawer-head" style={{ borderTopColor: color }}>
+          <div>
+            <div className="drawer-time">
+              {time(b.start)}–{time(b.end)}
+            </div>
+            <div className="muted small" style={{ textTransform: 'capitalize' }}>
+              {longDate(b.start)}
+            </div>
+          </div>
+          <button className="ghost sm" onClick={onClose} aria-label="Închide">
+            ✕
+          </button>
         </div>
-        {b.clientBirthday ? <div className="bday-note">🕯️ E ziua lui de naștere! Urează-i „La mulți ani” și, dacă vrei, fă-i o reducere.</div> : null}
-        <div className="muted">
-          {longDate(b.start)}, {time(b.start)}–{time(b.end)} · cu {b.barberName} · {lei(b.price)}
+
+        <div className="drawer-body">
+          <div className="row" style={{ gap: 12, flexWrap: 'nowrap' }}>
+            <div className="avatar" style={{ background: color }}>
+              {(b.clientName || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <strong style={{ fontSize: 17 }}>{b.clientName || 'Client fără nume'}</strong>
+              {b.clientPhone ? (
+                <div>
+                  <a href={`tel:${b.clientPhone}`}>{b.clientPhone}</a>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          <div className="row" style={{ gap: 6 }}>
+            {b.clientPhone ? (
+              <>
+                <a className="btn ghost sm" href={`tel:${b.clientPhone}`}>
+                  Sună
+                </a>
+                <a className="btn ghost sm" href={`sms:${b.clientPhone}`}>
+                  SMS
+                </a>
+                <a className="btn ghost sm" href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer">
+                  WhatsApp
+                </a>
+              </>
+            ) : null}
+            <a className="btn ghost sm" href={`#/clients/${b.clientId}`}>
+              Fișa clientului
+            </a>
+          </div>
+          {b.clientBirthday ? <div className="bday-note">🕯️ E ziua lui de naștere! Urează-i „La mulți ani” și, dacă vrei, fă-i o reducere.</div> : null}
+
+          <div className="drawer-card">
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <strong>{b.serviceName}</strong>
+              <strong>{lei(b.price)}</strong>
+            </div>
+            <div className="muted small">
+              <span className="dot" style={{ background: color }} /> {b.barberName} · {b.source === 'admin' ? 'adăugată din panou' : 'din aplicație'}
+            </div>
+          </div>
+
+          <section className="drawer-sec">
+            <h3>Stare</h3>
+            <div className="row" style={{ gap: 8 }}>
+              <span className={`pill ${b.status}`}>{STATUS[b.status]}</span>
+              {b.payment ? (
+                <span className="small">
+                  {b.payment === 'subscription' ? 'pe abonament' : `a plătit ${lei(b.paidAmount ?? b.price)}${b.tip ? ` + bacșiș ${lei(b.tip)}` : ''}`}
+                </span>
+              ) : null}
+            </div>
+            {canManage && !checkout ? (
+              <div className="row" style={{ gap: 6, marginTop: 8 }}>
+                {canComplete ? (
+                  <button className="sm" disabled={busy} onClick={() => setCheckout(true)}>
+                    ✓ Încheiată
+                  </button>
+                ) : null}
+                {b.status === 'confirmed' && past ? (
+                  <button className="ghost sm" disabled={busy} onClick={() => set({ status: 'no_show' })}>
+                    Nu a venit
+                  </button>
+                ) : null}
+                {b.status === 'confirmed' ? (
+                  <button className="danger sm" disabled={busy} onClick={() => confirm('Anulezi programarea? Clientul primește mesaj.') && set({ status: 'cancelled' })}>
+                    Anulează
+                  </button>
+                ) : null}
+                {b.status !== 'confirmed' && b.status !== 'cancelled' && !b.payment ? (
+                  <button className="ghost sm" disabled={busy} onClick={() => set({ status: 'confirmed' })}>
+                    Readu la confirmată
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {b.status === 'confirmed' && !past ? <div className="muted small" style={{ marginTop: 6 }}>Se închide după ce începe: încheiată (cu plata), nu a venit sau anulată.</div> : null}
+          </section>
+
+          {canManage ? (
+            <section className="drawer-sec">
+              <h3>Plată</h3>
+              {checkout && canComplete ? (
+                <CheckoutForm
+                  b={b}
+                  onCancel={() => setCheckout(false)}
+                  onDone={() => {
+                    onChange();
+                    onClose();
+                  }}
+                />
+              ) : canComplete ? (
+                <button className="ghost sm" onClick={() => setCheckout(true)}>
+                  Încasează (checkout rapid)
+                </button>
+              ) : b.payment ? (
+                <div className="row" style={{ gap: 6 }}>
+                  <span className="small success">Plata e confirmată.</span>
+                  {owner ? (
+                    <button
+                      className="ghost sm"
+                      disabled={busy}
+                      onClick={() =>
+                        confirm('Anulezi confirmarea plății? Tunsoarea revine în abonament și bonusul folosit redevine activ.') &&
+                        run(async () => {
+                          await api('DELETE', `/admin/bookings/${b.id}/complete`);
+                          onChange();
+                          onClose();
+                        })
+                      }
+                    >
+                      Anulează confirmarea plății
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="muted small">{past ? 'Nu e nimic de încasat.' : 'Plata se încasează după tunsoare.'}</div>
+              )}
+            </section>
+          ) : null}
+
+          <section className="drawer-sec">
+            <h3>Client</h3>
+            <div className="row" style={{ gap: 6 }}>
+              {canManage && b.status === 'completed' ? (
+                <button className="ghost sm" disabled={busy} onClick={review}>
+                  Cere recenzie Google
+                </button>
+              ) : null}
+              <button className="ghost sm" onClick={copy}>
+                Copiază linkul fișei
+              </button>
+            </div>
+            <Field label="Notiță internă (o vede doar echipa)">
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} disabled={!canManage} />
+            </Field>
+            {canManage && note !== b.note ? (
+              <button className="sm" disabled={busy} onClick={() => set({ note })} style={{ justifySelf: 'start' }}>
+                Salvează notița
+              </button>
+            ) : null}
+          </section>
+          {msg ? <div className="success small">{msg}</div> : null}
+          {error ? <div className="err">{error}</div> : null}
         </div>
-        <div>
-          <span className={`pill ${b.status}`}>{STATUS[b.status]}</span>{' '}
-          <span className="muted small">{b.source === 'admin' ? 'adăugată din panou' : 'din aplicație'}</span>
-          {b.payment ? <strong className="small"> · {b.payment === 'subscription' ? 'pe abonament' : `a plătit ${lei(b.paidAmount ?? b.price)}${b.tip ? ` + bacșiș ${lei(b.tip)}` : ''}`}</strong> : null}
-        </div>
-        <Field label="Notiță internă">
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} disabled={!canManage} />
-        </Field>
-        {error ? <div className="err">{error}</div> : null}
-        {canManage && canComplete && checkout ? (
-          <CheckoutForm
-            b={b}
-            onCancel={() => setCheckout(false)}
-            onDone={() => {
-              onChange();
-              onClose();
-            }}
-          />
-        ) : null}
-        <div className="row" style={{ display: canManage && !checkout ? undefined : 'none' }}>
-          {note !== b.note ? (
-            <button disabled={busy} onClick={() => set({ note })}>
-              Salvează notița
-            </button>
-          ) : null}
-          {canComplete ? (
-            <button disabled={busy} onClick={() => setCheckout(true)}>
-              Finalizată
-            </button>
-          ) : null}
-          {b.status === 'confirmed' && past ? (
-            <button className="ghost" disabled={busy} onClick={() => set({ status: 'no_show' })}>
-              Nu s-a prezentat
-            </button>
-          ) : null}
-          {b.payment && owner ? (
-            <button
-              className="ghost"
-              disabled={busy}
-              onClick={() =>
-                confirm('Anulezi confirmarea plății? Tunsoarea revine în abonament și bonusul folosit redevine activ.') &&
-                run(async () => {
-                  await api('DELETE', `/admin/bookings/${b.id}/complete`);
-                  onChange();
-                  onClose();
-                })
-              }
-            >
-              Anulează confirmarea plății
-            </button>
-          ) : null}
-          {b.status !== 'confirmed' && b.status !== 'cancelled' && !b.payment ? (
-            <button className="ghost" disabled={busy} onClick={() => set({ status: 'confirmed' })}>
-              Readu la confirmată
-            </button>
-          ) : null}
-          {b.status === 'confirmed' ? (
-            <button
-              className="danger"
-              disabled={busy}
-              onClick={() => confirm('Anulezi programarea? Clientul primește SMS.') && set({ status: 'cancelled' })}
-            >
-              Anulează
-            </button>
-          ) : null}
-        </div>
-      </div>
-    </Modal>
+      </aside>
+    </>
   );
 }
 

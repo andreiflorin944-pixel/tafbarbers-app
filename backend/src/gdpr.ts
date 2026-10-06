@@ -1,4 +1,5 @@
 import { BOOKING_SELECT } from './bookings';
+import type { Cell } from './xlsx';
 import { booking, client, type BookingRow, type ClientRow } from './db';
 import { HttpError, type Env } from './env';
 import { iso } from './time';
@@ -82,19 +83,39 @@ const csvCell = (v: unknown) => {
   return /[",;\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 
-export async function clientsCsv(env: Env) {
+async function clientsTable(env: Env) {
   const r = await env.DB.prepare(
     `SELECT c.*,
        (SELECT count(*) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS visits,
        (SELECT max(starts_at) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS last_visit
      FROM clients c WHERE c.deleted_at IS NULL ORDER BY c.created_at`,
   ).all<ClientRow & { visits: number; last_visit: string | null }>();
-  const head = ['Nume', 'Telefon', 'E-mail', 'Limba', 'Vizite', 'Ultima vizită', 'Oferte SMS', 'Oferte e-mail', 'Oferte push', 'Notițe', 'Client din'];
-  const rows = r.results.map((c) =>
-    [c.name, c.phone, c.email, c.lang, c.visits, c.last_visit?.slice(0, 10), c.marketing_sms ? 'da' : 'nu', c.marketing_email ? 'da' : 'nu', c.marketing_push ? 'da' : 'nu', c.notes, c.created_at.slice(0, 10)]
-      .map(csvCell)
-      .join(';'),
-  );
+  const head = ['Nume', 'Telefon', 'E-mail', 'Data nașterii', 'Limba', 'Vizite', 'Ultima vizită', 'Oferte SMS', 'Oferte e-mail', 'Oferte push', 'Notițe', 'Client din'];
+  const rows = r.results.map((c) => [
+    c.name,
+    c.phone,
+    c.email,
+    c.birth_date ?? null,
+    c.lang,
+    c.visits,
+    c.last_visit?.slice(0, 10) ?? null,
+    c.marketing_sms ? 'da' : 'nu',
+    c.marketing_email ? 'da' : 'nu',
+    c.marketing_push ? 'da' : 'nu',
+    c.notes,
+    c.created_at.slice(0, 10),
+  ]);
+  return { head, rows };
+}
+
+export async function clientsCsv(env: Env) {
+  const { head, rows } = await clientsTable(env);
   // BOM ca Excel să citească diacriticele.
-  return '﻿' + [head.join(';'), ...rows].join('\r\n');
+  return '\ufeff' + [head.join(';'), ...rows.map((r) => r.map(csvCell).join(';'))].join('\r\n');
+}
+
+/** Același tabel, pentru fișierul Excel (acolo textele rămân text, nu devin formule). */
+export async function clientsCells(env: Env): Promise<Cell[][]> {
+  const { head, rows } = await clientsTable(env);
+  return [head, ...rows];
 }

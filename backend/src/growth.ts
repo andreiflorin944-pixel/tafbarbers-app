@@ -41,7 +41,7 @@ export type GiftCardSettings = {
   title: Texts;
   message: Texts; // {nume}, {de_la}, {suma}, {cod}, {mesaj}, {salon}
 };
-export type LinkSettings = { appStoreUrl: string; playStoreUrl: string };
+export type LinkSettings = { appStoreUrl: string; playStoreUrl: string; googleReviewUrl: string };
 /** Notificările despre programări, comenzi și carduri cadou: adminul alege dacă pleacă și pe ce canale. */
 export type ChannelEvent = 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'order_ready' | 'gift_card';
 export type Channel = { enabled: boolean; push: boolean; sms: boolean; email: boolean };
@@ -97,7 +97,7 @@ export const DEFAULT_AUTOMATIONS: Automations = {
       fr: '{nume}, {de_la} vous offre un cadeau chez {salon}. Votre code : {cod}. {mesaj}',
     },
   },
-  links: { appStoreUrl: '', playStoreUrl: '' },
+  links: { appStoreUrl: '', playStoreUrl: '', googleReviewUrl: '' },
   // Cum funcționa până acum: SMS la toate, plus push la reminder-e, comenzi și carduri cadou.
   channels: {
     confirm: { enabled: true, push: false, sms: true, email: false },
@@ -193,7 +193,11 @@ export async function saveAutomations(env: Env, b: Partial<Automations>) {
       title: texts(g.title, cur.giftCard.title, 80),
       message: texts(g.message, cur.giftCard.message, 300),
     },
-    links: { appStoreUrl: url(b.links?.appStoreUrl, cur.links.appStoreUrl), playStoreUrl: url(b.links?.playStoreUrl, cur.links.playStoreUrl) },
+    links: {
+      appStoreUrl: url(b.links?.appStoreUrl, cur.links.appStoreUrl),
+      playStoreUrl: url(b.links?.playStoreUrl, cur.links.playStoreUrl),
+      googleReviewUrl: url(b.links?.googleReviewUrl, cur.links.googleReviewUrl),
+    },
     channels: Object.fromEntries(
       CHANNEL_EVENTS.map((k) => {
         const v: Partial<Channel> = b.channels?.[k] ?? {};
