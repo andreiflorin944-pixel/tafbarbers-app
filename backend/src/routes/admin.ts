@@ -6,6 +6,7 @@ import {
   newId,
   normalizePhone,
   requireAdmin,
+  sha256,
   timingSafeEqual,
   tokenFrom,
   verifyPassword,
@@ -142,11 +143,18 @@ function cleanPerms(raw: unknown): Record<string, boolean> {
 // --- Echipa (conturi admin) ---
 
 adminRoutes.get('/admins', ownerOnly, async (c) => {
-  const r = await c.env.DB.prepare('SELECT id, email, name, barber_id, permissions, role FROM admins ORDER BY email').all();
+  const r = await c.env.DB.prepare(
+    `SELECT a.id, a.email, a.name, a.barber_id, a.permissions, a.role,
+       (SELECT count(*) FROM sessions s WHERE s.kind = 'admin' AND s.subject_id = a.id AND s.expires_at > ?) AS sessions
+     FROM admins a ORDER BY a.email`,
+  )
+    .bind(iso(new Date()))
+    .all();
   return c.json(
     r.results.map((a: any) => {
       const role: Role = isRole(a.role) ? a.role : 'barber';
-      return { id: a.id, email: a.email, name: a.name, barberId: a.barber_id, role, permissions: parsePerms(a.permissions, role) };
+      // `sessions` = pe câte dispozitive e conectat acum (panou sau aplicație).
+      return { id: a.id, email: a.email, name: a.name, barberId: a.barber_id, role, permissions: parsePerms(a.permissions, role), sessions: a.sessions };
     }),
   );
 });
@@ -183,8 +191,29 @@ adminRoutes.patch('/admins/:id', ownerOnly, async (c) => {
     sets.push('password_hash = ?'), vals.push(await hashPassword(b.password));
   }
   if (sets.length) await c.env.DB.prepare(`UPDATE admins SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
+  // Parolă nouă pusă de proprietar: contul e scos de pe toate dispozitivele (în afară de sesiunea ta, dacă e contul tău).
+  if (b.password) await logoutAdmin(c.env.DB, id, id === c.get('admin').adminId ? tokenFrom(c) : null);
   return c.json({ ok: true });
 });
+
+/** Proprietarul deconectează un membru al echipei de pe toate dispozitivele (panou și aplicație). */
+adminRoutes.post('/admins/:id/logout', ownerOnly, async (c) => {
+  const id = c.req.param('id')!;
+  const n = await logoutAdmin(c.env.DB, id, id === c.get('admin').adminId ? tokenFrom(c) : null);
+  return c.json({ ok: true, loggedOut: n });
+});
+
+/** Ieși de pe toate celelalte dispozitive (sesiunea curentă rămâne). */
+adminRoutes.post('/me/logout-others', async (c) => {
+  const n = await logoutAdmin(c.env.DB, c.get('admin').adminId, tokenFrom(c));
+  return c.json({ ok: true, loggedOut: n });
+});
+
+async function logoutAdmin(db: D1Database, adminId: string, keepToken: string | null): Promise<number> {
+  const keep = keepToken ? await sha256(keepToken) : '';
+  const r = await db.prepare(`DELETE FROM sessions WHERE kind = 'admin' AND subject_id = ? AND token_hash != ?`).bind(adminId, keep).run();
+  return r.meta.changes ?? 0;
+}
 
 adminRoutes.post('/me/password', async (c) => {
   const b = await c.req.json<{ current?: string; next?: string }>();
@@ -196,6 +225,8 @@ adminRoutes.post('/me/password', async (c) => {
   await c.env.DB.prepare('UPDATE admins SET password_hash = ? WHERE id = ?')
     .bind(await hashPassword(b.next!), c.get('admin').adminId)
     .run();
+  // După schimbarea parolei, celelalte dispozitive trebuie să intre din nou.
+  await logoutAdmin(c.env.DB, c.get('admin').adminId, tokenFrom(c));
   return c.json({ ok: true });
 });
 

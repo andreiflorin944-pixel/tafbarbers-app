@@ -3,7 +3,8 @@ import { router, type Href } from 'expo-router';
 import type { ComponentProps } from 'react';
 import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { panelUrl, ROLE_LABELS } from '@/api/staff';
+import { panelUrl, ROLE_LABELS, staffApi } from '@/api/staff';
+import { errorMessage } from '@/lib/errors';
 import { styles as ui } from '@/components/ui';
 import { useStaff } from '@/state/Staff';
 import { colors, space } from '@/theme';
@@ -13,7 +14,7 @@ type Item = { icon: ComponentProps<typeof Ionicons>['name']; label: string; sub?
 // Meniul echipei, după modelul Barberly. Ce se lucrează des e în aplicație; setările mari
 // (echipă, aspect, bannere, campanii, regulamente) se deschid în panoul web.
 export default function StaffMenu() {
-  const { staff, staffSignOut } = useStaff();
+  const { staff, staffToken, staffSignOut } = useStaff();
   if (!staff) return null;
   const p = staff.permissions;
   const owner = staff.owner;
@@ -46,6 +47,17 @@ export default function StaffMenu() {
     ]);
   };
 
+  const signOutOthers = async () => {
+    if (!staffToken) return;
+    const tell = (m: string) => (Platform.OS === 'web' ? window.alert(m) : Alert.alert(m));
+    try {
+      const r = await staffApi.logoutOthers(staffToken);
+      tell(r.loggedOut ? `Am închis contul pe ${r.loggedOut === 1 ? 'un alt dispozitiv' : `${r.loggedOut} alte dispozitive`}.` : 'Nu erai conectat pe alte dispozitive.');
+    } catch (e) {
+      tell(errorMessage(e));
+    }
+  };
+
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 40, width: '100%', maxWidth: 720, alignSelf: 'center' }}>
@@ -65,9 +77,15 @@ export default function StaffMenu() {
             </Pressable>
           ))}
         <Pressable onPress={() => router.push('/')} style={s.row}>
-          <Ionicons name="phone-portrait-outline" size={26} color={colors.muted} style={{ width: 34 }} />
+          <Ionicons name="person-outline" size={26} color={colors.muted} style={{ width: 34 }} />
           <View style={s.rowBody}>
             <Text style={[s.label, { color: colors.muted }]}>Vezi aplicația ca un client</Text>
+          </View>
+        </Pressable>
+        <Pressable onPress={signOutOthers} style={s.row}>
+          <Ionicons name="phone-portrait-outline" size={26} color={colors.muted} style={{ width: 34 }} />
+          <View style={s.rowBody}>
+            <Text style={[s.label, { color: colors.muted }]}>Ieși de pe celelalte dispozitive</Text>
           </View>
         </Pressable>
         <Pressable onPress={signOut} style={s.row}>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, PERM_LABELS, ROLE_HELP, ROLE_LABELS, type Barber, type Business, type Me, type Perm, type Role } from '../api';
+import { api, setToken, PERM_LABELS, ROLE_HELP, ROLE_LABELS, type Barber, type Business, type Me, type Perm, type Role } from '../api';
 import { Field, Loading, useAction, useLoad } from '../ui';
 import { date, time } from '../util';
 
@@ -13,6 +13,7 @@ export function SettingsPage({ me }: { me: Me }) {
         {me.owner ? <BusinessForm /> : null}
         {me.owner ? <Team me={me} /> : null}
         <Password />
+        <Sessions />
         {me.owner ? <MessageLog /> : null}
       </div>
     </>
@@ -95,7 +96,7 @@ function BusinessForm() {
   );
 }
 
-type TeamMember = { id: string; email: string; name: string; barberId: string | null; role: Role; permissions: Record<Perm, boolean> };
+type TeamMember = { id: string; email: string; name: string; barberId: string | null; role: Role; permissions: Record<Perm, boolean>; sessions?: number };
 
 function Team({ me }: { me: Me }) {
   const data = useLoad(() => Promise.all([api<TeamMember[]>('GET', '/admin/admins'), api<Barber[]>('GET', '/admin/barbers')]));
@@ -119,12 +120,27 @@ function Team({ me }: { me: Me }) {
         <div key={a.id} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
           <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
             <span>
-              {a.name || a.email} <span className="muted small">{a.email}</span>
+              {a.name || a.email} <span className="muted small">{a.email}</span>{' '}
+              <span className="muted small">· {a.sessions ? `conectat pe ${a.sessions === 1 ? 'un dispozitiv' : `${a.sessions} dispozitive`}` : 'deconectat'}</span>
             </span>
             {a.id !== me.id ? (
-              <button className="danger sm" onClick={() => confirm(`Ștergi contul ${a.email}?`) && run(async () => (await api('DELETE', `/admin/admins/${a.id}`), data.reload()))}>
-                Șterge
-              </button>
+              <span className="row" style={{ gap: 6 }}>
+                {a.sessions ? (
+                  <button
+                    className="ghost sm"
+                    disabled={busy}
+                    onClick={() =>
+                      confirm(`Deconectezi ${a.name || a.email} de pe toate dispozitivele? Va trebui să intre din nou cu parola.`) &&
+                      run(async () => (await api('POST', `/admin/admins/${a.id}/logout`), data.reload()))
+                    }
+                  >
+                    Deconectează
+                  </button>
+                ) : null}
+                <button className="danger sm" onClick={() => confirm(`Ștergi contul ${a.email}?`) && run(async () => (await api('DELETE', `/admin/admins/${a.id}`), data.reload()))}>
+                  Șterge
+                </button>
+              </span>
             ) : (
               <span className="muted small">tu</span>
             )}
@@ -247,7 +263,47 @@ function Password() {
         >
           Schimbă
         </button>
-        {done ? <span className="success small">Parola a fost schimbată.</span> : null}
+        {done ? <span className="success small">Parola a fost schimbată. Celelalte dispozitive au fost deconectate.</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function Sessions() {
+  const [msg, setMsg] = useState('');
+  const { busy, error, run } = useAction();
+  return (
+    <div className="card grid">
+      <h2 style={{ margin: 0 }}>Deconectare</h2>
+      <p className="muted small" style={{ margin: 0 }}>
+        Ai uitat contul deschis pe alt calculator sau telefon? Îl poți închide de aici.
+      </p>
+      {error ? <div className="err">{error}</div> : null}
+      <div className="row">
+        <button
+          className="ghost"
+          onClick={async () => {
+            await api('POST', '/admin/logout').catch(() => undefined);
+            setToken(null);
+            location.hash = '';
+            location.reload();
+          }}
+        >
+          Ieși din cont
+        </button>
+        <button
+          className="ghost"
+          disabled={busy}
+          onClick={() =>
+            run(async () => {
+              const r = await api<{ loggedOut: number }>('POST', '/admin/me/logout-others');
+              setMsg(r.loggedOut ? `Am închis ${r.loggedOut === 1 ? 'o sesiune' : `${r.loggedOut} sesiuni`} pe alte dispozitive.` : 'Nu erai conectat pe alte dispozitive.');
+            })
+          }
+        >
+          Ieși de pe celelalte dispozitive
+        </button>
+        {msg ? <span className="success small">{msg}</span> : null}
       </div>
     </div>
   );

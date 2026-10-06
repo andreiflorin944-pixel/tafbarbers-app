@@ -61,6 +61,7 @@ export const staffApi = {
   login: (email: string, password: string) => call<{ token: string }>('POST', '/admin/login', null, { email, password }),
   logout: (t: string) => call('POST', '/admin/logout', t).catch(() => undefined),
   me: (t: string) => call<StaffMe>('GET', '/admin/me', t),
+  logoutOthers: (t: string) => call<{ loggedOut: number }>('POST', '/admin/me/logout-others', t),
   bookings: (t: string, from: string, to: string) => call<StaffBooking[]>('GET', `/admin/bookings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, t),
   setStatus: (t: string, id: string, status: string) => call<StaffBooking>('PATCH', `/admin/bookings/${id}`, t, { status }),
   create: (t: string, body: { phone: string; name: string; serviceId: string; barberId: string; start: string; notify: boolean }) =>
