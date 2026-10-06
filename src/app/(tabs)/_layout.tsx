@@ -71,7 +71,9 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen name="bookings" options={{ title: t('tab.bookings'), tabBarIcon: icon('calendar-outline') }} />
-      <Tabs.Screen name="about" options={{ title: t('tab.about'), tabBarIcon: icon('storefront-outline') }} />
+      <Tabs.Screen name="account" options={{ title: t('tab.account'), tabBarIcon: icon('person-outline') }} />
+      {/* „Despre salon” se deschide din Cont și de pe Acasă; nu mai are buton în bară. */}
+      <Tabs.Screen name="about" options={{ href: null, title: t('tab.about') }} />
     </Tabs>
   );
 }

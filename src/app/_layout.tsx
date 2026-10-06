@@ -39,7 +39,6 @@ export default function RootLayout() {
             <Stack.Screen name="book/confirm" options={{ title: 'Confirmare' }} />
             <Stack.Screen name="book/success" options={{ headerShown: false, gestureEnabled: false }} />
             <Stack.Screen name="login" options={{ title: 'Intră în cont', presentation: 'modal' }} />
-            <Stack.Screen name="account" options={{ title: 'Cont' }} />
             <Stack.Screen name="identity" options={{ title: 'TAF Identity' }} />
             <Stack.Screen name="rewards" options={{ title: 'Bonusuri și recomandări' }} />
             <Stack.Screen name="subscriptions" options={{ title: 'Abonamente' }} />

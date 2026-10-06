@@ -5,7 +5,7 @@ import { ActivityIndicator, Alert, Platform, Pressable, Share, StyleSheet, Switc
 import { api, ApiError } from '@/api';
 import { formatBirth, parseBirth } from '@/lib/dates';
 import { pickImage } from '@/lib/pickImage';
-import { Avatar, Button, Card, Icon, Screen, Segmented, styles } from '@/components/ui';
+import { Avatar, Button, Card, Icon, Screen, Segmented, Title, styles } from '@/components/ui';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
@@ -16,7 +16,8 @@ export default function Account() {
   const { staff } = useStaff();
   const [tab, setTab] = useState(staff ? 1 : 0);
   return (
-    <Screen edges={[]}>
+    <Screen tab>
+      <Title>Cont</Title>
       <Segmented options={['Client', 'Echipă']} value={tab} onChange={setTab} />
       {tab === 0 ? <ClientAccount /> : <StaffAccount />}
     </Screen>
@@ -76,8 +77,14 @@ function ClientAccount() {
   if (!user) {
     return (
       <>
-        <Text style={[styles.muted, { marginBottom: space.md }]}>Salvează-ți datele și vezi istoricul programărilor.</Text>
+        <Text style={[styles.muted, { marginBottom: space.md }]}>
+          Intră cu telefonul ca să ai TAF Identity, bonusuri și recomandări, abonamente, carduri cadou și istoricul programărilor.
+        </Text>
         <Button title="Intră în cont cu telefonul" onPress={() => router.push('/login')} />
+        <View style={{ marginTop: space.sm, gap: space.sm }}>
+          <Button title="Magazin" variant="ghost" onPress={() => router.push('/shop')} />
+          <Button title="Despre salon" variant="ghost" onPress={() => router.push('/about')} />
+        </View>
       </>
     );
   }
@@ -212,8 +219,19 @@ function ClientAccount() {
           <Text style={[styles.text, { flex: 1 }]}>Tunsorile mele (înainte și după)</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />
         </Pressable>
+        <Pressable style={styles.row} onPress={() => router.push('/shop')} accessibilityRole="button">
+          <Icon name="bag-handle" />
+          <Text style={[styles.text, { flex: 1 }]}>Magazin și coș</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
+        <Pressable style={styles.row} onPress={() => router.push('/about')} accessibilityRole="button">
+          <Icon name="storefront" />
+          <Text style={[styles.text, { flex: 1 }]}>Despre salon</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
       </Card>
 
+      <Text style={[styles.label, { marginTop: space.lg, color: colors.gold }]}>Datele mele</Text>
       <Text style={styles.label}>Nume</Text>
       <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Numele tău" placeholderTextColor={colors.muted} />
       <Text style={styles.label}>Data nașterii</Text>
