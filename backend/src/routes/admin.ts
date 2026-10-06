@@ -725,9 +725,12 @@ adminRoutes.get('/subscriptions', async (c) => {
 adminRoutes.post('/clients/:id/subscriptions', async (c) => {
   const id = c.req.param('id')!;
   await needClient(c, id);
-  const b = await c.req.json<{ planId?: string; note?: string }>();
+  const b = await c.req.json<{ planId?: string; note?: string; gift?: boolean }>();
   if (!b.planId) throw new HttpError(400, 'invalid_body');
-  const sid = await activateSubscription(c.env, id, b.planId, c.get('admin').adminId, String(b.note ?? '').trim());
+  // Doar proprietarul oferă pachete cadou.
+  if (b.gift && !c.get('admin').owner) throw new HttpError(403, 'owner_only');
+  const note = String(b.note ?? '').trim() || (b.gift ? 'Cadou' : '');
+  const sid = await activateSubscription(c.env, id, b.planId, c.get('admin').adminId, note, !!b.gift);
   return c.json({ id: sid }, 201);
 });
 
@@ -871,6 +874,45 @@ adminRoutes.get('/referrals', async (c) => {
       bonusTitle: x.bonus_title,
     })),
   );
+});
+
+/** Structura recomandărilor: fiecare client care a adus oameni, cu lista lor (vizite, cât au cheltuit) și bonusurile primite. */
+adminRoutes.get('/referrals/tree', async (c) => {
+  need(c, 'clients');
+  const now = iso(new Date());
+  const r = await c.env.DB.prepare(
+    `SELECT n.id, n.name, n.created_at, n.referred_by,
+       (SELECT count(*) FROM bookings b WHERE b.client_id = n.id AND b.status IN ('completed','confirmed') AND b.starts_at <= ?) AS visits,
+       (SELECT coalesce(sum(CASE WHEN b.payment = 'paid' THEN b.paid_bani ELSE 0 END), 0) FROM bookings b WHERE b.client_id = n.id AND b.status = 'completed')
+         + (SELECT coalesce(sum(price_bani), 0) FROM subscriptions s WHERE s.client_id = n.id AND s.status != 'cancelled') AS spent,
+       (SELECT b.title FROM bonuses b WHERE b.referral_of = n.id AND b.client_id = n.referred_by AND b.status != 'cancelled' LIMIT 1) AS bonus_title
+     FROM clients n WHERE n.referred_by IS NOT NULL AND n.deleted_at IS NULL ORDER BY n.created_at`,
+  )
+    .bind(now)
+    .all<{ id: string; name: string; created_at: string; referred_by: string; visits: number; spent: number; bonus_title: string | null }>();
+  const refIds = [...new Set(r.results.map((x) => x.referred_by))];
+  if (!refIds.length) return c.json([]);
+  const refs = await c.env.DB.prepare(
+    `SELECT c.id, c.name, (SELECT count(*) FROM bonuses b WHERE b.client_id = c.id AND b.status != 'cancelled') AS bonuses
+     FROM clients c WHERE c.id IN (${refIds.map(() => '?').join(',')})`,
+  )
+    .bind(...refIds)
+    .all<{ id: string; name: string; bonuses: number }>();
+  const showMoney = c.get('admin').perms.stats;
+  const tree = refs.results.map((p) => {
+    const people = r.results.filter((x) => x.referred_by === p.id);
+    return {
+      referrer: { id: p.id, name: p.name },
+      count: people.length,
+      // Câți dintre cei aduși au venit măcar o dată.
+      active: people.filter((x) => x.visits > 0).length,
+      spent: showMoney ? people.reduce((n, x) => n + x.spent, 0) / 100 : null,
+      bonuses: p.bonuses,
+      people: people.map((x) => ({ id: x.id, name: x.name, createdAt: x.created_at, visits: x.visits, spent: showMoney ? x.spent / 100 : null, bonusTitle: x.bonus_title })),
+    };
+  });
+  tree.sort((a, b) => b.count - a.count || b.active - a.active);
+  return c.json(tree);
 });
 
 /** Beneficiu dat de admin: standard (`standard: true`) sau personalizat; opțional legat de o recomandare. */

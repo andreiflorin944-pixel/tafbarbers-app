@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { api, type Bonus, type BonusKind, type Referral, type ReferralSettings, type Reward } from '../api';
-import { Field, Loading, useAction, useLoad } from '../ui';
-import { date } from '../util';
+import { Fragment, useEffect, useState } from 'react';
+import { api, type Bonus, type BonusKind, type Plan, type Referral, type ReferralSettings, type Reward } from '../api';
+import { Field, Loading, Modal, useAction, useLoad } from '../ui';
+import { date, lei } from '../util';
 
 const KINDS: Record<BonusKind, string> = {
   percent: 'Reducere procentuală (%)',
@@ -150,6 +150,7 @@ export function ReferralsPage() {
         automat beneficiul standard de mai jos sau, dacă oprești varianta automată, îl alegi tu pentru fiecare recomandare. Bonusurile le marchează
         frizerul ca folosite, din aplicație sau din fișa clientului.
       </p>
+      <ReferralTree standard={s.standard} />
       <div className="row" style={{ alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' }}>
         <div className="card grid" style={{ flex: '1 1 360px', maxWidth: 520 }}>
           <label className="check">
@@ -241,5 +242,156 @@ export function ReferralsPage() {
         </div>
       </div>
     </>
+  );
+}
+
+type TreeNode = {
+  referrer: { id: string; name: string };
+  count: number;
+  active: number;
+  spent: number | null;
+  bonuses: number;
+  people: Array<{ id: string; name: string; createdAt: string; visits: number; spent: number | null; bonusTitle: string | null }>;
+};
+
+/** Cine pe cine a adus: clienții care au recomandat, cu oamenii aduși, și premierea lor (bonus sau pachet cadou). */
+function ReferralTree({ standard }: { standard: Reward }) {
+  const tree = useLoad(() => api<TreeNode[]>('GET', '/admin/referrals/tree'));
+  const plans = useLoad(() => api<Plan[]>('GET', '/admin/plans'));
+  const [open, setOpen] = useState<string | null>(null);
+  const [award, setAward] = useState<TreeNode | null>(null);
+  const [mode, setMode] = useState<'bonus' | 'plan'>('bonus');
+  const [r, setR] = useState<Reward>(standard);
+  const [planId, setPlanId] = useState('');
+  const [done, setDone] = useState('');
+  const { busy, error, run } = useAction();
+
+  const start = (n: TreeNode) => {
+    setAward(n);
+    setMode('bonus');
+    setR({ ...standard, title: `Mulțumim pentru ${n.count === 1 ? 'recomandare' : `cele ${n.count} recomandări`}` });
+    setPlanId(plans.data?.find((p) => p.active)?.id ?? '');
+  };
+  const give = () =>
+    run(async () => {
+      if (!award) return;
+      if (mode === 'bonus') await api('POST', `/admin/clients/${award.referrer.id}/bonuses`, r);
+      else await api('POST', `/admin/clients/${award.referrer.id}/subscriptions`, { planId, gift: true, note: `Cadou pentru ${award.count} recomandări` });
+      setDone(`${award.referrer.name || 'Clientul'} a primit ${mode === 'bonus' ? r.title : 'pachetul cadou'}. Îl vede în aplicație.`);
+      setAward(null);
+      tree.reload();
+    });
+
+  return (
+    <div className="card" style={{ marginBottom: 24 }}>
+      <h2 style={{ marginTop: 0 }}>Cine pe cine a adus</h2>
+      <p className="muted small" style={{ marginTop: -6 }}>
+        Clienții care au adus alți clienți, în ordinea numărului de oameni aduși. Apasă pe un rând ca să vezi pe cine a adus și cât au cheltuit, apoi îl poți
+        premia cu un bonus sau cu un pachet cadou.
+      </p>
+      {done ? <div className="success small" style={{ marginBottom: 8 }}>{done}</div> : null}
+      {!tree.data ? (
+        <Loading error={tree.error} />
+      ) : tree.data.length === 0 ? (
+        <div className="muted small">Încă nu a adus nimeni pe nimeni.</div>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th style={{ textAlign: 'right' }}>Oameni aduși</th>
+              <th style={{ textAlign: 'right' }}>Au venit la tuns</th>
+              {tree.data[0].spent !== null ? <th style={{ textAlign: 'right' }}>Au cheltuit</th> : null}
+              <th style={{ textAlign: 'right' }}>Bonusuri primite</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {tree.data.map((n) => (
+              <Fragment key={n.referrer.id}>
+                <tr className="click" onClick={() => setOpen(open === n.referrer.id ? null : n.referrer.id)}>
+                  <td>
+                    <b>{open === n.referrer.id ? '▾' : '▸'} {n.referrer.name || 'Fără nume'}</b>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <b>{n.count}</b>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>{n.active}</td>
+                  {n.spent !== null ? <td style={{ textAlign: 'right' }}>{lei(n.spent)}</td> : null}
+                  <td style={{ textAlign: 'right' }}>{n.bonuses}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      className="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        start(n);
+                      }}
+                    >
+                      Premiază
+                    </button>
+                  </td>
+                </tr>
+                {open === n.referrer.id
+                  ? n.people.map((p) => (
+                      <tr key={p.id} className="small">
+                        <td style={{ paddingLeft: 30 }}>{p.name || 'Fără nume'}</td>
+                        <td style={{ textAlign: 'right' }} className="muted">
+                          cont din {date(p.createdAt)}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{p.visits ? `${p.visits} ${p.visits === 1 ? 'vizită' : 'vizite'}` : <span className="muted">încă nu</span>}</td>
+                        {p.spent !== null ? <td style={{ textAlign: 'right' }}>{lei(p.spent)}</td> : null}
+                        <td colSpan={2} className="muted" style={{ textAlign: 'right' }}>
+                          {p.bonusTitle ? `bonus: ${p.bonusTitle}` : ''}
+                        </td>
+                      </tr>
+                    ))
+                  : null}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {award ? (
+        <Modal title={`Premiază pe ${award.referrer.name || 'client'} (${award.count} ${award.count === 1 ? 'om adus' : 'oameni aduși'})`} onClose={() => setAward(null)}>
+          <div className="grid">
+            <div className="tabs" style={{ margin: 0 }}>
+              <button className={mode === 'bonus' ? 'on' : ''} onClick={() => setMode('bonus')}>
+                Bonus sau premiu
+              </button>
+              <button className={mode === 'plan' ? 'on' : ''} onClick={() => setMode('plan')}>
+                Pachet cadou
+              </button>
+            </div>
+            {mode === 'bonus' ? (
+              <RewardFields value={r} onChange={setR} />
+            ) : plans.data?.some((p) => p.active) ? (
+              <Field label="Abonamentul oferit gratuit">
+                <select value={planId} onChange={(e) => setPlanId(e.target.value)}>
+                  {plans.data
+                    .filter((p) => p.active)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.cuts === null ? 'nelimitat' : `${p.cuts} tunsori`}, {p.periodDays} zile)
+                      </option>
+                    ))}
+                </select>
+              </Field>
+            ) : (
+              <div className="muted small">Nu ai încă abonamente. Le creezi la pagina Abonamente.</div>
+            )}
+            {mode === 'plan' ? <div className="muted small">Pachetul apare la client în Cont → Abonamente și nu se adună la încasări.</div> : null}
+            {error ? <div className="err">{error}</div> : null}
+            <div className="row">
+              <button disabled={busy || (mode === 'bonus' ? !r.title.trim() : !planId)} onClick={give}>
+                Oferă
+              </button>
+              <button className="ghost" onClick={() => setAward(null)}>
+                Renunță
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+    </div>
   );
 }

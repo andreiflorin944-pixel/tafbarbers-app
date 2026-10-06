@@ -128,7 +128,8 @@ export async function getSubscriptions(env: Env, clientId: string, staff: boolea
 }
 
 /** Activează un abonament după plata la salon. Dacă clientul are deja unul activ din același plan, noul începe când se termină acela. */
-export async function activateSubscription(env: Env, clientId: string, planId: string, adminId: string, note: string) {
+/** `gift`: pachet oferit cadou (ex. premiu pentru recomandări): nu se încasează, deci prețul salvat e 0. */
+export async function activateSubscription(env: Env, clientId: string, planId: string, adminId: string, note: string, gift = false) {
   const p = await env.DB.prepare('SELECT * FROM plans WHERE id = ?').bind(planId).first<PlanRow>();
   if (!p || !p.active) throw new HttpError(404, 'plan_not_found');
   const exists = await env.DB.prepare('SELECT 1 FROM clients WHERE id = ? AND deleted_at IS NULL').bind(clientId).first();
@@ -147,7 +148,7 @@ export async function activateSubscription(env: Env, clientId: string, planId: s
     `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, clientId, p.id, p.name, p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId)
+    .bind(id, clientId, p.id, p.name, gift ? 0 : p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId)
     .run();
   return id;
 }
