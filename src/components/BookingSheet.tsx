@@ -224,6 +224,7 @@ function Checkout({
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState<string | null>(null);
   const [tip, setTip] = useState("");
+  const [payMethod, setPayMethod] = useState<"cash" | "card">("cash");
   const [giftCode, setGiftCode] = useState("");
   const [gift, setGift] = useState<{ code: string; take: number; balance: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -264,7 +265,7 @@ function Checkout({
       onDone(
         await staffApi.complete(token, b.id, {
           payment: mode,
-          ...(mode === "paid" && { amount: value }),
+          ...(mode === "paid" && { amount: value, payMethod }),
           ...(mode === "paid" && gift && { giftCode: gift.code, giftAmount: gift.take }),
           tip: tipValue || null,
           bonusId,
@@ -303,6 +304,29 @@ function Checkout({
               selectTextOnFocus
             />
             <Text style={ui.text}>lei</Text>
+          </View>
+        ) : null}
+        {mode === "paid" ? (
+          <View style={[ui.row, { gap: space.sm, marginTop: space.sm }]}>
+            {(["cash", "card"] as const).map((m) => (
+              <Pressable
+                key={m}
+                onPress={() => setPayMethod(m)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: payMethod === m }}
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  paddingVertical: 10,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: payMethod === m ? colors.gold : colors.border,
+                  backgroundColor: payMethod === m ? colors.gold : "transparent",
+                }}
+              >
+                <Text style={{ color: payMethod === m ? colors.onGold : colors.text, fontWeight: "700" }}>{m === "cash" ? "Numerar" : "Card (POS)"}</Text>
+              </Pressable>
+            ))}
           </View>
         ) : null}
         {mode === "paid" ? (

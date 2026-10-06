@@ -12,6 +12,7 @@ import { getAppearance } from '../appearance';
 import { product, type ProductRow } from '../shop';
 import { parseBirthDate } from '../identity';
 import { applyReferral } from '../referrals';
+import { handleStripeEvent, onlinePaymentsOn, verifyStripeSignature } from '../payments';
 
 export const publicRoutes = new Hono<AppEnv>();
 
@@ -27,7 +28,22 @@ publicRoutes.get('/business', async (c) => {
     const r = rows.results.find((x) => x.weekday === wd);
     return r ? { open: hm(r.s), close: hm(r.e) } : null;
   });
-  return c.json({ ...biz, hours, appearance });
+  return c.json({ ...biz, hours, appearance, onlinePayments: onlinePaymentsOn(c.env) });
+});
+
+// Stripe ne anunță aici plățile. Semnătura se verifică pe corpul exact, cu secretul webhook-ului.
+publicRoutes.post('/payments/stripe', async (c) => {
+  const secret = c.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) throw new HttpError(404, 'not_found');
+  const body = await c.req.text();
+  if (!(await verifyStripeSignature(secret, body, c.req.header('stripe-signature')))) throw new HttpError(400, 'bad_signature');
+  let ev: Parameters<typeof handleStripeEvent>[1];
+  try {
+    ev = JSON.parse(body);
+  } catch {
+    throw new HttpError(400, 'invalid_json');
+  }
+  return c.json({ received: true, result: await handleStripeEvent(c.env, ev) });
 });
 
 // Pozele urcate din panou. Id-ul e nou la fiecare urcare, deci se pot ține în cache oricât.
@@ -43,7 +59,7 @@ publicRoutes.get('/media/:id', async (c) => {
 });
 
 publicRoutes.get('/products', async (c) => {
-  const r = await c.env.DB.prepare('SELECT * FROM products WHERE active = 1 ORDER BY sort, name').all<ProductRow>();
+  const r = await c.env.DB.prepare('SELECT * FROM products WHERE active = 1 AND for_sale = 1 ORDER BY sort, name').all<ProductRow>();
   return c.json(r.results.map(product));
 });
 
@@ -126,7 +142,15 @@ publicRoutes.post('/auth/otp', async (c) => {
   // Cel mult un cod la 45 de secunde pe număr.
   if (prev && Date.parse(prev.expires_at) - OTP_TTL + 45_000 > Date.now()) throw new HttpError(429, 'too_many_requests');
 
-  const code = randomCode();
+  // Contul demo pentru verificarea Apple / Google: un număr anume primește mereu același cod, fără SMS.
+  const [reviewPhone, reviewCode] = (c.env.REVIEW_LOGIN ?? '').split(':');
+  let review = false;
+  try {
+    review = !!reviewPhone && /^\d{4}$/.test(reviewCode ?? '') && normalizePhone(reviewPhone) === phone;
+  } catch {
+    // REVIEW_LOGIN greșit: contul demo rămâne oprit
+  }
+  const code = review ? reviewCode! : randomCode();
   await c.env.DB.prepare(
     `INSERT INTO otp_codes (phone, code_hash, expires_at, attempts, email) VALUES (?, ?, ?, 0, ?)
      ON CONFLICT(phone) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0, email = excluded.email`,
@@ -135,7 +159,9 @@ publicRoutes.post('/auth/otp', async (c) => {
     .run();
   const biz = await getBusiness(c.env);
   const lang = c.req.query('lang') ?? 'ro';
-  if (channel === 'email') {
+  if (review) {
+    // fără mesaj: echipa care verifică aplicația știe codul
+  } else if (channel === 'email') {
     const m = otpEmail(lang, biz.name, code);
     await sendEmail(c.env, { kind: 'otp', recipient: email! }, m.subject, m.html);
   } else {
@@ -145,7 +171,7 @@ publicRoutes.post('/auth/otp', async (c) => {
 });
 
 publicRoutes.post('/auth/verify', async (c) => {
-  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string }>();
+  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean }>();
   const phone = normalizePhone(body.phone);
   const row = await c.env.DB.prepare('SELECT code_hash, expires_at, attempts, email FROM otp_codes WHERE phone = ?')
     .bind(phone)
@@ -172,8 +198,13 @@ publicRoutes.post('/auth/verify', async (c) => {
 
   if (!client) {
     client = { id: newId('cl'), name: (body.name ?? '').trim().slice(0, 80), email };
-    await c.env.DB.prepare('INSERT INTO clients (id, phone, name, email, lang, terms_accepted_at, birth_date) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(client.id, phone, client.name, email, ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro', iso(new Date()), birthDate)
+    // Ofertele se trimit doar cu bifa separată de la creare (GDPR): fără ea, toate canalele de marketing rămân oprite.
+    const mk = body.marketing === true ? 1 : 0;
+    await c.env.DB.prepare(
+      `INSERT INTO clients (id, phone, name, email, lang, terms_accepted_at, birth_date, marketing_push, marketing_email, marketing_sms, marketing_consent_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(client.id, phone, client.name, email, ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro', iso(new Date()), birthDate, mk, mk, mk, mk ? iso(new Date()) : null)
       .run();
     await applyReferral(c.env, client.id, body.ref);
   } else {
@@ -186,6 +217,9 @@ publicRoutes.post('/auth/verify', async (c) => {
     }
     if (birthDate) {
       await c.env.DB.prepare('UPDATE clients SET birth_date = coalesce(birth_date, ?) WHERE id = ?').bind(birthDate, client.id).run();
+    }
+    if (body.marketing === true) {
+      await c.env.DB.prepare('UPDATE clients SET marketing_push = 1, marketing_email = 1, marketing_sms = 1, marketing_consent_at = ? WHERE id = ?').bind(iso(new Date()), client.id).run();
     }
     // Clienții adăugați din panou își dau acordul la prima intrare în aplicație.
     if (body.acceptTerms === true) {

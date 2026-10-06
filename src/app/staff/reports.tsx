@@ -34,17 +34,28 @@ function periods(range: ReportMeta['range']) {
 
 // Rapoartele în aplicație: se văd pe ecran; descărcarea în Excel se face din panoul web.
 export default function StaffReports() {
+  return <ReportsScreen initialKind="day" />;
+}
+
+export function ReportsScreen({ initialKind }: { initialKind: string }) {
   const { staff, staffToken } = useStaff();
   const [list, setList] = useState<ReportMeta[] | null>(null);
-  const [kind, setKind] = useState('day');
+  const [kind, setKind] = useState(initialKind);
   const [period, setPeriod] = useState(0);
   const [data, setData] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(50);
 
   useEffect(() => {
-    if (staffToken) staffApi.reports(staffToken).then(setList, (e) => setError(errorMessage(e)));
-  }, [staffToken]);
+    if (staffToken)
+      staffApi.reports(staffToken).then(
+        (l) => {
+          setList(l);
+          if (l.length && !l.some((r) => r.kind === initialKind)) setKind(l[0].kind);
+        },
+        (e) => setError(errorMessage(e)),
+      );
+  }, [staffToken, initialKind]);
 
   const meta = list?.find((r) => r.kind === kind);
   const options = periods(meta?.range ?? 'day');
@@ -80,7 +91,11 @@ export default function StaffReports() {
           <Chip key={o.label} label={o.label} on={o === p} onPress={() => setPeriod(i)} small />
         ))}
       </View>
-      {!staff.permissions.stats ? <Text style={[ui.muted, { fontSize: 12 }]}>Sumele de bani nu apar pentru contul tău.</Text> : null}
+      {kind === 'register' ? (
+        <Text style={[ui.muted, { fontSize: 12 }]}>Fiecare programare trebuie închisă: încheiată (cu plata), nu a venit sau anulată.</Text>
+      ) : !staff.permissions.stats ? (
+        <Text style={[ui.muted, { fontSize: 12 }]}>Sumele de bani nu apar pentru contul tău.</Text>
+      ) : null}
       {error ? <Text style={{ color: colors.danger }}>{error}</Text> : null}
       {!data && !error ? <ActivityIndicator color={colors.gold} style={{ marginTop: space.lg }} /> : null}
       {data ? (

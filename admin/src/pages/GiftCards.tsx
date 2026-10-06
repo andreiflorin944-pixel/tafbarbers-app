@@ -13,6 +13,7 @@ export type GiftCard = {
   message: string;
   status: 'pending' | 'active' | 'used' | 'cancelled' | 'expired';
   paidAt: string | null;
+  payMethod?: string | null;
   expiresAt: string | null;
   createdAt: string;
   buyerName?: string | null;
@@ -32,12 +33,13 @@ export function GiftCardsPage({ me }: { me: Me }) {
   const [selling, setSelling] = useState(false);
   const [code, setCode] = useState('');
   const [checked, setChecked] = useState<GiftCard | string | null>(null);
+  const [method, setMethod] = useState('cash');
   const { busy, error, run } = useAction();
 
   const act = (g: GiftCard, status: 'active' | 'cancelled') =>
     run(async () => {
       if (status === 'cancelled' && !confirm(`Anulezi cardul de ${lei(g.amount)} pentru ${g.recipientName || 'destinatar'}?`)) return;
-      await api('PATCH', `/admin/gift-cards/${g.id}`, { status });
+      await api('PATCH', `/admin/gift-cards/${g.id}`, { status, payMethod: method });
       list.reload();
     });
 
@@ -73,7 +75,14 @@ export function GiftCardsPage({ me }: { me: Me }) {
         ) : null}
       </div>
 
-      <div className="row" style={{ gap: 6, marginBottom: 12 }}>
+      <div className="row" style={{ gap: 6, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="muted small">Încasez cu</span>
+        <select value={method} onChange={(e) => setMethod(e.target.value)} style={{ width: 130 }} aria-label="Cum se încasează">
+          <option value="cash">numerar</option>
+          <option value="card">card (POS)</option>
+          <option value="transfer">transfer</option>
+        </select>
+        <span style={{ width: 12 }} />
         {FILTERS.map((f) => (
           <button key={f.v} className={f.v === filter ? 'sm' : 'ghost sm'} onClick={() => setFilter(f.v)}>
             {f.label}
@@ -116,6 +125,7 @@ export function GiftCardsPage({ me }: { me: Me }) {
                   <td>
                     {STATUS[g.status]}
                     {g.paidByName ? <div className="muted small">încasat de {g.paidByName}</div> : null}
+                    {g.payMethod === 'online' ? <div className="muted small">plătit online, cu cardul</div> : null}
                     {g.expiresAt && g.status !== 'pending' ? <div className="muted small">până pe {longDate(g.expiresAt)}</div> : null}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
@@ -138,6 +148,7 @@ export function GiftCardsPage({ me }: { me: Me }) {
       )}
       {selling ? (
         <SellModal
+          method={method}
           onClose={() => setSelling(false)}
           onDone={(g) => {
             setSelling(false);
@@ -151,7 +162,7 @@ export function GiftCardsPage({ me }: { me: Me }) {
   );
 }
 
-function SellModal({ onClose, onDone }: { onClose: () => void; onDone: (g: GiftCard) => void }) {
+function SellModal({ method, onClose, onDone }: { method: string; onClose: () => void; onDone: (g: GiftCard) => void }) {
   const [amount, setAmount] = useState('100');
   const [recipientName, setName] = useState('');
   const [recipientPhone, setPhone] = useState('');
@@ -175,9 +186,9 @@ function SellModal({ onClose, onDone }: { onClose: () => void; onDone: (g: GiftC
         {error ? <div className="err">{error}</div> : null}
         <button
           disabled={busy}
-          onClick={() => run(async () => onDone(await api<GiftCard>('POST', '/admin/gift-cards', { amount: Number(amount), recipientName, recipientPhone, message })))}
+          onClick={() => run(async () => onDone(await api<GiftCard>('POST', '/admin/gift-cards', { amount: Number(amount), recipientName, recipientPhone, message, payMethod: method })))}
         >
-          Încasat, generează codul
+          Încasat ({method === 'card' ? 'card' : method === 'transfer' ? 'transfer' : 'numerar'}), generează codul
         </button>
       </div>
     </Modal>

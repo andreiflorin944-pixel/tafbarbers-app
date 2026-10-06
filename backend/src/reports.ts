@@ -3,6 +3,7 @@
 import { HttpError, type AdminSession, type Env } from './env';
 import { addDays, iso, isDay, localToUtc, roLocal } from './time';
 import type { Cell } from './xlsx';
+import { listMoves, MOVE_LABELS } from './stock';
 
 export type ColType = 'text' | 'int' | 'money' | 'pct' | 'date' | 'datetime';
 export type Col = { key: string; label: string; type: ColType };
@@ -25,6 +26,9 @@ export const REPORTS = [
   { kind: 'top100', title: 'Clienți TOP-100', range: 'period', clients: true },
   { kind: 'retention', title: 'Păstrarea clienților', range: 'months' },
   { kind: 'new-returning', title: 'Clienți noi vs. clienți care revin', range: 'period' },
+  { kind: 'register', title: 'Registrul de încasări', range: 'day' },
+  { kind: 'stock', title: 'Situația stocului', range: 'day', shop: true },
+  { kind: 'stock-moves', title: 'Intrări și ieșiri de produse', range: 'period', shop: true },
 ] as const;
 export type ReportKind = (typeof REPORTS)[number]['kind'];
 
@@ -34,6 +38,7 @@ const MAX_DAYS = 400;
 const STATUS: Record<string, string> = { confirmed: 'Confirmată', completed: 'Finalizată', cancelled: 'Anulată', no_show: 'Neprezentare' };
 const SOURCE: Record<string, string> = { app: 'Aplicație', admin: 'Echipă', web: 'Site' };
 const PAYMENT: Record<string, string> = { paid: 'Plătită', subscription: 'Abonament' };
+const METHOD: Record<string, string> = { cash: 'Numerar', card: 'Card (POS)', transfer: 'Transfer', online: 'Online' };
 
 type BRow = {
   id: string;
@@ -49,6 +54,8 @@ type BRow = {
   paid_bani: number | null;
   tip_bani: number | null;
   gift_bani: number | null;
+  pay_method: string | null;
+  ends_at: string;
   cancelled_at: string | null;
   cancelled_by: string | null;
   completed_by: string | null;
@@ -73,6 +80,7 @@ type SRow = {
   admin_barber_name: string | null;
   client_name: string;
   kind: 'sub' | 'gift';
+  pay_method: string | null;
   day: string;
 };
 
@@ -102,7 +110,7 @@ async function loadBookings(env: Env, scope: Scope, from: string, to: string, f:
   if (f.serviceId) where.push('b.service_id = ?'), vals.push(f.serviceId);
   const r = await env.DB.prepare(
     `SELECT b.id, b.client_id, b.barber_id, b.service_id, b.starts_at, b.created_at, b.price_bani, b.status, b.source, b.payment, b.paid_bani,
-       b.tip_bani, b.gift_bani, b.cancelled_at, b.cancelled_by, b.completed_by, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+       b.tip_bani, b.gift_bani, b.pay_method, b.ends_at, b.cancelled_at, b.cancelled_by, b.completed_by, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
        s.name AS service_name, br.name AS barber_name, coalesce(nullif(ca.name, ''), ca.email) AS canceller_name,
        coalesce(nullif(cb.name, ''), cb.email) AS completer_name
      FROM bookings b JOIN clients c ON c.id = b.client_id JOIN services s ON s.id = b.service_id JOIN barbers br ON br.id = b.barber_id
@@ -123,12 +131,12 @@ async function loadSubscriptions(env: Env, scope: Scope, from: string, to: strin
   const r = await env.DB.prepare(
     `SELECT * FROM (
        SELECT s.id, s.client_id, s.name, s.price_bani, s.created_at, s.created_by, coalesce(nullif(a.name, ''), a.email) AS admin_name,
-         a.barber_id AS admin_barber, br.name AS admin_barber_name, c.name AS client_name, 'sub' AS kind
+         a.barber_id AS admin_barber, br.name AS admin_barber_name, c.name AS client_name, 'sub' AS kind, s.pay_method
        FROM subscriptions s JOIN clients c ON c.id = s.client_id LEFT JOIN admins a ON a.id = s.created_by LEFT JOIN barbers br ON br.id = a.barber_id
        WHERE s.status != 'cancelled' AND s.created_at >= ? AND s.created_at < ? ${own}
        UNION ALL
        SELECT g.id, coalesce(g.buyer_client_id, 'gift:' || g.id), 'Card cadou ' || g.code, g.amount_bani, g.paid_at, g.paid_by, coalesce(nullif(a.name, ''), a.email),
-         a.barber_id, br.name, coalesce(c.name, g.recipient_name), 'gift'
+         a.barber_id, br.name, coalesce(c.name, g.recipient_name), 'gift', g.pay_method
        FROM gift_cards g LEFT JOIN clients c ON c.id = g.buyer_client_id LEFT JOIN admins a ON a.id = g.paid_by LEFT JOIN barbers br ON br.id = a.barber_id
        WHERE g.paid_at IS NOT NULL AND g.status != 'cancelled' AND g.paid_at >= ? AND g.paid_at < ? ${ownG}
      ) ORDER BY created_at`,
@@ -186,6 +194,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
   if (!meta) throw new HttpError(404, 'not_found');
   const perms = scope.session.perms;
   if ('clients' in meta && meta.clients && !perms.clients) throw new HttpError(403, 'no_permission');
+  if ('shop' in meta && meta.shop && !perms.shop) throw new HttpError(403, 'no_permission');
   const { from, to } = parsePeriod(q, kind);
   const now = iso(new Date());
   const filters = { serviceId: q.serviceId || undefined, barberId: q.barberId || undefined };
@@ -411,6 +420,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         { key: 'client', label: 'Client', type: 'text' },
         { key: 'what', label: 'Pentru', type: 'text' },
         { key: 'method', label: 'Tip', type: 'text' },
+        { key: 'how', label: 'Cum', type: 'text' },
         { key: 'amount', label: 'Sumă (lei)', type: 'money' },
         { key: 'tip', label: 'Bacșiș (lei)', type: 'money' },
         { key: 'by', label: 'Încasat de', type: 'text' },
@@ -424,7 +434,8 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
               date: localDT(b.starts_at),
               client: b.client_name || 'Fără nume',
               what: `${b.service_name} · ${b.barber_name}`,
-              method: b.payment === 'paid' ? 'Plată serviciu' : 'Tunsoare din abonament',
+              method: b.payment === 'paid' ? (b.gift_bani ? 'Plată serviciu (și card cadou)' : 'Plată serviciu') : 'Tunsoare din abonament',
+              how: b.pay_method ? METHOD[b.pay_method] ?? b.pay_method : '',
               amount: lei(collected(b)),
               tip: b.tip_bani ? lei(b.tip_bani) : null,
               by: b.completer_name ?? '',
@@ -432,7 +443,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
           })),
         ...subs.map((s) => ({
           t: s.created_at,
-          row: { date: localDT(s.created_at), client: s.client_name || 'Fără nume', what: s.name, method: s.kind === 'gift' ? 'Card cadou vândut' : 'Abonament vândut', amount: lei(s.price_bani), tip: null, by: s.admin_name ?? '' },
+          row: { date: localDT(s.created_at), client: s.client_name || 'Fără nume', what: s.name, method: s.kind === 'gift' ? 'Card cadou vândut' : 'Abonament vândut', how: s.pay_method ? METHOD[s.pay_method] ?? s.pay_method : '', amount: lei(s.price_bani), tip: null, by: s.admin_name ?? '' },
         })),
       ];
       items.sort((a, b) => a.t.localeCompare(b.t));
@@ -612,10 +623,140 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
       totals.share = pct(Number(totals.new), Number(totals.total));
       break;
     }
+
+    case 'register': {
+      // Registrul de încasări: fiecare programare din zi (sau perioadă) cu felul în care s-a închis și cum s-a plătit.
+      const [bk, subs] = await Promise.all([loadBookings(env, scope, from, to, filters), loadSubscriptions(env, scope, from, to)]);
+      columns = [
+        { key: 'date', label: 'Data și ora', type: 'datetime' },
+        { key: 'client', label: 'Client', type: 'text' },
+        { key: 'barber', label: 'Frizer', type: 'text' },
+        { key: 'what', label: 'Serviciu / vânzare', type: 'text' },
+        { key: 'state', label: 'Cum s-a închis', type: 'text' },
+        { key: 'cash', label: 'Numerar (lei)', type: 'money' },
+        { key: 'card', label: 'Card POS (lei)', type: 'money' },
+        { key: 'other', label: 'Transfer / online (lei)', type: 'money' },
+        { key: 'gift', label: 'Din card cadou (lei)', type: 'money' },
+        { key: 'tip', label: 'Bacșiș (lei)', type: 'money' },
+      ];
+      const split = (method: string | null, bani: number) => ({
+        cash: method === 'cash' || (!method && bani) ? lei(bani) : null,
+        card: method === 'card' ? lei(bani) : null,
+        other: method === 'transfer' || method === 'online' ? lei(bani) : null,
+      });
+      const stateOf = (b: BRow) =>
+        b.status === 'completed'
+          ? b.payment === 'subscription'
+            ? 'Încheiată · din abonament'
+            : 'Încheiată · plătită'
+          : b.status === 'no_show'
+            ? 'Nu a venit'
+            : b.status === 'cancelled'
+              ? b.cancelled_by === 'client'
+                ? 'Anulată de client'
+                : 'Anulată de salon'
+              : b.ends_at < now
+                ? 'NEÎNCHISĂ'
+                : 'Urmează';
+      const items = [
+        ...bk.map((b) => ({
+          t: b.starts_at,
+          row: {
+            date: localDT(b.starts_at),
+            client: b.client_name || 'Fără nume',
+            barber: b.barber_name,
+            what: b.service_name,
+            state: stateOf(b),
+            ...split(b.pay_method, collected(b)),
+            gift: b.gift_bani ? lei(b.gift_bani) : null,
+            tip: b.tip_bani ? lei(b.tip_bani) : null,
+          } as Row,
+        })),
+        ...subs.map((x) => ({
+          t: x.created_at,
+          row: {
+            date: localDT(x.created_at),
+            client: x.client_name || 'Fără nume',
+            barber: x.admin_barber_name ?? x.admin_name ?? '',
+            what: x.kind === 'gift' ? x.name : `Abonament: ${x.name}`,
+            state: 'Vândut',
+            ...split(x.pay_method ?? 'cash', x.price_bani),
+            gift: null,
+            tip: null,
+          } as Row,
+        })),
+      ];
+      items.sort((a, b) => a.t.localeCompare(b.t));
+      rows = items.map((i) => i.row);
+      const open = rows.filter((r) => r.state === 'NEÎNCHISĂ').length;
+      totals = sumRows(rows, columns, open ? `Total · ${open} neînchise` : `Total: ${rows.length}`);
+      break;
+    }
+
+    case 'stock': {
+      const r = await env.DB.prepare(
+        `SELECT name, unit, stock, cost_bani, price_bani, for_sale, active FROM products WHERE stock IS NOT NULL ORDER BY active DESC, name`,
+      ).all<{ name: string; unit: string; stock: number; cost_bani: number | null; price_bani: number; for_sale: number; active: number }>();
+      columns = [
+        { key: 'name', label: 'Produs', type: 'text' },
+        { key: 'kind', label: 'Tip', type: 'text' },
+        { key: 'unit', label: 'U.M.', type: 'text' },
+        { key: 'stock', label: 'Stoc', type: 'int' },
+        { key: 'cost', label: 'Preț achiziție (lei)', type: 'money' },
+        { key: 'value', label: 'Valoare la achiziție (lei)', type: 'money' },
+        { key: 'price', label: 'Preț vânzare (lei)', type: 'money' },
+        { key: 'saleValue', label: 'Valoare la vânzare (lei)', type: 'money' },
+      ];
+      rows = r.results.map((p) => ({
+        name: p.name + (p.active ? '' : ' (ascuns)'),
+        kind: p.for_sale ? 'De vânzare' : 'Pentru salon',
+        unit: p.unit,
+        stock: p.stock,
+        cost: p.cost_bani === null ? null : lei(p.cost_bani),
+        value: p.cost_bani === null ? null : lei(p.cost_bani * p.stock),
+        price: p.for_sale ? lei(p.price_bani) : null,
+        saleValue: p.for_sale ? lei(p.price_bani * p.stock) : null,
+      }));
+      totals = sumRows(rows, columns, `Total: ${rows.length} produse`);
+      totals.cost = null;
+      totals.price = null;
+      break;
+    }
+
+    case 'stock-moves': {
+      const { start, end } = range(from, to);
+      const moves = await listMoves(env, { productId: q.productId || undefined, start, end });
+      columns = [
+        { key: 'date', label: 'Data', type: 'datetime' },
+        { key: 'product', label: 'Produs', type: 'text' },
+        { key: 'kind', label: 'Tip mișcare', type: 'text' },
+        { key: 'doc', label: 'Document', type: 'text' },
+        { key: 'in', label: 'Intrare', type: 'int' },
+        { key: 'out', label: 'Ieșire', type: 'int' },
+        { key: 'value', label: 'Valoare la achiziție (lei)', type: 'money' },
+        { key: 'note', label: 'Observații', type: 'text' },
+        { key: 'by', label: 'Operat de', type: 'text' },
+      ];
+      rows = moves.map((m) => ({
+        date: localDT(m.created_at),
+        product: `${m.product_name} (${m.unit})`,
+        kind: MOVE_LABELS[m.kind] ?? m.kind,
+        doc: m.nir_number ? `NIR ${m.nir_number}` : m.order_id ? `Comanda ${m.order_id.slice(-5).toUpperCase()}` : '',
+        in: m.qty > 0 ? m.qty : null,
+        out: m.qty < 0 ? -m.qty : null,
+        value: m.unit_cost_bani === null ? null : lei(Math.abs(m.qty) * m.unit_cost_bani),
+        note: m.note,
+        by: m.created_by_name ?? (m.kind.startsWith('vanzare') ? 'Aplicație' : ''),
+      }));
+      totals = sumRows(rows, columns, `Total: ${rows.length} mișcări`);
+      totals.value = null;
+      break;
+    }
   }
 
   // Fără dreptul „Încasări”, coloanele cu bani nu pleacă de pe server.
-  if (!perms.stats) {
+  // Excepție: în registrul lui, frizerul își vede încasările (le-a încasat chiar el).
+  if (!perms.stats && !(kind === 'register' && scope.barberId)) {
     const money = new Set(columns.filter((c) => c.type === 'money' || (c.key === 'share' && kind === 'sales-service')).map((c) => c.key));
     columns = columns.filter((c) => !money.has(c.key));
     const keep = new Set(columns.map((c) => c.key));

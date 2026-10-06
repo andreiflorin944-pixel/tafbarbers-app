@@ -102,6 +102,15 @@ const MESSAGES: Record<string, string> = {
   invalid_max: 'Maxim de câte ori pe săptămână: între 1 și 7.',
   invalid_months: 'Valabilitatea trebuie să fie între 1 și 36 de luni.',
   not_pending: 'Cardul a fost deja încasat sau anulat.',
+  supplier_required: 'Scrie furnizorul.',
+  lines_required: 'Adaugă cel puțin un produs.',
+  invalid_qty: 'Cantitatea nu e corectă.',
+  invalid_vat: 'Cota de TVA nu e corectă.',
+  invalid_day: 'Data nu e corectă.',
+  product_not_found: 'Produsul nu mai există.',
+  stock_too_low: 'Nu e destul stoc (produsele s-au vândut sau folosit între timp).',
+  stock_not_tracked: 'Produsul nu are stoc urmărit.',
+  already_cancelled: 'E deja anulat.',
   gift_card_not_found: 'Nu există un card cadou activ cu acest cod.',
   gift_card_expired: 'Cardul cadou a expirat.',
   gift_card_empty: 'Pe cardul cadou nu mai sunt bani.',
@@ -148,6 +157,9 @@ export type Product = {
   stock: number | null;
   sort: number;
   active: boolean;
+  forSale: boolean;
+  unit: string;
+  cost: number | null;
 };
 export type OrderStatus = 'new' | 'ready' | 'picked_up' | 'cancelled';
 export type Order = {
@@ -156,6 +168,8 @@ export type Order = {
   status: OrderStatus;
   total: number;
   note: string;
+  paidAt?: string | null;
+  payMethod?: string | null; // cash | card | transfer | online
   createdAt: string;
   clientName: string;
   clientPhone: string;

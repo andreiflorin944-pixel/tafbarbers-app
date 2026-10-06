@@ -19,7 +19,7 @@ export interface BookingApi {
     input: { phone: string; email?: string; channel: 'email' | 'sms' },
     lang: string,
   ): Promise<{ phone: string; channel: 'email' | 'sms'; sentTo: string; newAccount?: boolean; devCode?: string }>;
-  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; birthDate?: string; email?: string; ref?: string }): Promise<{ token: string }>;
+  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; email?: string; ref?: string }): Promise<{ token: string }>;
   getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null }>;
   exportMe(token: string): Promise<unknown>;
   deleteMe(token: string): Promise<void>;
@@ -44,6 +44,8 @@ export interface BookingApi {
   getGiftCards(token: string): Promise<GiftCards>;
   buyGiftCard(token: string, input: { amount: number; recipientName: string; recipientPhone?: string; message?: string }): Promise<{ id: string }>;
   cancelGiftCard(token: string, id: string): Promise<void>;
+  /** Adresa paginii de plată online (Stripe). */
+  payGiftCard(token: string, id: string): Promise<{ url: string }>;
   getBeforeAfter(token: string): Promise<BeforeAfter[]>;
 
   listBookings(token: string): Promise<Booking[]>;
@@ -59,6 +61,7 @@ export interface BookingApi {
   listOrders(token: string): Promise<Order[]>;
   createOrder(token: string, input: { items: Array<{ productId: string; qty: number }>; note?: string }): Promise<Order>;
   cancelOrder(token: string, id: string): Promise<Order>;
+  payOrder(token: string, id: string): Promise<{ url: string }>;
 }
 
 /** Eroare de la server, cu codul lui (ex. `slot_unavailable`). */

@@ -6,6 +6,13 @@ export type Env = {
   EMAIL_API_KEY?: string;
   EMAIL_FROM?: string;
   ADMIN_SETUP_KEY?: string;
+  // Plata online (Stripe). Fără ele butoanele „Plătește online” nu apar și totul se plătește la salon.
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  // Adresa publică a serverului (ex. https://app.tafbarbers.ro), pentru paginile la care revine clientul după plată.
+  PUBLIC_URL?: string;
+  // Contul demo pentru verificarea din magazine, „telefon:cod” (ex. 0700000000:4826).
+  REVIEW_LOGIN?: string;
   // Doar pentru dezvoltare locală: codul OTP se întoarce în răspuns în loc de SMS.
   DEV_OTP?: string;
 };

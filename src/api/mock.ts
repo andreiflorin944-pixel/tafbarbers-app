@@ -142,6 +142,7 @@ export const mockApi: BookingApi = {
   getGiftCards: () => delay({ enabled: true, amounts: [50, 100, 150, 200], validMonths: 12, bought: [], received: [] }),
   buyGiftCard: () => delay({ id: `gc-${Date.now()}` }),
   cancelGiftCard: () => delay(undefined),
+  payGiftCard: () => Promise.reject(new ApiError('payments_off', 409)),
   getBeforeAfter: () => delay([]),
   async saveIdentityNote(token, note) {
     identityOf(token).note = note;
@@ -200,4 +201,5 @@ export const mockApi: BookingApi = {
   listOrders: () => delay([]),
   createOrder: () => Promise.reject(new ApiError('no_server', 0)),
   cancelOrder: () => Promise.reject(new ApiError('no_server', 0)),
+  payOrder: () => Promise.reject(new ApiError('payments_off', 409)),
 };

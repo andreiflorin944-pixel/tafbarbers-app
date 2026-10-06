@@ -26,6 +26,7 @@ export function PhoneLogin({ submitTitle, onDone, initialRef }: { submitTitle?: 
   const [ref, setRef] = useState(initialRef?.toUpperCase() ?? '');
   const [devCode, setDevCode] = useState<string | undefined>();
   const [accepted, setAccepted] = useState(false);
+  const [marketing, setMarketing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +63,7 @@ export function PhoneLogin({ submitTitle, onDone, initialRef }: { submitTitle?: 
         name: name.trim(),
         lang,
         acceptTerms: accepted,
+        marketing,
         birthDate: parseBirth(birth) ?? undefined,
         email: emailOk ? cleanEmail : undefined,
         ref: ref.trim() || undefined,
@@ -171,6 +173,19 @@ export function PhoneLogin({ submitTitle, onDone, initialRef }: { submitTitle?: 
             Politica de confidențialitate
           </Text>
           .
+        </Text>
+      </Pressable>
+
+      <Pressable
+        onPress={() => setMarketing((m) => !m)}
+        style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', marginTop: space.sm }}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: marketing }}
+        accessibilityLabel="Vreau să primesc oferte și noutăți"
+      >
+        <Ionicons name={marketing ? 'checkbox' : 'square-outline'} size={22} color={marketing ? colors.gold : colors.muted} />
+        <Text style={[styles.muted, { flex: 1, fontSize: 13, lineHeight: 19 }]}>
+          Vreau să primesc oferte și noutăți (notificări, e-mail, SMS). Opțional; se poate schimba oricând din cont.
         </Text>
       </Pressable>
 

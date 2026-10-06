@@ -40,9 +40,10 @@ function Orders() {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['key']>('open');
   const list = useLoad(() => api<Order[]>('GET', `/admin/orders?status=${filter}`), [filter]);
   const { busy, error, run } = useAction();
+  const [method, setMethod] = useState<Record<string, string>>({});
   const setStatus = (o: Order, status: OrderStatus) =>
     run(async () => {
-      await api('PATCH', `/admin/orders/${o.id}`, { status });
+      await api('PATCH', `/admin/orders/${o.id}`, { status, payMethod: method[o.id] ?? 'cash' });
       list.reload();
     });
 
@@ -88,6 +89,12 @@ function Orders() {
                 ))}
               </div>
               {o.note ? <div className="small">„{o.note}”</div> : null}
+              {o.paidAt ? (
+                <div className="small" style={{ color: 'var(--ok, #8FC79A)' }}>
+                  Plătită {o.payMethod === 'online' ? 'online, cu cardul' : o.payMethod === 'card' ? 'cu cardul (POS)' : o.payMethod === 'transfer' ? 'prin transfer' : 'numerar'}
+                  {o.status === 'cancelled' && o.payMethod === 'online' ? ' · banii trebuie returnați din Stripe' : ''}
+                </div>
+              ) : null}
               <div className="row" style={{ justifyContent: 'space-between' }}>
                 <strong>Total {lei(o.total)}</strong>
                 <div className="row">
@@ -98,13 +105,23 @@ function Orders() {
                   ) : null}
                   {o.status === 'new' || o.status === 'ready' ? (
                     <>
+                      {!o.paidAt ? (
+                        <select className="sm" value={method[o.id] ?? 'cash'} onChange={(e) => setMethod({ ...method, [o.id]: e.target.value })} aria-label="Încasez cu">
+                          <option value="cash">Numerar</option>
+                          <option value="card">Card (POS)</option>
+                        </select>
+                      ) : null}
                       <button className={o.status === 'ready' ? 'sm' : 'ghost sm'} disabled={busy} onClick={() => setStatus(o, 'picked_up')}>
-                        Ridicată și plătită
+                        {o.paidAt ? 'Ridicată' : 'Ridicată și plătită'}
                       </button>
                       <button
                         className="danger sm"
                         disabled={busy}
-                        onClick={() => confirm(`Anulezi comanda ${o.code}? Produsele revin în stoc.`) && setStatus(o, 'cancelled')}
+                        onClick={() =>
+                          confirm(
+                            `Anulezi comanda ${o.code}? Produsele revin în stoc.${o.payMethod === 'online' ? ' Comanda e plătită online: returnează banii din contul Stripe.' : ''}`,
+                          ) && setStatus(o, 'cancelled')
+                        }
                       >
                         Anulează
                       </button>
@@ -126,7 +143,7 @@ function Products() {
   return (
     <>
       <div className="row" style={{ marginBottom: 12 }}>
-        <button onClick={() => setEdit({ price: 50, stock: null, sort: (list.data?.length ?? 0) + 1, active: true })}>+ Produs nou</button>
+        <button onClick={() => setEdit({ price: 50, stock: null, sort: (list.data?.length ?? 0) + 1, active: true, forSale: true, unit: 'buc' })}>+ Produs nou</button>
       </div>
       {!list.data ? (
         <Loading error={list.error} />
@@ -157,7 +174,9 @@ function Products() {
                   </td>
                   <td>{lei(p.price)}</td>
                   <td>{p.stock === null ? <span className="muted">fără limită</span> : p.stock === 0 ? <span className="pill cancelled">epuizat</span> : p.stock}</td>
-                  <td>{p.active ? null : <span className="pill off">ascuns</span>}</td>
+                  <td>
+                    {p.active ? null : <span className="pill off">ascuns</span>} {p.forSale ? null : <span className="pill off">doar pentru salon</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -191,6 +210,9 @@ function ProductModal({ p, onClose, onDone }: { p: Partial<Product>; onClose: ()
     stock: stock.trim() === '' ? null : Number(stock),
     sort: v.sort ?? 0,
     active: v.active !== false,
+    forSale: v.forSale !== false,
+    unit: v.unit || 'buc',
+    cost: v.cost === undefined || v.cost === null || (v.cost as unknown) === '' ? null : Number(v.cost),
   };
 
   return (
@@ -210,6 +232,18 @@ function ProductModal({ p, onClose, onDone }: { p: Partial<Product>; onClose: ()
             <input type="number" min={0} step={1} value={stock} onChange={(e) => setStock(e.target.value)} placeholder="fără limită" />
           </Field>
         </div>
+        <div className="grid two">
+          <Field label="Preț de achiziție, fără TVA (lei, se completează și din NIR)">
+            <input type="number" min={0} step="0.01" value={v.cost ?? ''} onChange={(e) => set({ cost: e.target.value === '' ? null : Number(e.target.value) })} />
+          </Field>
+          <Field label="Unitate de măsură">
+            <input value={v.unit ?? 'buc'} onChange={(e) => set({ unit: e.target.value })} maxLength={12} placeholder="buc, ml, flacon" />
+          </Field>
+        </div>
+        <label className="check">
+          <input type="checkbox" checked={v.forSale !== false} onChange={(e) => set({ forSale: e.target.checked })} /> Se vinde în magazinul din aplicație (debifat =
+          produs folosit doar în salon, ex. ceară, lame)
+        </label>
         <Field label="Poză">
           <ImagePicker value={v.imageUrl ?? null} onChange={(imageUrl) => set({ imageUrl })} />
         </Field>

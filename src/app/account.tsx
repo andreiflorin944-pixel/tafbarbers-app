@@ -247,7 +247,7 @@ function ClientAccount() {
         <Toggle label="SMS" value={user.marketing.sms} onChange={toggle('sms')} />
       </Card>
       <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>
-        Confirmările și reamintirile pentru programări vin oricum pe SMS.
+        Confirmările și reamintirile pentru programări vin oricum, indiferent de aceste bife.
       </Text>
 
       <View style={{ marginTop: space.lg }}>

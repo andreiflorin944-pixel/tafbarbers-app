@@ -18,6 +18,7 @@ export default function StaffHome() {
   const [stats, setStats] = useState<StaffStats | null>(null);
   const [orders, setOrders] = useState<number | null>(null);
   const [open, setOpen] = useState<StaffBooking | null>(null);
+  const [unclosed, setUnclosed] = useState<StaffBooking[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -25,6 +26,7 @@ export default function StaffHome() {
       const d0 = startOfDay(new Date());
       staffApi.bookings(staffToken, d0.toISOString(), addDays(d0, 1).toISOString()).then(setToday, () => setToday([]));
       staffApi.stats(staffToken).then(setStats, () => undefined);
+      staffApi.unclosed(staffToken).then(setUnclosed, () => undefined);
       if (staff.permissions.shop) staffApi.orders(staffToken, 'open').then((o) => setOrders(o.length), () => undefined);
     }, [staffToken, staff]),
   );
@@ -32,8 +34,9 @@ export default function StaffHome() {
   if (!staff) return null;
   const list = (today ?? []).filter((b) => b.status !== 'cancelled').sort((a, b) => a.start.localeCompare(b.start));
   const upcoming = list.filter((b) => new Date(b.end).getTime() > Date.now());
-  // Ce s-a confirmat ca plătit; tunsorile pe abonament nu intră, celelalte după prețul din listă.
-  const revenue = list.reduce((s, b) => s + (b.payment === 'subscription' ? 0 : b.payment === 'paid' ? (b.paidAmount ?? b.price) : b.price), 0);
+  // Doar ce s-a încasat deja azi (programările închise ca plătite); tunsorile pe abonament nu intră.
+  const revenue = list.reduce((s, b) => s + (b.payment === 'paid' ? (b.paidAmount ?? 0) : 0), 0);
+  const seesMoney = staff.permissions.stats || !staff.permissions.bookings_all;
   const hour = new Date().getHours();
   const hello = hour < 12 ? 'Bună dimineața' : hour < 18 ? 'Bună ziua' : 'Bună seara';
 
@@ -46,9 +49,41 @@ export default function StaffHome() {
 
         <View style={s.tiles}>
           <Tile label="Azi" value={String(list.length)} sub={list.length === 1 ? 'programare' : 'programări'} onPress={() => router.push('/staff/calendar')} />
-          {staff.permissions.stats ? <Tile label="Încasări azi" value={`${revenue}`} sub="lei" /> : <Tile label="Viitoare" value={String(stats?.upcoming ?? '–')} sub="programări" />}
+          {seesMoney ? (
+            <Tile label="Încasat azi" value={`${revenue}`} sub="lei" onPress={() => router.push('/staff/register')} />
+          ) : (
+            <Tile label="Viitoare" value={String(stats?.upcoming ?? '–')} sub="programări" />
+          )}
           {orders !== null ? <Tile label="Comenzi" value={String(orders)} sub="de pregătit" onPress={() => router.push('/staff/orders')} /> : null}
         </View>
+
+        {unclosed.length ? (
+          <>
+            <Text style={[ui.label, { marginTop: space.lg, color: colors.danger }]}>
+              {unclosed.length === 1 ? 'O programare trecută nu e închisă' : `${unclosed.length} programări trecute nu sunt închise`}
+            </Text>
+            <Text style={[ui.muted, { fontSize: 13, marginBottom: space.xs }]}>Apasă și alege: încheiată (cu plata), nu a venit sau anulată.</Text>
+            <View style={{ gap: space.sm }}>
+              {unclosed.slice(0, 5).map((b) => (
+                <Pressable key={b.id} onPress={() => setOpen(b)}>
+                  <Card style={[s.row, { borderLeftWidth: 5, borderLeftColor: colors.danger }]}>
+                    <Text style={s.time}>{formatTime(new Date(b.start))}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={ui.cardTitle} numberOfLines={1}>
+                        {b.clientName || b.clientPhone}
+                      </Text>
+                      <Text style={ui.muted} numberOfLines={1}>
+                        {new Date(b.start).toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' })} · {b.serviceName}
+                        {staff.permissions.bookings_all ? ` · ${b.barberName}` : ''}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                  </Card>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : null}
 
         <Text style={[ui.label, { marginTop: space.lg }]}>Urmează azi</Text>
         {today === null ? null : upcoming.length === 0 ? (
@@ -98,7 +133,14 @@ export default function StaffHome() {
           </>
         ) : null}
       </ScrollView>
-      <BookingSheet booking={open} onClose={() => setOpen(null)} onChange={(u) => setToday((l) => (l ?? []).map((x) => (x.id === u.id ? u : x)))} />
+      <BookingSheet
+        booking={open}
+        onClose={() => setOpen(null)}
+        onChange={(u) => {
+          setToday((l) => (l ?? []).map((x) => (x.id === u.id ? u : x)));
+          setUnclosed((l) => (u.status === 'confirmed' ? l.map((x) => (x.id === u.id ? u : x)) : l.filter((x) => x.id !== u.id)));
+        }}
+      />
     </SafeAreaView>
   );
 }

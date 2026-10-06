@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Share, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Pressable, Share, Text, TextInput, View } from 'react-native';
 import { api } from '@/api';
 import { useLoginGate } from '@/components/LoginGate';
 import { Button, Card, Screen, styles } from '@/components/ui';
@@ -11,7 +11,7 @@ import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
 
 const STATUS: Record<GiftCard['status'], string> = {
-  pending: 'Se plătește la salon',
+  pending: 'Neplătit',
   active: 'Activ',
   used: 'Folosit',
   cancelled: 'Anulat',
@@ -35,8 +35,14 @@ export default function GiftCardsScreen() {
     if (token) api.getGiftCards(token).then(setData, (e) => setError(errorMessage(e)));
   }, [token]);
   useEffect(load, [load]);
+  // După plata online clientul revine din browser: reîncărcăm ca să apară codul.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && load());
+    return () => sub.remove();
+  }, [load]);
 
   if (gate) return gate;
+  const online = !!business?.onlinePayments;
   if (!data) return <Screen edges={[]}>{error ? <Text style={{ color: colors.danger }}>{error}</Text> : <ActivityIndicator color={colors.gold} />}</Screen>;
 
   const buy = async () => {
@@ -55,6 +61,17 @@ export default function GiftCardsScreen() {
       setError(errorMessage(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const pay = async (g: GiftCard) => {
+    if (!token) return;
+    setError(null);
+    try {
+      const { url } = await api.payGiftCard(token, g.id);
+      await Linking.openURL(url);
+    } catch (e) {
+      setError(errorMessage(e));
     }
   };
 
@@ -120,11 +137,17 @@ export default function GiftCardsScreen() {
             />
             <TextInput value={message} onChangeText={setMessage} style={styles.input} placeholder="O urare (opțional)" placeholderTextColor={colors.muted} maxLength={200} />
             <Text style={[styles.muted, { fontSize: 13 }]}>
-              Plătești cardul la salon. După plată, cel care îl primește are codul prin SMS și în aplicație. E valabil {data.validMonths} luni și se poate
+              {online ? 'Îl plătești acum cu cardul sau la salon.' : 'Plătești cardul la salon.'} După plată, cel care îl primește are codul prin SMS și în aplicație. E valabil {data.validMonths} luni și se poate
               folosi la orice serviciu.
             </Text>
             <Button title={amount ? `Comandă cardul de ${amount} lei` : 'Alege suma'} onPress={buy} disabled={!amount || !name.trim()} loading={busy} />
-            {done ? <Text style={{ color: colors.success }}>Gata! Cardul te așteaptă la salon: îl plătești la următoarea vizită și pleacă imediat codul.</Text> : null}
+            {done ? (
+              <Text style={{ color: colors.success }}>
+                {online
+                  ? 'Gata! Apasă „Plătește online” mai jos sau plătește-l la următoarea vizită, iar codul pleacă imediat.'
+                  : 'Gata! Cardul te așteaptă la salon: îl plătești la următoarea vizită și pleacă imediat codul.'}
+              </Text>
+            ) : null}
           </Card>
         </>
       ) : (
@@ -137,7 +160,14 @@ export default function GiftCardsScreen() {
           <Text style={[styles.label, { color: colors.gold }]}>Cardurile date de tine</Text>
           <View style={{ gap: space.sm }}>
             {data.bought.map((g) => (
-              <GiftRow key={g.id} g={g} to={g.recipientName} onCancel={g.status === 'pending' ? () => cancel(g) : undefined} shop={business?.name} />
+              <GiftRow
+                key={g.id}
+                g={g}
+                to={g.recipientName}
+                onCancel={g.status === 'pending' ? () => cancel(g) : undefined}
+                onPay={g.status === 'pending' && online ? () => pay(g) : undefined}
+                shop={business?.name}
+              />
             ))}
           </View>
         </>
@@ -146,7 +176,7 @@ export default function GiftCardsScreen() {
   );
 }
 
-function GiftRow({ g, from, to, onCancel, shop }: { g: GiftCard; from?: string | null; to?: string; onCancel?: () => void; shop?: string }) {
+function GiftRow({ g, from, to, onCancel, onPay, shop }: { g: GiftCard; from?: string | null; to?: string; onCancel?: () => void; onPay?: () => void; shop?: string }) {
   const share = () =>
     Share.share({
       message: `Card cadou ${shop ?? 'TAF Barbers'}: ${g.amount} lei${to ? ` pentru ${to}` : ''}. Cod: ${g.code}${g.expiresAt ? `, valabil până pe ${formatDate(new Date(g.expiresAt))}` : ''}.`,
@@ -177,6 +207,11 @@ function GiftRow({ g, from, to, onCancel, shop }: { g: GiftCard; from?: string |
         {g.code && to ? (
           <View style={{ flex: 1 }}>
             <Button title="Trimite codul" variant="ghost" onPress={share} />
+          </View>
+        ) : null}
+        {onPay ? (
+          <View style={{ flex: 1 }}>
+            <Button title="Plătește online" onPress={onPay} />
           </View>
         ) : null}
         {onCancel ? (

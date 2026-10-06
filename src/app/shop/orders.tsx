@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Linking, Platform, Text, View } from 'react-native';
 import { api } from '@/api';
 import { Button, Card, Icon, Screen, styles } from '@/components/ui';
 import type { Order, OrderStatus } from '@/data/types';
@@ -18,7 +18,7 @@ const STATUS: Record<OrderStatus, { label: string; color: string }> = {
 };
 
 export default function Orders() {
-  const { token } = useApp();
+  const { token, business } = useApp();
   const { reloadProducts } = useCart();
   const { placed } = useLocalSearchParams<{ placed?: string }>();
   const [orders, setOrders] = useState<Order[] | null>(null);
@@ -29,6 +29,20 @@ export default function Orders() {
     api.listOrders(token).then(setOrders, (e) => setError(errorMessage(e)));
   }, [token]);
   useEffect(load, [load]);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && load());
+    return () => sub.remove();
+  }, [load]);
+
+  const pay = async (o: Order) => {
+    setError(null);
+    try {
+      const { url } = await api.payOrder(token!, o.id);
+      await Linking.openURL(url);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
 
   const cancel = (o: Order) => {
     const go = async () => {
@@ -68,7 +82,11 @@ export default function Orders() {
             <Icon name="checkmark-circle" color={colors.gold} />
             <Text style={styles.cardTitle}>Comanda {placed} a fost trimisă</Text>
           </View>
-          <Text style={styles.muted}>Îți trimitem SMS când e gata. O ridici din salon și plătești acolo.</Text>
+          <Text style={styles.muted}>
+            {business?.onlinePayments
+              ? 'Îți trimitem SMS când e gata. O poți plăti acum online sau la salon, la ridicare.'
+              : 'Îți trimitem SMS când e gata. O ridici din salon și plătești acolo.'}
+          </Text>
         </Card>
       ) : null}
       {error ? <Text style={{ color: colors.danger, marginBottom: space.sm }}>{error}</Text> : null}
@@ -95,12 +113,14 @@ export default function Orders() {
               ))}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.xs }}>
                 <Text style={styles.price}>{o.total} lei</Text>
-                {o.status === 'new' ? (
+                {o.paidAt && o.payMethod === 'online' ? <Text style={{ color: colors.success, fontWeight: '700' }}>Plătită online</Text> : null}
+                {o.status === 'new' && !o.paidAt ? (
                   <Text style={{ color: colors.danger, fontWeight: '700' }} onPress={() => cancel(o)}>
                     Anulează
                   </Text>
                 ) : null}
               </View>
+              {business?.onlinePayments && !o.paidAt && (o.status === 'new' || o.status === 'ready') ? <Button title="Plătește online" onPress={() => pay(o)} /> : null}
             </Card>
           ))}
         </View>

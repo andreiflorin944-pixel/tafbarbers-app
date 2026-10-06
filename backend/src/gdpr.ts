@@ -23,7 +23,7 @@ export async function exportClient(env: Env, id: string) {
   const subscriptions = await getSubscriptions(env, id, false);
   return {
     exportedAt: iso(new Date()),
-    profile: { ...profile, termsAcceptedAt: c.terms_accepted_at },
+    profile: { ...profile, termsAcceptedAt: c.terms_accepted_at, marketingConsentAt: (c as { marketing_consent_at?: string | null }).marketing_consent_at ?? null },
     bookings: bk.results.map((b) => {
       const { clientName: _n, clientPhone: _p, ...rest } = booking(b);
       return rest;
@@ -34,6 +34,12 @@ export async function exportClient(env: Env, id: string) {
     bonuses,
     subscriptions,
     devices: tokens.results,
+    giftCards: (
+      await env.DB.prepare('SELECT code, amount_bani, balance_bani, recipient_name, status, created_at FROM gift_cards WHERE buyer_client_id = ? OR recipient_phone = ?')
+        .bind(id, c.phone)
+        .all()
+    ).results,
+    beforeAfter: (await env.DB.prepare('SELECT id, created_at FROM before_after WHERE client_id = ?').bind(id).all()).results,
   };
 }
 
@@ -54,11 +60,17 @@ export async function deleteClient(env: Env, id: string) {
     env.DB.prepare(`UPDATE bookings SET status = 'cancelled', cancelled_at = ? WHERE client_id = ? AND status = 'confirmed' AND starts_at > ?`).bind(now, id, now),
     env.DB.prepare(`UPDATE bookings SET note = '' WHERE client_id = ?`).bind(id),
     env.DB.prepare('DELETE FROM push_tokens WHERE client_id = ?').bind(id),
+    // Pozele înainte/după arată fața clientului: se șterg cu tot cu fișiere.
+    env.DB.prepare('DELETE FROM media WHERE id IN (SELECT before_media FROM before_after WHERE client_id = ?1 UNION SELECT after_media FROM before_after WHERE client_id = ?1)').bind(id),
+    env.DB.prepare('DELETE FROM before_after WHERE client_id = ?').bind(id),
+    // Cardurile cadou rămân valabile (sunt plătite), dar fără datele lui.
+    env.DB.prepare(`UPDATE gift_cards SET recipient_phone = NULL WHERE recipient_phone = ?`).bind(c.phone),
+    env.DB.prepare(`UPDATE gift_cards SET message = '' WHERE buyer_client_id = ?`).bind(id),
     env.DB.prepare(`DELETE FROM sessions WHERE kind = 'client' AND subject_id = ?`).bind(id),
     env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(c.phone),
     env.DB.prepare(`UPDATE message_log SET recipient = 'sters' WHERE recipient = ? OR recipient = ?`).bind(c.phone, c.email ?? '\u0000'),
     env.DB.prepare(
-      `UPDATE clients SET phone = ?, name = '', email = NULL, notes = '', marketing_sms = 0, marketing_email = 0, marketing_push = 0, deleted_at = ? WHERE id = ?`,
+      `UPDATE clients SET phone = ?, name = '', email = NULL, notes = '', marketing_sms = 0, marketing_email = 0, marketing_push = 0, marketing_consent_at = NULL, deleted_at = ? WHERE id = ?`,
     ).bind(`deleted:${id}`, now, id),
   ]);
 }

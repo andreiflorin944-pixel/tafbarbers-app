@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { normalizePhone, requireClient } from '../auth';
 import { createGiftCard, getAutomations, giftCard, type GiftCardRow } from '../growth';
 import { BOOKING_SELECT, cancelBooking, createBooking } from '../bookings';
-import { booking, client, type BookingRow, type ClientRow } from '../db';
+import { booking, client, getBusiness, type BookingRow, type ClientRow } from '../db';
+import { createCheckout } from '../payments';
 import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
 import { deleteClient, exportClient } from '../gdpr';
@@ -42,6 +43,8 @@ clientRoutes.patch('/me', async (c) => {
   for (const ch of ['sms', 'email', 'push'] as const) {
     if (typeof b.marketing?.[ch] === 'boolean') sets.push(`marketing_${ch} = ?`), vals.push(b.marketing[ch] ? 1 : 0);
   }
+  // Dovada acordului (GDPR): data ultimei schimbări a preferințelor pentru oferte.
+  if (b.marketing && Object.values(b.marketing).some((v) => typeof v === 'boolean')) sets.push('marketing_consent_at = ?'), vals.push(iso(new Date()));
   if (sets.length) await c.env.DB.prepare(`UPDATE clients SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
   const r = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(id).first<ClientRow>();
   return c.json(client(r!));
@@ -127,6 +130,30 @@ clientRoutes.post('/me/gift-cards', async (c) => {
   return c.json({ id }, 201);
 });
 
+// Plata online: întoarce adresa paginii de plată Stripe. Codul pleacă automat după confirmarea plății.
+clientRoutes.post('/me/gift-cards/:id/pay', async (c) => {
+  const id = c.get('client').clientId;
+  const g = await c.env.DB.prepare(`SELECT g.id, g.amount_bani, g.recipient_name, c.email FROM gift_cards g JOIN clients c ON c.id = g.buyer_client_id
+     WHERE g.id = ? AND g.buyer_client_id = ? AND g.status = 'pending'`)
+    .bind(c.req.param('id'), id)
+    .first<{ id: string; amount_bani: number; recipient_name: string; email: string | null }>();
+  if (!g) throw new HttpError(409, 'not_pending');
+  const shop = (await getBusiness(c.env)).name;
+  const url = await createCheckout(c.env, { kind: 'gift', ref: g.id, amountBani: g.amount_bani, title: `Card cadou ${shop} · ${g.amount_bani / 100} lei`, email: g.email });
+  return c.json({ url });
+});
+
+clientRoutes.post('/orders/:id/pay', async (c) => {
+  const o = await getOrder(c.env, c.req.param('id')!);
+  if (o.clientId !== c.get('client').clientId) throw new HttpError(404, 'not_found');
+  if (o.paidAt) throw new HttpError(409, 'order_paid');
+  if (o.status !== 'new' && o.status !== 'ready') throw new HttpError(409, 'not_payable');
+  const me = await c.env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(o.clientId).first<{ email: string | null }>();
+  const shop = (await getBusiness(c.env)).name;
+  const url = await createCheckout(c.env, { kind: 'order', ref: o.id, amountBani: Math.round(o.total * 100), title: `Comanda ${o.code} · ${shop}`, email: me?.email });
+  return c.json({ url });
+});
+
 clientRoutes.post('/me/gift-cards/:id/cancel', async (c) => {
   const r = await c.env.DB.prepare(`UPDATE gift_cards SET status = 'cancelled' WHERE id = ? AND buyer_client_id = ? AND status = 'pending'`)
     .bind(c.req.param('id'), c.get('client').clientId)
@@ -200,6 +227,8 @@ clientRoutes.post('/orders/:id/cancel', async (c) => {
   const id = c.req.param('id')!;
   const o = await getOrder(c.env, id);
   if (o.clientId !== c.get('client').clientId) throw new HttpError(404, 'not_found');
+  // O comandă plătită online se anulează doar de la salon, care returnează și banii.
+  if (o.paidAt) throw new HttpError(409, 'order_paid');
   // Clientul poate anula doar până când salonul o pregătește.
   if (!(await setOrderStatus(c.env, id, 'cancelled', ['new']))) throw new HttpError(409, 'not_cancellable');
   return c.json(stripClient(await getOrder(c.env, id)));

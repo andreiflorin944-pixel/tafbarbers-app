@@ -69,6 +69,7 @@ export function httpApi(baseUrl: string): BookingApi {
     cancelGiftCard: async (token, id) => {
       await call('POST', `/me/gift-cards/${encodeURIComponent(id)}/cancel`, { token });
     },
+    payGiftCard: (token, id) => call('POST', `/me/gift-cards/${encodeURIComponent(id)}/pay`, { token }),
     getBeforeAfter: async (token) =>
       (await call<Array<{ id: string; before: string; after: string; barberName: string | null; createdAt: string }>>('GET', '/me/before-after', { token })).map((x) => ({
         ...x,
@@ -92,5 +93,6 @@ export function httpApi(baseUrl: string): BookingApi {
     listOrders: (token) => call('GET', '/me/orders', { token }),
     createOrder: (token, input) => call('POST', '/orders', { token, body: input }),
     cancelOrder: (token, id) => call('POST', `/orders/${encodeURIComponent(id)}/cancel`, { token }),
+    payOrder: (token, id) => call('POST', `/orders/${encodeURIComponent(id)}/pay`, { token }),
   };
 }

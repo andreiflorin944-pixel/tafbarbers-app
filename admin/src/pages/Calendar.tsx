@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, errorText, type Barber, type Booking, type Checkout, type Me, type Service, type Slot, type TimeOff } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
-import { addDays, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
+import { addDays, date, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
 
 const PX = 1.2; // pixeli pe minut
 
@@ -21,6 +21,7 @@ export function CalendarPage({ me }: { me: Me }) {
   const to = localToIso(addDays(day, 1), '00:00');
   const bookings = useLoad(() => api<Booking[]>('GET', `/admin/bookings?from=${from}&to=${to}`), [day]);
   const off = useLoad(() => api<TimeOff[]>('GET', `/admin/time-off?from=${from}`), [day]);
+  const unclosed = useLoad(() => api<Booking[]>('GET', '/admin/bookings/unclosed'));
 
   const [barbers, services] = meta.data ?? [[], []];
   const own = me.permissions.bookings_all ? null : me.barberId;
@@ -48,6 +49,7 @@ export function CalendarPage({ me }: { me: Me }) {
   const reload = () => {
     bookings.reload();
     stats.reload();
+    unclosed.reload();
   };
 
   return (
@@ -65,6 +67,24 @@ export function CalendarPage({ me }: { me: Me }) {
           {stats.data.last30.subscriptionsSold ? <Stat v={stats.data.last30.subscriptionsSold} l="abonamente vândute, 30 de zile" /> : null}
           {stats.data.last30.newClients !== null ? <Stat v={stats.data.last30.newClients} l="clienți noi, 30 de zile" /> : null}
           <Stat v={stats.data.last30.cancelled + stats.data.last30.noShow} l="anulări și neprezentări" />
+        </div>
+      ) : null}
+
+      {unclosed.data?.length ? (
+        <div className="card" style={{ borderColor: 'var(--danger)', marginBottom: 12 }}>
+          <b className="err" style={{ display: 'block' }}>
+            {unclosed.data.length === 1 ? 'O programare trecută nu e închisă' : `${unclosed.data.length} programări trecute nu sunt închise`}
+          </b>
+          <div className="muted small" style={{ marginBottom: 6 }}>
+            Fiecare tuns se închide: încheiată (cu plata), nu a venit sau anulată. Apasă pe una ca s-o închizi.
+          </div>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            {unclosed.data.slice(0, 12).map((b) => (
+              <button key={b.id} className="ghost sm" onClick={() => setOpen(b)}>
+                {date(b.start)} {time(b.start)} · {b.clientName || 'Client'} · {b.barberName}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
 
@@ -318,6 +338,7 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState('');
   const [tip, setTip] = useState('');
+  const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
   const [giftCode, setGiftCode] = useState('');
   const [gift, setGift] = useState<{ code: string; take: number; balance: number } | null>(null);
   const [giftErr, setGiftErr] = useState<string | null>(null);
@@ -345,6 +366,11 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
       <label className="check">
         <input type="radio" checked={m === 'paid'} onChange={() => setMode('paid')} /> A plătit
         <input type="number" min={0} value={amount} onChange={(e) => { setMode('paid'); setAmount(e.target.value); }} style={{ width: 110 }} aria-label="Suma plătită" /> lei
+        <select value={payMethod} onChange={(e) => { setMode('paid'); setPayMethod(e.target.value as 'cash' | 'card' | 'transfer'); }} style={{ width: 130 }} aria-label="Cum a plătit">
+          <option value="cash">numerar</option>
+          <option value="card">card (POS)</option>
+          <option value="transfer">transfer</option>
+        </select>
       </label>
       <label className="check" style={{ opacity: sub ? 1 : 0.5 }}>
         <input type="radio" disabled={!sub} checked={m === 'subscription'} onChange={() => setMode('subscription')} />
@@ -392,7 +418,7 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
             run(async () => {
               await api('POST', `/admin/bookings/${b.id}/complete`, {
                 payment: m,
-                ...(m === 'paid' && { amount: Number(amount) }),
+                ...(m === 'paid' && { amount: Number(amount), payMethod }),
                 ...(m === 'paid' && gift && { giftCode: gift.code, giftAmount: gift.take }),
                 tip: tip ? Number(tip) : null,
                 bonusId: bonusId || null,

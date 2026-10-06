@@ -108,13 +108,22 @@ export const staffApi = {
   saveBeforeAfter: (t: string, id: string, before: string, after: string) =>
     call<{ id: string }>('POST', `/admin/clients/${encodeURIComponent(id)}/before-after`, t, { before, after }),
   deleteBeforeAfter: (t: string, pid: string) => call<{ ok: true }>('DELETE', `/admin/before-after/${encodeURIComponent(pid)}`, t),
+  unclosed: (t: string) => call<StaffBooking[]>('GET', '/admin/bookings/unclosed', t),
   checkGiftCard: (t: string, code: string) =>
     call<{ code: string; balance: number; amount: number; status: string; expiresAt: string | null }>('GET', `/admin/gift-cards/check?code=${encodeURIComponent(code)}`, t),
   checkout: (t: string, id: string) => call<StaffCheckout>('GET', `/admin/bookings/${encodeURIComponent(id)}/checkout`, t),
   complete: (
     t: string,
     id: string,
-    body: { payment: 'paid' | 'subscription'; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null },
+    body: {
+      payment: 'paid' | 'subscription';
+      amount?: number;
+      tip?: number | null;
+      bonusId?: string | null;
+      giftCode?: string | null;
+      giftAmount?: number | null;
+      payMethod?: 'cash' | 'card' | 'transfer';
+    },
   ) =>
     call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/complete`, t, body),
   plans: (t: string) => call<Plan[]>('GET', '/admin/plans', t),

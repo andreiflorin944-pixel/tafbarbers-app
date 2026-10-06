@@ -103,6 +103,7 @@ export type Business = {
   // 0 = duminică ... 6 = sâmbătă; null = închis
   hours: Array<{ open: string; close: string } | null>;
   appearance?: Appearance;
+  onlinePayments?: boolean; // plata cu cardul în aplicație (Stripe) e pornită
 };
 
 export type Appearance = {
@@ -148,6 +149,8 @@ export type Order = {
   status: OrderStatus;
   total: number;
   note: string;
+  paidAt?: string | null;
+  payMethod?: string | null; // cash | card | transfer | online
   createdAt: string;
   items: Array<{ productId: string; name: string; price: number; qty: number }>;
 };
@@ -162,6 +165,7 @@ export type GiftCard = {
   message: string;
   status: 'pending' | 'active' | 'used' | 'cancelled' | 'expired';
   paidAt: string | null;
+  payMethod?: string | null;
   expiresAt: string | null;
   createdAt: string;
   buyerName?: string | null;

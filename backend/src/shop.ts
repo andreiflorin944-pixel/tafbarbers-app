@@ -19,6 +19,9 @@ export type ProductRow = {
   sort: number;
   active: number;
   created_at: string;
+  for_sale: number;
+  unit: string;
+  cost_bani: number | null;
 };
 
 export const product = (r: ProductRow) => ({
@@ -30,10 +33,13 @@ export const product = (r: ProductRow) => ({
   stock: r.stock,
   sort: r.sort,
   active: !!r.active,
+  forSale: !!r.for_sale,
+  unit: r.unit,
+  cost: r.cost_bani === null ? null : r.cost_bani / 100,
 });
 
 export type OrderStatus = 'new' | 'ready' | 'picked_up' | 'cancelled';
-type OrderRow = { id: string; client_id: string; status: OrderStatus; total_bani: number; note: string; created_at: string; updated_at: string };
+type OrderRow = { id: string; client_id: string; status: OrderStatus; total_bani: number; note: string; created_at: string; updated_at: string; paid_at: string | null; pay_method: string | null };
 type ItemRow = { order_id: string; product_id: string; name: string; price_bani: number; qty: number };
 
 /** Codul scurt pe care clientul îl spune la ridicare. */
@@ -57,6 +63,8 @@ export async function getOrders(env: Env, where: string, binds: unknown[], limit
     status: o.status,
     total: o.total_bani / 100,
     note: o.note,
+    paidAt: o.paid_at,
+    payMethod: o.pay_method,
     createdAt: o.created_at,
     updatedAt: o.updated_at,
     clientId: o.client_id,
@@ -89,7 +97,7 @@ export async function createOrder(env: Env, clientId: string, input: { items?: A
   if ((open?.n ?? 0) >= 3) throw new HttpError(409, 'too_many_open_orders');
 
   const ids = [...lines.keys()];
-  const prods = await env.DB.prepare(`SELECT * FROM products WHERE active = 1 AND id IN (${ids.map(() => '?').join(',')})`)
+  const prods = await env.DB.prepare(`SELECT * FROM products WHERE active = 1 AND for_sale = 1 AND id IN (${ids.map(() => '?').join(',')})`)
     .bind(...ids)
     .all<ProductRow>();
   if (prods.results.length !== ids.length) throw new HttpError(409, 'product_unavailable');
@@ -111,6 +119,18 @@ export async function createOrder(env: Env, clientId: string, input: { items?: A
       now,
       now,
     ),
+    // Fișa de magazie: vânzarea apare ca ieșire pentru produsele cu stoc urmărit.
+    ...prods.results
+      .filter((p) => p.stock !== null)
+      .map((p) =>
+        env.DB.prepare(`INSERT INTO stock_moves (product_id, qty, kind, order_id, unit_cost_bani, created_at) VALUES (?, ?, 'vanzare', ?, ?, ?)`).bind(
+          p.id,
+          -lines.get(p.id)!,
+          id,
+          p.cost_bani,
+          now,
+        ),
+      ),
     ...prods.results.map((p) =>
       env.DB.prepare('INSERT INTO order_items (order_id, product_id, name, price_bani, qty) VALUES (?, ?, ?, ?, ?)').bind(
         id,
@@ -139,6 +159,13 @@ export async function setOrderStatus(env: Env, id: string, to: OrderStatus, from
     .run();
   if (!r.meta.changes) return false;
   if (to === 'cancelled') {
+    await env.DB.prepare(
+      `INSERT INTO stock_moves (product_id, qty, kind, order_id, unit_cost_bani)
+       SELECT i.product_id, i.qty, 'vanzare_anulata', i.order_id, p.cost_bani FROM order_items i JOIN products p ON p.id = i.product_id
+       WHERE i.order_id = ? AND p.stock IS NOT NULL`,
+    )
+      .bind(id)
+      .run();
     await env.DB.prepare(
       `UPDATE products SET stock = stock + (SELECT qty FROM order_items WHERE order_id = ?1 AND product_id = products.id)
        WHERE stock IS NOT NULL AND id IN (SELECT product_id FROM order_items WHERE order_id = ?1)`,

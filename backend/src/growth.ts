@@ -367,6 +367,7 @@ export type GiftCardRow = {
   paid_at: string | null;
   expires_at: string | null;
   created_at: string;
+  pay_method?: string | null;
   buyer_name?: string | null;
   paid_by_name?: string | null;
 };
@@ -383,6 +384,7 @@ export const giftCard = (r: GiftCardRow, showCode: boolean) => {
     message: r.message,
     status: (expired ? 'expired' : r.status) as 'pending' | 'active' | 'used' | 'cancelled' | 'expired',
     paidAt: r.paid_at,
+    payMethod: r.pay_method ?? null,
     expiresAt: r.expires_at,
     createdAt: r.created_at,
     ...(r.buyer_name !== undefined && { buyerName: r.buyer_name }),
@@ -420,12 +422,15 @@ export async function createGiftCard(env: Env, buyerId: string | null, b: { amou
 }
 
 /** Echipa încasează cardul la salon: devine activ, iar destinatarul primește codul (SMS și push, dacă are aplicația). */
-export async function activateGiftCard(env: Env, id: string, adminId: string) {
+export async function activateGiftCard(env: Env, id: string, adminId: string | null, pay?: { method: string; ref: string }) {
   const s = (await getAutomations(env)).giftCard;
   const now = new Date();
   const expires = iso(new Date(Date.parse(addDays(now.toISOString().slice(0, 10), Math.round(s.validMonths * 30.5)) + 'T21:59:59Z')));
-  const r = await env.DB.prepare(`UPDATE gift_cards SET status = 'active', paid_by = ?, paid_at = ?, expires_at = ? WHERE id = ? AND status = 'pending'`)
-    .bind(adminId, iso(now), expires, id)
+  const r = await env.DB.prepare(
+    `UPDATE gift_cards SET status = 'active', paid_by = ?, paid_at = ?, expires_at = ?, pay_method = coalesce(?, pay_method), payment_ref = coalesce(?, payment_ref)
+     WHERE id = ? AND status = 'pending'`,
+  )
+    .bind(adminId, iso(now), expires, pay?.method ?? null, pay?.ref ?? null, id)
     .run();
   if (!r.meta.changes) throw new HttpError(409, 'not_pending');
   const g = (await env.DB.prepare(

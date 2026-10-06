@@ -22,6 +22,10 @@ export default function StaffMenu() {
   const items: Item[] = [
     { icon: 'stats-chart-outline', label: 'Tablou de bord', sub: 'Grafice, clienții de azi, păstrare', to: '/staff/stats', show: p.reports },
     { icon: 'document-text-outline', label: 'Rapoarte', sub: 'Vânzări, rezervări, anulări, plăți, bacșiș', to: '/staff/reports', show: p.reports },
+    { icon: 'cash-outline', label: 'Registrul de încasări', sub: 'Programările zilei și ce s-a încasat', to: '/staff/register', show: p.reports || !!staff.barberId },
+    { icon: 'cube-outline', label: 'Stoc și NIR', sub: 'Intrări de marfă, consum, inventar', web: 'stock', show: p.shop },
+    { icon: 'gift-outline', label: 'Carduri cadou', web: 'giftcards', show: p.bookings_manage },
+    { icon: 'notifications-outline', label: 'Notificări automate', sub: 'Mesaje, canale, linkul Programează', web: 'notifications', show: owner },
     { icon: 'people-circle-outline', label: 'Membrii echipei', sub: 'Conturi și drepturi', web: 'settings', show: owner },
     { icon: 'cut-outline', label: 'Servicii', sub: 'Prețuri și durate', to: '/staff/services', show: true },
     { icon: 'people-outline', label: 'Clienți', to: '/staff/clients', show: p.clients },

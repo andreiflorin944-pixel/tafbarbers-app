@@ -49,6 +49,7 @@ import {
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
 import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } from '../reports';
 import { xlsx } from '../xlsx';
+import { adjustMove, cancelNir, createNir, getNir, listNir, stockOut, type NirInput } from '../stock';
 import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCard, saveAutomations, type GiftCardRow } from '../growth';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
@@ -125,6 +126,9 @@ async function ownerOnly(c: Context<AppEnv>, next: Next) {
   if (!c.get('admin').owner) throw new HttpError(403, 'owner_only');
   await next();
 }
+
+/** Cum s-a încasat la salon: numerar (implicit), card la POS sau transfer. */
+const payMethodOf = (m: unknown) => (m === 'card' || m === 'transfer' ? m : 'cash');
 
 function need(c: Context<AppEnv>, perm: Perm) {
   if (!c.get('admin').perms[perm]) throw new HttpError(403, 'no_permission');
@@ -277,7 +281,18 @@ adminRoutes.post('/media', ownerOnly, async (c) => {
 
 // --- Magazin: produse și comenzi ---
 
-type ProductInput = { name?: string; description?: string; price?: number; imageUrl?: string | null; stock?: number | null; sort?: number; active?: boolean };
+type ProductInput = {
+  name?: string;
+  description?: string;
+  price?: number;
+  imageUrl?: string | null;
+  stock?: number | null;
+  sort?: number;
+  active?: boolean;
+  forSale?: boolean;
+  unit?: string;
+  cost?: number | null;
+};
 function productValues(b: ProductInput, create: boolean) {
   const v: Record<string, unknown> = {};
   if (b.name !== undefined || create) {
@@ -300,6 +315,13 @@ function productValues(b: ProductInput, create: boolean) {
   }
   if (b.sort !== undefined) v.sort = Math.floor(Number(b.sort)) || 0;
   if (b.active !== undefined) v.active = b.active ? 1 : 0;
+  if (b.forSale !== undefined) v.for_sale = b.forSale ? 1 : 0;
+  if (b.unit !== undefined) v.unit = String(b.unit).trim().slice(0, 12) || 'buc';
+  if (b.cost !== undefined) {
+    const k = b.cost === null ? null : Math.round(Number(b.cost) * 100);
+    if (k !== null && !(k >= 0 && k <= 10_000_000)) throw new HttpError(400, 'invalid_price');
+    v.cost_bani = k;
+  }
   return v;
 }
 
@@ -312,16 +334,23 @@ adminRoutes.post('/products', ownerOnly, async (c) => {
   const v = productValues(await c.req.json<ProductInput>(), true);
   const id = newId('p');
   await c.env.DB.prepare(
-    'INSERT INTO products (id, name, description, price_bani, image_url, stock, sort, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO products (id, name, description, price_bani, image_url, stock, sort, active, created_at, for_sale, unit, cost_bani) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
-    .bind(id, v.name, v.description ?? '', v.price_bani, v.image_url ?? null, v.stock ?? null, v.sort ?? 0, v.active ?? 1, iso(new Date()))
+    .bind(id, v.name, v.description ?? '', v.price_bani, v.image_url ?? null, v.stock ?? null, v.sort ?? 0, v.active ?? 1, iso(new Date()), v.for_sale ?? 1, v.unit ?? 'buc', v.cost_bani ?? null)
     .run();
+  if (typeof v.stock === 'number' && v.stock > 0) await adjustMove(c.env, c.get('admin').adminId, id, v.stock, 'Stoc inițial').run();
   return c.json(product((await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>())!), 201);
 });
 
 adminRoutes.patch('/products/:id', ownerOnly, async (c) => {
   const id = c.req.param('id')!;
-  await update(c.env.DB, 'products', id, productValues(await c.req.json<ProductInput>(), false));
+  const v = productValues(await c.req.json<ProductInput>(), false);
+  const before = await c.env.DB.prepare('SELECT stock FROM products WHERE id = ?').bind(id).first<{ stock: number | null }>();
+  await update(c.env.DB, 'products', id, v);
+  // Stocul schimbat de mână apare în fișa de magazie ca o corecție.
+  if (before && typeof v.stock === 'number' && v.stock !== (before.stock ?? 0)) {
+    await adjustMove(c.env, c.get('admin').adminId, id, v.stock - (before.stock ?? 0), 'Modificat din fișa produsului').run();
+  }
   const r = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>();
   if (!r) throw new HttpError(404, 'not_found');
   return c.json(product(r));
@@ -330,10 +359,30 @@ adminRoutes.patch('/products/:id', ownerOnly, async (c) => {
 // Un produs care apare în comenzi doar se ascunde, ca istoricul să rămână corect.
 adminRoutes.delete('/products/:id', ownerOnly, async (c) => {
   const id = c.req.param('id')!;
-  const used = await c.env.DB.prepare('SELECT 1 FROM order_items WHERE product_id = ? LIMIT 1').bind(id).first();
+  const used = await c.env.DB.prepare('SELECT 1 FROM order_items WHERE product_id = ?1 UNION SELECT 1 FROM stock_moves WHERE product_id = ?1 LIMIT 1').bind(id).first();
   if (used) await c.env.DB.prepare('UPDATE products SET active = 0 WHERE id = ?').bind(id).run();
   else await c.env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id).run();
   return c.json({ ok: true, deactivated: !!used });
+});
+
+// --- Gestiune: NIR, ieșiri, fișa de magazie (dreptul „Magazin”) ---
+
+adminRoutes.get('/nir', async (c) => {
+  need(c, 'shop');
+  return c.json(await listNir(c.env));
+});
+adminRoutes.get('/nir/:id', async (c) => {
+  need(c, 'shop');
+  return c.json(await getNir(c.env, c.req.param('id')!));
+});
+adminRoutes.post('/nir', async (c) => {
+  need(c, 'shop');
+  return c.json(await createNir(c.env, c.get('admin').adminId, await c.req.json<NirInput>()), 201);
+});
+adminRoutes.post('/nir/:id/cancel', ownerOnly, async (c) => c.json(await cancelNir(c.env, c.get('admin').adminId, c.req.param('id')!)));
+adminRoutes.post('/stock/out', async (c) => {
+  need(c, 'shop');
+  return c.json(await stockOut(c.env, c.get('admin').adminId, await c.req.json()));
 });
 
 adminRoutes.get('/orders', async (c) => {
@@ -349,11 +398,14 @@ const ORDER_FROM: Record<string, OrderStatus[]> = { ready: ['new'], picked_up: [
 adminRoutes.patch('/orders/:id', async (c) => {
   need(c, 'shop');
   const id = c.req.param('id')!;
-  const { status } = await c.req.json<{ status?: string }>();
+  const { status, payMethod } = await c.req.json<{ status?: string; payMethod?: string }>();
   const from = status ? ORDER_FROM[status] : undefined;
   if (!from) throw new HttpError(400, 'invalid_status');
   await getOrder(c.env, id);
   if (!(await setOrderStatus(c.env, id, status as OrderStatus, from))) throw new HttpError(409, 'invalid_transition');
+  // La ridicare se încasează la salon, dacă nu a fost plătită deja online.
+  if (status === 'picked_up')
+    await c.env.DB.prepare('UPDATE orders SET paid_at = ?, pay_method = ? WHERE id = ? AND paid_at IS NULL').bind(iso(new Date()), payMethodOf(payMethod), id).run();
   return c.json(await getOrder(c.env, id));
 });
 
@@ -615,7 +667,7 @@ adminRoutes.post('/bookings', async (c) => {
   let cl = await c.env.DB.prepare('SELECT id, name FROM clients WHERE phone = ?').bind(phone).first<{ id: string; name: string }>();
   if (!cl) {
     cl = { id: newId('cl'), name: (b.name ?? '').trim() };
-    await c.env.DB.prepare('INSERT INTO clients (id, phone, name) VALUES (?, ?, ?)').bind(cl.id, phone, cl.name.slice(0, 80)).run();
+    await c.env.DB.prepare('INSERT INTO clients (id, phone, name, marketing_push) VALUES (?, ?, ?, 0)').bind(cl.id, phone, cl.name.slice(0, 80)).run();
   } else if (!cl.name && b.name?.trim()) {
     await c.env.DB.prepare('UPDATE clients SET name = ? WHERE id = ?').bind(b.name.trim().slice(0, 80), cl.id).run();
   }
@@ -662,10 +714,21 @@ adminRoutes.get('/bookings/:id/checkout', async (c) => {
   });
 });
 
+/** Programările trecute care n-au fost închise (încheiată / nu a venit / anulată). Frizerul le vede doar pe ale lui. */
+adminRoutes.get('/bookings/unclosed', async (c) => {
+  const scoped = ownBarber(c);
+  const r = await c.env.DB.prepare(
+    `${BOOKING_SELECT} WHERE b.status = 'confirmed' AND b.ends_at < ? AND b.starts_at > ? ${scoped ? 'AND b.barber_id = ?' : ''} ORDER BY b.starts_at DESC LIMIT 200`,
+  )
+    .bind(...(scoped ? [iso(new Date()), iso(new Date(Date.now() - 90 * 86_400_000)), scoped] : [iso(new Date()), iso(new Date(Date.now() - 90 * 86_400_000))]))
+    .all<BookingRow>();
+  return c.json(r.results.map(booking));
+});
+
 /** Frizerul confirmă tunsoarea: `{ payment: 'paid', amount }` sau `{ payment: 'subscription' }`, opțional `bonusId`. */
 adminRoutes.post('/bookings/:id/complete', async (c) => {
   const cur = await bookingForStaff(c);
-  const b = await c.req.json<{ payment?: string; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null }>();
+  const b = await c.req.json<{ payment?: string; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null; payMethod?: string | null }>();
   await completeBooking(c.env, cur.id, b, c.get('admin').adminId);
   return c.json(await getBooking(c.env, cur.id));
 });
@@ -726,12 +789,13 @@ adminRoutes.get('/subscriptions', async (c) => {
 adminRoutes.post('/clients/:id/subscriptions', async (c) => {
   const id = c.req.param('id')!;
   await needClient(c, id);
-  const b = await c.req.json<{ planId?: string; note?: string; gift?: boolean }>();
+  const b = await c.req.json<{ planId?: string; note?: string; gift?: boolean; payMethod?: string }>();
   if (!b.planId) throw new HttpError(400, 'invalid_body');
   // Doar proprietarul oferă pachete cadou.
   if (b.gift && !c.get('admin').owner) throw new HttpError(403, 'owner_only');
   const note = String(b.note ?? '').trim() || (b.gift ? 'Cadou' : '');
   const sid = await activateSubscription(c.env, id, b.planId, c.get('admin').adminId, note, !!b.gift);
+  if (!b.gift) await c.env.DB.prepare('UPDATE subscriptions SET pay_method = ? WHERE id = ?').bind(payMethodOf(b.payMethod), sid).run();
   return c.json({ id: sid }, 201);
 });
 
@@ -913,10 +977,11 @@ adminRoutes.get('/gift-cards', async (c) => {
 /** Card vândut direct la salon: se creează și se activează pe loc. */
 adminRoutes.post('/gift-cards', async (c) => {
   need(c, 'bookings_manage');
-  const b = await c.req.json<{ amount?: number; recipientName?: string; recipientPhone?: string; message?: string }>();
+  const b = await c.req.json<{ amount?: number; recipientName?: string; recipientPhone?: string; message?: string; payMethod?: string }>();
   const phone = b.recipientPhone?.trim() ? normalizePhone(b.recipientPhone) : null;
   const id = await createGiftCard(c.env, null, { ...b, recipientPhone: phone });
   await activateGiftCard(c.env, id, c.get('admin').adminId);
+  await c.env.DB.prepare('UPDATE gift_cards SET pay_method = ? WHERE id = ?').bind(payMethodOf(b.payMethod), id).run();
   const g = await c.env.DB.prepare(`${GIFT_SELECT} WHERE g.id = ?`).bind(id).first<GiftCardRow>();
   return c.json(giftCard(g!, true), 201);
 });
@@ -924,9 +989,12 @@ adminRoutes.post('/gift-cards', async (c) => {
 /** `{ status: 'active' }` = încasat la salon (trimite codul); `{ status: 'cancelled' }` = anulat (doar proprietarul). */
 adminRoutes.patch('/gift-cards/:id', async (c) => {
   need(c, 'bookings_manage');
-  const b = await c.req.json<{ status?: string }>();
+  const b = await c.req.json<{ status?: string; payMethod?: string }>();
   const id = c.req.param('id')!;
-  if (b.status === 'active') await activateGiftCard(c.env, id, c.get('admin').adminId);
+  if (b.status === 'active') {
+    await activateGiftCard(c.env, id, c.get('admin').adminId);
+    await c.env.DB.prepare('UPDATE gift_cards SET pay_method = ? WHERE id = ?').bind(payMethodOf(b.payMethod), id).run();
+  }
   else if (b.status === 'cancelled') {
     if (!c.get('admin').owner) throw new HttpError(403, 'owner_only');
     const r = await c.env.DB.prepare(`UPDATE gift_cards SET status = 'cancelled' WHERE id = ? AND status IN ('pending','active')`).bind(id).run();
@@ -1246,7 +1314,7 @@ adminRoutes.get('/stats', async (c) => {
     db
       .prepare(
         `SELECT count(*) AS n,
-           coalesce(sum(CASE WHEN status = 'cancelled' THEN 0 WHEN payment = 'paid' THEN paid_bani WHEN payment = 'subscription' THEN 0 ELSE price_bani END), 0) AS revenue,
+           coalesce(sum(CASE WHEN status = 'cancelled' THEN 0 WHEN payment = 'paid' THEN paid_bani WHEN payment = 'subscription' THEN 0 ELSE 0 END), 0) AS revenue,
            sum(status = 'cancelled') AS cancelled, sum(status = 'no_show') AS no_show
          FROM bookings WHERE starts_at >= ? AND starts_at < ? ${f}`,
       )
@@ -1277,7 +1345,18 @@ adminRoutes.get('/stats', async (c) => {
 
 // --- Tablou de bord și rapoarte (dreptul „Rapoarte”; banii doar cu „Încasări”) ---
 
-const reportScope = (c: Context<AppEnv>) => {
+const reportScope = (c: Context<AppEnv>, kind?: string) => {
+  // Stocul ține de gestiune: cere dreptul „Magazin”, nu „Rapoarte”.
+  if (kind === 'stock' || kind === 'stock-moves') {
+    need(c, 'shop');
+    return { session: c.get('admin'), barberId: null };
+  }
+  // Registrul de încasări: fiecare frizer îl vede pe al lui, și fără dreptul „Rapoarte”.
+  if (kind === 'register' && !c.get('admin').perms.reports) {
+    const barberId = c.get('admin').barberId;
+    if (!barberId) throw new HttpError(403, 'no_permission');
+    return { session: c.get('admin'), barberId };
+  }
   need(c, 'reports');
   return { session: c.get('admin'), barberId: ownBarber(c) };
 };
@@ -1285,15 +1364,19 @@ const reportScope = (c: Context<AppEnv>) => {
 adminRoutes.get('/dashboard', async (c) => c.json(await buildDashboard(c.env, reportScope(c))));
 
 adminRoutes.get('/reports', async (c) => {
-  const p = c.get('admin').perms;
-  need(c, 'reports');
-  return c.json(REPORTS.filter((r) => !('clients' in r && r.clients) || p.clients));
+  const a = c.get('admin');
+  const p = a.perms;
+  if (!p.reports) {
+    if (!a.barberId) throw new HttpError(403, 'no_permission');
+    return c.json(REPORTS.filter((r) => r.kind === 'register'));
+  }
+  return c.json(REPORTS.filter((r) => (!('clients' in r && r.clients) || p.clients) && (!('shop' in r && r.shop) || p.shop)));
 });
 
 /** GET /reports/:kind?from=YYYY-MM-DD&to=…&barberId=…&serviceId=…&status=…&format=xlsx */
 adminRoutes.get('/reports/:kind', async (c) => {
   const q = c.req.query();
-  const r = await buildReport(c.env, reportScope(c), c.req.param('kind') as ReportKind, q);
+  const r = await buildReport(c.env, reportScope(c, c.req.param('kind')), c.req.param('kind') as ReportKind, q);
   if (q.format !== 'xlsx') return c.json(r);
   const name = `${r.title} ${r.from === r.to ? r.from : `${r.from} - ${r.to}`}`;
   const ascii = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 ._-]/g, '').replace(/\s+/g, '-');

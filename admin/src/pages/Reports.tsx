@@ -23,6 +23,9 @@ const HELP: Record<string, string> = {
   top100: 'Cei mai buni 100 de clienți din perioadă, după cât au cheltuit.',
   retention: 'Pe luni: câți clienți au venit și câți dintre ei au mai venit în următoarele 60 de zile.',
   'new-returning': 'Clienții noi față de cei care au mai fost, pe zile (sau pe luni, pentru perioade lungi).',
+  register: 'Fiecare programare din zi și cum s-a închis (încheiată, nu a venit, anulată), cu încasările pe numerar, card și card cadou. Rândurile „NEÎNCHISĂ” trebuie închise.',
+  stock: 'Ce produse sunt în stoc acum și cât valorează, la preț de achiziție și de vânzare.',
+  'stock-moves': 'Fișa de magazie: fiecare intrare (NIR) și ieșire (vânzare, consum, casare, corecție).',
 };
 const STATUSES: Record<string, string> = { confirmed: 'Confirmate', completed: 'Finalizate', cancelled: 'Anulate', no_show: 'Neprezentări' };
 const PAGE = 50;

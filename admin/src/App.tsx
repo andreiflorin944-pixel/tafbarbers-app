@@ -19,6 +19,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { ReportsPage } from './pages/Reports';
 import { NotificationsPage } from './pages/Notifications';
 import { GiftCardsPage } from './pages/GiftCards';
+import { StockPage } from './pages/Stock';
 
 const PAGES = [
   { key: 'calendar', label: 'Programări', show: () => true, el: CalendarPage },
@@ -28,6 +29,7 @@ const PAGES = [
   { key: 'services', label: 'Servicii', show: (m: Me) => m.owner, el: ServicesPage },
   { key: 'barbers', label: 'Frizeri și program', show: (m: Me) => m.owner, el: BarbersPage },
   { key: 'shop', label: 'Magazin', show: (m: Me) => m.owner || m.permissions.shop, el: ShopPage },
+  { key: 'stock', label: 'Stoc și NIR', show: (m: Me) => m.owner || m.permissions.shop, el: StockPage },
   { key: 'subscriptions', label: 'Abonamente', show: (m: Me) => m.owner, el: SubscriptionsPage },
   { key: 'giftcards', label: 'Carduri cadou', show: (m: Me) => m.permissions.bookings_manage, el: GiftCardsPage },
   { key: 'birthdays', label: 'Zile de naștere', show: (m: Me) => m.owner, el: BirthdaysPage },
