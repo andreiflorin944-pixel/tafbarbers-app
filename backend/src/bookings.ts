@@ -7,7 +7,7 @@ import { formatLocal, iso, localDay } from './time';
 import { msg } from './messages';
 
 export const BOOKING_SELECT = `
-  SELECT b.*, c.name AS client_name, c.phone AS client_phone, s.name AS service_name, br.name AS barber_name
+  SELECT b.*, c.name AS client_name, c.phone AS client_phone, c.birth_date AS client_birth_date, s.name AS service_name, br.name AS barber_name
   FROM bookings b
   JOIN clients c ON c.id = b.client_id
   JOIN services s ON s.id = b.service_id

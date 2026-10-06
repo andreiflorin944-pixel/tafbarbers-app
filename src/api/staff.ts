@@ -29,6 +29,7 @@ export type StaffBooking = {
   payment?: 'paid' | 'subscription' | null;
   paidAmount?: number | null;
   bonusId?: string | null;
+  clientBirthday?: boolean; // programarea cade de ziua clientului
 };
 export type StaffCheckout = { booking: StaffBooking; subscription: Subscription | null; bonuses: Bonus[] };
 

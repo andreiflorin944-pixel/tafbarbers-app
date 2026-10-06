@@ -73,3 +73,13 @@ export function formatLocal(tz: string, iso: string, lang = 'ro'): string {
 
 export const iso = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 export const isDay = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+export const isLeap = (y: number) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+
+/** Dacă `day` (AAAA-LL-ZZ) e ziua de naștere; cei născuți pe 29 februarie o serbează pe 28 în anii obișnuiți. */
+export function isBirthdayOn(birthDate: string | null | undefined, day: string): boolean {
+  if (!birthDate || birthDate.length < 10) return false;
+  const md = birthDate.slice(5, 10);
+  if (md === day.slice(5, 10)) return true;
+  return md === '02-29' && day.slice(5, 10) === '02-28' && !isLeap(Number(day.slice(0, 4)));
+}

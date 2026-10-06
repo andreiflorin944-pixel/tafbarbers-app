@@ -5,7 +5,7 @@ import { iso } from './time';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
-function emailHtml(shop: string, title: string, body: string) {
+export function emailHtml(shop: string, title: string, body: string) {
   return `<!doctype html><html><body style="margin:0;background:#000;font-family:Helvetica,Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
 <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#0F0F10;border-radius:20px;overflow:hidden">

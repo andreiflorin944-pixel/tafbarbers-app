@@ -28,7 +28,7 @@ import {
 } from '../db';
 import { HttpError, PERMS, parsePerms, type AppEnv, type Perm } from '../env';
 import { runCampaign } from '../campaigns';
-import { iso, isDay, localToUtc } from '../time';
+import { iso, isBirthdayOn, isDay, localDay, localToUtc } from '../time';
 import { clientsCsv, deleteClient } from '../gdpr';
 import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
@@ -45,6 +45,7 @@ import {
   usableSubscription,
   type PlanInput,
 } from '../subscriptions';
+import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -751,6 +752,26 @@ adminRoutes.get('/clients/:id', async (c) => {
     referredBy: ref,
     referredCount: referred?.n ?? 0,
   });
+});
+
+// --- Ziua de naștere ---
+
+adminRoutes.get('/birthday-settings', async (c) => c.json(await getBirthdaySettings(c.env)));
+adminRoutes.put('/birthday-settings', ownerOnly, async (c) => c.json(await saveBirthdaySettings(c.env, await c.req.json())));
+
+/** Clienții care își serbează ziua în următoarele `days` zile (implicit 7), pentru panou. */
+adminRoutes.get('/birthdays', async (c) => {
+  need(c, 'clients');
+  const days = Math.min(31, Math.max(1, Number(c.req.query('days')) || 7));
+  const tz = c.env.TIMEZONE || 'Europe/Bucharest';
+  const list: Array<{ day: string; clients: Array<{ id: string; name: string; phone: string; birthDate: string }> }> = [];
+  const r = await c.env.DB.prepare('SELECT id, name, phone, birth_date FROM clients WHERE deleted_at IS NULL AND birth_date IS NOT NULL').all<{ id: string; name: string; phone: string; birth_date: string }>();
+  for (let i = 0; i < days; i++) {
+    const day = localDay(tz, new Date(Date.now() + i * 86_400_000));
+    const cl = r.results.filter((x) => isBirthdayOn(x.birth_date, day)).map((x) => ({ id: x.id, name: x.name, phone: x.phone, birthDate: x.birth_date }));
+    if (cl.length) list.push({ day, clients: cl });
+  }
+  return c.json(list);
 });
 
 // --- Bonusuri și recomandări ---

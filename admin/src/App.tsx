@@ -14,6 +14,7 @@ import { AppearancePage } from './pages/Appearance';
 import { ShopPage } from './pages/Shop';
 import { ReferralsPage } from './pages/Referrals';
 import { SubscriptionsPage } from './pages/Subscriptions';
+import { BirthdaysPage } from './pages/Birthdays';
 
 const PAGES = [
   { key: 'calendar', label: 'Programări', show: () => true, el: CalendarPage },
@@ -22,6 +23,7 @@ const PAGES = [
   { key: 'barbers', label: 'Frizeri și program', show: (m: Me) => m.owner, el: BarbersPage },
   { key: 'shop', label: 'Magazin', show: (m: Me) => m.owner || m.permissions.shop, el: ShopPage },
   { key: 'subscriptions', label: 'Abonamente', show: (m: Me) => m.owner, el: SubscriptionsPage },
+  { key: 'birthdays', label: 'Zile de naștere', show: (m: Me) => m.owner, el: BirthdaysPage },
   { key: 'referrals', label: 'Recomandări și bonusuri', show: (m: Me) => m.owner, el: ReferralsPage },
   { key: 'timeoff', label: 'Concedii', show: (m: Me) => m.permissions.timeoff, el: TimeOffPage },
   { key: 'appearance', label: 'Aspect aplicație', show: (m: Me) => m.owner, el: AppearancePage },

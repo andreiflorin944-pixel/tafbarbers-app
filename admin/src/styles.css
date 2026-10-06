@@ -155,3 +155,9 @@ tr.click:hover td { background: var(--card-alt); }
 .pill.ready { background: #13283a; color: #7fb6e6; }
 .pill.picked_up { background: #1d2b1f; color: #8fc79a; }
 .orders { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+/* Programare de ziua clientului: lumânare și chenar care pulsează. */
+.cal-ev.bday { animation: bday 1.4s ease-in-out infinite; }
+@keyframes bday { 0%, 100% { box-shadow: 0 0 0 1px rgba(249, 161, 27, 0.25); } 50% { box-shadow: 0 0 0 2px var(--gold), 0 0 12px rgba(249, 161, 27, 0.6); } }
+@media (prefers-reduced-motion: reduce) { .cal-ev.bday { animation: none; box-shadow: 0 0 0 2px var(--gold); } }
+.bday-note { border: 1px solid var(--gold); border-radius: 10px; padding: 8px 10px; }

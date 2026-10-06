@@ -148,12 +148,14 @@ export function CalendarPage({ me }: { me: Me }) {
                         return (
                           <div
                             key={x.id}
-                            className={`cal-ev ${x.status}`}
+                            className={`cal-ev ${x.status}${x.clientBirthday ? ' bday' : ''}`}
+                            title={x.clientBirthday ? 'E ziua de naștere a clientului' : undefined}
                             style={{ top: (s - startMin) * PX + 1, height: Math.max(len * PX - 2, 22) }}
                             onClick={() => setOpen(x)}
                           >
                             <b>
-                              {time(x.start)} {x.clientName || x.clientPhone}
+                              {time(x.start)} {x.clientBirthday ? '🕯️ ' : ''}
+                              {x.clientName || x.clientPhone}
                             </b>
                             {x.serviceName}
                           </div>
@@ -229,6 +231,7 @@ function BookingModal({ b, canManage, owner, onClose, onChange }: { b: Booking; 
           <strong>{b.clientName || 'Client fără nume'}</strong> ·{' '}
           <a href={`tel:${b.clientPhone}`}>{b.clientPhone}</a>
         </div>
+        {b.clientBirthday ? <div className="bday-note">🕯️ E ziua lui de naștere! Urează-i „La mulți ani” și, dacă vrei, fă-i o reducere.</div> : null}
         <div className="muted">
           {longDate(b.start)}, {time(b.start)}–{time(b.end)} · cu {b.barberName} · {lei(b.price)}
         </div>

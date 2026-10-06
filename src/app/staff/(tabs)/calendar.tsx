@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { staffApi, type StaffBarber, type StaffBooking, type StaffTimeOff } from '@/api/staff';
 import { BOOKING_STATUS, BookingSheet } from '@/components/BookingSheet';
+import { BirthdayGlow, Candle } from '@/components/Birthday';
 import { styles as ui } from '@/components/ui';
 import { addDays, dayKey, fromDayKey, formatDate, pad, shortDay, startOfDay } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
@@ -197,20 +198,24 @@ export default function StaffCalendar() {
                     const h = Math.max(ROW, y(e0) - y(s0)) - 3;
                     return (
                       <Pressable key={x.id} onPress={() => setOpen(x)} style={[s.booking, { top: y(s0) + 1.5, height: h, borderLeftColor: st.color }]} accessibilityLabel={`Programare ${x.clientName}`}>
-                        <Text style={s.bName} numberOfLines={1}>
-                          {x.clientName || x.clientPhone}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                          {x.clientBirthday ? <Candle size={14} /> : null}
+                          <Text style={[s.bName, { flexShrink: 1 }]} numberOfLines={1}>
+                            {x.clientName || x.clientPhone}
+                          </Text>
+                        </View>
                         {h > 40 ? (
                           <Text style={s.bLine} numberOfLines={1}>
                             {hm(s0)} – {hm(e0)}, {e0 - s0} min
                           </Text>
                         ) : null}
                         {h > 60 ? (
-                          <Text style={s.bLine} numberOfLines={2}>
+                          <Text style={s.bLine} numberOfLines={h > 90 ? 2 : 1}>
                             {x.serviceName}
                           </Text>
                         ) : null}
                         {x.status !== 'confirmed' ? <Text style={[s.bLine, { color: st.color, fontWeight: '700' }]}>{st.label}</Text> : null}
+                        {x.clientBirthday && x.status !== 'cancelled' ? <BirthdayGlow radius={6} /> : null}
                       </Pressable>
                     );
                   })}

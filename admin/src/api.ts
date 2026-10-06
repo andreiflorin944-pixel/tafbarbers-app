@@ -88,6 +88,7 @@ const MESSAGES: Record<string, string> = {
   plan_not_found: 'Abonamentul nu mai există sau e ascuns.',
   invalid_amount: 'Suma nu e corectă.',
   bonus_not_active: 'Bonusul nu mai e activ.',
+  invalid_hour: 'Alege o oră între 06:00 și 21:00.',
   invalid_period: 'Perioada trebuie să fie între 1 și 3650 de zile.',
   invalid_cuts: 'Numărul de tunsori trebuie să fie între 1 și 1000 (sau bifează Nelimitat).',
   not_completed: 'Programarea nu e confirmată ca plătită.',
@@ -210,6 +211,7 @@ export type Booking = {
   payment?: 'paid' | 'subscription' | null;
   paidAmount?: number | null;
   bonusId?: string | null;
+  clientBirthday?: boolean;
 };
 export type Plan = { id: string; name: string; description: string; price: number; periodDays: number; cuts: number | null; serviceIds: string[]; sort: number; active: boolean };
 export type Subscription = {

@@ -2,11 +2,12 @@ import { notifyBooking, BOOKING_SELECT } from './bookings';
 import { booking, type BookingRow } from './db';
 import type { Env } from './env';
 import { runCampaign } from './campaigns';
+import { greetBirthdays } from './birthday';
 import { sendPush } from './notify';
 import { formatLocal, iso } from './time';
 
 /**
- * Rulează la fiecare 5 minute: reminder-e (24h și 2h înainte), campanii programate,
+ * Rulează la fiecare 5 minute: reminder-e (24h și 2h înainte), campanii programate, urări de ziua clientului,
  * curățenie (sesiuni și coduri expirate). Fiecare reminder se marchează înainte de trimitere,
  * ca o rulare suprapusă să nu-l trimită de două ori.
  */
@@ -21,6 +22,12 @@ export async function scheduled(env: Env) {
   for (const c of due.results) {
     const r = await env.DB.prepare(`UPDATE campaigns SET status = 'sending' WHERE id = ? AND status = 'scheduled'`).bind(c.id).run();
     if (r.meta.changes) await runCampaign(env, c.id);
+  }
+
+  try {
+    await greetBirthdays(env, new Date(now));
+  } catch (e) {
+    console.error('birthday greetings failed', e);
   }
 
   await env.DB.batch([

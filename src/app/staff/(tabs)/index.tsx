@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { staffApi, type StaffBooking, type StaffStats } from '@/api/staff';
 import { BOOKING_STATUS, BookingSheet } from '@/components/BookingSheet';
+import { BirthdayGlow, Candle } from '@/components/Birthday';
 import { Card, styles as ui } from '@/components/ui';
 import { addDays, formatTime, startOfDay } from '@/lib/dates';
 import { useStaff } from '@/state/Staff';
@@ -59,15 +60,19 @@ export default function StaffHome() {
                 <Card style={[s.row, { borderLeftWidth: 5, borderLeftColor: BOOKING_STATUS[b.status].color }]}>
                   <Text style={s.time}>{formatTime(new Date(b.start))}</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={ui.cardTitle} numberOfLines={1}>
-                      {b.clientName || b.clientPhone}
-                    </Text>
+                    <View style={[ui.row, { gap: 4 }]}>
+                      {b.clientBirthday ? <Candle /> : null}
+                      <Text style={[ui.cardTitle, { flexShrink: 1 }]} numberOfLines={1}>
+                        {b.clientName || b.clientPhone}
+                      </Text>
+                    </View>
                     <Text style={ui.muted} numberOfLines={1}>
                       {b.serviceName}
                       {staff.permissions.bookings_all ? ` · ${b.barberName}` : ''}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                  {b.clientBirthday ? <BirthdayGlow radius={radius.md} /> : null}
                 </Card>
               </Pressable>
             ))}

@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { staffApi, type StaffBooking, type StaffCheckout } from "@/api/staff";
 import { cutsText } from "@/components/SubscriptionRow";
+import { Candle } from "@/components/Birthday";
 import { Button, styles as ui } from "@/components/ui";
 import { formatDate, formatTime } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
@@ -95,6 +96,15 @@ export function BookingSheet({
             </Text>
             <Text style={[s.status, { color: st.color }]}>{st.label}</Text>
           </View>
+          {b.clientBirthday ? (
+            <View style={s.birthday}>
+              <Candle size={22} />
+              <Text style={[ui.text, { flex: 1 }]}>
+                E ziua lui de naștere! Urează-i „La mulți ani” și, dacă vrei,
+                fă-i o reducere.
+              </Text>
+            </View>
+          ) : null}
           <Line
             icon="time-outline"
             text={`${formatDate(new Date(b.start))}, ${formatTime(new Date(b.start))} – ${formatTime(new Date(b.end))} · ${minutes} min`}
@@ -421,4 +431,14 @@ const s = StyleSheet.create({
     padding: space.md,
   },
   choiceOn: { borderColor: colors.gold },
+  birthday: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    marginTop: space.sm,
+    padding: space.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gold,
+  },
 });
