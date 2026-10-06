@@ -36,6 +36,12 @@ const RO: Record<string, string> = {
   booking_cancelled: 'Programarea e anulată.',
   plan_not_found: 'Abonamentul nu mai există sau e ascuns.',
   invalid_amount: 'Suma nu e corectă.',
+  gift_cards_off: 'Momentan salonul nu vinde carduri cadou din aplicație.',
+  too_many_gift_cards: 'Ai deja 5 carduri cadou neplătite. Plătește-le la salon sau anulează unul.',
+  not_pending: 'Cardul a fost deja plătit sau anulat.',
+  gift_card_not_found: 'Nu există un card cadou activ cu acest cod.',
+  gift_card_expired: 'Cardul cadou a expirat.',
+  gift_card_empty: 'Pe cardul cadou nu mai sunt bani.',
   bonus_not_active: 'Bonusul nu mai e activ.',
   not_cancellable: 'Comanda e deja pregătită și nu mai poate fi anulată din aplicație. Sună-ne, te rog.',
 };

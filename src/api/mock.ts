@@ -139,6 +139,10 @@ export const mockApi: BookingApi = {
       ],
       subscriptions: [],
     }),
+  getGiftCards: () => delay({ enabled: true, amounts: [50, 100, 150, 200], validMonths: 12, bought: [], received: [] }),
+  buyGiftCard: () => delay({ id: `gc-${Date.now()}` }),
+  cancelGiftCard: () => delay(undefined),
+  getBeforeAfter: () => delay([]),
   async saveIdentityNote(token, note) {
     identityOf(token).note = note;
     return delay(identityOf(token));

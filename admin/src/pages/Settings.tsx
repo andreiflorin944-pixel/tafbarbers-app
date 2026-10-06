@@ -10,6 +10,15 @@ export function SettingsPage({ me }: { me: Me }) {
         <h1>Setări</h1>
       </div>
       <div className="grid" style={{ gap: 18, maxWidth: 760 }}>
+        {me.owner ? (
+          <a href="#/notifications" className="card" style={{ display: 'block', textDecoration: 'none' }}>
+            <b>Notificări automate ›</b>
+            <div className="muted small">
+              Ce mesaje pleacă singure și pe ce canal (push, SMS, e-mail), textele lor, „Ne e dor de tine”, orele libere de azi, cardurile cadou și
+              butonul „Programează” pentru Google Maps și Instagram.
+            </div>
+          </a>
+        ) : null}
         {me.owner ? <BusinessForm /> : null}
         {me.owner ? <Team me={me} /> : null}
         <Password />

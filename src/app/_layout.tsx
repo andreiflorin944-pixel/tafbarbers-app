@@ -43,6 +43,9 @@ export default function RootLayout() {
             <Stack.Screen name="identity" options={{ title: 'TAF Identity' }} />
             <Stack.Screen name="rewards" options={{ title: 'Bonusuri și recomandări' }} />
             <Stack.Screen name="subscriptions" options={{ title: 'Abonamente' }} />
+            <Stack.Screen name="gift-cards" options={{ title: 'Carduri cadou' }} />
+            <Stack.Screen name="before-after" options={{ title: 'Tunsorile mele' }} />
+            <Stack.Screen name="book/index" options={{ headerShown: false }} />
             <Stack.Screen name="barbers" options={{ title: 'Frizeri' }} />
             <Stack.Screen name="service/[id]" options={{ title: '', headerTransparent: true }} />
             <Stack.Screen name="legal/[doc]" options={{ title: '' }} />

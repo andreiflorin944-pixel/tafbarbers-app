@@ -145,6 +145,8 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
               }}
             />
           </label>
+          <h2 style={{ margin: '6px 0 0' }}>Înainte și după</h2>
+          <BeforeAfter clientId={id} list={c.data.beforeAfter ?? []} onChange={c.reload} />
           <Field label="Nume">
             <input value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
@@ -223,6 +225,58 @@ function Photos({ list, onDelete }: { list: ClientPhoto[]; onDelete?: (id: strin
           ) : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Perechi de poze înainte/după; clientul le vede în aplicație și le poate distribui pe Instagram. */
+function BeforeAfter({ clientId, list, onChange }: { clientId: string; list: NonNullable<Client['beforeAfter']>; onChange: () => void }) {
+  const [before, setBefore] = useState<File | null>(null);
+  const { busy, error, run } = useAction();
+  const up = (f: File) => uploadImageTo(`/v1/admin/clients/${clientId}/before-after/upload`, f, { maxPx: 1400 }) as Promise<{ mediaId: string }>;
+  return (
+    <div className="grid" style={{ gap: 8 }}>
+      {list.map((p) => (
+        <div key={p.id} className="row" style={{ gap: 6, alignItems: 'center' }}>
+          <img src={p.before} alt="înainte" style={{ width: 90, height: 110, objectFit: 'cover', borderRadius: 8 }} />
+          <img src={p.after} alt="după" style={{ width: 90, height: 110, objectFit: 'cover', borderRadius: 8 }} />
+          <span className="muted small">
+            {date(p.createdAt)}
+            {p.barberName ? ` · ${p.barberName}` : ''}
+          </span>
+          <button className="ghost sm" disabled={busy} onClick={() => confirm('Ștergi perechea de poze?') && run(async () => { await api('DELETE', `/admin/before-after/${p.id}`); onChange(); })}>
+            Șterge
+          </button>
+        </div>
+      ))}
+      {!list.length ? <div className="muted small">Încă nu sunt poze înainte/după.</div> : null}
+      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+        <label className="btn ghost sm" style={{ cursor: 'pointer' }}>
+          {before ? `Înainte: ${before.name.slice(0, 18)}` : '1. Poza înainte'}
+          <input type="file" accept="image/*" hidden onChange={(e) => { setBefore(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+        </label>
+        <label className="btn ghost sm" style={{ cursor: before ? 'pointer' : 'not-allowed', opacity: before ? 1 : 0.5 }}>
+          2. Poza după
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            disabled={!before || busy}
+            onChange={(e) => {
+              const after = e.target.files?.[0];
+              e.target.value = '';
+              if (after && before)
+                run(async () => {
+                  const [b, a] = [await up(before), await up(after)];
+                  await api('POST', `/admin/clients/${clientId}/before-after`, { before: b.mediaId, after: a.mediaId });
+                  setBefore(null);
+                  onChange();
+                });
+            }}
+          />
+        </label>
+      </div>
+      {error ? <div className="err">{error}</div> : null}
     </div>
   );
 }

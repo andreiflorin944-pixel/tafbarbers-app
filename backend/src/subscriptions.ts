@@ -1,4 +1,5 @@
 import { newId } from './auth';
+import { redeemGiftCard, refundGiftCard } from './growth';
 import { HttpError, type Env } from './env';
 import { iso } from './time';
 
@@ -173,7 +174,7 @@ export async function usableSubscription(env: Env, clientId: string, serviceId: 
 export async function completeBooking(
   env: Env,
   bookingId: string,
-  b: { payment?: string; amount?: number; tip?: number | null; bonusId?: string | null },
+  b: { payment?: string; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null },
   adminId: string,
 ) {
   const bk = await env.DB.prepare('SELECT id, client_id, service_id, price_bani, status, payment FROM bookings WHERE id = ?')
@@ -209,14 +210,25 @@ export async function completeBooking(
     bonusId = bn.id;
   }
 
+  // Card cadou: se scade din sold suma acoperită (implicit cât acoperă din preț); `amount` rămâne ce s-a plătit în plus, cash sau card.
+  let gift: { id: string; take: number } | null = null;
+  if (b.giftCode && b.payment === 'paid') {
+    const want = b.giftAmount === undefined || b.giftAmount === null ? bk.price_bani : Math.round(Number(b.giftAmount) * 100);
+    if (!(want > 0)) throw new HttpError(400, 'invalid_amount');
+    gift = await redeemGiftCard(env, b.giftCode, want);
+  }
+
   const now = iso(new Date());
   const claimed = await env.DB.prepare(
-    `UPDATE bookings SET status = 'completed', payment = ?, paid_bani = ?, subscription_id = ?, bonus_id = ?, tip_bani = ?, completed_at = ?, completed_by = ?
+    `UPDATE bookings SET status = 'completed', payment = ?, paid_bani = ?, subscription_id = ?, bonus_id = ?, tip_bani = ?, gift_card_id = ?, gift_bani = ?, completed_at = ?, completed_by = ?
      WHERE id = ? AND payment IS NULL AND status != 'cancelled'`,
   )
-    .bind(b.payment, paidBani, sub?.id ?? null, bonusId, tipBani, now, adminId, bookingId)
+    .bind(b.payment, paidBani, sub?.id ?? null, bonusId, tipBani, gift?.id ?? null, gift?.take ?? null, now, adminId, bookingId)
     .run();
-  if (!claimed.meta.changes) throw new HttpError(409, 'already_completed');
+  if (!claimed.meta.changes) {
+    if (gift) await refundGiftCard(env, gift.id, gift.take);
+    throw new HttpError(409, 'already_completed');
+  }
 
   if (sub) {
     const used = await env.DB.prepare(
@@ -226,7 +238,7 @@ export async function completeBooking(
       .run();
     if (!used.meta.changes) {
       await env.DB.prepare(
-        `UPDATE bookings SET status = ?, payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
+        `UPDATE bookings SET status = ?, payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, gift_card_id = NULL, gift_bani = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
       )
         .bind(bk.status, bookingId)
         .run();
@@ -240,19 +252,20 @@ export async function completeBooking(
 
 /** Anulează confirmarea (greșeală): programarea revine la „confirmată”, tunsoarea se întoarce în abonament, bonusul redevine activ. */
 export async function undoCompletion(env: Env, bookingId: string) {
-  const bk = await env.DB.prepare('SELECT payment, subscription_id, bonus_id FROM bookings WHERE id = ?')
+  const bk = await env.DB.prepare('SELECT payment, subscription_id, bonus_id, gift_card_id, gift_bani FROM bookings WHERE id = ?')
     .bind(bookingId)
-    .first<{ payment: string | null; subscription_id: string | null; bonus_id: string | null }>();
+    .first<{ payment: string | null; subscription_id: string | null; bonus_id: string | null; gift_card_id: string | null; gift_bani: number | null }>();
   if (!bk) throw new HttpError(404, 'not_found');
   if (!bk.payment) throw new HttpError(409, 'not_completed');
   const stmts = [
     env.DB.prepare(
-      `UPDATE bookings SET status = 'confirmed', payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
+      `UPDATE bookings SET status = 'confirmed', payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, gift_card_id = NULL, gift_bani = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
     ).bind(bookingId),
   ];
   if (bk.subscription_id) stmts.push(env.DB.prepare('UPDATE subscriptions SET cuts_used = max(0, cuts_used - 1) WHERE id = ?').bind(bk.subscription_id));
   if (bk.bonus_id) stmts.push(env.DB.prepare(`UPDATE bonuses SET status = 'active', used_at = NULL, used_by = NULL WHERE id = ? AND status = 'used'`).bind(bk.bonus_id));
   await env.DB.batch(stmts);
+  if (bk.gift_card_id && bk.gift_bani) await refundGiftCard(env, bk.gift_card_id, bk.gift_bani);
 }
 
 /** Ce vede clientul: planurile disponibile, abonamentul activ și istoricul lui. */

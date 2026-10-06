@@ -2,7 +2,9 @@ import { newId } from './auth';
 import { booking, getBusiness, type BookingRow } from './db';
 import { HttpError, type Env } from './env';
 import { availability } from './availability';
-import { sendSms } from './notify';
+import { emailHtml } from './campaigns';
+import { channelsFor } from './growth';
+import { sendEmail, sendPush, sendSms } from './notify';
 import { formatLocal, iso, localDay } from './time';
 import { msg } from './messages';
 
@@ -119,12 +121,25 @@ export async function notifyBooking(
   b: BookingJson,
   kind: 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h',
 ) {
-  const c = await env.DB.prepare('SELECT phone, lang FROM clients WHERE id = ?')
+  const ch = await channelsFor(env, kind);
+  if (!ch) return;
+  const c = await env.DB.prepare('SELECT phone, email, lang FROM clients WHERE id = ?')
     .bind(b.clientId)
-    .first<{ phone: string; lang: string }>();
-  if (!c) return;
+    .first<{ phone: string; email: string | null; lang: string }>();
+  if (!c || c.phone.startsWith('deleted:')) return;
   const biz = await getBusiness(env);
   const when = formatLocal(env.TIMEZONE, b.start, c.lang);
   const text = msg(c.lang, kind, { when, shop: biz.name, barber: b.barberName ?? '', service: b.serviceName ?? '' });
-  await sendSms(env, { kind, recipient: c.phone, bookingId: b.id }, text);
+  if (ch.sms) await sendSms(env, { kind, recipient: c.phone, bookingId: b.id }, text);
+  const title = PUSH_TITLES[kind];
+  if (ch.push) {
+    const tokens = await env.DB.prepare('SELECT token FROM push_tokens WHERE client_id = ?').bind(b.clientId).all<{ token: string }>();
+    if (tokens.results.length)
+      await sendPush(env, { kind, bookingId: b.id }, tokens.results.map((t) => t.token), title, `${b.serviceName} cu ${b.barberName}, ${formatLocal(env.TIMEZONE, b.start)}`, {
+        bookingId: b.id,
+      });
+  }
+  if (ch.email && c.email) await sendEmail(env, { kind, recipient: c.email, bookingId: b.id }, `${title} · ${biz.name}`, emailHtml(biz.name, title, text));
 }
+
+const PUSH_TITLES = { confirm: 'Programare confirmată', cancel: 'Programare anulată', reminder_24h: 'Programare mâine', reminder_2h: 'Programare în curând' };

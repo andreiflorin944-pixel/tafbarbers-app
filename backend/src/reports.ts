@@ -48,6 +48,7 @@ type BRow = {
   payment: string | null;
   paid_bani: number | null;
   tip_bani: number | null;
+  gift_bani: number | null;
   cancelled_at: string | null;
   cancelled_by: string | null;
   completed_by: string | null;
@@ -71,6 +72,7 @@ type SRow = {
   admin_barber: string | null;
   admin_barber_name: string | null;
   client_name: string;
+  kind: 'sub' | 'gift';
   day: string;
 };
 
@@ -100,7 +102,7 @@ async function loadBookings(env: Env, scope: Scope, from: string, to: string, f:
   if (f.serviceId) where.push('b.service_id = ?'), vals.push(f.serviceId);
   const r = await env.DB.prepare(
     `SELECT b.id, b.client_id, b.barber_id, b.service_id, b.starts_at, b.created_at, b.price_bani, b.status, b.source, b.payment, b.paid_bani,
-       b.tip_bani, b.cancelled_at, b.cancelled_by, b.completed_by, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+       b.tip_bani, b.gift_bani, b.cancelled_at, b.cancelled_by, b.completed_by, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
        s.name AS service_name, br.name AS barber_name, coalesce(nullif(ca.name, ''), ca.email) AS canceller_name,
        coalesce(nullif(cb.name, ''), cb.email) AS completer_name
      FROM bookings b JOIN clients c ON c.id = b.client_id JOIN services s ON s.id = b.service_id JOIN barbers br ON br.id = b.barber_id
@@ -113,17 +115,25 @@ async function loadBookings(env: Env, scope: Scope, from: string, to: string, f:
   return r.results;
 }
 
-/** Abonamentele vândute în perioadă. Un cont fără „toate programările” vede doar ce a activat el. */
+/** Abonamentele și cardurile cadou vândute în perioadă (cardul se numără la încasare). Un cont fără „toate programările” vede doar ce a încasat el. */
 async function loadSubscriptions(env: Env, scope: Scope, from: string, to: string) {
   const { start, end } = range(from, to);
   const own = scope.barberId ? 'AND s.created_by = ?' : '';
+  const ownG = scope.barberId ? 'AND g.paid_by = ?' : '';
   const r = await env.DB.prepare(
-    `SELECT s.id, s.client_id, s.name, s.price_bani, s.created_at, s.created_by, coalesce(nullif(a.name, ''), a.email) AS admin_name,
-       a.barber_id AS admin_barber, br.name AS admin_barber_name, c.name AS client_name
-     FROM subscriptions s JOIN clients c ON c.id = s.client_id LEFT JOIN admins a ON a.id = s.created_by LEFT JOIN barbers br ON br.id = a.barber_id
-     WHERE s.status != 'cancelled' AND s.created_at >= ? AND s.created_at < ? ${own} ORDER BY s.created_at`,
+    `SELECT * FROM (
+       SELECT s.id, s.client_id, s.name, s.price_bani, s.created_at, s.created_by, coalesce(nullif(a.name, ''), a.email) AS admin_name,
+         a.barber_id AS admin_barber, br.name AS admin_barber_name, c.name AS client_name, 'sub' AS kind
+       FROM subscriptions s JOIN clients c ON c.id = s.client_id LEFT JOIN admins a ON a.id = s.created_by LEFT JOIN barbers br ON br.id = a.barber_id
+       WHERE s.status != 'cancelled' AND s.created_at >= ? AND s.created_at < ? ${own}
+       UNION ALL
+       SELECT g.id, coalesce(g.buyer_client_id, 'gift:' || g.id), 'Card cadou ' || g.code, g.amount_bani, g.paid_at, g.paid_by, coalesce(nullif(a.name, ''), a.email),
+         a.barber_id, br.name, coalesce(c.name, g.recipient_name), 'gift'
+       FROM gift_cards g LEFT JOIN clients c ON c.id = g.buyer_client_id LEFT JOIN admins a ON a.id = g.paid_by LEFT JOIN barbers br ON br.id = a.barber_id
+       WHERE g.paid_at IS NOT NULL AND g.status != 'cancelled' AND g.paid_at >= ? AND g.paid_at < ? ${ownG}
+     ) ORDER BY created_at`,
   )
-    .bind(...(scope.barberId ? [start, end, scope.session.adminId] : [start, end]))
+    .bind(...(scope.barberId ? [start, end, scope.session.adminId, start, end, scope.session.adminId] : [start, end, start, end]))
     .all<SRow>();
   for (const x of r.results) x.day = dayKey(x.created_at);
   return r.results;
@@ -225,12 +235,14 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         line('Clienți serviți', clientsSeen.size),
         line('din care clienți noi', newClients),
         line('Tunsori pe abonament', bk.filter((b) => b.payment === 'subscription').length),
-        line('Abonamente vândute', subs.length),
+        line('Abonamente vândute', subs.filter((s) => s.kind !== 'gift').length),
+        line('Carduri cadou vândute', subs.filter((s) => s.kind === 'gift').length),
+        line('Plătit cu carduri cadou (lei)', lei(bk.reduce((n, b) => n + (b.gift_bani ?? 0), 0))),
       ];
       if (perms.stats)
         rows.push(
           line('Încasat din servicii (lei)', lei(cuts)),
-          line('Încasat din abonamente (lei)', lei(subsSum)),
+          line('Încasat din abonamente și carduri cadou (lei)', lei(subsSum)),
           line('Bacșiș (lei)', lei(tips)),
           line('Total încasat, fără bacșiș (lei)', lei(cuts + subsSum)),
         );
@@ -285,8 +297,8 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         { key: 'services', label: 'Servicii finalizate', type: 'int' },
         { key: 'subCuts', label: 'Din care pe abonament', type: 'int' },
         { key: 'servicesSum', label: 'Încasat servicii (lei)', type: 'money' },
-        { key: 'subs', label: 'Abonamente vândute', type: 'int' },
-        { key: 'subsSum', label: 'Încasat abonamente (lei)', type: 'money' },
+        { key: 'subs', label: 'Abonamente și carduri cadou', type: 'int' },
+        { key: 'subsSum', label: 'Încasat abonamente și carduri (lei)', type: 'money' },
         { key: 'tips', label: 'Bacșiș (lei)', type: 'money' },
         { key: 'total', label: 'Total încasat (lei)', type: 'money' },
       ];
@@ -420,7 +432,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
           })),
         ...subs.map((s) => ({
           t: s.created_at,
-          row: { date: localDT(s.created_at), client: s.client_name || 'Fără nume', what: s.name, method: 'Abonament vândut', amount: lei(s.price_bani), tip: null, by: s.admin_name ?? '' },
+          row: { date: localDT(s.created_at), client: s.client_name || 'Fără nume', what: s.name, method: s.kind === 'gift' ? 'Card cadou vândut' : 'Abonament vândut', amount: lei(s.price_bani), tip: null, by: s.admin_name ?? '' },
         })),
       ];
       items.sort((a, b) => a.t.localeCompare(b.t));
@@ -437,8 +449,8 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         { key: 'member', label: 'Cont echipă', type: 'text' },
         { key: 'count', label: 'Plăți servicii', type: 'int' },
         { key: 'servicesSum', label: 'Sumă servicii (lei)', type: 'money' },
-        { key: 'subs', label: 'Abonamente vândute', type: 'int' },
-        { key: 'subsSum', label: 'Sumă abonamente (lei)', type: 'money' },
+        { key: 'subs', label: 'Abonamente și carduri cadou', type: 'int' },
+        { key: 'subsSum', label: 'Sumă abonamente și carduri (lei)', type: 'money' },
         { key: 'tips', label: 'Bacșiș (lei)', type: 'money' },
         { key: 'total', label: 'Total încasat (lei)', type: 'money' },
       ];
@@ -497,7 +509,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         x.spent += collected(b);
         if (b.starts_at > x.last) x.last = b.starts_at;
       }
-      for (const s of subs) get(s.client_id, s.client_name).spent += s.price_bani;
+      for (const s of subs) if (!s.client_id.startsWith('gift:')) get(s.client_id, s.client_name).spent += s.price_bani;
       columns = [
         { key: 'rank', label: 'Loc', type: 'int' },
         { key: 'client', label: 'Client', type: 'text' },
@@ -710,7 +722,7 @@ export async function buildDashboard(env: Env, scope: Scope) {
   // Clienții de azi, cu etichete: nou, client de top, la ziua lui (din calendar), revine după mult timp.
   const spent = new Map<string, number>();
   for (const b of visits) spent.set(b.client_id, (spent.get(b.client_id) ?? 0) + collected(b));
-  for (const s of subs) spent.set(s.client_id, (spent.get(s.client_id) ?? 0) + s.price_bani);
+  for (const s of subs) if (!s.client_id.startsWith('gift:')) spent.set(s.client_id, (spent.get(s.client_id) ?? 0) + s.price_bani);
   const visitCount = new Map<string, number>();
   for (const b of visits) visitCount.set(b.client_id, (visitCount.get(b.client_id) ?? 0) + 1);
   const ranked = [...spent.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);

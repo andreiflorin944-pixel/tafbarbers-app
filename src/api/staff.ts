@@ -87,8 +87,35 @@ export const staffApi = {
     if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
     return json as IdentityPhoto;
   },
+  /** Urcă o poză înainte/după; întoarce id-ul ei, apoi `saveBeforeAfter` leagă perechea de client. */
+  uploadBeforeAfter: async (t: string, id: string, uri: string): Promise<{ mediaId: string }> => {
+    if (!apiUrl) throw new ApiError('no_server', 0);
+    let res: Response;
+    try {
+      const blob = await (await fetch(uri)).blob();
+      res = await fetch(`${apiUrl}/v1/admin/clients/${encodeURIComponent(id)}/before-after/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${t}` },
+        body: blob,
+      });
+    } catch {
+      throw new ApiError('network', 0);
+    }
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+    return json as { mediaId: string };
+  },
+  saveBeforeAfter: (t: string, id: string, before: string, after: string) =>
+    call<{ id: string }>('POST', `/admin/clients/${encodeURIComponent(id)}/before-after`, t, { before, after }),
+  deleteBeforeAfter: (t: string, pid: string) => call<{ ok: true }>('DELETE', `/admin/before-after/${encodeURIComponent(pid)}`, t),
+  checkGiftCard: (t: string, code: string) =>
+    call<{ code: string; balance: number; amount: number; status: string; expiresAt: string | null }>('GET', `/admin/gift-cards/check?code=${encodeURIComponent(code)}`, t),
   checkout: (t: string, id: string) => call<StaffCheckout>('GET', `/admin/bookings/${encodeURIComponent(id)}/checkout`, t),
-  complete: (t: string, id: string, body: { payment: 'paid' | 'subscription'; amount?: number; tip?: number | null; bonusId?: string | null }) =>
+  complete: (
+    t: string,
+    id: string,
+    body: { payment: 'paid' | 'subscription'; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null },
+  ) =>
     call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/complete`, t, body),
   plans: (t: string) => call<Plan[]>('GET', '/admin/plans', t),
   activateSubscription: (t: string, clientId: string, planId: string) =>
@@ -126,6 +153,7 @@ export type StaffClient = {
   birthDate?: string | null;
   photoUrl?: string | null;
   identity?: Identity;
+  beforeAfter?: Array<{ id: string; before: string; after: string; barberName: string | null; createdAt: string }>;
   bonuses?: Bonus[];
   subscriptions?: Subscription[];
   referredBy?: { id: string; name: string } | null;

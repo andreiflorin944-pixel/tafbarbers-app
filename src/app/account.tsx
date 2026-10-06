@@ -202,6 +202,16 @@ function ClientAccount() {
           <Text style={[styles.text, { flex: 1 }]}>Abonamente</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />
         </Pressable>
+        <Pressable style={styles.row} onPress={() => router.push('/gift-cards')} accessibilityRole="button">
+          <Icon name="gift" />
+          <Text style={[styles.text, { flex: 1 }]}>Carduri cadou</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
+        <Pressable style={styles.row} onPress={() => router.push('/before-after')} accessibilityRole="button">
+          <Icon name="images" />
+          <Text style={[styles.text, { flex: 1 }]}>Tunsorile mele (înainte și după)</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
       </Card>
 
       <Text style={styles.label}>Nume</Text>

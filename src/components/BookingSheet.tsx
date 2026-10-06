@@ -224,8 +224,24 @@ function Checkout({
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState<string | null>(null);
   const [tip, setTip] = useState("");
+  const [giftCode, setGiftCode] = useState("");
+  const [gift, setGift] = useState<{ code: string; take: number; balance: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
+  const applyGift = async () => {
+    setErr("");
+    try {
+      const g = await staffApi.checkGiftCard(token, giftCode);
+      if (g.status !== "active") return setErr(g.status === "expired" ? "Cardul cadou a expirat." : "Pe cardul cadou nu mai sunt bani.");
+      const take = Math.min(g.balance, b.price);
+      setGift({ code: g.code, take, balance: g.balance });
+      setAmount(String(Math.max(0, b.price - take)));
+    } catch (e) {
+      setGift(null);
+      setErr(errorMessage(e));
+    }
+  };
 
   useEffect(() => {
     staffApi.checkout(token, b.id).then(
@@ -249,6 +265,7 @@ function Checkout({
         await staffApi.complete(token, b.id, {
           payment: mode,
           ...(mode === "paid" && { amount: value }),
+          ...(mode === "paid" && gift && { giftCode: gift.code, giftAmount: gift.take }),
           tip: tipValue || null,
           bonusId,
         }),
@@ -286,6 +303,34 @@ function Checkout({
               selectTextOnFocus
             />
             <Text style={ui.text}>lei</Text>
+          </View>
+        ) : null}
+        {mode === "paid" ? (
+          <View style={{ marginTop: space.sm, gap: 4 }}>
+            <View style={ui.row}>
+              <TextInput
+                value={giftCode}
+                onChangeText={(v) => {
+                  setGiftCode(v);
+                  setGift(null);
+                }}
+                placeholder="Cod card cadou (opțional)"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="characters"
+                style={[ui.input, { flex: 1, marginTop: 0 }]}
+                accessibilityLabel="Cod card cadou"
+              />
+              {giftCode.trim() && !gift ? (
+                <View style={{ width: 110 }}>
+                  <Button title="Folosește" variant="ghost" onPress={applyGift} />
+                </View>
+              ) : null}
+            </View>
+            {gift ? (
+              <Text style={{ color: colors.success, fontSize: 13 }}>
+                Se scad {gift.take} lei de pe card (are {gift.balance} lei). Restul, {amount || 0} lei, se plătește acum.
+              </Text>
+            ) : null}
           </View>
         ) : null}
       </Choice>
@@ -337,7 +382,7 @@ function Checkout({
             title={
               mode === "subscription"
                 ? "Confirmă: pe abonament"
-                : `Confirmă: ${amount || 0} lei`
+                : `Confirmă: ${amount || 0} lei${gift ? ` + ${gift.take} card` : ""}`
             }
             onPress={confirm}
             loading={busy}

@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Platform, Text, TextInput, View } from 'react-native';
-import { staffApi, type StaffClient } from '@/api/staff';
+import { ActivityIndicator, Alert, Image, Linking, Platform, Text, TextInput, View } from 'react-native';
+import { mediaUrl, staffApi, type StaffClient } from '@/api/staff';
 import { BOOKING_STATUS } from '@/components/BookingSheet';
 import { PhotoGrid, PhotoViewer } from '@/components/PhotoViewer';
 import { Avatar, Button, Card, Screen, styles as ui } from '@/components/ui';
@@ -224,6 +224,9 @@ export default function StaffClient() {
       <Text style={[ui.label, { marginTop: space.lg }]}>Doar pentru echipă: poze</Text>
       <PhotoGrid photos={staffPhotos} onOpen={(i) => setView({ list: staffPhotos, i })} onAdd={addPhoto} busy={photoBusy} />
 
+      <Text style={[ui.label, { marginTop: space.lg }]}>Înainte și după</Text>
+      <BeforeAfter c={c} token={staffToken} canDelete={staff.owner} myName={staff.name} onChange={load} />
+
       <Text style={ui.label}>Doar pentru echipă: notițe</Text>
       <TextInput
         value={notes}
@@ -269,5 +272,86 @@ export default function StaffClient() {
         onDelete={view && view.list === staffPhotos ? removeStaffPhoto : undefined}
       />
     </Screen>
+  );
+}
+
+/** Pozele înainte/după: frizerul le face la scaun, clientul le vede în aplicație și le poate pune pe Instagram. */
+function BeforeAfter({ c, token, canDelete, myName, onChange }: { c: StaffClient; token: string; canDelete: boolean; myName: string; onChange: () => void }) {
+  const [before, setBefore] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const camera = Platform.OS !== 'web';
+  const list = c.beforeAfter ?? [];
+
+  const take = async (which: 'before' | 'after') => {
+    setErr('');
+    try {
+      const uri = await pickImage({ camera });
+      if (!uri) return;
+      if (which === 'before') return setBefore(uri);
+      if (!before) return;
+      setBusy(true);
+      const b = await staffApi.uploadBeforeAfter(token, c.id, before);
+      const a = await staffApi.uploadBeforeAfter(token, c.id, uri);
+      await staffApi.saveBeforeAfter(token, c.id, b.mediaId, a.mediaId);
+      setBefore(null);
+      onChange();
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = (pid: string) => {
+    const go = async () => {
+      try {
+        await staffApi.deleteBeforeAfter(token, pid);
+        onChange();
+      } catch (e) {
+        setErr(errorMessage(e));
+      }
+    };
+    if (Platform.OS === 'web') return window.confirm('Ștergi perechea de poze?') && go();
+    Alert.alert('Ștergi perechea de poze?', undefined, [
+      { text: 'Nu', style: 'cancel' },
+      { text: 'Șterge', style: 'destructive', onPress: go },
+    ]);
+  };
+
+  return (
+    <View style={{ gap: space.sm }}>
+      {list.map((p) => (
+        <View key={p.id} style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+          <Image source={{ uri: mediaUrl(p.before) ?? undefined }} style={{ width: 84, height: 105, borderRadius: 8 }} />
+          <Image source={{ uri: mediaUrl(p.after) ?? undefined }} style={{ width: 84, height: 105, borderRadius: 8 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={ui.muted}>{formatDate(new Date(p.createdAt))}</Text>
+            {p.barberName ? <Text style={[ui.muted, { fontSize: 12 }]}>{p.barberName}</Text> : null}
+            {canDelete || p.barberName === myName ? (
+              <Text onPress={() => remove(p.id)} style={{ color: colors.danger, marginTop: 4 }} accessibilityRole="button">
+                Șterge
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ))}
+      {before ? (
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <Image source={{ uri: before }} style={{ width: 60, height: 75, borderRadius: 8 }} />
+          <Text style={[ui.muted, { flex: 1 }]}>Poza „înainte” e gata. După tunsoare, fă poza „după”.</Text>
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: space.sm }}>
+        <View style={{ flex: 1 }}>
+          <Button title={before ? 'Refă „înainte”' : 'Poza înainte'} variant="ghost" onPress={() => take('before')} disabled={busy} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button title="Poza după" onPress={() => take('after')} disabled={!before} loading={busy} />
+        </View>
+      </View>
+      {!list.length && !before ? <Text style={[ui.muted, { fontSize: 13 }]}>Clientul le primește în aplicație, gata de pus pe Instagram cu eticheta salonului.</Text> : null}
+      {err ? <Text style={{ color: colors.danger }}>{err}</Text> : null}
+    </View>
   );
 }

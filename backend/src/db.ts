@@ -130,6 +130,7 @@ export type BookingRow = {
   bonus_id?: string | null;
   completed_at?: string | null;
   tip_bani?: number | null;
+  gift_bani?: number | null;
   cancelled_by?: string | null;
   client_name?: string;
   client_phone?: string;
@@ -156,6 +157,8 @@ export const booking = (r: BookingRow) => ({
   bonusId: r.bonus_id ?? null,
   completedAt: r.completed_at ?? null,
   tip: r.tip_bani ? r.tip_bani / 100 : null,
+  // Partea plătită cu un card cadou (separat de `paidAmount`, care e ce s-a plătit în plus).
+  giftAmount: r.gift_bani ? r.gift_bani / 100 : null,
   cancelledBy: (r.cancelled_by ?? null) as 'client' | 'staff' | null,
   ...(r.client_name !== undefined && { clientName: r.client_name, clientPhone: r.client_phone }),
   // Programare în ziua de naștere a clientului (frizerul vede o lumânare); data nașterii nu se trimite.

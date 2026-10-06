@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { requireClient } from '../auth';
+import { normalizePhone, requireClient } from '../auth';
+import { createGiftCard, getAutomations, giftCard, type GiftCardRow } from '../growth';
 import { BOOKING_SELECT, cancelBooking, createBooking } from '../bookings';
 import { booking, client, type BookingRow, type ClientRow } from '../db';
 import { HttpError, type AppEnv } from '../env';
@@ -97,6 +98,53 @@ clientRoutes.delete('/me/identity/photos/:pid', async (c) => {
 
 clientRoutes.get('/me/referrals', async (c) => c.json(await myReferrals(c.env, c.get('client').clientId)));
 clientRoutes.get('/me/subscriptions', async (c) => c.json(await mySubscriptions(c.env, c.get('client').clientId)));
+
+// Carduri cadou: cele cumpărate de client și cele primite pe numărul lui de telefon.
+clientRoutes.get('/me/gift-cards', async (c) => {
+  const id = c.get('client').clientId;
+  const me = await c.env.DB.prepare('SELECT phone FROM clients WHERE id = ?').bind(id).first<{ phone: string }>();
+  const r = await c.env.DB.prepare(
+    `SELECT g.*, b.name AS buyer_name FROM gift_cards g LEFT JOIN clients b ON b.id = g.buyer_client_id
+     WHERE (g.buyer_client_id = ? OR g.recipient_phone = ?) AND g.status != 'cancelled' ORDER BY g.created_at DESC LIMIT 50`,
+  )
+    .bind(id, me?.phone ?? '')
+    .all<GiftCardRow>();
+  const s = (await getAutomations(c.env)).giftCard;
+  return c.json({
+    enabled: s.enabled,
+    amounts: s.amounts,
+    validMonths: s.validMonths,
+    bought: r.results.filter((g) => g.buyer_client_id === id).map((g) => giftCard(g, true)),
+    // Cel care primește vede codul doar după ce cardul a fost plătit.
+    received: r.results.filter((g) => g.recipient_phone === me?.phone && g.buyer_client_id !== id).map((g) => giftCard(g, true)),
+  });
+});
+
+clientRoutes.post('/me/gift-cards', async (c) => {
+  const b = await c.req.json<{ amount?: number; recipientName?: string; recipientPhone?: string; message?: string }>();
+  const phone = b.recipientPhone?.trim() ? normalizePhone(b.recipientPhone) : null;
+  const id = await createGiftCard(c.env, c.get('client').clientId, { ...b, recipientPhone: phone });
+  return c.json({ id }, 201);
+});
+
+clientRoutes.post('/me/gift-cards/:id/cancel', async (c) => {
+  const r = await c.env.DB.prepare(`UPDATE gift_cards SET status = 'cancelled' WHERE id = ? AND buyer_client_id = ? AND status = 'pending'`)
+    .bind(c.req.param('id'), c.get('client').clientId)
+    .run();
+  if (!r.meta.changes) throw new HttpError(409, 'not_pending');
+  return c.json({ ok: true });
+});
+
+/** Pozele înainte / după ale clientului, puse de frizer. */
+clientRoutes.get('/me/before-after', async (c) => {
+  const r = await c.env.DB.prepare(
+    `SELECT x.id, x.before_media, x.after_media, x.created_at, br.name AS barber_name FROM before_after x LEFT JOIN barbers br ON br.id = x.barber_id
+     WHERE x.client_id = ? ORDER BY x.created_at DESC LIMIT 50`,
+  )
+    .bind(c.get('client').clientId)
+    .all<{ id: string; before_media: string; after_media: string; created_at: string; barber_name: string | null }>();
+  return c.json(r.results.map((x) => ({ id: x.id, before: mediaUrl(x.before_media), after: mediaUrl(x.after_media), barberName: x.barber_name, createdAt: x.created_at })));
+});
 
 clientRoutes.get('/me/export', async (c) => c.json(await exportClient(c.env, c.get('client').clientId)));
 

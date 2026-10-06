@@ -76,11 +76,11 @@ const MESSAGES: Record<string, string> = {
   no_permission: 'Nu ai drept pentru asta. Cere-i proprietarului.',
   cannot_demote_self: 'Nu îți poți lua singur drepturile de proprietar.',
   ro_required: 'Completează titlul și textul în română.',
-  not_cancellable: 'Programarea nu mai poate fi anulată.',
+  not_cancellable: 'Nu mai poate fi anulat.',
   barber_required: 'Alege frizerul.',
   unsupported_image: 'Poza trebuie să fie JPG, PNG sau WebP.',
   image_too_large: 'Poza e prea mare.',
-  invalid_url: 'Linkul pozei nu e corect (trebuie să înceapă cu https://).',
+  invalid_url: 'Linkul nu e corect (trebuie să înceapă cu https://).',
   invalid_color: 'Culoarea nu e corectă.',
   invalid_stock: 'Stocul trebuie să fie un număr întreg (sau gol, fără limită).',
   invalid_transition: 'Comanda și-a schimbat deja starea. Reîncarcă pagina.',
@@ -88,15 +88,23 @@ const MESSAGES: Record<string, string> = {
   already_completed: 'Tunsoarea a fost deja confirmată.',
   booking_cancelled: 'Programarea e anulată.',
   plan_not_found: 'Abonamentul nu mai există sau e ascuns.',
-  invalid_amount: 'Suma nu e corectă.',
+  invalid_amount: 'Suma nu e corectă (cardurile cadou: între 10 și 5000 de lei, maxim 6 sume propuse).',
   bonus_not_active: 'Bonusul nu mai e activ.',
   invalid_role: 'Rolul nu e corect.',
-  invalid_hour: 'Alege o oră între 06:00 și 21:00.',
+  invalid_hour: 'Ora nu e corectă (la orele libere: între una și patru ore, 07:00–20:00).',
   invalid_period: 'Perioada trebuie să fie între 1 și 3650 de zile.',
   invalid_cuts: 'Numărul de tunsori trebuie să fie între 1 și 1000 (sau bifează Nelimitat).',
   not_completed: 'Programarea nu e confirmată ca plătită.',
   title_required: 'Completează ce vede clientul.',
   invalid_value: 'Verifică valoarea și valabilitatea.',
+  invalid_weeks: 'Numărul de săptămâni trebuie să fie între 2 și 52.',
+  invalid_window: 'Intervalul trebuie să fie între 1 și 10 ore.',
+  invalid_max: 'Maxim de câte ori pe săptămână: între 1 și 7.',
+  invalid_months: 'Valabilitatea trebuie să fie între 1 și 36 de luni.',
+  not_pending: 'Cardul a fost deja încasat sau anulat.',
+  gift_card_not_found: 'Nu există un card cadou activ cu acest cod.',
+  gift_card_expired: 'Cardul cadou a expirat.',
+  gift_card_empty: 'Pe cardul cadou nu mai sunt bani.',
 };
 export const errorText = (e: unknown) =>
   e instanceof ApiError ? (MESSAGES[e.code] ?? `Eroare: ${e.code}`) : 'A apărut o problemă.';
@@ -272,6 +280,7 @@ export type Client = {
   birthDate?: string | null;
   photoUrl?: string | null;
   identity?: { note: string; photos: ClientPhoto[]; staffPhotos?: ClientPhoto[] };
+  beforeAfter?: Array<{ id: string; before: string; after: string; barberName: string | null; createdAt: string }>;
   bonuses?: Bonus[];
   subscriptions?: Subscription[];
   referredBy?: { id: string; name: string } | null;

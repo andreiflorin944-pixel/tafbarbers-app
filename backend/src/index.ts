@@ -5,6 +5,7 @@ import { adminRoutes } from './routes/admin';
 import { clientRoutes } from './routes/client';
 import { publicRoutes } from './routes/public';
 import { scheduled } from './cron';
+import { getAutomations } from './growth';
 import { DOCS, legalDoc, type Doc } from './legal';
 import { getBusiness } from './db';
 
@@ -48,6 +49,32 @@ app.get('/r/:code', async (c) => {
 <style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:480px;margin:0 auto;padding:48px 20px;text-align:center}h1{font-size:26px}.code{font-size:34px;font-weight:800;letter-spacing:6px;color:#F9A11B;margin:18px 0}a.b{display:inline-block;background:#F9A11B;color:#000;font-weight:800;text-decoration:none;padding:14px 26px;border-radius:999px;margin-top:10px}.m{color:#999;font-size:14px}</style></head>
 <body><main><h1>Ai fost invitat la ${esc(biz.name)}</h1><p>Fă-ți cont în aplicație cu codul de mai jos:</p><div class="code">${esc(code)}</div>
 <a class="b" href="${deep}">Deschide aplicația</a><p class="m">Dacă nu ai încă aplicația, instaleaz-o, apoi scrie codul la crearea contului.</p></main></body></html>`);
+});
+
+// Butonul „Programează” din Google Maps, Instagram, Facebook sau site: deschide aplicația direct la programare
+// și numără de unde vin clienții (?src=google | instagram | facebook | site | qr).
+const LINK_SOURCES = new Set(['google', 'instagram', 'facebook', 'tiktok', 'site', 'qr', 'altul']);
+app.get('/programare', async (c) => {
+  const raw = (c.req.query('src') ?? '').toLowerCase();
+  const src = LINK_SOURCES.has(raw) ? raw : 'altul';
+  const day = new Date().toISOString().slice(0, 10);
+  c.executionCtx.waitUntil(
+    c.env.DB.prepare('INSERT INTO link_clicks (day, src, n) VALUES (?, ?, 1) ON CONFLICT(day, src) DO UPDATE SET n = n + 1').bind(day, src).run(),
+  );
+  const [biz, auto] = await Promise.all([getBusiness(c.env), getAutomations(c.env)]);
+  const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+  const deep = `tafbarbers://book?src=${src}`;
+  const store = [
+    auto.links.appStoreUrl ? `<a class="s" href="${esc(auto.links.appStoreUrl)}">App Store (iPhone)</a>` : '',
+    auto.links.playStoreUrl ? `<a class="s" href="${esc(auto.links.playStoreUrl)}">Google Play (Android)</a>` : '',
+  ].join('');
+  const phone = biz.phone ? `<p class="m">Sau sună-ne: <a href="tel:${esc(biz.phone.replace(/\s+/g, ''))}">${esc(biz.phone)}</a></p>` : '';
+  return c.html(`<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Programează-te la ${esc(biz.name)}</title>
+<meta property="og:title" content="Programează-te la ${esc(biz.name)}"><meta property="og:description" content="Alege serviciul, frizerul și ora, direct din aplicație.">
+<style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:480px;margin:0 auto;padding:56px 20px;text-align:center}h1{font-size:28px;margin:0 0 6px}a.b{display:block;background:#F9A11B;color:#000;font-weight:800;text-decoration:none;padding:16px;border-radius:999px;margin:26px 0 12px}a.s{display:block;border:1px solid #333;color:#eee;text-decoration:none;padding:13px;border-radius:999px;margin-top:10px}.m{color:#999;font-size:14px}a{color:#F9A11B}</style></head>
+<body><main><h1>${esc(biz.name)}</h1><p class="m">${esc(biz.address || 'Programează-te în câteva secunde')}</p>
+<a class="b" href="${deep}">Programează-te în aplicație</a>${store ? `<p class="m">Nu ai aplicația? Instaleaz-o:</p>${store}` : ''}${phone}</main>
+<script>setTimeout(function(){location.href=${JSON.stringify(deep)}},300)</script></body></html>`);
 });
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));

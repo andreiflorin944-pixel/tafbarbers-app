@@ -64,6 +64,17 @@ export function httpApi(baseUrl: string): BookingApi {
     getIdentity: (token) => call('GET', '/me/identity', { token }),
     getReferrals: (token) => call('GET', '/me/referrals', { token }),
     getSubscriptions: (token) => call('GET', '/me/subscriptions', { token }),
+    getGiftCards: (token) => call('GET', '/me/gift-cards', { token }),
+    buyGiftCard: (token, input) => call('POST', '/me/gift-cards', { token, body: input }),
+    cancelGiftCard: async (token, id) => {
+      await call('POST', `/me/gift-cards/${encodeURIComponent(id)}/cancel`, { token });
+    },
+    getBeforeAfter: async (token) =>
+      (await call<Array<{ id: string; before: string; after: string; barberName: string | null; createdAt: string }>>('GET', '/me/before-after', { token })).map((x) => ({
+        ...x,
+        before: x.before.startsWith('/') ? baseUrl.replace(/\/+$/, '') + x.before : x.before,
+        after: x.after.startsWith('/') ? baseUrl.replace(/\/+$/, '') + x.after : x.after,
+      })),
     saveIdentityNote: (token, note) => call('PUT', '/me/identity', { token, body: { note } }),
     addIdentityPhoto: (token, uri) => upload('POST', '/me/identity/photos', token, uri),
     removeIdentityPhoto: async (token, id) => {

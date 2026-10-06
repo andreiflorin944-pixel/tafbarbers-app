@@ -33,7 +33,7 @@ import { iso, isBirthdayOn, isDay, localDay, localToUtc } from '../time';
 import { clientsCsv, deleteClient } from '../gdpr';
 import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
-import { addPhoto, deletePhoto, getIdentity, parseBirthDate } from '../identity';
+import { addPhoto, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
 import { getBonuses, getReferralSettings, giveBonus, parseReward, saveReferralSettings, type Reward } from '../referrals';
 import {
   activateSubscription,
@@ -49,6 +49,7 @@ import {
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
 import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } from '../reports';
 import { xlsx } from '../xlsx';
+import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCard, saveAutomations, type GiftCardRow } from '../growth';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -664,7 +665,7 @@ adminRoutes.get('/bookings/:id/checkout', async (c) => {
 /** Frizerul confirmă tunsoarea: `{ payment: 'paid', amount }` sau `{ payment: 'subscription' }`, opțional `bonusId`. */
 adminRoutes.post('/bookings/:id/complete', async (c) => {
   const cur = await bookingForStaff(c);
-  const b = await c.req.json<{ payment?: string; amount?: number; tip?: number | null; bonusId?: string | null }>();
+  const b = await c.req.json<{ payment?: string; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null }>();
   await completeBooking(c.env, cur.id, b, c.get('admin').adminId);
   return c.json(await getBooking(c.env, cur.id));
 });
@@ -829,7 +830,120 @@ adminRoutes.get('/clients/:id', async (c) => {
     subscriptions: await getSubscriptions(c.env, id, true),
     referredBy: ref,
     referredCount: referred?.n ?? 0,
+    beforeAfter: await beforeAfterOf(c.env, id),
   });
+});
+
+// --- Poze înainte / după ---
+
+async function beforeAfterOf(env: AppEnv['Bindings'], clientId: string) {
+  const r = await env.DB.prepare(
+    `SELECT x.id, x.before_media, x.after_media, x.created_at, br.name AS barber_name FROM before_after x LEFT JOIN barbers br ON br.id = x.barber_id
+     WHERE x.client_id = ? ORDER BY x.created_at DESC LIMIT 50`,
+  )
+    .bind(clientId)
+    .all<{ id: string; before_media: string; after_media: string; created_at: string; barber_name: string | null }>();
+  return r.results.map((x) => ({ id: x.id, before: mediaUrl(x.before_media), after: mediaUrl(x.after_media), barberName: x.barber_name, createdAt: x.created_at }));
+}
+
+/** Urcă o poză (înainte sau după); întoarce id-ul ei, folosit apoi la salvarea perechii. */
+adminRoutes.post('/clients/:id/before-after/upload', async (c) => {
+  await needClient(c, c.req.param('id')!);
+  const mime = (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  const mediaId = await saveMedia(c.env, mime, await c.req.arrayBuffer(), null);
+  return c.json({ mediaId }, 201);
+});
+
+adminRoutes.post('/clients/:id/before-after', async (c) => {
+  const id = c.req.param('id')!;
+  await needClient(c, id);
+  const b = await c.req.json<{ before?: string; after?: string }>();
+  const ok = await c.env.DB.prepare(`SELECT count(*) AS n FROM media WHERE id IN (?, ?) AND client_id IS NULL`).bind(b.before ?? '', b.after ?? '').first<{ n: number }>();
+  if (!b.before || !b.after || b.before === b.after || ok?.n !== 2) throw new HttpError(400, 'invalid_body');
+  const pid = newId('ba');
+  await c.env.DB.prepare('INSERT INTO before_after (id, client_id, before_media, after_media, barber_id, created_by) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(pid, id, b.before, b.after, c.get('admin').barberId, c.get('admin').adminId)
+    .run();
+  return c.json({ id: pid }, 201);
+});
+
+adminRoutes.delete('/before-after/:id', async (c) => {
+  const x = await c.env.DB.prepare('SELECT client_id, before_media, after_media, created_by FROM before_after WHERE id = ?')
+    .bind(c.req.param('id')!)
+    .first<{ client_id: string; before_media: string; after_media: string; created_by: string | null }>();
+  if (!x) throw new HttpError(404, 'not_found');
+  if (!c.get('admin').owner && x.created_by !== c.get('admin').adminId) throw new HttpError(403, 'no_permission');
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM before_after WHERE id = ?').bind(c.req.param('id')!),
+    c.env.DB.prepare('DELETE FROM media WHERE id IN (?, ?)').bind(x.before_media, x.after_media),
+  ]);
+  return c.json({ ok: true });
+});
+
+// --- Mesaje automate (Setări → Notificări) ---
+
+adminRoutes.get('/automations', async (c) => c.json(await getAutomations(c.env)));
+adminRoutes.put('/automations', ownerOnly, async (c) => c.json(await saveAutomations(c.env, await c.req.json())));
+/** Ce ore libere ar anunța acum mesajul de ultim moment. */
+adminRoutes.get('/automations/free-slots', ownerOnly, async (c) => {
+  const s = (await getAutomations(c.env)).lastMinute;
+  return c.json(await freeSlotsSoon(c.env, new Date(), Number(c.req.query('hours')) || s.window));
+});
+/** Câți au apăsat linkul „Programează”, pe surse, în ultimele 30 de zile. */
+adminRoutes.get('/link-stats', ownerOnly, async (c) => {
+  const since = new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10);
+  const r = await c.env.DB.prepare('SELECT src, sum(n) AS n FROM link_clicks WHERE day >= ? GROUP BY src ORDER BY n DESC').bind(since).all<{ src: string; n: number }>();
+  return c.json(r.results);
+});
+
+// --- Carduri cadou ---
+
+const GIFT_SELECT = `SELECT g.*, b.name AS buyer_name, coalesce(nullif(a.name, ''), a.email) AS paid_by_name FROM gift_cards g
+  LEFT JOIN clients b ON b.id = g.buyer_client_id LEFT JOIN admins a ON a.id = g.paid_by`;
+
+adminRoutes.get('/gift-cards', async (c) => {
+  need(c, 'bookings_manage');
+  const st = c.req.query('status');
+  const r = await c.env.DB.prepare(`${GIFT_SELECT} ${st ? 'WHERE g.status = ?' : ''} ORDER BY g.created_at DESC LIMIT 300`)
+    .bind(...(st ? [st] : []))
+    .all<GiftCardRow>();
+  return c.json(r.results.map((g) => giftCard(g, true)));
+});
+
+/** Card vândut direct la salon: se creează și se activează pe loc. */
+adminRoutes.post('/gift-cards', async (c) => {
+  need(c, 'bookings_manage');
+  const b = await c.req.json<{ amount?: number; recipientName?: string; recipientPhone?: string; message?: string }>();
+  const phone = b.recipientPhone?.trim() ? normalizePhone(b.recipientPhone) : null;
+  const id = await createGiftCard(c.env, null, { ...b, recipientPhone: phone });
+  await activateGiftCard(c.env, id, c.get('admin').adminId);
+  const g = await c.env.DB.prepare(`${GIFT_SELECT} WHERE g.id = ?`).bind(id).first<GiftCardRow>();
+  return c.json(giftCard(g!, true), 201);
+});
+
+/** `{ status: 'active' }` = încasat la salon (trimite codul); `{ status: 'cancelled' }` = anulat (doar proprietarul). */
+adminRoutes.patch('/gift-cards/:id', async (c) => {
+  need(c, 'bookings_manage');
+  const b = await c.req.json<{ status?: string }>();
+  const id = c.req.param('id')!;
+  if (b.status === 'active') await activateGiftCard(c.env, id, c.get('admin').adminId);
+  else if (b.status === 'cancelled') {
+    if (!c.get('admin').owner) throw new HttpError(403, 'owner_only');
+    const r = await c.env.DB.prepare(`UPDATE gift_cards SET status = 'cancelled' WHERE id = ? AND status IN ('pending','active')`).bind(id).run();
+    if (!r.meta.changes) throw new HttpError(409, 'not_cancellable');
+  } else throw new HttpError(400, 'invalid_status');
+  const g = await c.env.DB.prepare(`${GIFT_SELECT} WHERE g.id = ?`).bind(id).first<GiftCardRow>();
+  return c.json(giftCard(g!, true));
+});
+
+/** Verificare la casă: soldul unui cod. */
+adminRoutes.get('/gift-cards/check', async (c) => {
+  need(c, 'bookings_manage');
+  const code = String(c.req.query('code') ?? '').trim().toUpperCase().replace(/\s+/g, '');
+  const norm = code.startsWith('TAF-') ? code : code.length === 8 ? `TAF-${code.slice(0, 4)}-${code.slice(4)}` : code;
+  const g = await c.env.DB.prepare(`${GIFT_SELECT} WHERE g.code = ?`).bind(norm).first<GiftCardRow>();
+  if (!g || g.status === 'pending' || g.status === 'cancelled') throw new HttpError(404, 'gift_card_not_found');
+  return c.json(giftCard(g, true));
 });
 
 // --- Ziua de naștere ---

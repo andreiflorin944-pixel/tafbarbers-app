@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type Barber, type Booking, type Checkout, type Me, type Service, type Slot, type TimeOff } from '../api';
+import { api, errorText, type Barber, type Booking, type Checkout, type Me, type Service, type Slot, type TimeOff } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
 import { addDays, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
 
@@ -318,8 +318,25 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState('');
   const [tip, setTip] = useState('');
+  const [giftCode, setGiftCode] = useState('');
+  const [gift, setGift] = useState<{ code: string; take: number; balance: number } | null>(null);
+  const [giftErr, setGiftErr] = useState<string | null>(null);
   const { busy, error, run } = useAction();
   if (!data.data) return <Loading error={data.error} />;
+  const applyGift = async () => {
+    setGiftErr(null);
+    try {
+      const g = await api<{ code: string; balance: number; status: string }>('GET', `/admin/gift-cards/check?code=${encodeURIComponent(giftCode)}`);
+      if (g.status !== 'active') throw new Error(g.status === 'expired' ? 'Cardul cadou a expirat.' : 'Pe cardul cadou nu mai sunt bani.');
+      const take = Math.min(g.balance, b.price);
+      setGift({ code: g.code, take, balance: g.balance });
+      setMode('paid');
+      setAmount(String(Math.max(0, b.price - take)));
+    } catch (e) {
+      setGift(null);
+      setGiftErr(e instanceof Error && !('code' in e) ? e.message : errorText(e));
+    }
+  };
   const sub = data.data.subscription;
   const m = mode ?? (sub ? 'subscription' : 'paid');
   return (
@@ -352,6 +369,17 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
           </select>
         </Field>
       ) : null}
+      {m === 'paid' ? (
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span>Card cadou</span>
+          <input value={giftCode} onChange={(e) => { setGiftCode(e.target.value); setGift(null); }} placeholder="TAF-XXXX-XXXX" style={{ width: 160 }} aria-label="Cod card cadou" />
+          <button className="ghost sm" disabled={!giftCode.trim()} onClick={applyGift}>
+            Folosește
+          </button>
+          {gift ? <span className="success small">Se scad {gift.take} lei de pe card (are {gift.balance} lei). Restul, {amount || 0} lei, se plătește acum.</span> : null}
+          {giftErr ? <span className="err small">{giftErr}</span> : null}
+        </div>
+      ) : null}
       <label className="check">
         Bacșiș (opțional)
         <input type="number" min={0} value={tip} onChange={(e) => setTip(e.target.value)} style={{ width: 110 }} aria-label="Bacșiș" /> lei
@@ -362,12 +390,18 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
           disabled={busy || (m === 'paid' && amount === '')}
           onClick={() =>
             run(async () => {
-              await api('POST', `/admin/bookings/${b.id}/complete`, { payment: m, ...(m === 'paid' && { amount: Number(amount) }), tip: tip ? Number(tip) : null, bonusId: bonusId || null });
+              await api('POST', `/admin/bookings/${b.id}/complete`, {
+                payment: m,
+                ...(m === 'paid' && { amount: Number(amount) }),
+                ...(m === 'paid' && gift && { giftCode: gift.code, giftAmount: gift.take }),
+                tip: tip ? Number(tip) : null,
+                bonusId: bonusId || null,
+              });
               onDone();
             })
           }
         >
-          {m === 'subscription' ? 'Confirmă: pe abonament' : `Confirmă: ${amount || 0} lei`}
+          {m === 'subscription' ? 'Confirmă: pe abonament' : `Confirmă: ${amount || 0} lei${gift ? ` + ${gift.take} lei card cadou` : ''}`}
         </button>
         <button className="ghost" onClick={onCancel}>
           Înapoi

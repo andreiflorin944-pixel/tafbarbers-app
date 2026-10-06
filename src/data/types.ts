@@ -151,3 +151,20 @@ export type Order = {
   createdAt: string;
   items: Array<{ productId: string; name: string; price: number; qty: number }>;
 };
+
+export type GiftCard = {
+  id: string;
+  code: string | null; // apare după ce cardul e plătit la salon
+  amount: number;
+  balance: number;
+  recipientName: string;
+  recipientPhone: string | null;
+  message: string;
+  status: 'pending' | 'active' | 'used' | 'cancelled' | 'expired';
+  paidAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  buyerName?: string | null;
+};
+export type GiftCards = { enabled: boolean; amounts: number[]; validMonths: number; bought: GiftCard[]; received: GiftCard[] };
+export type BeforeAfter = { id: string; before: string; after: string; barberName: string | null; createdAt: string };

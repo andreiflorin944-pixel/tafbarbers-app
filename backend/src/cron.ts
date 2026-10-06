@@ -3,11 +3,12 @@ import { booking, type BookingRow } from './db';
 import type { Env } from './env';
 import { runCampaign } from './campaigns';
 import { greetBirthdays } from './birthday';
-import { sendPush } from './notify';
+import { sendLastMinute, sendWinback } from './growth';
 import { formatLocal, iso } from './time';
 
 /**
  * Rulează la fiecare 5 minute: reminder-e (24h și 2h înainte), campanii programate, urări de ziua clientului,
+ * „Ne e dor de tine”, ore libere de ultim moment,
  * curățenie (sesiuni și coduri expirate). Fiecare reminder se marchează înainte de trimitere,
  * ca o rulare suprapusă să nu-l trimită de două ori.
  */
@@ -28,6 +29,16 @@ export async function scheduled(env: Env) {
     await greetBirthdays(env, new Date(now));
   } catch (e) {
     console.error('birthday greetings failed', e);
+  }
+  try {
+    await sendWinback(env, new Date(now));
+  } catch (e) {
+    console.error('winback failed', e);
+  }
+  try {
+    await sendLastMinute(env, new Date(now));
+  } catch (e) {
+    console.error('last minute failed', e);
   }
 
   await env.DB.batch([
@@ -58,16 +69,5 @@ async function reminders(
     if (!claimed.meta.changes) continue;
     const b = booking(r);
     await notifyBooking(env, b, kind);
-    const tokens = await env.DB.prepare('SELECT token FROM push_tokens WHERE client_id = ?').bind(b.clientId).all<{ token: string }>();
-    if (tokens.results.length) {
-      await sendPush(
-        env,
-        { kind, bookingId: b.id },
-        tokens.results.map((t) => t.token),
-        kind === 'reminder_24h' ? 'Programare mâine' : 'Programare în curând',
-        `${b.serviceName} cu ${b.barberName}, ${formatLocal(env.TIMEZONE, b.start)}`,
-        { bookingId: b.id },
-      );
-    }
   }
 }

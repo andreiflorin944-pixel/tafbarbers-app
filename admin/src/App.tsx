@@ -17,6 +17,8 @@ import { SubscriptionsPage } from './pages/Subscriptions';
 import { BirthdaysPage } from './pages/Birthdays';
 import { DashboardPage } from './pages/Dashboard';
 import { ReportsPage } from './pages/Reports';
+import { NotificationsPage } from './pages/Notifications';
+import { GiftCardsPage } from './pages/GiftCards';
 
 const PAGES = [
   { key: 'calendar', label: 'Programări', show: () => true, el: CalendarPage },
@@ -27,6 +29,7 @@ const PAGES = [
   { key: 'barbers', label: 'Frizeri și program', show: (m: Me) => m.owner, el: BarbersPage },
   { key: 'shop', label: 'Magazin', show: (m: Me) => m.owner || m.permissions.shop, el: ShopPage },
   { key: 'subscriptions', label: 'Abonamente', show: (m: Me) => m.owner, el: SubscriptionsPage },
+  { key: 'giftcards', label: 'Carduri cadou', show: (m: Me) => m.permissions.bookings_manage, el: GiftCardsPage },
   { key: 'birthdays', label: 'Zile de naștere', show: (m: Me) => m.owner, el: BirthdaysPage },
   { key: 'referrals', label: 'Recomandări și bonusuri', show: (m: Me) => m.owner, el: ReferralsPage },
   { key: 'timeoff', label: 'Concedii', show: (m: Me) => m.permissions.timeoff, el: TimeOffPage },
@@ -34,6 +37,7 @@ const PAGES = [
   { key: 'promos', label: 'Bannere aplicație', show: (m: Me) => m.owner, el: PromosPage },
   { key: 'campaigns', label: 'Campanii', show: (m: Me) => m.owner, el: CampaignsPage },
   { key: 'legal', label: 'Regulamente și GDPR', show: (m: Me) => m.owner, el: LegalPage },
+  { key: 'notifications', label: 'Notificări', show: (m: Me) => m.owner, el: NotificationsPage },
   { key: 'settings', label: 'Setări', show: () => true, el: SettingsPage },
 ];
 
