@@ -34,6 +34,17 @@ import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
 import { addPhoto, deletePhoto, getIdentity, parseBirthDate } from '../identity';
 import { getBonuses, getReferralSettings, giveBonus, parseReward, saveReferralSettings, type Reward } from '../referrals';
+import {
+  activateSubscription,
+  completeBooking,
+  getPlans,
+  getSubscriptions,
+  planValues,
+  subscription,
+  undoCompletion,
+  usableSubscription,
+  type PlanInput,
+} from '../subscriptions';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -585,6 +596,97 @@ adminRoutes.patch('/bookings/:id', async (c) => {
   return c.json(await getBooking(c.env, id));
 });
 
+/** Ce trebuie la confirmarea tunsorii: prețul, abonamentul care o poate acoperi și bonusurile active ale clientului. */
+adminRoutes.get('/bookings/:id/checkout', async (c) => {
+  const cur = await bookingForStaff(c);
+  const bonuses = (await getBonuses(c.env, cur.clientId, false)).filter((b) => b.status === 'active');
+  return c.json({
+    booking: cur,
+    subscription: await usableSubscription(c.env, cur.clientId, cur.serviceId),
+    bonuses,
+  });
+});
+
+/** Frizerul confirmă tunsoarea: `{ payment: 'paid', amount }` sau `{ payment: 'subscription' }`, opțional `bonusId`. */
+adminRoutes.post('/bookings/:id/complete', async (c) => {
+  const cur = await bookingForStaff(c);
+  const b = await c.req.json<{ payment?: string; amount?: number; bonusId?: string | null }>();
+  await completeBooking(c.env, cur.id, b, c.get('admin').adminId);
+  return c.json(await getBooking(c.env, cur.id));
+});
+
+/** Anulează confirmarea plății (doar proprietarul). */
+adminRoutes.delete('/bookings/:id/complete', ownerOnly, async (c) => {
+  await undoCompletion(c.env, c.req.param('id')!);
+  return c.json(await getBooking(c.env, c.req.param('id')!));
+});
+
+async function bookingForStaff(c: Context<AppEnv>) {
+  need(c, 'bookings_manage');
+  const cur = await getBooking(c.env, c.req.param('id')!);
+  const scoped = ownBarber(c);
+  if (!cur || (scoped && cur.barberId !== scoped)) throw new HttpError(404, 'not_found');
+  return cur;
+}
+
+// --- Abonamente ---
+
+adminRoutes.get('/plans', async (c) => c.json(await getPlans(c.env, true)));
+
+adminRoutes.post('/plans', ownerOnly, async (c) => {
+  const v = planValues(await c.req.json<PlanInput>(), false);
+  const id = newId('pl');
+  const keys = Object.keys(v);
+  await c.env.DB.prepare(`INSERT INTO plans (id, ${keys.join(', ')}) VALUES (?, ${keys.map(() => '?').join(', ')})`)
+    .bind(id, ...Object.values(v))
+    .run();
+  return c.json({ id }, 201);
+});
+
+adminRoutes.patch('/plans/:id', ownerOnly, async (c) => {
+  await update(c.env.DB, 'plans', c.req.param('id')!, planValues(await c.req.json<PlanInput>(), true));
+  return c.json({ ok: true });
+});
+
+adminRoutes.delete('/plans/:id', ownerOnly, async (c) => {
+  await c.env.DB.prepare('DELETE FROM plans WHERE id = ?').bind(c.req.param('id')!).run();
+  return c.json({ ok: true });
+});
+
+/** Abonamentele vândute (cu dreptul „clients”); `?all=1` include și cele expirate sau anulate. */
+adminRoutes.get('/subscriptions', async (c) => {
+  need(c, 'clients');
+  const all = c.req.query('all') === '1';
+  const r = await c.env.DB.prepare(
+    `SELECT s.*, a.name AS created_by_name, cl.name AS client_name, cl.phone AS client_phone FROM subscriptions s
+     JOIN clients cl ON cl.id = s.client_id LEFT JOIN admins a ON a.id = s.created_by
+     ${all ? '' : `WHERE s.status = 'active' AND s.ends_at > ?`} ORDER BY s.ends_at ${all ? 'DESC' : ''} LIMIT 500`,
+  )
+    .bind(...(all ? [] : [iso(new Date())]))
+    .all<Parameters<typeof subscription>[0] & { client_name: string; client_phone: string }>();
+  return c.json(r.results.map((x) => ({ ...subscription(x), client: { id: x.client_id, name: x.client_name, phone: x.client_phone } })));
+});
+
+/** Activează un abonament plătit la salon (frizerul clientului sau adminul). */
+adminRoutes.post('/clients/:id/subscriptions', async (c) => {
+  const id = c.req.param('id')!;
+  await needClient(c, id);
+  const b = await c.req.json<{ planId?: string; note?: string }>();
+  if (!b.planId) throw new HttpError(400, 'invalid_body');
+  const sid = await activateSubscription(c.env, id, b.planId, c.get('admin').adminId, String(b.note ?? '').trim());
+  return c.json({ id: sid }, 201);
+});
+
+/** Anulează un abonament (doar proprietarul). */
+adminRoutes.patch('/subscriptions/:id', ownerOnly, async (c) => {
+  const b = await c.req.json<{ status?: string }>();
+  if (b.status !== 'cancelled') throw new HttpError(400, 'invalid_status');
+  await c.env.DB.prepare(`UPDATE subscriptions SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND status = 'active'`)
+    .bind(iso(new Date()), c.req.param('id')!)
+    .run();
+  return c.json({ ok: true });
+});
+
 // --- Clienți ---
 
 adminRoutes.get('/clients', async (c) => {
@@ -645,6 +747,7 @@ adminRoutes.get('/clients/:id', async (c) => {
     bookings: bk.results.map(booking),
     identity: await getIdentity(c.env, id, true),
     bonuses: await getBonuses(c.env, id, true),
+    subscriptions: await getSubscriptions(c.env, id, true),
     referredBy: ref,
     referredCount: referred?.n ?? 0,
   });
@@ -886,11 +989,12 @@ adminRoutes.get('/stats', async (c) => {
   const now = new Date();
   const dayAgo30 = iso(new Date(now.getTime() - 30 * 86_400_000));
   const db = c.env.DB;
-  const [upcoming, month, clients, messages] = await Promise.all([
+  const [upcoming, month, clients, messages, subs] = await Promise.all([
     db.prepare(`SELECT count(*) AS n FROM bookings WHERE status = 'confirmed' AND starts_at > ? ${f}`).bind(...args(iso(now))).first<{ n: number }>(),
     db
       .prepare(
-        `SELECT count(*) AS n, coalesce(sum(price_bani), 0) AS revenue,
+        `SELECT count(*) AS n,
+           coalesce(sum(CASE WHEN status = 'cancelled' THEN 0 WHEN payment = 'paid' THEN paid_bani WHEN payment = 'subscription' THEN 0 ELSE price_bani END), 0) AS revenue,
            sum(status = 'cancelled') AS cancelled, sum(status = 'no_show') AS no_show
          FROM bookings WHERE starts_at >= ? AND starts_at < ? ${f}`,
       )
@@ -898,12 +1002,19 @@ adminRoutes.get('/stats', async (c) => {
       .first<{ n: number; revenue: number; cancelled: number; no_show: number }>(),
     db.prepare('SELECT count(*) AS n FROM clients WHERE created_at >= ?').bind(dayAgo30).first<{ n: number }>(),
     db.prepare(`SELECT channel, count(*) AS n FROM message_log WHERE created_at >= ? AND status = 'sent' GROUP BY channel`).bind(dayAgo30).all<{ channel: string; n: number }>(),
+    // Abonamentele vândute în perioadă (frizerul vede doar ce a activat el).
+    db
+      .prepare(`SELECT count(*) AS n, coalesce(sum(price_bani), 0) AS revenue FROM subscriptions WHERE status != 'cancelled' AND created_at >= ? ${scoped ? 'AND created_by = ?' : ''}`)
+      .bind(...(scoped ? [dayAgo30, c.get('admin').adminId] : [dayAgo30]))
+      .first<{ n: number; revenue: number }>(),
   ]);
   return c.json({
     upcoming: upcoming?.n ?? 0,
     last30: {
       bookings: month?.n ?? 0,
-      revenue: showMoney ? (month?.revenue ?? 0) / 100 : null,
+      // Încasări: tunsorile plătite (suma confirmată de frizer) plus abonamentele vândute; tunsorile pe abonament nu se mai numără o dată.
+      revenue: showMoney ? ((month?.revenue ?? 0) + (subs?.revenue ?? 0)) / 100 : null,
+      subscriptionsSold: subs?.n ?? 0,
       cancelled: month?.cancelled ?? 0,
       noShow: month?.no_show ?? 0,
       newClients: c.get('admin').perms.clients ? (clients?.n ?? 0) : null,
@@ -928,7 +1039,7 @@ function validPassword(p: unknown) {
   if (typeof p !== 'string' || p.length < 10) throw new HttpError(400, 'password_too_short');
 }
 
-const TABLES = new Set(['services', 'barbers', 'bookings', 'clients', 'promos', 'products']);
+const TABLES = new Set(['services', 'barbers', 'bookings', 'clients', 'promos', 'products', 'plans']);
 async function update(db: D1Database, table: string, id: string, v: Record<string, unknown>) {
   if (!TABLES.has(table)) throw new Error('bad table');
   const keys = Object.keys(v);

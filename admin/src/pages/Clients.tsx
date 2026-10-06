@@ -3,6 +3,7 @@ import { api, getToken, uploadImageTo, type Client, type ClientPhoto, type Me } 
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
 import { date, lei, STATUS, time } from '../util';
 import { ClientBonuses } from './Referrals';
+import { ClientSubscriptions } from './Subscriptions';
 
 async function downloadCsv() {
   const res = await fetch('/v1/admin/clients.csv', { headers: { Authorization: `Bearer ${getToken()}` } });
@@ -113,6 +114,8 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
             </div>
           ) : null}
           <ClientBonuses clientId={id} bonuses={c.data.bonuses ?? []} owner={canDelete} onChange={c.reload} />
+          <h2 style={{ margin: '6px 0 0' }}>Abonament</h2>
+          <ClientSubscriptions clientId={id} subs={c.data.subscriptions ?? []} owner={canDelete} onChange={c.reload} />
           <h2 style={{ margin: '6px 0 0' }}>TAF Identity (de la client)</h2>
           {c.data.identity?.note ? <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{c.data.identity.note}</div> : null}
           <Photos list={c.data.identity?.photos ?? []} />
@@ -184,7 +187,8 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
                   {date(b.start)}, {time(b.start)} · {b.serviceName} · {b.barberName}
                 </span>
                 <span>
-                  {lei(b.price)} <span className={`pill ${b.status}`}>{STATUS[b.status]}</span>
+                  {b.payment === 'subscription' ? 'pe abonament' : lei(b.payment === 'paid' ? (b.paidAmount ?? b.price) : b.price)}{' '}
+                  <span className={`pill ${b.status}`}>{STATUS[b.status]}</span>
                 </span>
               </div>
             ))}

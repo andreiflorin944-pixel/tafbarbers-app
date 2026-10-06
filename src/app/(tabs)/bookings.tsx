@@ -66,7 +66,8 @@ export default function Bookings() {
         </View>
         <Text style={styles.text}>{service?.name ?? b.serviceName}</Text>
         <Text style={styles.muted}>
-          cu {barberById(b.barberId)?.name ?? b.barberName} · {b.price ?? service?.price} lei
+          cu {barberById(b.barberId)?.name ?? b.barberName} ·{' '}
+          {b.payment === 'subscription' ? 'pe abonament' : `${b.payment === 'paid' ? b.paidAmount : (b.price ?? service?.price)} lei`}
         </Text>
         {canCancel && start.getTime() - Date.now() < cancelMs ? (
           <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>

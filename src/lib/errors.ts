@@ -29,6 +29,12 @@ const RO: Record<string, string> = {
   out_of_stock: 'Unul dintre produse nu mai e pe stoc în cantitatea aleasă. Am actualizat lista, verifică coșul.',
   product_unavailable: 'Unul dintre produse nu mai e disponibil. Am actualizat coșul.',
   too_many_open_orders: 'Ai deja 3 comenzi nepreluate. Ridică-le sau anulează una ca să faci alta.',
+  no_active_subscription: 'Clientul nu are un abonament activ (cu tunsori rămase) pentru acest serviciu.',
+  already_completed: 'Tunsoarea a fost deja confirmată.',
+  booking_cancelled: 'Programarea e anulată.',
+  plan_not_found: 'Abonamentul nu mai există sau e ascuns.',
+  invalid_amount: 'Suma nu e corectă.',
+  bonus_not_active: 'Bonusul nu mai e activ.',
   not_cancellable: 'Comanda e deja pregătită și nu mai poate fi anulată din aplicație. Sună-ne, te rog.',
 };
 

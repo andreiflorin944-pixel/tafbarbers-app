@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type Barber, type Booking, type Me, type Service, type Slot, type TimeOff } from '../api';
+import { api, type Barber, type Booking, type Checkout, type Me, type Service, type Slot, type TimeOff } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
 import { addDays, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
 
@@ -7,7 +7,7 @@ const PX = 1.2; // pixeli pe minut
 
 type Stats = {
   upcoming: number;
-  last30: { bookings: number; revenue: number | null; cancelled: number; noShow: number; newClients: number | null };
+  last30: { bookings: number; revenue: number | null; subscriptionsSold?: number; cancelled: number; noShow: number; newClients: number | null };
 };
 
 export function CalendarPage({ me }: { me: Me }) {
@@ -61,7 +61,8 @@ export function CalendarPage({ me }: { me: Me }) {
         <div className="grid stats">
           <Stat v={stats.data.upcoming} l="programări viitoare" />
           <Stat v={stats.data.last30.bookings} l="programări, ultimele 30 de zile" />
-          {stats.data.last30.revenue !== null ? <Stat v={lei(stats.data.last30.revenue)} l="valoare, ultimele 30 de zile" /> : null}
+          {stats.data.last30.revenue !== null ? <Stat v={lei(stats.data.last30.revenue)} l="încasări (tunsori + abonamente), 30 de zile" /> : null}
+          {stats.data.last30.subscriptionsSold ? <Stat v={stats.data.last30.subscriptionsSold} l="abonamente vândute, 30 de zile" /> : null}
           {stats.data.last30.newClients !== null ? <Stat v={stats.data.last30.newClients} l="clienți noi, 30 de zile" /> : null}
           <Stat v={stats.data.last30.cancelled + stats.data.last30.noShow} l="anulări și neprezentări" />
         </div>
@@ -179,7 +180,7 @@ export function CalendarPage({ me }: { me: Me }) {
         </details>
       ) : null}
 
-      {open ? <BookingModal b={open} canManage={me.permissions.bookings_manage} onClose={() => setOpen(null)} onChange={reload} /> : null}
+      {open ? <BookingModal b={open} canManage={me.permissions.bookings_manage} owner={me.owner} onClose={() => setOpen(null)} onChange={reload} /> : null}
       {create && meta.data ? (
         <NewBooking
           me={me}
@@ -208,9 +209,10 @@ function Stat({ v, l }: { v: string | number; l: string }) {
   );
 }
 
-function BookingModal({ b, canManage, onClose, onChange }: { b: Booking; canManage: boolean; onClose: () => void; onChange: () => void }) {
+function BookingModal({ b, canManage, owner, onClose, onChange }: { b: Booking; canManage: boolean; owner: boolean; onClose: () => void; onChange: () => void }) {
   const { busy, error, run } = useAction();
   const [note, setNote] = useState(b.note);
+  const [checkout, setCheckout] = useState(false);
   const set = (patch: Record<string, string>) =>
     run(async () => {
       await api('PATCH', `/admin/bookings/${b.id}`, patch);
@@ -218,6 +220,7 @@ function BookingModal({ b, canManage, onClose, onChange }: { b: Booking; canMana
       onClose();
     });
   const past = Date.parse(b.start) < Date.now();
+  const canComplete = past && (b.status === 'confirmed' || (b.status === 'completed' && !b.payment));
 
   return (
     <Modal title={`${time(b.start)} · ${b.serviceName}`} onClose={onClose}>
@@ -232,28 +235,55 @@ function BookingModal({ b, canManage, onClose, onChange }: { b: Booking; canMana
         <div>
           <span className={`pill ${b.status}`}>{STATUS[b.status]}</span>{' '}
           <span className="muted small">{b.source === 'admin' ? 'adăugată din panou' : 'din aplicație'}</span>
+          {b.payment ? <strong className="small"> · {b.payment === 'subscription' ? 'pe abonament' : `a plătit ${lei(b.paidAmount ?? b.price)}`}</strong> : null}
         </div>
         <Field label="Notiță internă">
           <textarea value={note} onChange={(e) => setNote(e.target.value)} disabled={!canManage} />
         </Field>
         {error ? <div className="err">{error}</div> : null}
-        <div className="row" style={{ display: canManage ? undefined : 'none' }}>
+        {canManage && canComplete && checkout ? (
+          <CheckoutForm
+            b={b}
+            onCancel={() => setCheckout(false)}
+            onDone={() => {
+              onChange();
+              onClose();
+            }}
+          />
+        ) : null}
+        <div className="row" style={{ display: canManage && !checkout ? undefined : 'none' }}>
           {note !== b.note ? (
             <button disabled={busy} onClick={() => set({ note })}>
               Salvează notița
             </button>
           ) : null}
-          {b.status === 'confirmed' && past ? (
-            <>
-              <button disabled={busy} onClick={() => set({ status: 'completed' })}>
-                Finalizată
-              </button>
-              <button className="ghost" disabled={busy} onClick={() => set({ status: 'no_show' })}>
-                Nu s-a prezentat
-              </button>
-            </>
+          {canComplete ? (
+            <button disabled={busy} onClick={() => setCheckout(true)}>
+              Finalizată
+            </button>
           ) : null}
-          {b.status !== 'confirmed' && b.status !== 'cancelled' ? (
+          {b.status === 'confirmed' && past ? (
+            <button className="ghost" disabled={busy} onClick={() => set({ status: 'no_show' })}>
+              Nu s-a prezentat
+            </button>
+          ) : null}
+          {b.payment && owner ? (
+            <button
+              className="ghost"
+              disabled={busy}
+              onClick={() =>
+                confirm('Anulezi confirmarea plății? Tunsoarea revine în abonament și bonusul folosit redevine activ.') &&
+                run(async () => {
+                  await api('DELETE', `/admin/bookings/${b.id}/complete`);
+                  onChange();
+                  onClose();
+                })
+              }
+            >
+              Anulează confirmarea plății
+            </button>
+          ) : null}
+          {b.status !== 'confirmed' && b.status !== 'cancelled' && !b.payment ? (
             <button className="ghost" disabled={busy} onClick={() => set({ status: 'confirmed' })}>
               Readu la confirmată
             </button>
@@ -270,6 +300,67 @@ function BookingModal({ b, canManage, onClose, onChange }: { b: Booking; canMana
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** Confirmarea tunsorii: „a plătit X lei” sau „pe abonament”, plus un bonus folosit (opțional). */
+function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => void; onDone: () => void }) {
+  const data = useLoad(() => api<Checkout>('GET', `/admin/bookings/${b.id}/checkout`), [b.id]);
+  const [mode, setMode] = useState<'paid' | 'subscription' | null>(null);
+  const [amount, setAmount] = useState(String(b.price));
+  const [bonusId, setBonusId] = useState('');
+  const { busy, error, run } = useAction();
+  if (!data.data) return <Loading error={data.error} />;
+  const sub = data.data.subscription;
+  const m = mode ?? (sub ? 'subscription' : 'paid');
+  return (
+    <div className="card grid">
+      <b>Cum a plătit?</b>
+      <label className="check">
+        <input type="radio" checked={m === 'paid'} onChange={() => setMode('paid')} /> A plătit
+        <input type="number" min={0} value={amount} onChange={(e) => { setMode('paid'); setAmount(e.target.value); }} style={{ width: 110 }} aria-label="Suma plătită" /> lei
+      </label>
+      <label className="check" style={{ opacity: sub ? 1 : 0.5 }}>
+        <input type="radio" disabled={!sub} checked={m === 'subscription'} onChange={() => setMode('subscription')} />
+        <span>
+          Pe abonament{' '}
+          <span className="muted small">
+          {sub
+            ? `· ${sub.name} · ${sub.cutsTotal === null ? 'nelimitat' : `${sub.cutsLeft} din ${sub.cutsTotal} rămase`} · până pe ${longDate(sub.endsAt)}`
+            : '· clientul nu are abonament activ pentru acest serviciu'}
+          </span>
+        </span>
+      </label>
+      {data.data.bonuses.length ? (
+        <Field label="Folosește un bonus (opțional)">
+          <select value={bonusId} onChange={(e) => setBonusId(e.target.value)}>
+            <option value="">Fără bonus</option>
+            {data.data.bonuses.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      {error ? <div className="err">{error}</div> : null}
+      <div className="row">
+        <button
+          disabled={busy || (m === 'paid' && amount === '')}
+          onClick={() =>
+            run(async () => {
+              await api('POST', `/admin/bookings/${b.id}/complete`, { payment: m, ...(m === 'paid' && { amount: Number(amount) }), bonusId: bonusId || null });
+              onDone();
+            })
+          }
+        >
+          {m === 'subscription' ? 'Confirmă: pe abonament' : `Confirmă: ${amount || 0} lei`}
+        </button>
+        <button className="ghost" onClick={onCancel}>
+          Înapoi
+        </button>
+      </div>
+    </div>
   );
 }
 

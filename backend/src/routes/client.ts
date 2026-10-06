@@ -7,6 +7,7 @@ import { iso } from '../time';
 import { deleteClient, exportClient } from '../gdpr';
 import { createOrder, getOrder, getOrders, setOrderStatus } from '../shop';
 import { myReferrals } from '../referrals';
+import { mySubscriptions } from '../subscriptions';
 import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
 
 export const clientRoutes = new Hono<AppEnv>();
@@ -95,6 +96,7 @@ clientRoutes.delete('/me/identity/photos/:pid', async (c) => {
 });
 
 clientRoutes.get('/me/referrals', async (c) => c.json(await myReferrals(c.env, c.get('client').clientId)));
+clientRoutes.get('/me/subscriptions', async (c) => c.json(await mySubscriptions(c.env, c.get('client').clientId)));
 
 clientRoutes.get('/me/export', async (c) => c.json(await exportClient(c.env, c.get('client').clientId)));
 

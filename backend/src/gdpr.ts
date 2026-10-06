@@ -5,6 +5,7 @@ import { iso } from './time';
 import { getOrders, setOrderStatus } from './shop';
 import { getIdentity, wipeIdentity } from './identity';
 import { getBonuses } from './referrals';
+import { getSubscriptions } from './subscriptions';
 
 /** Toate datele unui client, pentru „Descarcă datele mele” (portabilitate, art. 20 GDPR). */
 export async function exportClient(env: Env, id: string) {
@@ -19,6 +20,7 @@ export async function exportClient(env: Env, id: string) {
   const { notes: _internal, ...profile } = client(c);
   const identity = await getIdentity(env, id, false);
   const bonuses = await getBonuses(env, id, false);
+  const subscriptions = await getSubscriptions(env, id, false);
   return {
     exportedAt: iso(new Date()),
     profile: { ...profile, termsAcceptedAt: c.terms_accepted_at },
@@ -30,6 +32,7 @@ export async function exportClient(env: Env, id: string) {
     orders,
     tafIdentity: identity,
     bonuses,
+    subscriptions,
     devices: tokens.results,
   };
 }

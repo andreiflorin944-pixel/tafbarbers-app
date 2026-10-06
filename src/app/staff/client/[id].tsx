@@ -5,7 +5,8 @@ import { staffApi, type StaffClient } from '@/api/staff';
 import { BOOKING_STATUS } from '@/components/BookingSheet';
 import { PhotoGrid, PhotoViewer } from '@/components/PhotoViewer';
 import { Avatar, Button, Card, Screen, styles as ui } from '@/components/ui';
-import type { Bonus, IdentityPhoto } from '@/data/types';
+import type { Bonus, IdentityPhoto, Plan } from '@/data/types';
+import { SubscriptionRow } from '@/components/SubscriptionRow';
 import { BonusRow } from '@/components/BonusRow';
 import { ageFrom, formatBirth, formatDate, formatTime } from '@/lib/dates';
 import { pickImage } from '@/lib/pickImage';
@@ -23,16 +24,20 @@ export default function StaffClient() {
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [view, setView] = useState<{ list: IdentityPhoto[]; i: number } | null>(null);
+  const [plans, setPlans] = useState<Plan[] | null>(null);
 
+  const load = () =>
+    staffToken && id
+      ? staffApi.client(staffToken, id).then(
+          (x) => {
+            setC(x);
+            setNotes(x.notes ?? '');
+          },
+          (e) => setMsg({ ok: false, text: errorMessage(e) }),
+        )
+      : undefined;
   useEffect(() => {
-    if (!staffToken || !id) return;
-    staffApi.client(staffToken, id).then(
-      (x) => {
-        setC(x);
-        setNotes(x.notes ?? '');
-      },
-      (e) => setMsg({ ok: false, text: errorMessage(e) }),
-    );
+    load();
   }, [staffToken, id]);
 
   if (!staff || !staffToken) return null;
@@ -74,6 +79,34 @@ export default function StaffClient() {
     Alert.alert('Bonus folosit', text, [
       { text: 'Nu', style: 'cancel' },
       { text: 'Da', onPress: go },
+    ]);
+  };
+
+  const subs = c.subscriptions ?? [];
+  const openPlans = async () => {
+    setMsg(null);
+    try {
+      setPlans((await staffApi.plans(staffToken)).filter((p) => p.active !== false));
+    } catch (e) {
+      setMsg({ ok: false, text: errorMessage(e) });
+    }
+  };
+  const activate = (p: Plan) => {
+    const go = async () => {
+      try {
+        await staffApi.activateSubscription(staffToken, c.id, p.id);
+        setPlans(null);
+        await load();
+        setMsg({ ok: true, text: `Abonamentul „${p.name}” e activ.` });
+      } catch (e) {
+        setMsg({ ok: false, text: errorMessage(e) });
+      }
+    };
+    const text = `Clientul a plătit ${p.price} lei la salon pentru „${p.name}”?`;
+    if (Platform.OS === 'web') return window.confirm(text) && go();
+    Alert.alert('Activează abonamentul', text, [
+      { text: 'Nu', style: 'cancel' },
+      { text: 'Da, activează', onPress: go },
     ]);
   };
 
@@ -146,6 +179,32 @@ export default function StaffClient() {
         </Text>
       ) : null}
 
+      <Text style={[ui.label, { color: colors.gold }]}>Abonament</Text>
+      <View style={{ gap: space.sm }}>
+        {subs.length === 0 ? <Text style={ui.muted}>Nu are abonament.</Text> : null}
+        {subs.map((x) => (
+          <SubscriptionRow key={x.id} s={x} staff />
+        ))}
+        {plans ? (
+          <>
+            <Text style={ui.muted}>{plans.length ? 'Alege abonamentul plătit la salon:' : 'Nu există abonamente. Adminul le adaugă din panou.'}</Text>
+            {plans.map((p) => (
+              <Card key={p.id} onPress={() => activate(p)}>
+                <Text style={ui.cardTitle}>
+                  {p.name} · {p.price} lei
+                </Text>
+                <Text style={[ui.muted, { fontSize: 13 }]}>
+                  {p.periodDays} zile · {p.cuts === null ? 'tunsori nelimitate' : `${p.cuts} ${p.cuts === 1 ? 'tunsoare' : 'tunsori'}`}
+                </Text>
+              </Card>
+            ))}
+            <Button title="Renunță" variant="ghost" onPress={() => setPlans(null)} />
+          </>
+        ) : (
+          <Button title="+ Activează abonament" variant="ghost" onPress={openPlans} />
+        )}
+      </View>
+
       <Text style={[ui.label, { color: colors.gold }]}>TAF Identity (de la client)</Text>
       {identity.note ? (
         <Card>
@@ -193,7 +252,8 @@ export default function StaffClient() {
             </View>
             <Text style={ui.muted}>
               {b.serviceName} · {b.barberName}
-              {staff.permissions.stats ? ` · ${b.price} lei` : ''}
+              {staff.permissions.stats && !b.payment ? ` · ${b.price} lei` : ''}
+              {b.payment === 'subscription' ? ' · pe abonament' : b.payment === 'paid' ? ` · a plătit ${b.paidAmount} lei` : ''}
             </Text>
           </Card>
         ))}

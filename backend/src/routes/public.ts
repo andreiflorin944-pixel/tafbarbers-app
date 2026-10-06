@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { availability } from '../availability';
 import { createSession, deleteSession, normalizePhone, randomCode, sha256, newId, timingSafeEqual, tokenFrom } from '../auth';
+import { getPlans } from '../subscriptions';
 import { barber, BARBER_SERVICE_COLS, getBusiness, promo, service, type BarberRow, type PromoRow, type ServiceRow } from '../db';
 import { HttpError, type AppEnv } from '../env';
 import { msg, otpEmail } from '../messages';
@@ -58,6 +59,8 @@ publicRoutes.get('/barbers', async (c) => {
   ).all<BarberRow>();
   return c.json(r.results.map(barber));
 });
+
+publicRoutes.get('/plans', async (c) => c.json(await getPlans(c.env, false)));
 
 publicRoutes.get('/promos', async (c) => {
   const now = iso(new Date());

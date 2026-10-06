@@ -123,6 +123,11 @@ export type BookingRow = {
   source: string;
   note: string;
   created_at: string;
+  payment?: string | null;
+  paid_bani?: number | null;
+  subscription_id?: string | null;
+  bonus_id?: string | null;
+  completed_at?: string | null;
   client_name?: string;
   client_phone?: string;
   service_name?: string;
@@ -140,6 +145,12 @@ export const booking = (r: BookingRow) => ({
   source: r.source,
   note: r.note,
   createdAt: r.created_at,
+  // La finalizare frizerul confirmă plata: suma încasată sau pe abonament.
+  payment: (r.payment ?? null) as 'paid' | 'subscription' | null,
+  paidAmount: r.paid_bani === null || r.paid_bani === undefined ? null : r.paid_bani / 100,
+  subscriptionId: r.subscription_id ?? null,
+  bonusId: r.bonus_id ?? null,
+  completedAt: r.completed_at ?? null,
   ...(r.client_name !== undefined && { clientName: r.client_name, clientPhone: r.client_phone }),
   ...(r.service_name !== undefined && { serviceName: r.service_name, barberName: r.barber_name }),
 });

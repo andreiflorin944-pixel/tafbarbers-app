@@ -31,7 +31,8 @@ export default function StaffHome() {
   if (!staff) return null;
   const list = (today ?? []).filter((b) => b.status !== 'cancelled').sort((a, b) => a.start.localeCompare(b.start));
   const upcoming = list.filter((b) => new Date(b.end).getTime() > Date.now());
-  const revenue = list.reduce((s, b) => s + b.price, 0);
+  // Ce s-a confirmat ca plătit; tunsorile pe abonament nu intră, celelalte după prețul din listă.
+  const revenue = list.reduce((s, b) => s + (b.payment === 'subscription' ? 0 : b.payment === 'paid' ? (b.paidAmount ?? b.price) : b.price), 0);
   const hour = new Date().getHours();
   const hello = hour < 12 ? 'Bună dimineața' : hour < 18 ? 'Bună ziua' : 'Bună seara';
 

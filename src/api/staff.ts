@@ -1,4 +1,4 @@
-import type { Bonus, Identity, IdentityPhoto } from '@/data/types';
+import type { Bonus, Identity, IdentityPhoto, Plan, Subscription } from '@/data/types';
 import Constants from 'expo-constants';
 import { ApiError } from './client';
 
@@ -25,7 +25,12 @@ export type StaffBooking = {
   clientPhone: string;
   serviceName: string;
   barberName: string;
+  // Confirmarea frizerului la finalizare: suma plătită sau pe abonament.
+  payment?: 'paid' | 'subscription' | null;
+  paidAmount?: number | null;
+  bonusId?: string | null;
 };
+export type StaffCheckout = { booking: StaffBooking; subscription: Subscription | null; bonuses: Bonus[] };
 
 async function call<T>(method: string, path: string, token: string | null, body?: unknown): Promise<T> {
   if (!apiUrl) throw new ApiError('no_server', 0);
@@ -77,6 +82,12 @@ export const staffApi = {
     if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
     return json as IdentityPhoto;
   },
+  checkout: (t: string, id: string) => call<StaffCheckout>('GET', `/admin/bookings/${encodeURIComponent(id)}/checkout`, t),
+  complete: (t: string, id: string, body: { payment: 'paid' | 'subscription'; amount?: number; bonusId?: string | null }) =>
+    call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/complete`, t, body),
+  plans: (t: string) => call<Plan[]>('GET', '/admin/plans', t),
+  activateSubscription: (t: string, clientId: string, planId: string) =>
+    call<{ id: string }>('POST', `/admin/clients/${encodeURIComponent(clientId)}/subscriptions`, t, { planId }),
   useBonus: (t: string, bonusId: string) => call<{ ok: true }>('PATCH', `/admin/bonuses/${encodeURIComponent(bonusId)}`, t, { status: 'used' }),
   deleteClientPhoto: (t: string, id: string, pid: string) => call<{ ok: true }>('DELETE', `/admin/clients/${encodeURIComponent(id)}/photos/${encodeURIComponent(pid)}`, t),
   stats: (t: string) => call<StaffStats>('GET', '/admin/stats', t),
@@ -107,6 +118,7 @@ export type StaffClient = {
   photoUrl?: string | null;
   identity?: Identity;
   bonuses?: Bonus[];
+  subscriptions?: Subscription[];
   referredBy?: { id: string; name: string } | null;
   referredCount?: number;
   visits?: number;

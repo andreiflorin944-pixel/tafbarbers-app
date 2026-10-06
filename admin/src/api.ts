@@ -82,6 +82,17 @@ const MESSAGES: Record<string, string> = {
   invalid_color: 'Culoarea nu e corectă.',
   invalid_stock: 'Stocul trebuie să fie un număr întreg (sau gol, fără limită).',
   invalid_transition: 'Comanda și-a schimbat deja starea. Reîncarcă pagina.',
+  no_active_subscription: 'Clientul nu are un abonament activ (cu tunsori rămase) pentru acest serviciu.',
+  already_completed: 'Tunsoarea a fost deja confirmată.',
+  booking_cancelled: 'Programarea e anulată.',
+  plan_not_found: 'Abonamentul nu mai există sau e ascuns.',
+  invalid_amount: 'Suma nu e corectă.',
+  bonus_not_active: 'Bonusul nu mai e activ.',
+  invalid_period: 'Perioada trebuie să fie între 1 și 3650 de zile.',
+  invalid_cuts: 'Numărul de tunsori trebuie să fie între 1 și 1000 (sau bifează Nelimitat).',
+  not_completed: 'Programarea nu e confirmată ca plătită.',
+  title_required: 'Completează ce vede clientul.',
+  invalid_value: 'Verifică valoarea și valabilitatea.',
 };
 export const errorText = (e: unknown) =>
   e instanceof ApiError ? (MESSAGES[e.code] ?? `Eroare: ${e.code}`) : 'A apărut o problemă.';
@@ -196,7 +207,30 @@ export type Booking = {
   clientPhone: string;
   serviceName: string;
   barberName: string;
+  payment?: 'paid' | 'subscription' | null;
+  paidAmount?: number | null;
+  bonusId?: string | null;
 };
+export type Plan = { id: string; name: string; description: string; price: number; periodDays: number; cuts: number | null; serviceIds: string[]; sort: number; active: boolean };
+export type Subscription = {
+  id: string;
+  planId: string | null;
+  name: string;
+  price: number;
+  cutsTotal: number | null;
+  cutsUsed: number;
+  cutsLeft: number | null;
+  serviceIds: string[];
+  startsAt: string;
+  endsAt: string;
+  state: 'active' | 'upcoming' | 'expired' | 'used_up' | 'cancelled';
+  note: string;
+  createdAt: string;
+  cancelledAt: string | null;
+  createdByName?: string | null;
+  client?: { id: string; name: string; phone: string };
+};
+export type Checkout = { booking: Booking; subscription: Subscription | null; bonuses: Bonus[] };
 export type BonusKind = 'percent' | 'amount' | 'free' | 'other';
 export type Reward = { title: string; kind: BonusKind; value: number | null; validDays: number | null };
 export type ReferralSettings = { enabled: boolean; auto: boolean; standard: Reward };
@@ -232,6 +266,7 @@ export type Client = {
   photoUrl?: string | null;
   identity?: { note: string; photos: ClientPhoto[]; staffPhotos?: ClientPhoto[] };
   bonuses?: Bonus[];
+  subscriptions?: Subscription[];
   referredBy?: { id: string; name: string } | null;
   referredCount?: number;
   visits?: number;

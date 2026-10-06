@@ -197,6 +197,11 @@ function ClientAccount() {
           <Text style={[styles.text, { flex: 1 }]}>Bonusuri și recomandări</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />
         </Pressable>
+        <Pressable style={styles.row} onPress={() => router.push('/subscriptions')} accessibilityRole="button">
+          <Icon name="ribbon" />
+          <Text style={[styles.text, { flex: 1 }]}>Abonamente</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
       </Card>
 
       <Text style={styles.label}>Nume</Text>

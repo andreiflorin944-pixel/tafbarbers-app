@@ -38,6 +38,8 @@ export type Booking = {
   status: BookingStatus;
   serviceName?: string;
   barberName?: string;
+  payment?: 'paid' | 'subscription' | null;
+  paidAmount?: number | null;
 };
 
 export type Me = {
@@ -64,6 +66,24 @@ export type Bonus = {
   createdAt: string;
   usedAt: string | null;
   referralName?: string | null;
+};
+export type Plan = { id: string; name: string; description: string; price: number; periodDays: number; cuts: number | null; serviceIds: string[]; sort?: number; active?: boolean };
+export type Subscription = {
+  id: string;
+  planId: string | null;
+  name: string;
+  price: number;
+  cutsTotal: number | null;
+  cutsUsed: number;
+  cutsLeft: number | null;
+  serviceIds: string[];
+  startsAt: string;
+  endsAt: string;
+  state: 'active' | 'upcoming' | 'expired' | 'used_up' | 'cancelled';
+  createdAt: string;
+  cancelledAt: string | null;
+  note?: string;
+  createdByName?: string | null;
 };
 export type Referrals = { enabled: boolean; code: string; referred: number; reward: string | null; bonuses: Bonus[] };
 export type Identity = { note: string; photos: IdentityPhoto[]; staffPhotos?: IdentityPhoto[] };

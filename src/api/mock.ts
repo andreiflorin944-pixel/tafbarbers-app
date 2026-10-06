@@ -131,6 +131,14 @@ export const mockApi: BookingApi = {
         { id: 'bn-demo', title: '10% reducere la următoarea tunsoare', kind: 'percent', value: 10, source: 'referral', status: 'active', expiresAt: null, createdAt: new Date().toISOString(), usedAt: null },
       ],
     }),
+  getSubscriptions: () =>
+    delay({
+      plans: [
+        { id: 'pl-4', name: 'Lunar 4 tunsori', description: 'Patru tunsori clasice într-o lună.', price: 150, periodDays: 30, cuts: 4, serviceIds: ['svc-classic'] },
+        { id: 'pl-u', name: 'Nelimitat', description: 'Tunsori și barbă oricât de des într-o lună.', price: 250, periodDays: 30, cuts: null, serviceIds: [] },
+      ],
+      subscriptions: [],
+    }),
   async saveIdentityNote(token, note) {
     identityOf(token).note = note;
     return delay(identityOf(token));
