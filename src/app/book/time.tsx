@@ -37,7 +37,7 @@ export default function ChooseTime() {
     <Screen edges={['bottom']} scroll={false}>
       <Steps current={3} />
       <Text style={[ui.muted, { marginBottom: space.sm }]}>
-        {service.name} · {barber ? barber.name : 'Oricine e liber'}
+        {service.name} · {barber ? barber.name : 'Orice frizer disponibil'}
       </Text>
 
       <View>

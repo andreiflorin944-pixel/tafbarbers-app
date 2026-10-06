@@ -14,7 +14,7 @@ import { errorMessage } from '@/lib/errors';
 import { useStaff } from '@/state/Staff';
 import { colors, space } from '@/theme';
 
-// Fișa clientului: contact, TAF Identity (de la client), poze și notițe doar pentru echipă, istoric.
+// Fișa clientului: contact, Stilul clientului, poze și notițe doar pentru echipă, istoric.
 export default function StaffClient() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { staff, staffToken } = useStaff();
@@ -208,7 +208,7 @@ export default function StaffClient() {
         )}
       </View>
 
-      <Text style={[ui.label, { color: colors.gold }]}>TAF Identity (de la client)</Text>
+      <Text style={[ui.label, { color: colors.gold }]}>Stilul clientului</Text>
       {identity.note ? (
         <Card>
           <Text style={ui.text}>{identity.note}</Text>

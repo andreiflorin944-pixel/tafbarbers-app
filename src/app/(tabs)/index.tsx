@@ -10,6 +10,7 @@ import { ProductImage } from '@/components/Shop';
 import { useCart } from '@/state/Cart';
 import { Avatar, Button, SectionTitle, styles as ui } from '@/components/ui';
 import type { Promo, Service } from '@/data/types';
+import { whatsappUrl } from '@/lib/contact';
 import { useT } from '@/i18n';
 import { formatDate, formatTime } from '@/lib/dates';
 import { usePriceLabel } from '@/lib/price';
@@ -240,6 +241,12 @@ export default function Home() {
                 <Pressable onPress={() => Linking.openURL(`tel:${business.phone}`)} style={s.pill} accessibilityRole="button">
                   <Ionicons name="call-outline" size={16} color={colors.gold} />
                   <Text style={s.pillText}>{t('home.call')}</Text>
+                </Pressable>
+              ) : null}
+              {business.phone && whatsappUrl(business.phone) ? (
+                <Pressable onPress={() => Linking.openURL(whatsappUrl(business.phone)!)} style={s.pill} accessibilityRole="button">
+                  <Ionicons name="logo-whatsapp" size={16} color={colors.gold} />
+                  <Text style={s.pillText}>{t('home.whatsapp')}</Text>
                 </Pressable>
               ) : null}
               {business.address ? (

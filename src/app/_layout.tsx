@@ -39,7 +39,7 @@ export default function RootLayout() {
             <Stack.Screen name="book/confirm" options={{ title: 'Confirmare' }} />
             <Stack.Screen name="book/success" options={{ headerShown: false, gestureEnabled: false }} />
             <Stack.Screen name="login" options={{ title: 'TAF Barber’s', presentation: 'modal' }} />
-            <Stack.Screen name="identity" options={{ title: 'TAF Identity' }} />
+            <Stack.Screen name="identity" options={{ title: 'Stilul meu' }} />
             <Stack.Screen name="rewards" options={{ title: 'Bonusuri și recomandări' }} />
             <Stack.Screen name="subscriptions" options={{ title: 'Abonamente' }} />
             <Stack.Screen name="gift-cards" options={{ title: 'Carduri cadou' }} />
@@ -48,7 +48,7 @@ export default function RootLayout() {
             <Stack.Screen name="barbers" options={{ title: 'Frizeri' }} />
             <Stack.Screen name="service/[id]" options={{ title: '', headerTransparent: true }} />
             <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
-            <Stack.Screen name="staff/login" options={{ title: 'Intră ca echipă', presentation: 'modal' }} />
+            <Stack.Screen name="staff/login" options={{ title: 'Acces echipă', presentation: 'modal' }} />
             <Stack.Screen name="staff/(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="staff/client/[id]" options={{ title: 'Fișa clientului' }} />
             <Stack.Screen name="staff/orders" options={{ title: 'Comenzi magazin' }} />

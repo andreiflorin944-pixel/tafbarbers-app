@@ -28,7 +28,7 @@ export default function ChooseBarber() {
       <Card onPress={() => pick(null)} selected={draft.barberId === null} style={rowStyle}>
         <Avatar />
         <View style={{ flex: 1 }}>
-          <Text style={styles.cardTitle}>Oricine e liber</Text>
+          <Text style={styles.cardTitle}>Orice frizer disponibil</Text>
           <Text style={styles.muted}>Îți arătăm toate orele disponibile</Text>
         </View>
       </Card>

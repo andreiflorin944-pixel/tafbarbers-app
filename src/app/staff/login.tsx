@@ -50,7 +50,7 @@ export default function StaffLogin() {
       <TextInput value={password} onChangeText={setPassword} style={styles.input} secureTextEntry autoComplete="password" placeholderTextColor={colors.muted} />
       {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
       <View style={{ marginTop: space.lg }}>
-        <Button title="Intră ca echipă" onPress={submit} loading={busy} disabled={!email || !password || usingMock} />
+        <Button title="Intră în cont" onPress={submit} loading={busy} disabled={!email || !password || usingMock} />
       </View>
     </Screen>
   );

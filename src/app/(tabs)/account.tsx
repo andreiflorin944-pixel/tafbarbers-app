@@ -32,7 +32,7 @@ function StaffAccount() {
         <Text style={[styles.muted, { marginBottom: space.md }]}>
           Pentru proprietar și frizeri: agenda zilei, programări noi, anulări. Fiecare frizer vede doar ce i-ai permis din panou.
         </Text>
-        <Button title="Intră ca echipă" onPress={() => router.push('/staff/login')} />
+        <Button title="Acces echipă" onPress={() => router.push('/staff/login')} />
       </>
     );
   }
@@ -78,11 +78,11 @@ function ClientAccount() {
     return (
       <>
         <Text style={[styles.muted, { marginBottom: space.md }]}>
-          Cu un cont ai TAF Identity, bonusuri și recomandări, abonamente, carduri cadou și istoricul programărilor.
+          Cu un cont ai stilul tău salvat, bonusuri și recomandări, abonamente, carduri cadou și istoricul programărilor.
         </Text>
         <Button title="Creează cont" onPress={() => router.push({ pathname: '/login', params: { mode: 'register' } })} />
         <View style={{ marginTop: space.sm, gap: space.sm }}>
-          <Button title="Am deja cont, intru" variant="ghost" onPress={() => router.push('/login')} />
+          <Button title="Intră în cont" variant="ghost" onPress={() => router.push('/login')} />
           <Button title="Magazin" variant="ghost" onPress={() => router.push('/shop')} />
           <Button title="Despre salon" variant="ghost" onPress={() => router.push('/about')} />
         </View>
@@ -186,7 +186,7 @@ function ClientAccount() {
         <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, borderColor: colors.gold }}>
           <Ionicons name="images" size={26} color={colors.gold} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>TAF Identity</Text>
+            <Text style={styles.cardTitle}>Stilul meu</Text>
             <Text style={styles.muted}>Pozele și descrierea tunsorii tale, ca să le arăți simplu frizerului</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />

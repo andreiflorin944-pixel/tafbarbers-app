@@ -3,6 +3,7 @@ import type { ComponentProps } from 'react';
 import { router } from 'expo-router';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { Card, Logo, Screen, SectionTitle, styles } from '@/components/ui';
+import { whatsappUrl } from '@/lib/contact';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
@@ -22,6 +23,7 @@ export default function About() {
         {business.instagram ? <Social icon="logo-instagram" url={`https://instagram.com/${business.instagram}`} /> : null}
         {business.facebook ? <Social icon="logo-facebook" url={business.facebook} /> : null}
         {business.tiktok ? <Social icon="logo-tiktok" url={business.tiktok} /> : null}
+        {business.phone && whatsappUrl(business.phone) ? <Social icon="logo-whatsapp" url={whatsappUrl(business.phone)!} /> : null}
         {business.website ? <Social icon="globe-outline" url={business.website} /> : null}
       </View>
 
@@ -59,6 +61,12 @@ export default function About() {
         <Card style={[styles.row, { marginTop: space.sm }]} onPress={() => Linking.openURL(`tel:${business.phone}`)}>
           <Ionicons name="call" size={18} color={colors.gold} />
           <Text style={styles.text}>{business.phone}</Text>
+        </Card>
+      ) : null}
+      {business.phone && whatsappUrl(business.phone) ? (
+        <Card style={[styles.row, { marginTop: space.sm }]} onPress={() => Linking.openURL(whatsappUrl(business.phone)!)}>
+          <Ionicons name="logo-whatsapp" size={18} color={colors.gold} />
+          <Text style={styles.text}>Scrie-ne pe WhatsApp</Text>
         </Card>
       ) : null}
 

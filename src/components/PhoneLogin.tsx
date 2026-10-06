@@ -28,7 +28,7 @@ export function PhoneLogin({
   initialMode?: Mode;
 }) {
   const { signIn } = useApp();
-  const { lang } = useT();
+  const { lang, t } = useT();
   const [mode, setMode] = useState<Mode>(initialMode ?? (initialRef ? 'register' : 'login'));
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -74,10 +74,10 @@ export function PhoneLogin({
       // Numărul spune dacă e cont nou sau nu; trecem singuri pe tabul potrivit, fără să pierdem ce ai scris.
       if (r.newAccount && !register) {
         setMode('register');
-        setNotice('Nu ai încă un cont pe numărul ăsta. Mai completează câteva date mai jos și e gata.');
+        setNotice(t('login.noAccount'));
       } else if (!r.newAccount && register) {
         setMode('login');
-        setNotice('Ai deja cont pe numărul ăsta. Scrie codul și intri direct.');
+        setNotice(t('login.hasAccount'));
       }
     } catch (e) {
       setError(errorMessage(e));
@@ -130,16 +130,14 @@ export function PhoneLogin({
             accessibilityRole="tab"
             accessibilityState={{ selected: mode === m }}
           >
-            <Text style={[local.tabText, mode === m && local.tabTextOn]}>{m === 'login' ? 'Intră în cont' : 'Creează cont'}</Text>
+            <Text style={[local.tabText, mode === m && local.tabTextOn]}>{t(m === 'login' ? 'login.tabLogin' : 'login.tabRegister')}</Text>
           </Pressable>
         ))}
       </View>
 
-      <Text style={local.headline}>{register ? 'Hai în echipa TAF.' : 'Bine ai revenit.'}</Text>
+      <Text style={local.headline}>{t(register ? 'login.titleRegister' : 'login.titleLogin')}</Text>
       <Text style={local.sub}>
-        {register
-          ? 'Contul e gratuit. Rezervi în câteva secunde, strângi bonusuri și primești cadou de ziua ta.'
-          : 'Fără parole. Îți trimitem un cod de 4 cifre și ești înăuntru.'}
+        {t(register ? 'login.subRegister' : 'login.subLogin')}
       </Text>
 
       {notice ? (
@@ -150,14 +148,14 @@ export function PhoneLogin({
       ) : null}
 
       {register
-        ? field('Cum te cheamă', <TextInput value={name} onChangeText={setName} placeholder="Prenume și nume" placeholderTextColor={colors.muted} style={styles.input} autoComplete="name" />)
+        ? field(t('login.name'), <TextInput value={name} onChangeText={setName} placeholder={t('login.namePh')} placeholderTextColor={colors.muted} style={styles.input} autoComplete="name" />)
         : null}
       {field(
-        'Telefon',
+        t('login.phone'),
         <TextInput value={phone} onChangeText={setPhone} editable={!sentTo} placeholder="07xx xxx xxx" placeholderTextColor={colors.muted} style={[styles.input, sentTo ? local.locked : null]} keyboardType="phone-pad" autoComplete="tel" />,
       )}
       {field(
-        register ? 'E-mail' : 'E-mailul din cont',
+        t(register ? 'login.email' : 'login.emailLogin'),
         <TextInput
           value={email}
           onChangeText={setEmail}
@@ -170,17 +168,17 @@ export function PhoneLogin({
           autoCorrect={false}
           autoComplete="email"
         />,
-        register ? 'Aici primești codul și confirmările.' : 'Codul vine pe e-mail. N-ai acces la e-mail? Îl poți primi și pe SMS.',
+        t(register ? 'login.emailHintRegister' : 'login.emailHintLogin'),
       )}
       {register ? (
         <>
           {field(
-            'Ziua de naștere',
-            <TextInput value={birth} onChangeText={setBirth} placeholder="ZZ.LL.AAAA" placeholderTextColor={colors.muted} style={styles.input} keyboardType="numbers-and-punctuation" maxLength={10} />,
-            birth.length >= 8 && !birthOk ? 'Scrie data așa: 17.05.1990' : 'Ca să-ți trimitem o surpriză de ziua ta.',
+            t('login.birth'),
+            <TextInput value={birth} onChangeText={setBirth} placeholder={t('login.birthPh')} placeholderTextColor={colors.muted} style={styles.input} keyboardType="numbers-and-punctuation" maxLength={10} />,
+            t(birth.length >= 8 && !birthOk ? 'login.birthBad' : 'login.birthHint'),
           )}
           {field(
-            'Cod de recomandare (opțional)',
+            t('login.ref'),
             <TextInput
               value={ref}
               onChangeText={(v) => setRef(v.toUpperCase())}
@@ -191,16 +189,14 @@ export function PhoneLogin({
               autoCorrect={false}
               maxLength={12}
             />,
-            'Te-a trimis un prieten? Scrie codul lui și primiți amândoi bonus.',
+            t('login.refHint'),
           )}
         </>
       ) : null}
 
       {sentTo ? (
         <View style={local.codeBox}>
-          <Text style={local.label}>
-            Codul trimis pe {channel === 'email' ? 'e-mail' : 'SMS'} la {sentTo}
-          </Text>
+          <Text style={local.label}>{t(channel === 'email' ? 'login.codeEmail' : 'login.codeSms', { to: sentTo })}</Text>
           <TextInput
             value={code}
             onChangeText={(v) => setCode(v.replace(/\D/g, ''))}
@@ -226,26 +222,26 @@ export function PhoneLogin({
             }}
             style={{ marginTop: space.sm }}
           >
-            <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Schimbă numărul sau retrimite codul</Text>
+            <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>{t('login.change')}</Text>
           </Pressable>
         </View>
       ) : null}
 
       {register ? (
         <>
-          <Check checked={accepted} onPress={() => setAccepted((a) => !a)} label="Sunt de acord cu termenii și politica de confidențialitate">
-            Sunt de acord cu{' '}
+          <Check checked={accepted} onPress={() => setAccepted((a) => !a)} label={`${t('login.agree')} ${t('login.terms')} ${t('login.and')} ${t('login.privacy')}`}>
+            {t('login.agree')}{' '}
             <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/terms')}>
-              Termenii și condițiile
+              {t('login.terms')}
             </Text>{' '}
-            și cu{' '}
+            {t('login.and')}{' '}
             <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/privacy')}>
-              Politica de confidențialitate
+              {t('login.privacy')}
             </Text>
             .
           </Check>
-          <Check checked={marketing} onPress={() => setMarketing((m) => !m)} label="Vreau să primesc oferte și noutăți">
-            Vreau oferte și noutăți (notificări, e-mail, SMS). Opțional, oprești oricând din cont.
+          <Check checked={marketing} onPress={() => setMarketing((m) => !m)} label={t('login.marketing')}>
+            {t('login.marketing')}
           </Check>
         </>
       ) : null}
@@ -255,21 +251,21 @@ export function PhoneLogin({
       <View style={{ marginTop: space.lg }}>
         {sentTo ? (
           <Button
-            title={submitTitle ?? (register ? 'Creează contul' : 'Intră')}
+            title={submitTitle ?? t(register ? 'login.submitRegister' : 'login.submitLogin')}
             disabled={code.length !== 4 || (register && (!accepted || !birthOk || !emailOk || !nameOk))}
             loading={busy}
             onPress={verify}
           />
         ) : (
           <>
-            <Button title={register ? 'Creează contul' : 'Trimite-mi codul'} disabled={!canSend || !emailOk} loading={busy} onPress={() => send('email')} />
+            <Button title={t(register ? 'login.continue' : 'login.sendCode')} disabled={!canSend || !emailOk} loading={busy} onPress={() => send('email')} />
             <Pressable
               onPress={() => send('sms')}
               disabled={!canSend || busy}
               style={{ marginTop: space.md, alignItems: 'center', opacity: !canSend ? 0.4 : 1 }}
               accessibilityRole="button"
             >
-              <Text style={{ color: colors.gold, fontSize: 14, fontWeight: '600' }}>Primește codul pe SMS</Text>
+              <Text style={{ color: colors.gold, fontSize: 14, fontWeight: '600' }}>{t('login.sendSms')}</Text>
             </Pressable>
           </>
         )}
@@ -277,13 +273,13 @@ export function PhoneLogin({
 
       {!register ? (
         <Text style={[local.hint, { textAlign: 'center', marginTop: space.md }]}>
-          Intrând în cont, ești de acord cu{' '}
+          {t('login.implicit')}{' '}
           <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/terms')}>
-            Termenii
+            {t('login.terms')}
           </Text>{' '}
-          și{' '}
+          {t('login.and')}{' '}
           <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/privacy')}>
-            Politica de confidențialitate
+            {t('login.privacy')}
           </Text>
           .
         </Text>
@@ -291,8 +287,8 @@ export function PhoneLogin({
 
       <Pressable onPress={() => switchMode(register ? 'login' : 'register')} style={{ marginTop: space.lg, alignItems: 'center' }} accessibilityRole="button">
         <Text style={styles.muted}>
-          {register ? 'Ai deja cont? ' : 'Prima dată la TAF? '}
-          <Text style={{ color: colors.gold, fontWeight: '700' }}>{register ? 'Intră în cont' : 'Creează cont'}</Text>
+          {t(register ? 'login.haveAccount' : 'login.noAccountYet')}{' '}
+          <Text style={{ color: colors.gold, fontWeight: '700' }}>{t(register ? 'login.tabLogin' : 'login.tabRegister')}</Text>
         </Text>
       </Pressable>
     </View>
