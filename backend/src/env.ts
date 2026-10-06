@@ -24,6 +24,8 @@ export type Env = {
   SOCIAL_KEY?: string;
   MEDIA?: R2Bucket;
   SOCIAL_MOCK_BASE?: string;
+  // Doar local: server de probă în locul Workers AI pentru asistent.
+  DEV_AI_MOCK_BASE?: string;
   // Doar pentru dezvoltare locală: codul OTP se întoarce în răspuns în loc de SMS.
   DEV_OTP?: string;
 };

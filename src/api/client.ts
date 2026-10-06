@@ -63,6 +63,10 @@ export interface BookingApi {
   cancelOrder(token: string, id: string): Promise<Order>;
   payOrder(token: string, id: string): Promise<{ url: string }>;
   payBooking(token: string, id: string): Promise<{ url: string }>;
+  /** Asistentul: istoricul conversației → răspunsul și, poate, o programare propusă. */
+  assistant(input: { messages: AssistantMsg[]; lang: string }, token?: string | null): Promise<{ reply: string; proposal?: AssistantProposal }>;
+  /** Înregistrarea vocală (fișier local) → text. */
+  assistantVoice(uri: string, lang: string, token?: string | null): Promise<{ text: string }>;
 }
 
 /** Eroare de la server, cu codul lui (ex. `slot_unavailable`). */
@@ -74,3 +78,6 @@ export class ApiError extends Error {
     super(code);
   }
 }
+
+export type AssistantMsg = { role: 'user' | 'assistant'; content: string };
+export type AssistantProposal = { serviceId: string; barberId: string; start: string; serviceName: string; barberName: string; price: number; when: string };

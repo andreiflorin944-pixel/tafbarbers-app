@@ -78,6 +78,8 @@ const ro = {
   'login.haveAccount': 'Ai deja cont?',
   'login.noAccountYet': 'Nu ai cont?',
   'home.whatsapp': 'WhatsApp',
+  'home.assistant': 'Întreabă asistentul',
+  'home.assistantText': 'Scrie sau vorbește: află când e liber frizerul și te programează pe loc.',
 } as const;
 
 type Key = keyof typeof ro;
@@ -154,6 +156,8 @@ const en: Partial<Record<Key, string>> = {
   'login.haveAccount': 'Already have an account?',
   'login.noAccountYet': 'No account yet?',
   'home.whatsapp': 'WhatsApp',
+  'home.assistant': 'Ask the assistant',
+  'home.assistantText': 'Type or talk: find when your barber is free and get booked on the spot.',
 };
 
 const fr: Partial<Record<Key, string>> = {
@@ -227,6 +231,8 @@ const fr: Partial<Record<Key, string>> = {
   'login.haveAccount': 'Vous avez déjà un compte ?',
   'login.noAccountYet': 'Pas encore de compte ?',
   'home.whatsapp': 'WhatsApp',
+  'home.assistant': "Demandez à l'assistant",
+  'home.assistantText': 'Écrivez ou parlez : trouvez quand votre barbier est libre et réservez sur-le-champ.',
 };
 
 const dict: Record<Lang, Partial<Record<Key, string>>> = { ro, en, fr };

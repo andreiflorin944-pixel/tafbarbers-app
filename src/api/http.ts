@@ -95,5 +95,22 @@ export function httpApi(baseUrl: string): BookingApi {
     cancelOrder: (token, id) => call('POST', `/orders/${encodeURIComponent(id)}/cancel`, { token }),
     payOrder: (token, id) => call('POST', `/orders/${encodeURIComponent(id)}/pay`, { token }),
     payBooking: (token, id) => call('POST', `/bookings/${encodeURIComponent(id)}/pay`, { token }),
+    assistant: (input, token) => call('POST', '/assistant', { body: input, token: token ?? undefined }),
+    assistantVoice: async (uri, lang, token) => {
+      let res: Response;
+      try {
+        const blob = await (await fetch(uri)).blob();
+        res = await fetch(`${base}/assistant/voice?lang=${lang}`, {
+          method: 'POST',
+          headers: { 'Content-Type': blob.type || 'audio/m4a', ...(token && { Authorization: `Bearer ${token}` }) },
+          body: blob,
+        });
+      } catch {
+        throw new ApiError('network', 0);
+      }
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+      return json as { text: string };
+    },
   };
 }

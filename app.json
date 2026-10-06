@@ -39,6 +39,12 @@
           "photosPermission": "Aplicația folosește pozele tale doar ca să le atașezi la profil (de exemplu tunsoarea dorită).",
           "cameraPermission": "Aplicația folosește camera doar ca să faci o poză pentru profil sau pentru frizer."
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Aplicația folosește microfonul doar când vorbești cu asistentul TAF."
+        }
       ]
     ],
     "experiments": {

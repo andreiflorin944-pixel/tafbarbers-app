@@ -134,6 +134,17 @@ export default function Home() {
           ))}
         </View>
 
+        <Pressable onPress={() => router.push('/assistant')} style={({ pressed }) => [s.invite, pressed && { opacity: 0.85 }]} accessibilityRole="button">
+          <View style={s.quickIcon}>
+            <Ionicons name="mic-outline" size={22} color={colors.gold} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.svcName}>{t('home.assistant')}</Text>
+            <Text style={[ui.muted, { fontSize: 13 }]}>{t('home.assistantText')}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
+
         <View style={s.sectionHead}>
           <SectionTitle>{t('home.services')}</SectionTitle>
           <Text style={s.link} onPress={() => router.push('/services')}>
