@@ -6,6 +6,11 @@ export function barberPrice(service: Service, barber?: Barber | null): number {
   return barber?.prices?.[service.id] ?? service.price;
 }
 
+/** Durata unui serviciu la un anumit frizer: durata lui proprie, altfel durata standard. */
+export function barberDuration(service: Service, barber?: Barber | null): number {
+  return barber?.durations?.[service.id] ?? service.durationMin;
+}
+
 /** „90 lei” sau, dacă frizerii au prețuri diferite, „de la 90 lei”. */
 export function priceLabel(service: Service, barbers: Barber[]): string {
   const doing = barbers.filter((b) => !b.serviceIds?.length || b.serviceIds.includes(service.id));

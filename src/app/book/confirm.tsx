@@ -6,7 +6,7 @@ import { Button, Card, Icon, Screen, Steps, styles } from '@/components/ui';
 import { formatDate, formatTime } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useLoginGate } from '@/components/LoginGate';
-import { barberPrice } from '@/lib/price';
+import { barberDuration, barberPrice } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
@@ -50,7 +50,7 @@ export default function Confirm() {
         <Line icon="cut" text={service.name} />
         <Line icon="person" text={barber.name} />
         <Line icon="calendar" text={formatDate(start)} />
-        <Line icon="time" text={`${formatTime(start)} · ${service.durationMin} min`} />
+        <Line icon="time" text={`${formatTime(start)} · ${barberDuration(service, barber)} min`} />
         <View style={{ height: 1, backgroundColor: colors.border, marginVertical: space.xs }} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={styles.text}>Total</Text>

@@ -43,12 +43,14 @@ export async function availability(
   const dayStart = localToUtc(tz, opts.day, 0);
   const dayEnd = localToUtc(tz, opts.day, 24 * 60);
   const wd = weekdayOf(opts.day);
-  const durMs = service.duration_min * 60_000;
   const step = (biz.slotStepMin ?? 15) * 60_000;
   const earliest = Date.now() + (biz.minLeadMin ?? 0) * 60_000;
 
   const ph = barbers.map(() => '?').join(',');
-  const [hours, busy, off] = await Promise.all([
+  const [own, hours, busy, off] = await Promise.all([
+    env.DB.prepare(`SELECT barber_id, duration_min FROM barber_services WHERE service_id = ? AND duration_min IS NOT NULL AND barber_id IN (${ph})`)
+      .bind(opts.serviceId, ...barbers)
+      .all<{ barber_id: string; duration_min: number }>(),
     env.DB.prepare(`SELECT barber_id, start_min, end_min FROM working_hours WHERE weekday = ? AND barber_id IN (${ph})`)
       .bind(wd, ...barbers)
       .all<{ barber_id: string; start_min: number; end_min: number }>(),
@@ -78,6 +80,8 @@ export async function availability(
 
   const byStart = new Map<number, Slot>();
   for (const barber of barbers) {
+    // Fiecare frizer cu durata lui pentru serviciu, dacă are una; altfel durata standard.
+    const durMs = (own.results.find((o) => o.barber_id === barber)?.duration_min ?? service.duration_min) * 60_000;
     for (const h of hours.results.filter((x) => x.barber_id === barber)) {
       const winS = localToUtc(tz, opts.day, h.start_min).getTime();
       const winE = localToUtc(tz, opts.day, h.end_min).getTime();

@@ -523,6 +523,8 @@ type BarberInput = {
   serviceIds?: string[];
   /** Prețuri proprii în lei pe serviciu; null = prețul standard. */
   prices?: Record<string, number | null>;
+  /** Durate proprii în minute pe serviciu; null = durata standard. */
+  durations?: Record<string, number | null>;
   hours?: Array<{ weekday: number; start: number; end: number }>;
 };
 
@@ -542,6 +544,7 @@ adminRoutes.post('/barbers', ownerOnly, async (c) => {
     .run();
   await saveBarberRelations(c.env.DB, id, {
     prices: b.prices,
+    durations: b.durations,
     serviceIds: b.serviceIds ?? (await c.env.DB.prepare('SELECT id FROM services').all<{ id: string }>()).results.map((s) => s.id),
     hours: b.hours,
   });
@@ -575,7 +578,7 @@ adminRoutes.delete('/barbers/:id', ownerOnly, async (c) => {
   return c.json({ ok: true, deactivated: !!used });
 });
 
-async function saveBarberRelations(db: D1Database, id: string, b: Pick<BarberInput, 'serviceIds' | 'hours' | 'prices'>) {
+async function saveBarberRelations(db: D1Database, id: string, b: Pick<BarberInput, 'serviceIds' | 'hours' | 'prices' | 'durations'>) {
   const stmts: D1PreparedStatement[] = [];
   const prices = new Map<string, number | null>();
   for (const [sid, lei] of Object.entries(b.prices ?? {})) {
@@ -586,17 +589,31 @@ async function saveBarberRelations(db: D1Database, id: string, b: Pick<BarberInp
       prices.set(sid, bani);
     }
   }
+  const durations = new Map<string, number | null>();
+  for (const [sid, min] of Object.entries(b.durations ?? {})) {
+    if (min === null || min === undefined || (min as unknown) === '') durations.set(sid, null);
+    else {
+      const m = Math.round(Number(min));
+      if (!(m >= 5 && m <= 480)) throw new HttpError(400, 'invalid_duration');
+      durations.set(sid, m);
+    }
+  }
   if (b.serviceIds) {
-    // Păstrăm prețurile proprii existente pentru serviciile care rămân bifate.
-    const old = await db.prepare('SELECT service_id, price_bani FROM barber_services WHERE barber_id = ?').bind(id).all<{ service_id: string; price_bani: number | null }>();
-    const keep = new Map(old.results.map((r) => [r.service_id, r.price_bani]));
+    // Păstrăm prețurile și duratele proprii existente pentru serviciile care rămân bifate.
+    const old = await db
+      .prepare('SELECT service_id, price_bani, duration_min FROM barber_services WHERE barber_id = ?')
+      .bind(id)
+      .all<{ service_id: string; price_bani: number | null; duration_min: number | null }>();
+    const keep = new Map(old.results.map((r) => [r.service_id, r]));
     stmts.push(db.prepare('DELETE FROM barber_services WHERE barber_id = ?').bind(id));
     for (const s of b.serviceIds) {
-      const price = prices.has(s) ? prices.get(s)! : (keep.get(s) ?? null);
-      stmts.push(db.prepare('INSERT INTO barber_services (barber_id, service_id, price_bani) VALUES (?, ?, ?)').bind(id, s, price));
+      const price = prices.has(s) ? prices.get(s)! : (keep.get(s)?.price_bani ?? null);
+      const dur = durations.has(s) ? durations.get(s)! : (keep.get(s)?.duration_min ?? null);
+      stmts.push(db.prepare('INSERT INTO barber_services (barber_id, service_id, price_bani, duration_min) VALUES (?, ?, ?, ?)').bind(id, s, price, dur));
     }
   } else {
     for (const [s, price] of prices) stmts.push(db.prepare('UPDATE barber_services SET price_bani = ? WHERE barber_id = ? AND service_id = ?').bind(price, id, s));
+    for (const [s, dur] of durations) stmts.push(db.prepare('UPDATE barber_services SET duration_min = ? WHERE barber_id = ? AND service_id = ?').bind(dur, id, s));
   }
   if (b.hours) {
     for (const h of b.hours) {

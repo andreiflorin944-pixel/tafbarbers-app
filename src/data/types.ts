@@ -19,6 +19,8 @@ export type Barber = {
   serviceIds?: string[];
   /** Prețuri proprii (lei) pe serviciu, doar unde diferă de prețul standard. */
   prices?: Record<string, number>;
+  /** Durate proprii (minute) pe serviciu, doar unde diferă de durata standard. */
+  durations?: Record<string, number>;
 };
 
 export type Slot = {

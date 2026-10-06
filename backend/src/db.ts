@@ -84,6 +84,7 @@ export type BarberRow = {
   active: number;
   service_ids?: string | null;
   service_prices?: string | null;
+  service_durations?: string | null;
 };
 export const barber = (r: BarberRow) => ({
   id: r.id,
@@ -108,11 +109,19 @@ export const barber = (r: BarberRow) => ({
       return [sid, Number(bani) / 100];
     }),
   ) as Record<string, number>,
+  // Duratele proprii, doar unde diferă de durata standard: { serviceId: minute }.
+  durations: Object.fromEntries(
+    (r.service_durations ? r.service_durations.split(',') : []).map((x) => {
+      const [sid, min] = x.split(':');
+      return [sid, Number(min)];
+    }),
+  ) as Record<string, number>,
 });
 
 /** Subselecturile cu serviciile și prețurile proprii ale unui frizer `b`. */
 export const BARBER_SERVICE_COLS = `(SELECT group_concat(service_id) FROM barber_services WHERE barber_id = b.id) AS service_ids,
-  (SELECT group_concat(service_id || ':' || price_bani) FROM barber_services WHERE barber_id = b.id AND price_bani IS NOT NULL) AS service_prices`;
+  (SELECT group_concat(service_id || ':' || price_bani) FROM barber_services WHERE barber_id = b.id AND price_bani IS NOT NULL) AS service_prices,
+  (SELECT group_concat(service_id || ':' || duration_min) FROM barber_services WHERE barber_id = b.id AND duration_min IS NOT NULL) AS service_durations`;
 
 export type BookingRow = {
   id: string;

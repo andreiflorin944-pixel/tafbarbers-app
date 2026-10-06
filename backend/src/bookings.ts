@@ -62,13 +62,13 @@ export async function createBooking(
   if (!barberId) throw new HttpError(400, 'barber_required');
 
   // Prețul propriu al frizerului, dacă are unul pentru acest serviciu.
-  const own = await env.DB.prepare('SELECT price_bani FROM barber_services WHERE barber_id = ? AND service_id = ?')
+  const own = await env.DB.prepare('SELECT price_bani, duration_min FROM barber_services WHERE barber_id = ? AND service_id = ?')
     .bind(barberId, service.id)
-    .first<{ price_bani: number | null }>();
+    .first<{ price_bani: number | null; duration_min: number | null }>();
   const price = own?.price_bani ?? service.price_bani;
 
   const id = newId('bk');
-  const end = new Date(start.getTime() + service.duration_min * 60_000);
+  const end = new Date(start.getTime() + (own?.duration_min ?? service.duration_min) * 60_000);
   const res = await env.DB.prepare(
     `INSERT INTO bookings (id, client_id, barber_id, service_id, starts_at, ends_at, price_bani, source, note)
      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
