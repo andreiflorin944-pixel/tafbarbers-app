@@ -33,6 +33,7 @@ import { clientsCsv, deleteClient } from '../gdpr';
 import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
 import { addPhoto, deletePhoto, getIdentity, parseBirthDate } from '../identity';
+import { getBonuses, getReferralSettings, giveBonus, parseReward, saveReferralSettings, type Reward } from '../referrals';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -637,7 +638,71 @@ adminRoutes.get('/clients/:id', async (c) => {
   const bk = await c.env.DB.prepare(`${BOOKING_SELECT} WHERE b.client_id = ? ${own ? 'AND b.barber_id = ?' : ''} ORDER BY b.starts_at DESC LIMIT 200`)
     .bind(...(own ? [id, own] : [id]))
     .all<BookingRow>();
-  return c.json({ ...client(r), bookings: bk.results.map(booking), identity: await getIdentity(c.env, id, true) });
+  const ref = r.referred_by ? await c.env.DB.prepare('SELECT id, name FROM clients WHERE id = ?').bind(r.referred_by).first<{ id: string; name: string }>() : null;
+  const referred = await c.env.DB.prepare('SELECT count(*) AS n FROM clients WHERE referred_by = ? AND deleted_at IS NULL').bind(id).first<{ n: number }>();
+  return c.json({
+    ...client(r),
+    bookings: bk.results.map(booking),
+    identity: await getIdentity(c.env, id, true),
+    bonuses: await getBonuses(c.env, id, true),
+    referredBy: ref,
+    referredCount: referred?.n ?? 0,
+  });
+});
+
+// --- Bonusuri și recomandări ---
+
+adminRoutes.get('/referral-settings', async (c) => c.json(await getReferralSettings(c.env)));
+adminRoutes.put('/referral-settings', ownerOnly, async (c) => c.json(await saveReferralSettings(c.env, await c.req.json())));
+
+/** Conturile create prin recomandare, cu cine i-a adus și dacă s-a dat deja beneficiul. */
+adminRoutes.get('/referrals', async (c) => {
+  need(c, 'clients');
+  const r = await c.env.DB.prepare(
+    `SELECT n.id AS new_id, n.name AS new_name, n.phone AS new_phone, n.created_at, p.id AS ref_id, p.name AS ref_name, p.phone AS ref_phone,
+       (SELECT b.title FROM bonuses b WHERE b.referral_of = n.id AND b.client_id = p.id AND b.status != 'cancelled' LIMIT 1) AS bonus_title
+     FROM clients n JOIN clients p ON p.id = n.referred_by
+     WHERE n.deleted_at IS NULL ORDER BY n.created_at DESC LIMIT 300`,
+  ).all<{ new_id: string; new_name: string; new_phone: string; created_at: string; ref_id: string; ref_name: string; ref_phone: string; bonus_title: string | null }>();
+  return c.json(
+    r.results.map((x) => ({
+      newClient: { id: x.new_id, name: x.new_name, phone: x.new_phone },
+      referrer: { id: x.ref_id, name: x.ref_name, phone: x.ref_phone },
+      createdAt: x.created_at,
+      bonusTitle: x.bonus_title,
+    })),
+  );
+});
+
+/** Beneficiu dat de admin: standard (`standard: true`) sau personalizat; opțional legat de o recomandare. */
+adminRoutes.post('/clients/:id/bonuses', ownerOnly, async (c) => {
+  const id = c.req.param('id')!;
+  const b = await c.req.json<Partial<Reward> & { standard?: boolean; referralOf?: string }>();
+  const exists = await c.env.DB.prepare('SELECT 1 FROM clients WHERE id = ? AND deleted_at IS NULL').bind(id).first();
+  if (!exists) throw new HttpError(404, 'not_found');
+  const reward = b.standard ? (await getReferralSettings(c.env)).standard : parseReward(b);
+  const referralOf = b.referralOf
+    ? ((await c.env.DB.prepare('SELECT id FROM clients WHERE id = ? AND referred_by = ?').bind(b.referralOf, id).first<{ id: string }>())?.id ?? null)
+    : null;
+  const bid = await giveBonus(c.env, id, reward, referralOf ? 'referral' : 'manual', referralOf);
+  return c.json({ id: bid }, 201);
+});
+
+/** Marchează un bonus folosit (la tuns) sau îl anulează. */
+adminRoutes.patch('/bonuses/:id', async (c) => {
+  const b = await c.req.json<{ status?: string }>();
+  const a = c.get('admin');
+  const row = await c.env.DB.prepare('SELECT client_id, status FROM bonuses WHERE id = ?').bind(c.req.param('id')!).first<{ client_id: string; status: string }>();
+  if (!row) throw new HttpError(404, 'not_found');
+  if (b.status === 'used') {
+    await needClient(c, row.client_id);
+    if (row.status !== 'active') throw new HttpError(409, 'bonus_not_active');
+    await c.env.DB.prepare(`UPDATE bonuses SET status = 'used', used_at = ?, used_by = ? WHERE id = ?`).bind(iso(new Date()), a.adminId, c.req.param('id')!).run();
+  } else if (b.status === 'active' || b.status === 'cancelled') {
+    if (!a.owner) throw new HttpError(403, 'no_permission');
+    await c.env.DB.prepare(`UPDATE bonuses SET status = ?, used_at = NULL, used_by = NULL WHERE id = ?`).bind(b.status, c.req.param('id')!).run();
+  } else throw new HttpError(400, 'invalid_status');
+  return c.json({ ok: true });
 });
 
 // Poze despre client urcate de echipă: le vede doar echipa.

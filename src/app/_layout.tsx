@@ -41,6 +41,7 @@ export default function RootLayout() {
             <Stack.Screen name="login" options={{ title: 'Intră în cont', presentation: 'modal' }} />
             <Stack.Screen name="account" options={{ title: 'Cont' }} />
             <Stack.Screen name="identity" options={{ title: 'TAF Identity' }} />
+            <Stack.Screen name="rewards" options={{ title: 'Bonusuri și recomandări' }} />
             <Stack.Screen name="barbers" options={{ title: 'Frizeri' }} />
             <Stack.Screen name="service/[id]" options={{ title: '', headerTransparent: true }} />
             <Stack.Screen name="legal/[doc]" options={{ title: '' }} />

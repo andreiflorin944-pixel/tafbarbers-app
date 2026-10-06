@@ -53,6 +53,19 @@ export type Me = {
 
 /** O poză din TAF Identity. `addedBy` apare doar la pozele urcate de echipă. */
 export type IdentityPhoto = { id: string; url: string; caption: string; createdAt?: string; addedBy?: string | null };
+export type Bonus = {
+  id: string;
+  title: string;
+  kind: 'percent' | 'amount' | 'free' | 'other';
+  value: number | null;
+  source: 'manual' | 'referral';
+  status: 'active' | 'used' | 'expired';
+  expiresAt: string | null;
+  createdAt: string;
+  usedAt: string | null;
+  referralName?: string | null;
+};
+export type Referrals = { enabled: boolean; code: string; referred: number; reward: string | null; bonuses: Bonus[] };
 export type Identity = { note: string; photos: IdentityPhoto[]; staffPhotos?: IdentityPhoto[] };
 
 export type Business = {

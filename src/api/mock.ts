@@ -121,6 +121,16 @@ export const mockApi: BookingApi = {
     return delay(undefined);
   },
   getIdentity: (token) => delay(identityOf(token)),
+  getReferrals: () =>
+    delay({
+      enabled: true,
+      code: 'DEMO42',
+      referred: 1,
+      reward: '10% reducere la următoarea tunsoare',
+      bonuses: [
+        { id: 'bn-demo', title: '10% reducere la următoarea tunsoare', kind: 'percent', value: 10, source: 'referral', status: 'active', expiresAt: null, createdAt: new Date().toISOString(), usedAt: null },
+      ],
+    }),
   async saveIdentityNote(token, note) {
     identityOf(token).note = note;
     return delay(identityOf(token));

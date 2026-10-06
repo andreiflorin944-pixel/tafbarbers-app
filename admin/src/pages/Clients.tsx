@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, getToken, uploadImageTo, type Client, type ClientPhoto, type Me } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
 import { date, lei, STATUS, time } from '../util';
+import { ClientBonuses } from './Referrals';
 
 async function downloadCsv() {
   const res = await fetch('/v1/admin/clients.csv', { headers: { Authorization: `Bearer ${getToken()}` } });
@@ -104,6 +105,14 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
               {c.data.birthDate ? <div>Data nașterii: {c.data.birthDate.split('-').reverse().join('.')}</div> : null}
             </div>
           </div>
+          <h2 style={{ margin: '6px 0 0' }}>Bonusuri</h2>
+          {c.data.referredBy || c.data.referredCount ? (
+            <div className="muted small">
+              {c.data.referredBy ? `Recomandat de ${c.data.referredBy.name || 'un client'}. ` : ''}
+              {c.data.referredCount ? `A adus ${c.data.referredCount} ${c.data.referredCount === 1 ? 'client nou' : 'clienți noi'}.` : ''}
+            </div>
+          ) : null}
+          <ClientBonuses clientId={id} bonuses={c.data.bonuses ?? []} owner={canDelete} onChange={c.reload} />
           <h2 style={{ margin: '6px 0 0' }}>TAF Identity (de la client)</h2>
           {c.data.identity?.note ? <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{c.data.identity.note}</div> : null}
           <Photos list={c.data.identity?.photos ?? []} />

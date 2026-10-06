@@ -5,7 +5,8 @@ import { staffApi, type StaffClient } from '@/api/staff';
 import { BOOKING_STATUS } from '@/components/BookingSheet';
 import { PhotoGrid, PhotoViewer } from '@/components/PhotoViewer';
 import { Avatar, Button, Card, Screen, styles as ui } from '@/components/ui';
-import type { IdentityPhoto } from '@/data/types';
+import type { Bonus, IdentityPhoto } from '@/data/types';
+import { BonusRow } from '@/components/BonusRow';
 import { ageFrom, formatBirth, formatDate, formatTime } from '@/lib/dates';
 import { pickImage } from '@/lib/pickImage';
 import { errorMessage } from '@/lib/errors';
@@ -57,6 +58,24 @@ export default function StaffClient() {
   const identity = c.identity ?? { note: '', photos: [], staffPhotos: [] };
   const staffPhotos = identity.staffPhotos ?? [];
   const age = ageFrom(c.birthDate);
+  const activeBonuses = (c.bonuses ?? []).filter((b) => b.status === 'active');
+
+  const markUsed = (b: Bonus) => {
+    const go = async () => {
+      try {
+        await staffApi.useBonus(staffToken, b.id);
+        setC({ ...c, bonuses: (c.bonuses ?? []).map((x) => (x.id === b.id ? { ...x, status: 'used', usedAt: new Date().toISOString() } : x)) });
+      } catch (e) {
+        setMsg({ ok: false, text: errorMessage(e) });
+      }
+    };
+    const text = `Marchezi „${b.title}” ca folosit?`;
+    if (Platform.OS === 'web') return window.confirm(text) && go();
+    Alert.alert('Bonus folosit', text, [
+      { text: 'Nu', style: 'cancel' },
+      { text: 'Da', onPress: go },
+    ]);
+  };
 
   const addPhoto = async () => {
     setMsg(null);
@@ -109,6 +128,23 @@ export default function StaffClient() {
         </View>
       </View>
       {c.phone ? <Button title={`Sună ${c.phone}`} variant="ghost" onPress={() => Linking.openURL(`tel:${c.phone}`)} /> : null}
+
+      {activeBonuses.length ? (
+        <>
+          <Text style={[ui.label, { color: colors.gold }]}>Bonusuri active</Text>
+          <View style={{ gap: space.sm }}>
+            {activeBonuses.map((b) => (
+              <BonusRow key={b.id} b={b} action={<View style={{ width: 104 }}><Button title="Folosit" variant="ghost" onPress={() => markUsed(b)} /></View>} />
+            ))}
+          </View>
+        </>
+      ) : null}
+      {c.referredBy || c.referredCount ? (
+        <Text style={[ui.muted, { marginTop: space.sm }]}>
+          {c.referredBy ? `Recomandat de ${c.referredBy.name || 'un client'}. ` : ''}
+          {c.referredCount ? `A adus ${c.referredCount} ${c.referredCount === 1 ? 'client nou' : 'clienți noi'}.` : ''}
+        </Text>
+      ) : null}
 
       <Text style={[ui.label, { color: colors.gold }]}>TAF Identity (de la client)</Text>
       {identity.note ? (

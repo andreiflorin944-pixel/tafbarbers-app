@@ -158,6 +158,7 @@ export type ClientRow = {
   birth_date?: string | null;
   photo_url?: string | null;
   identity_note?: string;
+  referred_by?: string | null;
 };
 export const client = (r: ClientRow) => ({
   id: r.id,

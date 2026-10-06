@@ -4,6 +4,7 @@ import { HttpError, type Env } from './env';
 import { iso } from './time';
 import { getOrders, setOrderStatus } from './shop';
 import { getIdentity, wipeIdentity } from './identity';
+import { getBonuses } from './referrals';
 
 /** Toate datele unui client, pentru „Descarcă datele mele” (portabilitate, art. 20 GDPR). */
 export async function exportClient(env: Env, id: string) {
@@ -17,6 +18,7 @@ export async function exportClient(env: Env, id: string) {
   const orders = (await getOrders(env, 'o.client_id = ?', [id], 1000)).map(({ clientName: _n, clientPhone: _p, ...o }) => o);
   const { notes: _internal, ...profile } = client(c);
   const identity = await getIdentity(env, id, false);
+  const bonuses = await getBonuses(env, id, false);
   return {
     exportedAt: iso(new Date()),
     profile: { ...profile, termsAcceptedAt: c.terms_accepted_at },
@@ -27,6 +29,7 @@ export async function exportClient(env: Env, id: string) {
     messages: msgs.results,
     orders,
     tafIdentity: identity,
+    bonuses,
     devices: tokens.results,
   };
 }

@@ -11,7 +11,7 @@ import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 /** Login cu numărul de telefon și un cod primit pe e-mail (principal) sau pe SMS (alternativă). */
-export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDone: (token: string) => void | Promise<void> }) {
+export function PhoneLogin({ submitTitle, onDone, initialRef }: { submitTitle?: string; onDone: (token: string) => void | Promise<void>; initialRef?: string }) {
   const { signIn } = useApp();
   const { lang } = useT();
   const [name, setName] = useState('');
@@ -23,6 +23,7 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
   const [phoneSent, setPhoneSent] = useState<string | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [birth, setBirth] = useState('');
+  const [ref, setRef] = useState(initialRef?.toUpperCase() ?? '');
   const [devCode, setDevCode] = useState<string | undefined>();
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -63,6 +64,7 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
         acceptTerms: accepted,
         birthDate: parseBirth(birth) ?? undefined,
         email: emailOk ? cleanEmail : undefined,
+        ref: ref.trim() || undefined,
       });
       await signIn(token);
       await onDone(token);
@@ -108,6 +110,17 @@ export function PhoneLogin({ submitTitle, onDone }: { submitTitle?: string; onDo
                 maxLength={10}
               />
               {birth.length >= 8 && !birthOk ? <Text style={{ color: colors.danger, fontSize: 12, marginTop: 4 }}>Scrie data așa: 17.05.1990</Text> : null}
+              <Text style={styles.label}>Cod de recomandare (opțional)</Text>
+              <TextInput
+                value={ref}
+                onChangeText={(v) => setRef(v.toUpperCase())}
+                placeholder="Codul primit de la un prieten"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={12}
+              />
               {!emailOk ? <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>Pentru cont nou avem nevoie și de e-mail. Apasă „Schimbă datele” și completează-l.</Text> : null}
             </>
           ) : null}

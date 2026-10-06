@@ -197,6 +197,27 @@ export type Booking = {
   serviceName: string;
   barberName: string;
 };
+export type BonusKind = 'percent' | 'amount' | 'free' | 'other';
+export type Reward = { title: string; kind: BonusKind; value: number | null; validDays: number | null };
+export type ReferralSettings = { enabled: boolean; auto: boolean; standard: Reward };
+export type Bonus = {
+  id: string;
+  title: string;
+  kind: BonusKind;
+  value: number | null;
+  source: 'manual' | 'referral';
+  status: 'active' | 'used' | 'expired';
+  expiresAt: string | null;
+  createdAt: string;
+  usedAt: string | null;
+  referralName?: string | null;
+};
+export type Referral = {
+  newClient: { id: string; name: string; phone: string };
+  referrer: { id: string; name: string; phone: string };
+  createdAt: string;
+  bonusTitle: string | null;
+};
 export type ClientPhoto = { id: string; url: string; caption: string; createdAt?: string; addedBy?: string | null };
 export type Client = {
   id: string;
@@ -210,6 +231,9 @@ export type Client = {
   birthDate?: string | null;
   photoUrl?: string | null;
   identity?: { note: string; photos: ClientPhoto[]; staffPhotos?: ClientPhoto[] };
+  bonuses?: Bonus[];
+  referredBy?: { id: string; name: string } | null;
+  referredCount?: number;
   visits?: number;
   lastVisit?: string | null;
   bookings?: Booking[];

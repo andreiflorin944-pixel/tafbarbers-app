@@ -10,6 +10,7 @@ import { DOCS, legalDoc, type Doc } from '../legal';
 import { getAppearance } from '../appearance';
 import { product, type ProductRow } from '../shop';
 import { parseBirthDate } from '../identity';
+import { applyReferral } from '../referrals';
 
 export const publicRoutes = new Hono<AppEnv>();
 
@@ -141,7 +142,7 @@ publicRoutes.post('/auth/otp', async (c) => {
 });
 
 publicRoutes.post('/auth/verify', async (c) => {
-  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string }>();
+  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string }>();
   const phone = normalizePhone(body.phone);
   const row = await c.env.DB.prepare('SELECT code_hash, expires_at, attempts, email FROM otp_codes WHERE phone = ?')
     .bind(phone)
@@ -171,6 +172,7 @@ publicRoutes.post('/auth/verify', async (c) => {
     await c.env.DB.prepare('INSERT INTO clients (id, phone, name, email, lang, terms_accepted_at, birth_date) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .bind(client.id, phone, client.name, email, ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro', iso(new Date()), birthDate)
       .run();
+    await applyReferral(c.env, client.id, body.ref);
   } else {
     if (!client.name && body.name?.trim()) {
       await c.env.DB.prepare('UPDATE clients SET name = ? WHERE id = ?').bind(body.name.trim().slice(0, 80), client.id).run();

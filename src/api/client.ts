@@ -1,4 +1,4 @@
-import type { Barber, Booking, Business, Identity, IdentityPhoto, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
+import type { Barber, Booking, Business, Identity, Referrals, IdentityPhoto, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
 
 // Singura legătură dintre interfață și server. `http.ts` vorbește cu serverul nostru
 // (Cloudflare Worker); `mock.ts` e varianta de test, folosită cât timp aplicația nu are
@@ -19,7 +19,7 @@ export interface BookingApi {
     input: { phone: string; email?: string; channel: 'email' | 'sms' },
     lang: string,
   ): Promise<{ phone: string; channel: 'email' | 'sms'; sentTo: string; newAccount?: boolean; devCode?: string }>;
-  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; birthDate?: string; email?: string }): Promise<{ token: string }>;
+  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; birthDate?: string; email?: string; ref?: string }): Promise<{ token: string }>;
   getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null }>;
   exportMe(token: string): Promise<unknown>;
   deleteMe(token: string): Promise<void>;
@@ -34,6 +34,7 @@ export interface BookingApi {
   setProfilePhoto(token: string, uri: string): Promise<{ photoUrl: string }>;
   removeProfilePhoto(token: string): Promise<void>;
   getIdentity(token: string): Promise<Identity>;
+  getReferrals(token: string): Promise<Referrals>;
   saveIdentityNote(token: string, note: string): Promise<Identity>;
   addIdentityPhoto(token: string, uri: string): Promise<IdentityPhoto>;
   removeIdentityPhoto(token: string, id: string): Promise<void>;

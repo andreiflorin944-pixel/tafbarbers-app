@@ -62,6 +62,7 @@ export function httpApi(baseUrl: string): BookingApi {
       await call('DELETE', '/me/photo', { token });
     },
     getIdentity: (token) => call('GET', '/me/identity', { token }),
+    getReferrals: (token) => call('GET', '/me/referrals', { token }),
     saveIdentityNote: (token, note) => call('PUT', '/me/identity', { token, body: { note } }),
     addIdentityPhoto: (token, uri) => upload('POST', '/me/identity/photos', token, uri),
     removeIdentityPhoto: async (token, id) => {

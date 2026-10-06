@@ -6,6 +6,7 @@ import { clientRoutes } from './routes/client';
 import { publicRoutes } from './routes/public';
 import { scheduled } from './cron';
 import { DOCS, legalDoc, type Doc } from './legal';
+import { getBusiness } from './db';
 
 const app = new Hono<AppEnv>();
 
@@ -35,6 +36,18 @@ app.get('/legal/:doc', async (c) => {
   return c.html(`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(d.title)}</title>
 <style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:720px;margin:0 auto;padding:32px 20px}h1{color:#F9A11B;font-size:26px}.m{color:#999;font-size:14px}p{white-space:pre-wrap}</style></head>
 <body><main><h1>${esc(d.title)}</h1>${updated}<p>${esc(d.body)}</p></main></body></html>`);
+});
+
+// Linkul de recomandare: pagină simplă care deschide aplicația cu codul completat.
+app.get('/r/:code', async (c) => {
+  const code = c.req.param('code').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+  const biz = await getBusiness(c.env);
+  const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+  const deep = `tafbarbers://login?ref=${code}`;
+  return c.html(`<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(biz.name)}</title>
+<style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:480px;margin:0 auto;padding:48px 20px;text-align:center}h1{font-size:26px}.code{font-size:34px;font-weight:800;letter-spacing:6px;color:#F9A11B;margin:18px 0}a.b{display:inline-block;background:#F9A11B;color:#000;font-weight:800;text-decoration:none;padding:14px 26px;border-radius:999px;margin-top:10px}.m{color:#999;font-size:14px}</style></head>
+<body><main><h1>Ai fost invitat la ${esc(biz.name)}</h1><p>Fă-ți cont în aplicație cu codul de mai jos:</p><div class="code">${esc(code)}</div>
+<a class="b" href="${deep}">Deschide aplicația</a><p class="m">Dacă nu ai încă aplicația, instaleaz-o, apoi scrie codul la crearea contului.</p></main></body></html>`);
 });
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));

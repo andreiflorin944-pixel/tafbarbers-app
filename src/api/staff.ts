@@ -1,4 +1,4 @@
-import type { Identity, IdentityPhoto } from '@/data/types';
+import type { Bonus, Identity, IdentityPhoto } from '@/data/types';
 import Constants from 'expo-constants';
 import { ApiError } from './client';
 
@@ -77,6 +77,7 @@ export const staffApi = {
     if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
     return json as IdentityPhoto;
   },
+  useBonus: (t: string, bonusId: string) => call<{ ok: true }>('PATCH', `/admin/bonuses/${encodeURIComponent(bonusId)}`, t, { status: 'used' }),
   deleteClientPhoto: (t: string, id: string, pid: string) => call<{ ok: true }>('DELETE', `/admin/clients/${encodeURIComponent(id)}/photos/${encodeURIComponent(pid)}`, t),
   stats: (t: string) => call<StaffStats>('GET', '/admin/stats', t),
   orders: (t: string, status: string) => call<StaffOrder[]>('GET', `/admin/orders?status=${status}`, t),
@@ -105,6 +106,9 @@ export type StaffClient = {
   birthDate?: string | null;
   photoUrl?: string | null;
   identity?: Identity;
+  bonuses?: Bonus[];
+  referredBy?: { id: string; name: string } | null;
+  referredCount?: number;
   visits?: number;
   lastVisit?: string | null;
   bookings?: StaffBooking[];

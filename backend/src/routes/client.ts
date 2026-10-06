@@ -6,6 +6,7 @@ import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
 import { deleteClient, exportClient } from '../gdpr';
 import { createOrder, getOrder, getOrders, setOrderStatus } from '../shop';
+import { myReferrals } from '../referrals';
 import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
 
 export const clientRoutes = new Hono<AppEnv>();
@@ -92,6 +93,8 @@ clientRoutes.delete('/me/identity/photos/:pid', async (c) => {
   await deletePhoto(c.env, c.get('client').clientId, c.req.param('pid'), false);
   return c.json({ ok: true });
 });
+
+clientRoutes.get('/me/referrals', async (c) => c.json(await myReferrals(c.env, c.get('client').clientId)));
 
 clientRoutes.get('/me/export', async (c) => c.json(await exportClient(c.env, c.get('client').clientId)));
 

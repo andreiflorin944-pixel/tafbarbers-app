@@ -192,10 +192,11 @@ function ClientAccount() {
             {active} {active === 1 ? 'programare viitoare' : 'programări viitoare'}
           </Text>
         </View>
-        <View style={styles.row}>
+        <Pressable style={styles.row} onPress={() => router.push('/rewards')} accessibilityRole="button">
           <Icon name="star" />
-          <Text style={styles.text}>Program de loialitate (în curând)</Text>
-        </View>
+          <Text style={[styles.text, { flex: 1 }]}>Bonusuri și recomandări</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
       </Card>
 
       <Text style={styles.label}>Nume</Text>
