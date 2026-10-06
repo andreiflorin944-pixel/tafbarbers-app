@@ -172,7 +172,7 @@ export async function usableSubscription(env: Env, clientId: string, serviceId: 
 export async function completeBooking(
   env: Env,
   bookingId: string,
-  b: { payment?: string; amount?: number; bonusId?: string | null },
+  b: { payment?: string; amount?: number; tip?: number | null; bonusId?: string | null },
   adminId: string,
 ) {
   const bk = await env.DB.prepare('SELECT id, client_id, service_id, price_bani, status, payment FROM bookings WHERE id = ?')
@@ -194,6 +194,11 @@ export async function completeBooking(
     if (!sub) throw new HttpError(409, 'no_active_subscription');
   }
 
+  // Bacșișul se notează separat de preț, pentru raportul de bacșișuri pe frizer.
+  const tip = b.tip === undefined || b.tip === null || b.tip === 0 ? 0 : Number(b.tip);
+  if (!(tip >= 0 && tip <= 10000)) throw new HttpError(400, 'invalid_tip');
+  const tipBani = tip ? Math.round(tip * 100) : null;
+
   let bonusId: string | null = null;
   if (b.bonusId) {
     const bn = await env.DB.prepare(`SELECT id, status, expires_at FROM bonuses WHERE id = ? AND client_id = ?`)
@@ -205,10 +210,10 @@ export async function completeBooking(
 
   const now = iso(new Date());
   const claimed = await env.DB.prepare(
-    `UPDATE bookings SET status = 'completed', payment = ?, paid_bani = ?, subscription_id = ?, bonus_id = ?, completed_at = ?, completed_by = ?
+    `UPDATE bookings SET status = 'completed', payment = ?, paid_bani = ?, subscription_id = ?, bonus_id = ?, tip_bani = ?, completed_at = ?, completed_by = ?
      WHERE id = ? AND payment IS NULL AND status != 'cancelled'`,
   )
-    .bind(b.payment, paidBani, sub?.id ?? null, bonusId, now, adminId, bookingId)
+    .bind(b.payment, paidBani, sub?.id ?? null, bonusId, tipBani, now, adminId, bookingId)
     .run();
   if (!claimed.meta.changes) throw new HttpError(409, 'already_completed');
 
@@ -220,7 +225,7 @@ export async function completeBooking(
       .run();
     if (!used.meta.changes) {
       await env.DB.prepare(
-        `UPDATE bookings SET status = ?, payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
+        `UPDATE bookings SET status = ?, payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
       )
         .bind(bk.status, bookingId)
         .run();
@@ -241,7 +246,7 @@ export async function undoCompletion(env: Env, bookingId: string) {
   if (!bk.payment) throw new HttpError(409, 'not_completed');
   const stmts = [
     env.DB.prepare(
-      `UPDATE bookings SET status = 'confirmed', payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
+      `UPDATE bookings SET status = 'confirmed', payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
     ).bind(bookingId),
   ];
   if (bk.subscription_id) stmts.push(env.DB.prepare('UPDATE subscriptions SET cuts_used = max(0, cuts_used - 1) WHERE id = ?').bind(bk.subscription_id));

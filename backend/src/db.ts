@@ -1,5 +1,5 @@
 import type { Env } from './env';
-import { isBirthdayOn, localDay } from './time';
+import { isBirthdayOn, roLocal } from './time';
 
 export type Business = {
   name: string;
@@ -112,8 +112,6 @@ export const barber = (r: BarberRow) => ({
 export const BARBER_SERVICE_COLS = `(SELECT group_concat(service_id) FROM barber_services WHERE barber_id = b.id) AS service_ids,
   (SELECT group_concat(service_id || ':' || price_bani) FROM barber_services WHERE barber_id = b.id AND price_bani IS NOT NULL) AS service_prices`;
 
-const BOOKING_TZ = 'Europe/Bucharest';
-
 export type BookingRow = {
   id: string;
   client_id: string;
@@ -131,6 +129,8 @@ export type BookingRow = {
   subscription_id?: string | null;
   bonus_id?: string | null;
   completed_at?: string | null;
+  tip_bani?: number | null;
+  cancelled_by?: string | null;
   client_name?: string;
   client_phone?: string;
   client_birth_date?: string | null;
@@ -155,9 +155,11 @@ export const booking = (r: BookingRow) => ({
   subscriptionId: r.subscription_id ?? null,
   bonusId: r.bonus_id ?? null,
   completedAt: r.completed_at ?? null,
+  tip: r.tip_bani ? r.tip_bani / 100 : null,
+  cancelledBy: (r.cancelled_by ?? null) as 'client' | 'staff' | null,
   ...(r.client_name !== undefined && { clientName: r.client_name, clientPhone: r.client_phone }),
   // Programare în ziua de naștere a clientului (frizerul vede o lumânare); data nașterii nu se trimite.
-  ...(r.client_birth_date !== undefined && { clientBirthday: isBirthdayOn(r.client_birth_date, localDay(BOOKING_TZ, new Date(r.starts_at))) }),
+  ...(r.client_birth_date !== undefined && { clientBirthday: isBirthdayOn(r.client_birth_date, roLocal(r.starts_at).day) }),
   ...(r.service_name !== undefined && { serviceName: r.service_name, barberName: r.barber_name }),
 });
 

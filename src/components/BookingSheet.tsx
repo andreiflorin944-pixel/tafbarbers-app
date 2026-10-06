@@ -223,6 +223,7 @@ function Checkout({
   const [mode, setMode] = useState<"paid" | "subscription">("paid");
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState<string | null>(null);
+  const [tip, setTip] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -239,6 +240,8 @@ function Checkout({
   const confirm = async () => {
     const value = Number(amount.replace(",", "."));
     if (mode === "paid" && !(value >= 0)) return setErr("Scrie suma plătită.");
+    const tipValue = tip.trim() ? Number(tip.replace(",", ".")) : 0;
+    if (!(tipValue >= 0)) return setErr("Bacșișul nu e valid.");
     setBusy(true);
     setErr("");
     try {
@@ -246,6 +249,7 @@ function Checkout({
         await staffApi.complete(token, b.id, {
           payment: mode,
           ...(mode === "paid" && { amount: value }),
+          tip: tipValue || null,
           bonusId,
         }),
       );
@@ -310,6 +314,19 @@ function Checkout({
           ))}
         </>
       ) : null}
+      <Text style={ui.label}>Bacșiș (opțional)</Text>
+      <View style={ui.row}>
+        <TextInput
+          value={tip}
+          onChangeText={setTip}
+          keyboardType="decimal-pad"
+          placeholder="0"
+          placeholderTextColor={colors.muted}
+          style={[ui.input, { flex: 1, marginTop: 0 }]}
+          accessibilityLabel="Bacșiș"
+        />
+        <Text style={ui.text}>lei</Text>
+      </View>
       {err ? <Text style={{ color: colors.danger }}>{err}</Text> : null}
       <View style={{ flexDirection: "row", gap: space.sm }}>
         <View style={{ flex: 1 }}>

@@ -96,7 +96,7 @@ export async function createBooking(
   return created;
 }
 
-export async function cancelBooking(env: Env, id: string, by: 'client' | 'admin', clientId?: string) {
+export async function cancelBooking(env: Env, id: string, by: 'client' | 'admin', clientId?: string, adminId?: string) {
   const b = await getBooking(env, id);
   if (!b || (clientId && b.clientId !== clientId)) throw new HttpError(404, 'booking_not_found');
   if (b.status !== 'confirmed') throw new HttpError(409, 'not_cancellable');
@@ -104,8 +104,8 @@ export async function cancelBooking(env: Env, id: string, by: 'client' | 'admin'
     const biz = await getBusiness(env);
     if (Date.parse(b.start) - Date.now() < biz.cancelHours * 3_600_000) throw new HttpError(409, 'too_late_to_cancel');
   }
-  await env.DB.prepare(`UPDATE bookings SET status = 'cancelled', cancelled_at = ? WHERE id = ?`)
-    .bind(iso(new Date()), id)
+  await env.DB.prepare(`UPDATE bookings SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?, cancelled_by_admin = ? WHERE id = ?`)
+    .bind(iso(new Date()), by === 'client' ? 'client' : 'staff', adminId ?? null, id)
     .run();
   const updated = (await getBooking(env, id))!;
   if (by === 'admin') await notifyBooking(env, updated, 'cancel');

@@ -19,6 +19,8 @@ export default function StaffMenu() {
   const owner = staff.owner;
 
   const items: Item[] = [
+    { icon: 'stats-chart-outline', label: 'Tablou de bord', sub: 'Grafice, clienții de azi, păstrare', to: '/staff/stats', show: p.reports },
+    { icon: 'document-text-outline', label: 'Rapoarte', sub: 'Vânzări, rezervări, anulări, plăți, bacșiș', to: '/staff/reports', show: p.reports },
     { icon: 'people-circle-outline', label: 'Membrii echipei', sub: 'Conturi și drepturi', web: 'settings', show: owner },
     { icon: 'cut-outline', label: 'Servicii', sub: 'Prețuri și durate', to: '/staff/services', show: true },
     { icon: 'people-outline', label: 'Clienți', to: '/staff/clients', show: p.clients },
@@ -26,7 +28,7 @@ export default function StaffMenu() {
     { icon: 'bag-handle-outline', label: 'Comenzi magazin', to: '/staff/orders', show: p.shop },
     { icon: 'color-palette-outline', label: 'Aspect aplicație', sub: 'Culori, logo, poze', web: 'appearance', show: owner },
     { icon: 'megaphone-outline', label: 'Bannere și campanii', web: 'promos', show: owner },
-    { icon: 'document-text-outline', label: 'Regulamente și GDPR', web: 'legal', show: owner },
+    { icon: 'shield-checkmark-outline', label: 'Regulamente și GDPR', web: 'legal', show: owner },
     { icon: 'settings-outline', label: 'Setări', sub: 'Salon, reguli de programare, parolă', web: 'settings', show: true },
   ];
 

@@ -46,6 +46,8 @@ import {
   type PlanInput,
 } from '../subscriptions';
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
+import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } from '../reports';
+import { xlsx } from '../xlsx';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -606,7 +608,7 @@ adminRoutes.patch('/bookings/:id', async (c) => {
   const scoped = ownBarber(c);
   if (!cur || (scoped && cur.barberId !== scoped)) throw new HttpError(404, 'not_found');
   const b = await c.req.json<{ status?: string; note?: string }>();
-  if (b.status === 'cancelled') return c.json(await cancelBooking(c.env, id, 'admin'));
+  if (b.status === 'cancelled') return c.json(await cancelBooking(c.env, id, 'admin', undefined, c.get('admin').adminId));
   const v: Record<string, unknown> = {};
   if (b.status) {
     if (!['confirmed', 'completed', 'no_show'].includes(b.status)) throw new HttpError(400, 'invalid_status');
@@ -631,7 +633,7 @@ adminRoutes.get('/bookings/:id/checkout', async (c) => {
 /** Frizerul confirmă tunsoarea: `{ payment: 'paid', amount }` sau `{ payment: 'subscription' }`, opțional `bonusId`. */
 adminRoutes.post('/bookings/:id/complete', async (c) => {
   const cur = await bookingForStaff(c);
-  const b = await c.req.json<{ payment?: string; amount?: number; bonusId?: string | null }>();
+  const b = await c.req.json<{ payment?: string; amount?: number; tip?: number | null; bonusId?: string | null }>();
   await completeBooking(c.env, cur.id, b, c.get('admin').adminId);
   return c.json(await getBooking(c.env, cur.id));
 });
@@ -1082,6 +1084,37 @@ adminRoutes.get('/stats', async (c) => {
       noShow: month?.no_show ?? 0,
       newClients: c.get('admin').perms.clients ? (clients?.n ?? 0) : null,
       messages: Object.fromEntries(messages.results.map((m) => [m.channel, m.n])),
+    },
+  });
+});
+
+// --- Tablou de bord și rapoarte (dreptul „Rapoarte”; banii doar cu „Încasări”) ---
+
+const reportScope = (c: Context<AppEnv>) => {
+  need(c, 'reports');
+  return { session: c.get('admin'), barberId: ownBarber(c) };
+};
+
+adminRoutes.get('/dashboard', async (c) => c.json(await buildDashboard(c.env, reportScope(c))));
+
+adminRoutes.get('/reports', async (c) => {
+  const p = c.get('admin').perms;
+  need(c, 'reports');
+  return c.json(REPORTS.filter((r) => !('clients' in r && r.clients) || p.clients));
+});
+
+/** GET /reports/:kind?from=YYYY-MM-DD&to=…&barberId=…&serviceId=…&status=…&format=xlsx */
+adminRoutes.get('/reports/:kind', async (c) => {
+  const q = c.req.query();
+  const r = await buildReport(c.env, reportScope(c), c.req.param('kind') as ReportKind, q);
+  if (q.format !== 'xlsx') return c.json(r);
+  const name = `${r.title} ${r.from === r.to ? r.from : `${r.from} - ${r.to}`}`;
+  const ascii = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 ._-]/g, '').replace(/\s+/g, '-');
+  return new Response(xlsx(r.title, reportCells(r)), {
+    headers: {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${ascii}.xlsx"; filename*=UTF-8''${encodeURIComponent(name)}.xlsx`,
+      'Cache-Control': 'no-store',
     },
   });
 });

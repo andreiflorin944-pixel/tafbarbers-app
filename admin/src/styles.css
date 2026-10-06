@@ -161,3 +161,27 @@ tr.click:hover td { background: var(--card-alt); }
 @keyframes bday { 0%, 100% { box-shadow: 0 0 0 1px rgba(249, 161, 27, 0.25); } 50% { box-shadow: 0 0 0 2px var(--gold), 0 0 12px rgba(249, 161, 27, 0.6); } }
 @media (prefers-reduced-motion: reduce) { .cal-ev.bday { animation: none; box-shadow: 0 0 0 2px var(--gold); } }
 .bday-note { border: 1px solid var(--gold); border-radius: 10px; padding: 8px 10px; }
+
+/* Tablou de bord și rapoarte */
+.bars { position: relative; display: flex; align-items: flex-end; gap: 3px; height: 160px; padding-top: 18px; border-bottom: 1px solid var(--border); }
+.bars-max { position: absolute; top: 0; left: 0; }
+.bar { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+.bar-fill { background: var(--gold); border-radius: 3px 3px 0 0; min-height: 1px; }
+.bar-fill.alt { background: #7fb6e6; border-radius: 3px 3px 0 0; }
+.bar-fill.alt + .bar-fill { border-radius: 0; }
+.bar:hover .bar-fill { filter: brightness(1.2); }
+.bars-labels { display: flex; gap: 3px; margin-top: 4px; }
+.bars-labels span { flex: 1; min-width: 0; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: visible; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--gold); vertical-align: -1px; }
+.dot.alt { background: #7fb6e6; }
+.pill.tag-new { background: #13283a; color: #7fb6e6; }
+.pill.tag-top { background: #3a2a0d; color: var(--gold); }
+.pill.tag-back { background: #1d2b1f; color: #8fc79a; }
+.reports { display: grid; grid-template-columns: 240px 1fr; gap: 18px; align-items: start; }
+.report-list { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 12px; }
+.report-list button { background: transparent; border-color: transparent; color: var(--muted); text-align: left; font-weight: 600; padding: 8px 12px; }
+.report-list button:hover { color: var(--text); background: var(--card); }
+.report-list button.on { background: var(--card-alt); color: var(--gold); border-color: var(--border); }
+table.report td { padding: 8px 10px; font-size: 14px; white-space: nowrap; }
+table.report tr.total td { font-weight: 800; border-top: 2px solid var(--border); }
+@media (max-width: 900px) { .reports { grid-template-columns: 1fr; } .report-list { position: static; flex-direction: row; flex-wrap: wrap; } }

@@ -16,6 +16,8 @@ const RO: Record<string, string> = {
   email_mismatch: 'E-mailul nu corespunde contului acestui număr. Scrie e-mailul contului sau primește codul pe SMS.',
   wrong_credentials: 'E-mail sau parolă greșită.',
   no_permission: 'Contul tău nu are drept pentru asta. Cere-i proprietarului.',
+  range_too_long: 'Perioada e prea lungă. Alege cel mult un an.',
+  invalid_tip: 'Bacșișul nu e valid.',
   no_server: 'Partea de echipă merge după ce serverul e online.',
   barber_required: 'Alege frizerul.',
   birth_date_required: 'Scrie data nașterii.',

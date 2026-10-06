@@ -83,3 +83,23 @@ export function isBirthdayOn(birthDate: string | null | undefined, day: string):
   if (md === day.slice(5, 10)) return true;
   return md === '02-29' && day.slice(5, 10) === '02-28' && !isLeap(Number(day.slice(0, 4)));
 }
+
+// Ora României după regula UE (ora de vară: ultima duminică din martie – ultima duminică din octombrie, la 01:00 UTC).
+// E mult mai rapidă decât Intl pe mii de rânduri, ceea ce contează la limita de procesor a Worker-ului.
+const dstCache = new Map<number, [number, number]>();
+function lastSundayUtc1(y: number, month: number) {
+  const last = Date.UTC(y, month + 1, 0);
+  return last - new Date(last).getUTCDay() * 86_400_000 + 3_600_000;
+}
+function roOffsetMs(ms: number) {
+  const y = new Date(ms).getUTCFullYear();
+  let r = dstCache.get(y);
+  if (!r) dstCache.set(y, (r = [lastSundayUtc1(y, 2), lastSundayUtc1(y, 9)]));
+  return (ms >= r[0] && ms < r[1] ? 3 : 2) * 3_600_000;
+}
+/** Ziua locală `YYYY-MM-DD` și ora `HH:MM` pentru un moment ISO. */
+export function roLocal(t: string | Date) {
+  const ms = typeof t === 'string' ? Date.parse(t) : t.getTime();
+  const s = new Date(ms + roOffsetMs(ms)).toISOString();
+  return { day: s.slice(0, 10), hm: s.slice(11, 16) };
+}

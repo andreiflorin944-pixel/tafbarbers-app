@@ -71,6 +71,8 @@ const MESSAGES: Record<string, string> = {
   title_and_body_required: 'Completează titlul și mesajul.',
   wrong_password: 'Parola actuală nu e corectă.',
   cannot_delete_self: 'Nu îți poți șterge propriul cont.',
+  range_too_long: 'Perioada e prea lungă. Alege cel mult un an.',
+  invalid_tip: 'Bacșișul nu e valid.',
   no_permission: 'Nu ai drept pentru asta. Cere-i proprietarului.',
   cannot_demote_self: 'Nu îți poți lua singur drepturile de proprietar.',
   ro_required: 'Completează titlul și textul în română.',
@@ -211,6 +213,8 @@ export type Booking = {
   barberName: string;
   payment?: 'paid' | 'subscription' | null;
   paidAmount?: number | null;
+  tip?: number | null;
+  cancelledBy?: 'client' | 'staff' | null;
   bonusId?: string | null;
   clientBirthday?: boolean;
 };
@@ -308,7 +312,7 @@ export type Business = {
   maxDaysAhead?: number;
   cancellationPolicy?: string;
 };
-export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'contacts' | 'timeoff' | 'stats' | 'shop';
+export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'contacts' | 'timeoff' | 'stats' | 'reports' | 'shop';
 export type Role = 'org_admin' | 'location_admin' | 'barber';
 export const ROLE_LABELS: Record<Role, string> = {
   org_admin: 'Administrator de organizație',
@@ -329,6 +333,7 @@ export const PERM_LABELS: Record<Perm, string> = {
   contacts: 'Vede telefonul și e-mailul clienților (și exportă lista)',
   timeoff: 'Își pune singur concedii și pauze',
   stats: 'Vede încasările',
+  reports: 'Vede tabloul de bord și rapoartele (și le descarcă în Excel)',
   shop: 'Vede și pregătește comenzile din magazin',
 };
 export type TimeOff = { id: number; barberId: string | null; start: string; end: string; reason: string };

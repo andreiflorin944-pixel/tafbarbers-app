@@ -81,7 +81,14 @@ export default function StaffHome() {
 
         {stats ? (
           <>
-            <Text style={[ui.label, { marginTop: space.lg }]}>Ultimele 30 de zile</Text>
+            <View style={[ui.row, { justifyContent: 'space-between', marginTop: space.lg }]}>
+              <Text style={[ui.label, { marginTop: 0, marginBottom: 0 }]}>Ultimele 30 de zile</Text>
+              {staff.permissions.reports ? (
+                <Pressable onPress={() => router.push('/staff/stats')} hitSlop={10}>
+                  <Text style={{ color: colors.gold, fontWeight: '600' }}>Tablou de bord ›</Text>
+                </Pressable>
+              ) : null}
+            </View>
             <View style={s.tiles}>
               <Tile label="Programări" value={String(stats.last30.bookings)} />
               {stats.last30.revenue !== null ? <Tile label="Încasări" value={`${stats.last30.revenue}`} sub="lei" /> : null}

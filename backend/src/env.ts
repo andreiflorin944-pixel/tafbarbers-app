@@ -13,7 +13,7 @@ export type Env = {
 export type ClientSession = { kind: 'client'; clientId: string };
 // Drepturi configurabile pe conturile echipei. Administratorul de organizație le are pe toate;
 // celelalte roluri pornesc de la drepturile implicite ale rolului, iar adminul le poate schimba pe fiecare cont.
-export const PERMS = ['bookings_all', 'bookings_create', 'bookings_manage', 'clients', 'contacts', 'timeoff', 'stats', 'shop'] as const;
+export const PERMS = ['bookings_all', 'bookings_create', 'bookings_manage', 'clients', 'contacts', 'timeoff', 'stats', 'reports', 'shop'] as const;
 export type Perm = (typeof PERMS)[number];
 export type Perms = Record<Perm, boolean>;
 export const ROLES = ['org_admin', 'location_admin', 'barber'] as const;
@@ -28,10 +28,11 @@ export const ROLE_PERMS: Record<Exclude<Role, 'org_admin'>, Perms> = {
     contacts: false, // vede telefonul și e-mailul clienților
     timeoff: true, // își pune concedii și pauze
     stats: false, // vede încasările
+    reports: false, // vede tabloul de bord și rapoartele (și le descarcă în Excel)
     shop: false, // vede și pregătește comenzile din magazin
   },
   // Administratorul de locație: vede toate programările și datele de contact.
-  location_admin: { bookings_all: true, bookings_create: true, bookings_manage: true, clients: true, contacts: true, timeoff: true, stats: true, shop: true },
+  location_admin: { bookings_all: true, bookings_create: true, bookings_manage: true, clients: true, contacts: true, timeoff: true, stats: true, reports: true, shop: true },
 };
 export const DEFAULT_BARBER_PERMS = ROLE_PERMS.barber;
 export const isRole = (r: unknown): r is Role => ROLES.includes(r as Role);

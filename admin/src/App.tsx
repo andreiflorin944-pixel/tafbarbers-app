@@ -15,9 +15,13 @@ import { ShopPage } from './pages/Shop';
 import { ReferralsPage } from './pages/Referrals';
 import { SubscriptionsPage } from './pages/Subscriptions';
 import { BirthdaysPage } from './pages/Birthdays';
+import { DashboardPage } from './pages/Dashboard';
+import { ReportsPage } from './pages/Reports';
 
 const PAGES = [
   { key: 'calendar', label: 'Programări', show: () => true, el: CalendarPage },
+  { key: 'dashboard', label: 'Tablou de bord', show: (m: Me) => m.permissions.reports, el: DashboardPage },
+  { key: 'reports', label: 'Rapoarte', show: (m: Me) => m.permissions.reports, el: ReportsPage },
   { key: 'clients', label: 'Clienți', show: (m: Me) => m.permissions.clients, el: ClientsPage },
   { key: 'services', label: 'Servicii', show: (m: Me) => m.owner, el: ServicesPage },
   { key: 'barbers', label: 'Frizeri și program', show: (m: Me) => m.owner, el: BarbersPage },

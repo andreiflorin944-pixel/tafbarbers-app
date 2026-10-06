@@ -243,7 +243,7 @@ function BookingModal({ b, canManage, owner, onClose, onChange }: { b: Booking; 
         <div>
           <span className={`pill ${b.status}`}>{STATUS[b.status]}</span>{' '}
           <span className="muted small">{b.source === 'admin' ? 'adăugată din panou' : 'din aplicație'}</span>
-          {b.payment ? <strong className="small"> · {b.payment === 'subscription' ? 'pe abonament' : `a plătit ${lei(b.paidAmount ?? b.price)}`}</strong> : null}
+          {b.payment ? <strong className="small"> · {b.payment === 'subscription' ? 'pe abonament' : `a plătit ${lei(b.paidAmount ?? b.price)}${b.tip ? ` + bacșiș ${lei(b.tip)}` : ''}`}</strong> : null}
         </div>
         <Field label="Notiță internă">
           <textarea value={note} onChange={(e) => setNote(e.target.value)} disabled={!canManage} />
@@ -317,6 +317,7 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
   const [mode, setMode] = useState<'paid' | 'subscription' | null>(null);
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState('');
+  const [tip, setTip] = useState('');
   const { busy, error, run } = useAction();
   if (!data.data) return <Loading error={data.error} />;
   const sub = data.data.subscription;
@@ -351,13 +352,17 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
           </select>
         </Field>
       ) : null}
+      <label className="check">
+        Bacșiș (opțional)
+        <input type="number" min={0} value={tip} onChange={(e) => setTip(e.target.value)} style={{ width: 110 }} aria-label="Bacșiș" /> lei
+      </label>
       {error ? <div className="err">{error}</div> : null}
       <div className="row">
         <button
           disabled={busy || (m === 'paid' && amount === '')}
           onClick={() =>
             run(async () => {
-              await api('POST', `/admin/bookings/${b.id}/complete`, { payment: m, ...(m === 'paid' && { amount: Number(amount) }), bonusId: bonusId || null });
+              await api('POST', `/admin/bookings/${b.id}/complete`, { payment: m, ...(m === 'paid' && { amount: Number(amount) }), tip: tip ? Number(tip) : null, bonusId: bonusId || null });
               onDone();
             })
           }
