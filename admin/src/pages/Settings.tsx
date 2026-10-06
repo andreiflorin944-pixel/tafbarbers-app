@@ -76,6 +76,17 @@ function BusinessForm() {
       <Field label="Descriere (pagina Despre din aplicație)">
         <textarea value={v.description ?? ''} onChange={(e) => set({ description: e.target.value })} />
       </Field>
+      <h2 id="set-firma" style={{ margin: '6px 0 0', scrollMarginTop: 16 }}>Datele firmei</h2>
+      <p className="muted small" style={{ margin: 0 }}>
+        Apar în Termeni și condiții și în Politica de confidențialitate (obligatoriu pentru Apple și Google). Le găsești în certificatul de înregistrare al firmei.
+      </p>
+      <div className="grid two">
+        {text('legalName', 'Denumirea firmei', 'ex. TAF BARBERS SRL')}
+        {text('cui', 'CUI', 'ex. RO12345678')}
+        {text('regCom', 'Nr. Registrul Comerțului', 'ex. J40/1234/2020')}
+        {text('legalEmail', 'E-mail pentru clienți și date personale', 'contact@tafbarbers.ro')}
+      </div>
+      {text('legalAddress', 'Sediul social (din certificat)', 'Str., nr., oraș, județ')}
       <h2 id="set-reguli" style={{ margin: '6px 0 0', scrollMarginTop: 16 }}>Reguli de programare</h2>
       <div className="grid two">
         <Field label="Pasul orelor în aplicație (minute)">

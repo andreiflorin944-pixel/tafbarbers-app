@@ -53,7 +53,9 @@ export function LegalPage({ me }: { me: Me }) {
         <a href={publicUrl} target="_blank" rel="noreferrer">
           {publicUrl}
         </a>
-        . În text poți folosi {'{name}'}, {'{contact}'} și {'{policy}'} (politica de anulare din Setări).
+        . Modelul standard e scris pentru România și UE (GDPR, dreptul de retragere de 14 zile, ANPC). Datele firmei le completezi o singură dată în{' '}
+        <a href="#/settings/firma">Setări → Datele firmei</a> și apar singure în text. În text poți folosi {'{company}'}, {'{cui}'}, {'{regcom}'}, {'{seat}'}, {'{email}'},{' '}
+        {'{phone}'}, {'{address}'}, {'{name}'} și {'{policy}'} (politica de anulare).
       </p>
       <div className="tabs">
         {DOCS.map((x) => (
@@ -98,6 +100,21 @@ export function LegalPage({ me }: { me: Me }) {
               Salvează
             </button>
             {saved ? <span className="success small">Salvat. Apare imediat în aplicație.</span> : null}
+            {!d.isDefault ? (
+              <button
+                className="ghost"
+                disabled={busy}
+                onClick={() =>
+                  confirm('Revii la modelul standard? Textul tău editat se pierde.') &&
+                  run(async () => {
+                    await api('DELETE', `/admin/legal/${doc}`);
+                    data.reload();
+                  })
+                }
+              >
+                Revino la modelul standard
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>

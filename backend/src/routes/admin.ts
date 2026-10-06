@@ -259,6 +259,7 @@ adminRoutes.put('/settings', ownerOnly, async (c) => {
   const allowed = [
     'name', 'tagline', 'description', 'address', 'phone', 'website', 'instagram', 'facebook', 'tiktok',
     'slotStepMin', 'cancelHours', 'minLeadMin', 'maxDaysAhead', 'cancellationPolicy',
+    'legalName', 'cui', 'regCom', 'legalAddress', 'legalEmail',
   ];
   const next = { ...cur } as Record<string, unknown>;
   for (const k of allowed) if (k in b) next[k] = b[k];
@@ -1310,6 +1311,16 @@ adminRoutes.put('/legal/:doc', ownerOnly, async (c) => {
   store[doc] = { updatedAt: iso(new Date()), versions };
   await saveLegal(c.env, store);
   return c.json({ ok: true, updatedAt: store[doc].updatedAt });
+});
+
+/** Renunță la textul editat și revine la modelul standard (cu datele firmei completate automat). */
+adminRoutes.delete('/legal/:doc', ownerOnly, async (c) => {
+  const doc = c.req.param('doc') as (typeof DOCS)[number];
+  if (!DOCS.includes(doc)) throw new HttpError(404, 'not_found');
+  const store = await getLegal(c.env);
+  store[doc] = { updatedAt: null, versions: {} };
+  await saveLegal(c.env, store);
+  return c.json({ ok: true });
 });
 
 // --- Bannere de marketing ---

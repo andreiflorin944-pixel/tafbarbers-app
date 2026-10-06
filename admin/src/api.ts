@@ -330,6 +330,12 @@ export type Promo = {
 };
 export type Business = {
   name: string;
+  /** Datele firmei, pentru regulamente: denumire, CUI, Registrul Comerțului, sediu, e-mail. */
+  legalName?: string;
+  cui?: string;
+  regCom?: string;
+  legalAddress?: string;
+  legalEmail?: string;
   tagline: string;
   description?: string;
   address: string;
