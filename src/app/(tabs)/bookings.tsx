@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Platform, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, AppState, Linking, Platform, Text, View } from 'react-native';
+import { api } from '@/api';
 import { Button, Card, Empty, Screen, Segmented, Title, styles } from '@/components/ui';
 import type { Booking } from '@/data/types';
 import { formatDate, formatTime } from '@/lib/dates';
@@ -10,8 +11,13 @@ import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function Bookings() {
-  const { user, bookings, cancelBooking, serviceById, barberById, resetDraft, business, refreshBookings } = useApp();
+  const { user, token, bookings, cancelBooking, serviceById, barberById, resetDraft, business, refreshBookings } = useApp();
   const [tab, setTab] = useState(0);
+  // La întoarcerea de pe pagina de plată, reîncărcăm ca să apară „plătită online”.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => st === 'active' && refreshBookings());
+    return () => sub.remove();
+  }, [refreshBookings]);
   const { t } = useT();
   const book = () => {
     resetDraft();
@@ -54,6 +60,15 @@ export default function Bookings() {
     ]);
   };
   const cancelMs = (business?.cancelHours ?? 0) * 3_600_000;
+  const pay = async (b: Booking) => {
+    if (!token) return;
+    try {
+      const { url } = await api.payBooking(token, b.id);
+      await Linking.openURL(url);
+    } catch (e) {
+      notify(errorMessage(e));
+    }
+  };
   const STATUS: Record<string, string> = { cancelled: 'Anulată', completed: 'Finalizată', no_show: 'Neprezentare' };
 
   const renderItem = (b: Booking, canCancel: boolean) => {
@@ -71,7 +86,13 @@ export default function Bookings() {
         <Text style={styles.muted}>
           cu {barberById(b.barberId)?.name ?? b.barberName} ·{' '}
           {b.payment === 'subscription' ? 'pe abonament' : `${b.payment === 'paid' ? b.paidAmount : (b.price ?? service?.price)} lei`}
+          {b.onlinePaid ? (b.onlineRefunded ? ' · banii returnați pe card' : ' · plătită online') : ''}
         </Text>
+        {canCancel && business?.onlinePayments && !b.onlinePaid && (b.price ?? 0) > 0 ? (
+          <View style={{ marginTop: space.sm }}>
+            <Button title="Plătește acum cu cardul" variant="ghost" onPress={() => pay(b)} />
+          </View>
+        ) : null}
         {canCancel && start.getTime() - Date.now() < cancelMs ? (
           <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>
             Se mai poate anula doar telefonic (mai puțin de {business?.cancelHours} ore până la programare).

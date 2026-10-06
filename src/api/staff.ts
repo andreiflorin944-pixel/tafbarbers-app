@@ -37,6 +37,8 @@ export type StaffBooking = {
   // Confirmarea frizerului la finalizare: suma plătită sau pe abonament.
   payment?: 'paid' | 'subscription' | null;
   paidAmount?: number | null;
+  onlinePaid?: number | null;
+  onlineRefunded?: boolean;
   tip?: number | null;
   bonusId?: string | null;
   clientBirthday?: boolean; // programarea cade de ziua clientului
@@ -146,7 +148,7 @@ export const staffApi = {
       bonusId?: string | null;
       giftCode?: string | null;
       giftAmount?: number | null;
-      payMethod?: 'cash' | 'card' | 'transfer';
+      payMethod?: 'cash' | 'card' | 'transfer' | 'online';
     },
   ) =>
     call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/complete`, t, body),

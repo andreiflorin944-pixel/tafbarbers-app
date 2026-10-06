@@ -224,7 +224,7 @@ function Checkout({
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState<string | null>(null);
   const [tip, setTip] = useState("");
-  const [payMethod, setPayMethod] = useState<"cash" | "card">("cash");
+  const [payMethod, setPayMethod] = useState<"cash" | "card" | "online">(b.onlinePaid ? "online" : "cash");
   const [giftCode, setGiftCode] = useState("");
   const [gift, setGift] = useState<{ code: string; take: number; balance: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -308,7 +308,7 @@ function Checkout({
         ) : null}
         {mode === "paid" ? (
           <View style={[ui.row, { gap: space.sm, marginTop: space.sm }]}>
-            {(["cash", "card"] as const).map((m) => (
+            {(b.onlinePaid ? (["online", "cash", "card"] as const) : (["cash", "card"] as const)).map((m) => (
               <Pressable
                 key={m}
                 onPress={() => setPayMethod(m)}
@@ -324,7 +324,7 @@ function Checkout({
                   backgroundColor: payMethod === m ? colors.gold : "transparent",
                 }}
               >
-                <Text style={{ color: payMethod === m ? colors.onGold : colors.text, fontWeight: "700" }}>{m === "cash" ? "Numerar" : "Card (POS)"}</Text>
+                <Text style={{ color: payMethod === m ? colors.onGold : colors.text, fontWeight: "700" }}>{m === "cash" ? "Numerar" : m === "card" ? "Card (POS)" : "Online"}</Text>
               </Pressable>
             ))}
           </View>

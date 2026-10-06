@@ -8,7 +8,7 @@ import { iso } from './time';
 
 export const onlinePaymentsOn = (env: Env) => !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.PUBLIC_URL);
 
-type Kind = 'gift' | 'order';
+type Kind = 'gift' | 'order' | 'booking';
 
 /** Deschide o sesiune de plată și întoarce adresa paginii Stripe. */
 export async function createCheckout(env: Env, p: { kind: Kind; ref: string; amountBani: number; title: string; email?: string | null }) {
@@ -58,7 +58,7 @@ export async function verifyStripeSignature(secret: string, body: string, header
   return sigs.some((s) => timingSafeEqual(s, want));
 }
 
-type Session = { id: string; payment_status?: string; amount_total?: number; currency?: string; metadata?: { kind?: string; ref?: string } };
+type Session = { id: string; payment_intent?: string | null; payment_status?: string; amount_total?: number; currency?: string; metadata?: { kind?: string; ref?: string } };
 
 /** Ce facem când Stripe confirmă plata. Se poate primi de mai multe ori același eveniment, deci totul e idempotent. */
 export async function handleStripeEvent(env: Env, ev: { type?: string; data?: { object?: Session } }) {
@@ -90,5 +90,38 @@ export async function handleStripeEvent(env: Env, ev: { type?: string; data?: { 
       .run();
     return o.status === 'cancelled' ? 'needs_refund' : 'order_paid';
   }
+  if (s.metadata?.kind === 'booking') {
+    const b = await env.DB.prepare('SELECT price_bani, status, online_paid_bani FROM bookings WHERE id = ?')
+      .bind(ref)
+      .first<{ price_bani: number; status: string; online_paid_bani: number | null }>();
+    if (!b) return 'unknown';
+    if (b.online_paid_bani) return 'duplicate';
+    if (s.amount_total !== b.price_bani) return 'amount_mismatch';
+    await env.DB.prepare('UPDATE bookings SET online_paid_bani = ?, online_payment_ref = ? WHERE id = ? AND online_paid_bani IS NULL')
+      .bind(s.amount_total, s.payment_intent ?? s.id, ref)
+      .run();
+    // Plătită după ce a fost anulată (sesiunea era deschisă): o returnăm imediat.
+    if (b.status === 'cancelled') return (await refundBooking(env, ref)) ? 'refunded' : 'needs_refund';
+    return 'booking_paid';
+  }
   return 'unknown';
+}
+
+/** Returnează plata online a unei programări anulate. Întoarce true dacă Stripe a acceptat returnarea. */
+export async function refundBooking(env: Env, bookingId: string): Promise<boolean> {
+  const b = await env.DB.prepare('SELECT online_paid_bani, online_payment_ref, online_refunded_at FROM bookings WHERE id = ?')
+    .bind(bookingId)
+    .first<{ online_paid_bani: number | null; online_payment_ref: string | null; online_refunded_at: string | null }>();
+  if (!b?.online_paid_bani || b.online_refunded_at || !b.online_payment_ref?.startsWith('pi_') || !env.STRIPE_SECRET_KEY) return false;
+  const r = await fetch('https://api.stripe.com/v1/refunds', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Idempotency-Key': `refund-${bookingId}` },
+    body: new URLSearchParams({ payment_intent: b.online_payment_ref, 'metadata[booking]': bookingId }),
+  });
+  if (!r.ok) {
+    console.error('stripe refund', bookingId, r.status, await r.text().catch(() => ''));
+    return false;
+  }
+  await env.DB.prepare('UPDATE bookings SET online_refunded_at = ? WHERE id = ?').bind(iso(new Date()), bookingId).run();
+  return true;
 }

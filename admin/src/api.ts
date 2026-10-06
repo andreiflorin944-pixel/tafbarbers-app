@@ -262,6 +262,8 @@ export type Booking = {
   barberName: string;
   payment?: 'paid' | 'subscription' | null;
   paidAmount?: number | null;
+  onlinePaid?: number | null; // plătită cu cardul din aplicație, înainte de vizită
+  onlineRefunded?: boolean;
   tip?: number | null;
   cancelledBy?: 'client' | 'staff' | null;
   bonusId?: string | null;

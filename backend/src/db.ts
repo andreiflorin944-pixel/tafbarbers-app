@@ -143,6 +143,8 @@ export type BookingRow = {
   tip_bani?: number | null;
   gift_bani?: number | null;
   pay_method?: string | null;
+  online_paid_bani?: number | null;
+  online_refunded_at?: string | null;
   cancelled_by?: string | null;
   client_name?: string;
   client_phone?: string;
@@ -172,6 +174,9 @@ export const booking = (r: BookingRow) => ({
   // Partea plătită cu un card cadou (separat de `paidAmount`, care e ce s-a plătit în plus).
   giftAmount: r.gift_bani ? r.gift_bani / 100 : null,
   payMethod: r.pay_method ?? null,
+  // Plătită din aplicație cu cardul (Stripe), înainte de vizită; la anulare banii se returnează singuri.
+  onlinePaid: r.online_paid_bani ? r.online_paid_bani / 100 : null,
+  onlineRefunded: !!r.online_refunded_at,
   cancelledBy: (r.cancelled_by ?? null) as 'client' | 'staff' | null,
   ...(r.client_name !== undefined && { clientName: r.client_name, clientPhone: r.client_phone }),
   // Programare în ziua de naștere a clientului (frizerul vede o lumânare); data nașterii nu se trimite.

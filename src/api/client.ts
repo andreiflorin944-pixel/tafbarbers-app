@@ -62,6 +62,7 @@ export interface BookingApi {
   createOrder(token: string, input: { items: Array<{ productId: string; qty: number }>; note?: string }): Promise<Order>;
   cancelOrder(token: string, id: string): Promise<Order>;
   payOrder(token: string, id: string): Promise<{ url: string }>;
+  payBooking(token: string, id: string): Promise<{ url: string }>;
 }
 
 /** Eroare de la server, cu codul lui (ex. `slot_unavailable`). */

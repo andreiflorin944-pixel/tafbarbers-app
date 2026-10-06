@@ -94,5 +94,6 @@ export function httpApi(baseUrl: string): BookingApi {
     createOrder: (token, input) => call('POST', '/orders', { token, body: input }),
     cancelOrder: (token, id) => call('POST', `/orders/${encodeURIComponent(id)}/cancel`, { token }),
     payOrder: (token, id) => call('POST', `/orders/${encodeURIComponent(id)}/pay`, { token }),
+    payBooking: (token, id) => call('POST', `/bookings/${encodeURIComponent(id)}/pay`, { token }),
   };
 }

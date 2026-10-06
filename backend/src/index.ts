@@ -87,15 +87,17 @@ $('f2').hidden=true;msg('Contul a fost șters. Îți mulțumim că ai fost clien
 // Paginile la care revine clientul de pe Stripe. Starea reală vine prin webhook; aici doar îl trimitem înapoi în aplicație.
 app.get('/plata/:rez', async (c) => {
   const ok = c.req.param('rez') === 'gata';
-  const gift = c.req.query('tip') === 'gift';
+  const tip = c.req.query('tip');
   const biz = await getBusiness(c.env);
   const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-  const deep = gift ? 'tafbarbers://gift-cards' : 'tafbarbers://shop/orders';
+  const deep = tip === 'gift' ? 'tafbarbers://gift-cards' : tip === 'booking' ? 'tafbarbers://bookings' : 'tafbarbers://shop/orders';
   const title = ok ? 'Plata a reușit' : 'Plata a fost anulată';
   const text = ok
-    ? gift
+    ? tip === 'gift'
       ? 'Mulțumim! Cardul cadou se activează imediat, iar cel care îl primește are codul prin SMS și în aplicație.'
-      : 'Mulțumim! Comanda e plătită; o ridici de la salon când îți scriem că e gata.'
+      : tip === 'booking'
+        ? `Mulțumim! Programarea e plătită. Dacă o anulezi la timp, banii se întorc singuri pe card.`
+        : 'Mulțumim! Comanda e plătită; o ridici de la salon când îți scriem că e gata.'
     : 'Nu s-a luat niciun ban. Poți încerca din nou din aplicație sau poți plăti la salon.';
   return c.html(`<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · ${esc(biz.name)}</title><meta name="robots" content="noindex">
 <style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:480px;margin:0 auto;padding:56px 20px;text-align:center}h1{font-size:26px;color:${ok ? '#8FC79A' : '#F9A11B'}}a.b{display:inline-block;background:#F9A11B;color:#000;font-weight:800;text-decoration:none;padding:14px 26px;border-radius:999px;margin-top:14px}</style></head>

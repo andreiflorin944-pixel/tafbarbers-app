@@ -177,9 +177,9 @@ export async function completeBooking(
   b: { payment?: string; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null; payMethod?: string | null },
   adminId: string,
 ) {
-  const bk = await env.DB.prepare('SELECT id, client_id, service_id, price_bani, status, payment FROM bookings WHERE id = ?')
+  const bk = await env.DB.prepare('SELECT id, client_id, service_id, price_bani, status, payment, online_paid_bani FROM bookings WHERE id = ?')
     .bind(bookingId)
-    .first<{ id: string; client_id: string; service_id: string; price_bani: number; status: string; payment: string | null }>();
+    .first<{ id: string; client_id: string; service_id: string; price_bani: number; status: string; payment: string | null; online_paid_bani: number | null }>();
   if (!bk) throw new HttpError(404, 'not_found');
   if (bk.status === 'cancelled') throw new HttpError(409, 'booking_cancelled');
   if (bk.payment) throw new HttpError(409, 'already_completed');
@@ -197,7 +197,14 @@ export async function completeBooking(
   }
 
   // Cum s-a plătit suma de la casă (pentru registrul de încasări): numerar implicit, card la POS sau transfer.
-  const payMethod = paidBani ? (b.payMethod === 'card' || b.payMethod === 'transfer' ? b.payMethod : 'cash') : null;
+  // „online” = plătită din aplicație înainte de vizită (doar dacă plata online chiar a venit).
+  const payMethod = paidBani
+    ? b.payMethod === 'card' || b.payMethod === 'transfer'
+      ? b.payMethod
+      : b.payMethod === 'online' && bk.online_paid_bani
+        ? 'online'
+        : 'cash'
+    : null;
 
   // Bacșișul se notează separat de preț, pentru raportul de bacșișuri pe frizer.
   const tip = b.tip === undefined || b.tip === null || b.tip === 0 ? 0 : Number(b.tip);

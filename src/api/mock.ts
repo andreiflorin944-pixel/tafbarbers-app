@@ -202,4 +202,5 @@ export const mockApi: BookingApi = {
   createOrder: () => Promise.reject(new ApiError('no_server', 0)),
   cancelOrder: () => Promise.reject(new ApiError('no_server', 0)),
   payOrder: () => Promise.reject(new ApiError('payments_off', 409)),
+  payBooking: () => Promise.reject(new ApiError('payments_off', 409)),
 };

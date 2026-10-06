@@ -411,6 +411,11 @@ function BookingPanel({ b, color, canManage, owner, onClose, onChange }: { b: Bo
           {canManage ? (
             <section className="drawer-sec">
               <h3>Plată</h3>
+              {b.onlinePaid ? (
+                <div className={b.onlineRefunded ? 'muted small' : 'success small'} style={{ marginBottom: 6 }}>
+                  {b.onlineRefunded ? `Plata online de ${b.onlinePaid} lei a fost returnată pe card.` : `Plătită online din aplicație: ${b.onlinePaid} lei.`}
+                </div>
+              ) : null}
               {checkout && canComplete ? (
                 <CheckoutForm
                   b={b}
@@ -486,7 +491,7 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState('');
   const [tip, setTip] = useState('');
-  const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
+  const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'transfer' | 'online'>(b.onlinePaid ? 'online' : 'cash');
   const [giftCode, setGiftCode] = useState('');
   const [gift, setGift] = useState<{ code: string; take: number; balance: number } | null>(null);
   const [giftErr, setGiftErr] = useState<string | null>(null);
@@ -511,13 +516,15 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
   return (
     <div className="card grid">
       <b>Cum a plătit?</b>
+      {b.onlinePaid ? <div className="success small">A plătit deja online, din aplicație: {b.onlinePaid} lei.</div> : null}
       <label className="check">
         <input type="radio" checked={m === 'paid'} onChange={() => setMode('paid')} /> A plătit
         <input type="number" min={0} value={amount} onChange={(e) => { setMode('paid'); setAmount(e.target.value); }} style={{ width: 110 }} aria-label="Suma plătită" /> lei
-        <select value={payMethod} onChange={(e) => { setMode('paid'); setPayMethod(e.target.value as 'cash' | 'card' | 'transfer'); }} style={{ width: 130 }} aria-label="Cum a plătit">
+        <select value={payMethod} onChange={(e) => { setMode('paid'); setPayMethod(e.target.value as 'cash' | 'card' | 'transfer' | 'online'); }} style={{ width: 130 }} aria-label="Cum a plătit">
           <option value="cash">numerar</option>
           <option value="card">card (POS)</option>
           <option value="transfer">transfer</option>
+          {b.onlinePaid ? <option value="online">online (în aplicație)</option> : null}
         </select>
       </label>
       <label className="check" style={{ opacity: sub ? 1 : 0.5 }}>

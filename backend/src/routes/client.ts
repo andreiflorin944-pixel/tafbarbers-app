@@ -143,6 +143,19 @@ clientRoutes.post('/me/gift-cards/:id/pay', async (c) => {
   return c.json({ url });
 });
 
+/** Plata cu cardul a unei programări viitoare, din aplicație (prețul întreg). */
+clientRoutes.post('/bookings/:id/pay', async (c) => {
+  const b = await c.env.DB.prepare(`${BOOKING_SELECT} WHERE b.id = ? AND b.client_id = ?`).bind(c.req.param('id'), c.get('client').clientId).first<BookingRow>();
+  if (!b) throw new HttpError(404, 'booking_not_found');
+  if (b.online_paid_bani) throw new HttpError(409, 'booking_paid');
+  if (b.status !== 'confirmed' || Date.parse(b.starts_at) < Date.now()) throw new HttpError(409, 'not_payable');
+  if (!b.price_bani) throw new HttpError(409, 'not_payable');
+  const me = await c.env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(b.client_id).first<{ email: string | null }>();
+  const biz = await getBusiness(c.env);
+  const url = await createCheckout(c.env, { kind: 'booking', ref: b.id, amountBani: b.price_bani, title: `${b.service_name} · ${b.barber_name} · ${biz.name}`, email: me?.email });
+  return c.json({ url });
+});
+
 clientRoutes.post('/orders/:id/pay', async (c) => {
   const o = await getOrder(c.env, c.req.param('id')!);
   if (o.clientId !== c.get('client').clientId) throw new HttpError(404, 'not_found');

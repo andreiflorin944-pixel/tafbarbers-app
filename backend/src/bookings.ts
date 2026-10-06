@@ -7,6 +7,7 @@ import { channelsFor } from './growth';
 import { sendEmail, sendPush, sendSms } from './notify';
 import { formatLocal, iso, localDay } from './time';
 import { msg } from './messages';
+import { refundBooking } from './payments';
 
 export const BOOKING_SELECT = `
   SELECT b.*, c.name AS client_name, c.phone AS client_phone, c.birth_date AS client_birth_date, s.name AS service_name, br.name AS barber_name
@@ -109,6 +110,12 @@ export async function cancelBooking(env: Env, id: string, by: 'client' | 'admin'
   await env.DB.prepare(`UPDATE bookings SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?, cancelled_by_admin = ? WHERE id = ?`)
     .bind(iso(new Date()), by === 'client' ? 'client' : 'staff', adminId ?? null, id)
     .run();
+  // Plătită online: banii se întorc singuri pe card.
+  try {
+    await refundBooking(env, id);
+  } catch (e) {
+    console.error('refund on cancel', id, e);
+  }
   const updated = (await getBooking(env, id))!;
   if (by === 'admin') await notifyBooking(env, updated, 'cancel');
   return updated;
