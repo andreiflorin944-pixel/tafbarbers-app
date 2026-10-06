@@ -6,7 +6,14 @@ import { ApiError } from './client';
 /** Pozele urcate din panou au adrese relative la server (/v1/media/...). */
 export const mediaUrl = (u: string | null | undefined): string | null => (!u ? null : u.startsWith('/') ? `${apiUrl}${u}` : u);
 
-export const apiUrl: string = (process.env.EXPO_PUBLIC_API_URL || (Constants.expoConfig?.extra?.apiUrl as string | undefined) || '').replace(/\/+$/, '');
+// În dezvoltare (Expo Go pe telefon), fără adresă setată, folosim serverul local de pe același laptop ca Expo,
+// pe portul 8787. Așa aplicația merge și când laptopul primește altă adresă în Wi-Fi.
+const devHost = __DEV__ ? (Constants.expoConfig?.hostUri ?? '').split(':')[0] : '';
+export const apiUrl: string = (
+  process.env.EXPO_PUBLIC_API_URL ||
+  (Constants.expoConfig?.extra?.apiUrl as string | undefined) ||
+  (devHost ? `http://${devHost}:8787` : '')
+).replace(/\/+$/, '');
 
 export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'contacts' | 'timeoff' | 'stats' | 'reports' | 'shop';
 export type StaffRole = 'org_admin' | 'location_admin' | 'barber';
