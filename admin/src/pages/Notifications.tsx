@@ -14,15 +14,19 @@ type Automations = {
   channels: Record<Ev, Channel>;
   otpSms: boolean;
 };
-type Ev = 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'order_ready' | 'gift_card';
+type Ev = 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started';
 type Channel = { enabled: boolean; push: boolean; sms: boolean; email: boolean };
 const EVENTS: Array<{ k: Ev; label: string }> = [
   { k: 'confirm', label: 'Confirmarea programării' },
   { k: 'reminder_24h', label: 'Reminder cu o zi înainte' },
   { k: 'reminder_2h', label: 'Reminder cu 2 ore înainte' },
   { k: 'cancel', label: 'Programare anulată de salon' },
+  { k: 'review', label: 'Cerere de recenzie după tunsoare' },
+  { k: 'order_created', label: 'Comandă primită (magazin)' },
   { k: 'order_ready', label: 'Comanda din magazin e gata' },
+  { k: 'order_cancelled', label: 'Comandă anulată de salon' },
   { k: 'gift_card', label: 'Codul cardului cadou (către cine îl primește)' },
+  { k: 'sub_started', label: 'Abonament activat' },
 ];
 type Slot = { start: string; barberName: string };
 const TAB_SUBS = ['canale', 'dor', 'ore-libere', 'card-cadou', 'linkuri'];
@@ -299,7 +303,7 @@ function ChannelsTab({
         Codul pleacă întâi pe e-mail. Bifat: clientul are și butonul „Trimite-mi codul prin SMS”, pentru când nu-i vine e-mailul. Debifat: codul vine doar pe
         e-mail.
       </div>
-      <div className="muted small">WhatsApp se poate porni după ce salonul își face cont WhatsApp Business (îl legăm atunci).</div>
+      <div className="muted small">WhatsApp se poate porni după ce salonul își face cont WhatsApp Business (îl legăm atunci). Textele mesajelor le schimbi la <a href="#/templates">Șabloane de mesaje</a>.</div>
     </>
   );
 }

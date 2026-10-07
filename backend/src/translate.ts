@@ -15,7 +15,7 @@ async function run(env: Env, text: string, to: 'en' | 'fr'): Promise<string | nu
 export async function translate(env: Env, text: string, to: 'en' | 'fr'): Promise<string | null> {
   if (!env.AI || !text.trim()) return null;
   const vars: string[] = [];
-  const masked = text.replace(/\{[a-zA-ZăâîșțĂÂÎȘȚ_]+\}/g, (m) => {
+  const masked = text.replace(/\{[a-zA-ZăâîșțĂÂÎȘȚ_]+\}|##[a-z_]+##/g, (m) => {
     vars.push(m);
     return `[${vars.length - 1}]`;
   });

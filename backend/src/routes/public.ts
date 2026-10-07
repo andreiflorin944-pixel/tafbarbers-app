@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getAutomations } from '../growth';
+import { renderTemplate } from '../templates';
 import { attributeQr, ipHash } from '../qr';
 import { availability } from '../availability';
 import { createSession, deleteSession, normalizePhone, randomCode, sha256, newId, timingSafeEqual, tokenFrom } from '../auth';
@@ -164,11 +165,14 @@ publicRoutes.post('/auth/otp', async (c) => {
   const lang = c.req.query('lang') ?? 'ro';
   if (review) {
     // fără mesaj: echipa care verifică aplicația știe codul
-  } else if (channel === 'email') {
-    const m = otpEmail(lang, biz.name, code);
-    await sendEmail(c.env, { kind: 'otp', recipient: email! }, m.subject, m.html);
   } else {
-    await sendSms(c.env, { kind: 'otp', recipient: phone }, msg(lang, 'otp', { shop: biz.name, code }));
+    const t = await renderTemplate(c.env, 'otp', lang, { businessname: biz.name, code });
+    if (channel === 'email') {
+      const m = otpEmail(lang, biz.name, code, { subject: t.emailSubject, intro: t.emailBody });
+      await sendEmail(c.env, { kind: 'otp', recipient: email! }, m.subject, m.html);
+    } else {
+      await sendSms(c.env, { kind: 'otp', recipient: phone }, t.sms);
+    }
   }
   return c.json({ ok: true, phone, channel, newAccount: !client, sentTo: channel === 'email' ? email : phone, ...(c.env.DEV_OTP === '1' && { devCode: code }) });
 });

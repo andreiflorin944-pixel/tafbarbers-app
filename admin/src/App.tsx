@@ -23,6 +23,7 @@ import { StockPage } from './pages/Stock';
 import { NotesPage } from './pages/Notes';
 import { SocialPage } from './pages/Social';
 import { QrCodesPage } from './pages/QrCodes';
+import { TemplatesPage } from './pages/Templates';
 
 const PAGES = [
   { key: 'calendar', label: 'Calendar', show: () => true, el: CalendarPage },
@@ -46,6 +47,7 @@ const PAGES = [
   { key: 'qr', label: 'Coduri QR', show: (m: Me) => m.owner, el: QrCodesPage },
   { key: 'legal', label: 'Regulamente și GDPR', show: (m: Me) => m.owner, el: LegalPage },
   { key: 'notifications', label: 'Notificări', show: (m: Me) => m.owner, el: NotificationsPage },
+  { key: 'templates', label: 'Șabloane de mesaje', show: (m: Me) => m.owner, el: TemplatesPage },
   { key: 'settings', label: 'Setări', show: () => true, el: SettingsPage },
 ];
 
@@ -135,7 +137,7 @@ const NAV: NavSection[] = [
     key: 'notify',
     label: 'Notificări',
     icon: 'notify',
-    groups: [{ items: [{ label: 'Ce se trimite și pe unde', to: 'notifications/canale' }, { label: 'Mesaje trimise', to: 'settings/mesaje' }] }],
+    groups: [{ items: [{ label: 'Ce se trimite și pe unde', to: 'notifications/canale' }, { label: 'Șabloane de mesaje', to: 'templates' }, { label: 'Mesaje trimise', to: 'settings/mesaje' }] }],
   },
   {
     key: 'apps',

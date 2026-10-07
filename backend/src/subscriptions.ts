@@ -2,6 +2,7 @@ import { newId } from './auth';
 import { redeemGiftCard, refundGiftCard } from './growth';
 import { HttpError, type Env } from './env';
 import { iso } from './time';
+import { sendTemplate } from './sendTemplate';
 
 // Abonamente la tuns: adminul definește planurile, clientul plătește la salon și frizerul
 // (sau adminul) îl activează. La fiecare tunsoare finalizată, frizerul confirmă „a plătit X lei”
@@ -151,6 +152,12 @@ export async function activateSubscription(env: Env, clientId: string, planId: s
   )
     .bind(id, clientId, p.id, p.name, gift ? 0 : p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId)
     .run();
+  const enddate = new Date(end).toLocaleDateString('ro-RO', { timeZone: env.TIMEZONE, day: 'numeric', month: 'long', year: 'numeric' });
+  try {
+    await sendTemplate(env, 'sub_started', clientId, { membershipplanname: p.name, enddate }, { data: { screen: 'subscriptions' } });
+  } catch (e) {
+    console.error('sub_started', e);
+  }
   return id;
 }
 

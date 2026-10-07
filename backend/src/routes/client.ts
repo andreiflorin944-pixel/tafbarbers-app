@@ -8,7 +8,7 @@ import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
 import { attributeQr } from '../qr';
 import { deleteClient, exportClient } from '../gdpr';
-import { createOrder, getOrder, getOrders, setOrderStatus } from '../shop';
+import { createOrder, getOrder, getOrders, notifyOrder, setOrderStatus } from '../shop';
 import { myReferrals } from '../referrals';
 import { mySubscriptions } from '../subscriptions';
 import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
@@ -241,6 +241,7 @@ clientRoutes.get('/me/orders', async (c) => c.json((await getOrders(c.env, 'o.cl
 
 clientRoutes.post('/orders', async (c) => {
   const o = await createOrder(c.env, c.get('client').clientId, await c.req.json());
+  c.executionCtx.waitUntil(notifyOrder(c.env, o.id, 'order_created').catch((e) => console.error('order_created', e)));
   return c.json(stripClient(o), 201);
 });
 

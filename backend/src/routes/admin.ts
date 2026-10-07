@@ -35,7 +35,9 @@ import { runCampaign } from '../campaigns';
 import { iso, isBirthdayOn, isDay, localDay, localToUtc } from '../time';
 import { clientsCells, clientsCsv, deleteClient } from '../gdpr';
 import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
-import { getOrder, getOrders, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
+import { getOrder, getOrders, notifyOrder, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
+import { sendTemplate } from '../sendTemplate';
+import { listTemplates, saveTemplate, TEMPLATE_EVENTS, WILDCARDS, type TplEvent, type TplField } from '../templates';
 import { addPhoto, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
 import { getBonuses, getReferralSettings, giveBonus, parseReward, saveReferralSettings, type Reward } from '../referrals';
 import {
@@ -414,6 +416,7 @@ adminRoutes.patch('/orders/:id', async (c) => {
   if (!from) throw new HttpError(400, 'invalid_status');
   await getOrder(c.env, id);
   if (!(await setOrderStatus(c.env, id, status as OrderStatus, from))) throw new HttpError(409, 'invalid_transition');
+  if (status === 'cancelled') c.executionCtx.waitUntil(notifyOrder(c.env, id, 'order_cancelled').catch((e) => console.error('order_cancelled', e)));
   // La ridicare se încasează la salon, dacă nu a fost plătită deja online.
   if (status === 'picked_up')
     await c.env.DB.prepare('UPDATE orders SET paid_at = ?, pay_method = ? WHERE id = ? AND paid_at IS NULL').bind(iso(new Date()), payMethodOf(payMethod), id).run();
@@ -786,13 +789,13 @@ adminRoutes.post('/bookings/:id/review-request', async (c) => {
   if (!links.googleReviewUrl) throw new HttpError(400, 'review_link_missing');
   const sent = await c.env.DB.prepare(`SELECT 1 FROM message_log WHERE kind = 'review' AND booking_id = ? AND status = 'sent' LIMIT 1`).bind(cur.id).first();
   if (sent) throw new HttpError(409, 'review_already_sent');
-  const name = (cur.clientName || '').split(/\s+/)[0];
-  const text = `${name ? `${name}, m` : 'M'}ulțumim că ai fost la TAFBarbers! Ne lași o recenzie? Durează un minut: ${links.googleReviewUrl}`;
-  const ok = cur.clientPhone ? await sendSms(c.env, { kind: 'review', recipient: cur.clientPhone, bookingId: cur.id }, text) : false;
-  const tokens = (await c.env.DB.prepare('SELECT token FROM push_tokens WHERE client_id = ?').bind(cur.clientId).all<{ token: string }>()).results.map((t) => t.token);
-  const pushed = tokens.length ? await sendPush(c.env, { kind: 'review', bookingId: cur.id }, tokens, 'Cum a fost tunsoarea?', 'Ne lași o recenzie pe Google? Durează un minut.', { url: links.googleReviewUrl }) : 0;
-  if (!ok && !pushed) throw new HttpError(500, 'send_failed');
-  return c.json({ ok: true, sms: ok, push: pushed > 0 });
+  const r = await sendTemplate(c.env, 'review', cur.clientId, { servicename: cur.serviceName ?? '', barbername: cur.barberName ?? '', datetime: '', reviewlink: links.googleReviewUrl }, {
+    bookingId: cur.id,
+    data: { url: links.googleReviewUrl },
+  });
+  if (r.off) throw new HttpError(400, 'review_off');
+  if (!r.sms && !r.push && !r.email) throw new HttpError(500, 'send_failed');
+  return c.json({ ok: true, sms: r.sms, push: r.push, email: r.email });
 });
 
 async function bookingForStaff(c: Context<AppEnv>) {
@@ -1094,6 +1097,15 @@ adminRoutes.delete('/before-after/:id', async (c) => {
 
 // --- Mesaje automate (Setări → Notificări) ---
 
+/** Șabloanele mesajelor automate (SMS, push, e-mail), cu variabilele ##...## pe care le acceptă fiecare. */
+adminRoutes.get('/templates', ownerOnly, async (c) => c.json({ templates: await listTemplates(c.env), wildcards: WILDCARDS }));
+adminRoutes.put('/templates/:event', ownerOnly, async (c) => {
+  const event = c.req.param('event') as TplEvent;
+  if (!TEMPLATE_EVENTS.includes(event)) throw new HttpError(404, 'not_found');
+  const b = await c.req.json<{ fields?: Partial<Record<TplField, string | null>> }>();
+  await saveTemplate(c.env, event, b.fields ?? {});
+  return c.json((await listTemplates(c.env)).find((t) => t.event === event));
+});
 adminRoutes.get('/automations', async (c) => c.json(await getAutomations(c.env)));
 adminRoutes.put('/automations', ownerOnly, async (c) => c.json(await saveAutomations(c.env, await c.req.json())));
 /** Ce ore libere ar anunța acum mesajul de ultim moment. */

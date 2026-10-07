@@ -44,9 +44,9 @@ export type GiftCardSettings = {
 };
 export type LinkSettings = { appStoreUrl: string; playStoreUrl: string; googleReviewUrl: string };
 /** Notificările despre programări, comenzi și carduri cadou: adminul alege dacă pleacă și pe ce canale. */
-export type ChannelEvent = 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'order_ready' | 'gift_card';
+export type ChannelEvent = 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started';
 export type Channel = { enabled: boolean; push: boolean; sms: boolean; email: boolean };
-export const CHANNEL_EVENTS: ChannelEvent[] = ['confirm', 'cancel', 'reminder_24h', 'reminder_2h', 'order_ready', 'gift_card'];
+export const CHANNEL_EVENTS: ChannelEvent[] = ['confirm', 'cancel', 'reminder_24h', 'reminder_2h', 'review', 'order_created', 'order_ready', 'order_cancelled', 'gift_card', 'sub_started'];
 export type Automations = {
   winback: WinbackSettings;
   lastMinute: LastMinuteSettings;
@@ -107,8 +107,12 @@ export const DEFAULT_AUTOMATIONS: Automations = {
     cancel: { enabled: true, push: false, sms: true, email: false },
     reminder_24h: { enabled: true, push: true, sms: true, email: false },
     reminder_2h: { enabled: true, push: true, sms: true, email: false },
+    review: { enabled: true, push: true, sms: true, email: false },
+    order_created: { enabled: true, push: true, sms: false, email: false },
     order_ready: { enabled: true, push: true, sms: true, email: false },
+    order_cancelled: { enabled: true, push: true, sms: false, email: false },
     gift_card: { enabled: true, push: true, sms: true, email: false },
+    sub_started: { enabled: true, push: true, sms: false, email: false },
   },
   otpSms: true,
 };

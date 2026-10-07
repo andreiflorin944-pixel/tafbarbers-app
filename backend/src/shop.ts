@@ -1,10 +1,6 @@
 import { newId } from './auth';
-import { getBusiness } from './db';
 import { HttpError, type Env } from './env';
-import { msg } from './messages';
-import { emailHtml } from './campaigns';
-import { channelsFor } from './growth';
-import { sendEmail, sendPush, sendSms } from './notify';
+import { sendTemplate } from './sendTemplate';
 import { iso } from './time';
 
 // Magazin online. Plata se face la ridicarea din salon; stocul scade la comandă și revine la anulare.
@@ -173,22 +169,12 @@ export async function setOrderStatus(env: Env, id: string, to: OrderStatus, from
       .bind(id)
       .run();
   }
-  if (to === 'ready') await notifyOrderReady(env, id);
+  if (to === 'ready') await notifyOrder(env, id, 'order_ready');
   return true;
 }
 
-async function notifyOrderReady(env: Env, id: string) {
-  const o = await env.DB.prepare('SELECT o.client_id, c.phone, c.email, c.lang FROM orders o JOIN clients c ON c.id = o.client_id WHERE o.id = ?')
-    .bind(id)
-    .first<{ client_id: string; phone: string; email: string | null; lang: string }>();
-  if (!o || o.phone.startsWith('deleted:')) return;
-  const biz = await getBusiness(env);
-  const text = msg(o.lang, 'order_ready', { shop: biz.name, code: orderCode(id) });
-  const ch = await channelsFor(env, 'order_ready');
-  if (!ch) return;
-  if (ch.sms) await sendSms(env, { kind: 'order_ready', recipient: o.phone }, text);
-  if (ch.email && o.email) await sendEmail(env, { kind: 'order_ready', recipient: o.email }, biz.name, emailHtml(biz.name, 'Comanda ta e gata', text));
-  if (!ch.push) return;
-  const tokens = await env.DB.prepare('SELECT token FROM push_tokens WHERE client_id = ?').bind(o.client_id).all<{ token: string }>();
-  if (tokens.results.length) await sendPush(env, { kind: 'order_ready' }, tokens.results.map((t) => t.token), biz.name, text, { orderId: id });
+/** Mesajul către client despre comanda lui (primită, gata, anulată), după șabloanele din panou. */
+export async function notifyOrder(env: Env, id: string, event: 'order_created' | 'order_ready' | 'order_cancelled') {
+  const o = await env.DB.prepare('SELECT client_id FROM orders WHERE id = ?').bind(id).first<{ client_id: string }>();
+  if (o) await sendTemplate(env, event, o.client_id, { ordernumber: orderCode(id) }, { data: { orderId: id } });
 }

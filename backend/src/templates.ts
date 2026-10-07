@@ -1,0 +1,238 @@
+import { getSetting, setSetting } from './db';
+import { HttpError, type Env } from './env';
+import { autoTranslate, type Texts3 } from './translate';
+
+// Șabloanele mesajelor automate (cod de intrare, programări, comenzi, abonamente), pe canale: SMS, push, e-mail.
+// Adminul le scrie în română, cu variabile de tipul ##customerfirstname##; engleza și franceza se traduc singure.
+
+export type TplEvent = 'otp' | 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'sub_started';
+export type TplField = 'sms' | 'pushTitle' | 'pushBody' | 'emailSubject' | 'emailBody';
+type Lang = 'ro' | 'en' | 'fr';
+type Stored = Partial<Record<TplEvent, Partial<Record<TplField, Texts3>>>>;
+
+export const WILDCARDS: Record<string, string> = {
+  businessname: 'numele salonului',
+  customerfullname: 'numele clientului',
+  customerfirstname: 'prenumele clientului',
+  servicename: 'serviciul',
+  barbername: 'frizerul',
+  datetime: 'data și ora programării',
+  code: 'codul de intrare',
+  ordernumber: 'numărul comenzii',
+  reviewlink: 'linkul de recenzie Google',
+  membershipplanname: 'numele abonamentului',
+  enddate: 'data până la care e valabil abonamentul',
+};
+
+const BOOKING = ['businessname', 'customerfullname', 'customerfirstname', 'servicename', 'barbername', 'datetime'];
+const ORDER = ['businessname', 'customerfullname', 'customerfirstname', 'ordernumber'];
+
+type Def = { label: string; vars: string[]; fields: TplField[]; ro: Partial<Record<TplField, string>>; en?: Partial<Record<TplField, string>>; fr?: Partial<Record<TplField, string>> };
+
+/** Textele de pornire; cele de SMS în engleză și franceză sunt cele folosite până acum. */
+export const TEMPLATE_DEFS: Record<TplEvent, Def> = {
+  otp: {
+    label: 'Codul de intrare în cont',
+    vars: ['businessname', 'code'],
+    fields: ['sms', 'emailSubject', 'emailBody'],
+    ro: { sms: 'Codul tău ##businessname##: ##code##. Expiră în 10 minute.', emailSubject: 'Codul tău ##businessname##: ##code##', emailBody: 'Codul pentru contul tău ##businessname## este:' },
+    en: { sms: 'Your ##businessname## code: ##code##. It expires in 10 minutes.', emailSubject: 'Your ##businessname## code: ##code##', emailBody: 'The code for your ##businessname## account is:' },
+    fr: { sms: 'Votre code ##businessname## : ##code##. Il expire dans 10 minutes.', emailSubject: 'Votre code ##businessname## : ##code##', emailBody: 'Le code de votre compte ##businessname## est :' },
+  },
+  confirm: {
+    label: 'Confirmarea programării',
+    vars: BOOKING,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Programare confirmată la ##businessname##: ##servicename##, ##datetime##, cu ##barbername##. Te așteptăm!',
+      pushTitle: 'Programare confirmată',
+      pushBody: '##servicename## cu ##barbername##, ##datetime##',
+      emailSubject: 'Programare confirmată · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, programarea ta e confirmată: ##servicename## cu ##barbername##, ##datetime##. Te așteptăm!',
+    },
+    en: { sms: 'Booking confirmed at ##businessname##: ##servicename##, ##datetime##, with ##barbername##. See you!' },
+    fr: { sms: 'Rendez-vous confirmé chez ##businessname## : ##servicename##, ##datetime##, avec ##barbername##. À bientôt !' },
+  },
+  cancel: {
+    label: 'Programare anulată de salon',
+    vars: BOOKING,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Programarea ta la ##businessname## din ##datetime## a fost anulată. Ne pare rău! Poți reprograma din aplicație.',
+      pushTitle: 'Programare anulată',
+      pushBody: '##servicename## cu ##barbername##, ##datetime##. Poți alege altă oră din aplicație.',
+      emailSubject: 'Programare anulată · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, programarea ta din ##datetime## a fost anulată. Ne pare rău! Poți alege altă oră din aplicație.',
+    },
+    en: { sms: 'Your ##businessname## booking on ##datetime## was cancelled. Sorry! You can rebook in the app.' },
+    fr: { sms: 'Votre rendez-vous chez ##businessname## du ##datetime## a été annulé. Désolé ! Reprenez RDV dans l’app.' },
+  },
+  reminder_24h: {
+    label: 'Memento cu o zi înainte',
+    vars: BOOKING,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Memento ##businessname##: mâine, ##datetime##, ai programare la ##barbername##. Dacă nu poți ajunge, anuleaz-o din aplicație.',
+      pushTitle: 'Programare mâine',
+      pushBody: '##servicename## cu ##barbername##, ##datetime##',
+      emailSubject: 'Memento programare · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, mâine, ##datetime##, ai programare la ##barbername## pentru ##servicename##. Dacă nu poți ajunge, anuleaz-o din aplicație.',
+    },
+    en: { sms: 'Reminder from ##businessname##: tomorrow, ##datetime##, with ##barbername##. Cannot make it? Cancel in the app.' },
+    fr: { sms: 'Rappel ##businessname## : demain, ##datetime##, avec ##barbername##. Empêché ? Annulez dans l’app.' },
+  },
+  reminder_2h: {
+    label: 'Memento cu 2 ore înainte',
+    vars: BOOKING,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Te așteptăm la ##businessname## în curând: ##datetime##, cu ##barbername##.',
+      pushTitle: 'Programare în curând',
+      pushBody: '##servicename## cu ##barbername##, ##datetime##',
+      emailSubject: 'Te așteptăm în curând · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, te așteptăm în curând: ##datetime##, cu ##barbername##.',
+    },
+    en: { sms: 'See you soon at ##businessname##: ##datetime##, with ##barbername##.' },
+    fr: { sms: 'À tout à l’heure chez ##businessname## : ##datetime##, avec ##barbername##.' },
+  },
+  review: {
+    label: 'Cerere de recenzie după tunsoare',
+    vars: [...BOOKING, 'reviewlink'],
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: '##customerfirstname##, mulțumim că ai fost la ##businessname##! Ne lași o recenzie? Durează un minut: ##reviewlink##',
+      pushTitle: 'Cum a fost tunsoarea?',
+      pushBody: 'Ne lași o recenzie pe Google? Durează un minut.',
+      emailSubject: 'Vă mulțumim că ne-ați vizitat!',
+      emailBody: 'Salut ##customerfirstname##, mulțumim că ai fost la ##businessname##! Ne lași o recenzie? Durează un minut: ##reviewlink##',
+    },
+  },
+  order_created: {
+    label: 'Comandă primită (magazin)',
+    vars: ORDER,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Am primit comanda ta ##ordernumber## la ##businessname##. Îți scriem când e gata de ridicare.',
+      pushTitle: 'Comandă primită',
+      pushBody: 'Comanda ##ordernumber## e înregistrată. Îți scriem când e gata de ridicare.',
+      emailSubject: 'Comandă primită · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, am primit comanda ta ##ordernumber##. Îți scriem când e gata de ridicare din salon.',
+    },
+  },
+  order_ready: {
+    label: 'Comanda e gata de ridicare',
+    vars: ORDER,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Comanda ta ##ordernumber## de la ##businessname## e gata. O poți ridica din salon, plata la ridicare.',
+      pushTitle: 'Comanda ta e gata',
+      pushBody: 'Comanda ##ordernumber## te așteaptă în salon. Plata la ridicare.',
+      emailSubject: 'Comanda ta e gata · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, comanda ta ##ordernumber## e gata. O poți ridica din salon, plata la ridicare.',
+    },
+    en: { sms: 'Your ##businessname## order ##ordernumber## is ready. Pick it up at the shop and pay there.' },
+    fr: { sms: 'Votre commande ##ordernumber## chez ##businessname## est prête. Retrait et paiement au salon.' },
+  },
+  order_cancelled: {
+    label: 'Comandă anulată (magazin)',
+    vars: ORDER,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Comanda ta ##ordernumber## de la ##businessname## a fost anulată. Pentru întrebări, sună-ne.',
+      pushTitle: 'Comandă anulată',
+      pushBody: 'Comanda ##ordernumber## a fost anulată.',
+      emailSubject: 'Comandă anulată · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, comanda ta ##ordernumber## a fost anulată. Pentru întrebări, sună-ne.',
+    },
+  },
+  sub_started: {
+    label: 'Abonament activat',
+    vars: ['businessname', 'customerfullname', 'customerfirstname', 'membershipplanname', 'enddate'],
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Bun venit la ##membershipplanname##, ##customerfirstname##! Abonamentul tău ##businessname## e activ până pe ##enddate##.',
+      pushTitle: 'Bun venit la ##membershipplanname##!',
+      pushBody: 'Abonamentul tău e activ până pe ##enddate##. Îl vezi în aplicație, la Abonamente.',
+      emailSubject: 'Bun venit la ##membershipplanname##!',
+      emailBody: 'Salut ##customerfirstname##, abonamentul tău ##membershipplanname## la ##businessname## e activ până pe ##enddate##.',
+    },
+  },
+};
+
+export const TEMPLATE_EVENTS = Object.keys(TEMPLATE_DEFS) as TplEvent[];
+const MAX: Record<TplField, number> = { sms: 300, pushTitle: 80, pushBody: 240, emailSubject: 150, emailBody: 2000 };
+
+const getStored = (env: Env) => getSetting<Stored>(env, 'templates', {});
+
+function defaultText(e: TplEvent, f: TplField, lang: Lang): string {
+  const d = TEMPLATE_DEFS[e];
+  return d[lang]?.[f] ?? d.ro[f] ?? '';
+}
+
+/** Șabloanele pentru panou: textul salvat sau cel de pornire, pe fiecare limbă. */
+export async function listTemplates(env: Env) {
+  const s = await getStored(env);
+  return TEMPLATE_EVENTS.map((e) => ({
+    event: e,
+    label: TEMPLATE_DEFS[e].label,
+    vars: TEMPLATE_DEFS[e].vars,
+    fields: Object.fromEntries(
+      TEMPLATE_DEFS[e].fields.map((f) => {
+        const v = s[e]?.[f];
+        return [f, v?.ro ? { ro: v.ro, en: v.en || v.ro, fr: v.fr || v.ro, custom: true, max: MAX[f] } : { ro: defaultText(e, f, 'ro'), en: defaultText(e, f, 'en'), fr: defaultText(e, f, 'fr'), custom: false, max: MAX[f] }];
+      }),
+    ),
+  }));
+}
+
+/** Salvează textele în română ale unui șablon (gol = revine la textul de pornire); engleza și franceza se traduc singure. */
+export async function saveTemplate(env: Env, e: TplEvent, patch: Partial<Record<TplField, string | null>>) {
+  const def = TEMPLATE_DEFS[e];
+  if (!def) throw new HttpError(404, 'not_found');
+  const s = await getStored(env);
+  const cur = { ...(s[e] ?? {}) };
+  for (const f of def.fields) {
+    if (!(f in patch)) continue;
+    const ro = (patch[f] ?? '').trim();
+    if (!ro || ro === defaultText(e, f, 'ro')) {
+      delete cur[f];
+      continue;
+    }
+    if (ro.length > MAX[f]) throw new HttpError(400, 'text_too_long');
+    const unknown = [...ro.matchAll(/##([a-z_]+)##/g)].map((m) => m[1]).filter((v) => !def.vars.includes(v));
+    if (unknown.length) throw new HttpError(400, 'unknown_wildcard');
+    cur[f] = await autoTranslate(env, cur[f], { ro, en: '', fr: '' });
+  }
+  await setSetting(env, 'templates', { ...s, [e]: cur });
+}
+
+const strip = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[șş]/g, 's')
+    .replace(/[țţ]/g, 't')
+    .replace(/[–—]/g, '-')
+    .replace(/[„”“]/g, '"')
+    .replace(/[’‘]/g, "'");
+
+export type Rendered = Record<TplField, string>;
+
+/** Textele gata de trimis pentru un client (în limba lui). SMS-ul pleacă fără diacritice: altfel încap doar 70 de caractere. */
+export async function renderTemplate(env: Env, e: TplEvent, lang: string, vars: Record<string, string>): Promise<Rendered> {
+  const l: Lang = lang === 'en' || lang === 'fr' ? lang : 'ro';
+  const s = (await getStored(env))[e] ?? {};
+  const fill = (t: string) => t.replace(/##([a-z_]+)##/g, (m, k: string) => vars[k] ?? '').replace(/\s+([,.!?])/g, '$1').replace(/ {2,}/g, ' ').trim();
+  const pick = (f: TplField) => {
+    const v = s[f];
+    // O limbă netradusă încă (AI indisponibil) folosește româna salvată, nu textul vechi.
+    return v ? v[l] || v.ro : defaultText(e, f, l);
+  };
+  return {
+    sms: strip(fill(pick('sms'))),
+    pushTitle: fill(pick('pushTitle')),
+    pushBody: fill(pick('pushBody')),
+    emailSubject: fill(pick('emailSubject')),
+    emailBody: fill(pick('emailBody')),
+  };
+}

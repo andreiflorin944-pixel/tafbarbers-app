@@ -5,14 +5,14 @@ import { iso } from './time';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
-export function emailHtml(shop: string, title: string, body: string) {
+export function emailHtml(shop: string, title: string, body: string, transactional = false) {
   return `<!doctype html><html><body style="margin:0;background:#000;font-family:Helvetica,Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
 <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#0F0F10;border-radius:20px;overflow:hidden">
 <tr><td style="background:#F9A11B;padding:24px 28px;font-size:22px;font-weight:800;color:#000">${esc(shop)}</td></tr>
 <tr><td style="padding:28px;color:#fff"><h1 style="margin:0 0 12px;font-size:24px">${esc(title)}</h1>
 <div style="font-size:16px;line-height:1.5;color:#E6E3DD">${esc(body).replace(/\n/g, '<br>')}</div></td></tr>
-<tr><td style="padding:0 28px 24px;font-size:12px;color:#A3A09A">Primești acest e-mail pentru că ai acceptat ofertele ${esc(shop)} în aplicație. Te poți dezabona oricând din Cont.</td></tr>
+<tr><td style="padding:0 28px 24px;font-size:12px;color:#A3A09A">${transactional ? `Primești acest e-mail pentru că ai cont la ${esc(shop)}.` : `Primești acest e-mail pentru că ai acceptat ofertele ${esc(shop)} în aplicație. Te poți dezabona oricând din Cont.`}</td></tr>
 </table></td></tr></table></body></html>`;
 }
 

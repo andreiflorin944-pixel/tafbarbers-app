@@ -68,13 +68,13 @@ const EMAIL_OTP: Record<string, { subject: string; intro: string; expires: strin
 const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
 
 /** E-mailul cu codul de intrare (cont nou sau recuperare). */
-export function otpEmail(lang: string, shop: string, code: string): { subject: string; html: string } {
+export function otpEmail(lang: string, shop: string, code: string, tpl?: { subject: string; intro: string }): { subject: string; html: string } {
   const t = EMAIL_OTP[lang] ?? EMAIL_OTP.ro;
   const fill = (s: string) => s.replaceAll('{shop}', shop).replaceAll('{code}', code);
   return {
-    subject: fill(t.subject),
+    subject: tpl?.subject || fill(t.subject),
     html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;color:#222">
-<p>${esc(fill(t.intro))}</p>
+<p>${esc(tpl?.intro || fill(t.intro))}</p>
 <p style="font-size:34px;font-weight:bold;letter-spacing:8px;margin:16px 0">${code}</p>
 <p>${esc(t.expires)}</p>
 <p style="color:#777;font-size:13px">${esc(t.ignore)}</p>
