@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { getAutomations } from '../growth';
 import { attributeQr, ipHash } from '../qr';
 import { availability } from '../availability';
 import { createSession, deleteSession, normalizePhone, randomCode, sha256, newId, timingSafeEqual, tokenFrom } from '../auth';
@@ -18,7 +19,7 @@ import { handleStripeEvent, onlinePaymentsOn, verifyStripeSignature } from '../p
 export const publicRoutes = new Hono<AppEnv>();
 
 publicRoutes.get('/business', async (c) => {
-  const [biz, appearance] = await Promise.all([getBusiness(c.env), getAppearance(c.env)]);
+  const [biz, appearance, auto] = await Promise.all([getBusiness(c.env), getAppearance(c.env), getAutomations(c.env)]);
   // Programul salonului = reuniunea programului frizerilor, pe zile (0 = duminică).
   const rows = await c.env.DB.prepare(
     `SELECT h.weekday, MIN(h.start_min) AS s, MAX(h.end_min) AS e
@@ -29,7 +30,7 @@ publicRoutes.get('/business', async (c) => {
     const r = rows.results.find((x) => x.weekday === wd);
     return r ? { open: hm(r.s), close: hm(r.e) } : null;
   });
-  return c.json({ ...biz, hours, appearance, onlinePayments: onlinePaymentsOn(c.env) });
+  return c.json({ ...biz, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms });
 });
 
 // Stripe ne anunță aici plățile. Semnătura se verifică pe corpul exact, cu secretul webhook-ului.
@@ -132,6 +133,7 @@ publicRoutes.post('/auth/otp', async (c) => {
     if (client.email.toLowerCase() !== email) throw new HttpError(400, 'email_mismatch');
   }
   // Protecție contra abuzului: SMS doar spre prefixe europene uzuale și limite zilnice totale pe canal.
+  if (channel === 'sms' && !(await getAutomations(c.env)).otpSms) throw new HttpError(400, 'sms_code_off');
   if (channel === 'sms' && !OTP_PREFIXES.some((p) => phone.startsWith(p))) throw new HttpError(400, 'country_not_supported');
   const today = await c.env.DB.prepare(`SELECT count(*) AS n FROM message_log WHERE kind = 'otp' AND channel = ? AND created_at > ?`)
     .bind(channel, iso(new Date(Date.now() - 86_400_000)))

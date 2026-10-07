@@ -9,6 +9,7 @@ const RO: Record<string, string> = {
   code_expired: 'Codul a expirat. Cere unul nou.',
   too_many_attempts: 'Prea multe încercări. Cere un cod nou.',
   too_many_requests: 'Ai cerut un cod de curând. Așteaptă puțin și încearcă din nou.',
+  sms_code_off: 'Codul se trimite doar pe e-mail. Scrie adresa ta de e-mail.',
   country_not_supported: 'Momentan acceptăm doar numere din România și Europa.',
   invalid_phone: 'Numărul de telefon nu pare corect.',
   invalid_email: 'Adresa de e-mail nu pare corectă.',

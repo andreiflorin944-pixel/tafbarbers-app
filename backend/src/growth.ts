@@ -53,6 +53,8 @@ export type Automations = {
   giftCard: GiftCardSettings;
   links: LinkSettings;
   channels: Record<ChannelEvent, Channel>;
+  /** Codul de intrare poate fi cerut și prin SMS (varianta de rezervă când nu vine e-mailul). */
+  otpSms: boolean;
 };
 
 export const DEFAULT_AUTOMATIONS: Automations = {
@@ -108,6 +110,7 @@ export const DEFAULT_AUTOMATIONS: Automations = {
     order_ready: { enabled: true, push: true, sms: true, email: false },
     gift_card: { enabled: true, push: true, sms: true, email: false },
   },
+  otpSms: true,
 };
 
 export async function getAutomations(env: Env): Promise<Automations> {
@@ -125,6 +128,7 @@ export async function getAutomations(env: Env): Promise<Automations> {
     giftCard: merge(d.giftCard, s.giftCard),
     links: { ...d.links, ...s.links },
     channels: Object.fromEntries(CHANNEL_EVENTS.map((k) => [k, { ...d.channels[k], ...s.channels?.[k] }])) as Automations['channels'],
+    otpSms: typeof s.otpSms === 'boolean' ? s.otpSms : d.otpSms,
   };
 }
 
@@ -206,6 +210,7 @@ export async function saveAutomations(env: Env, b: Partial<Automations>) {
         return [k, { enabled: bool(v.enabled, d.enabled), push: bool(v.push, d.push), sms: bool(v.sms, d.sms), email: bool(v.email, d.email) }];
       }),
     ) as Automations['channels'],
+    otpSms: bool(b.otpSms, cur.otpSms),
   };
   // Engleza și franceza se completează singure din română.
   for (const k of ['winback', 'lastMinute', 'giftCard'] as const) {

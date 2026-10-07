@@ -12,6 +12,7 @@ type Automations = {
   giftCard: { enabled: boolean; amounts: number[]; validMonths: number; title: Texts; message: Texts };
   links: { appStoreUrl: string; playStoreUrl: string; googleReviewUrl?: string };
   channels: Record<Ev, Channel>;
+  otpSms: boolean;
 };
 type Ev = 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'order_ready' | 'gift_card';
 type Channel = { enabled: boolean; push: boolean; sms: boolean; email: boolean };
@@ -56,7 +57,7 @@ export function NotificationsPage() {
 
   if (!a) return <Loading error={load.error} />;
   const dirty = JSON.stringify(a) !== JSON.stringify(load.data);
-  const set = <K extends keyof Automations>(k: K, patch: Partial<Automations[K]>) => {
+  const set = <K extends Exclude<keyof Automations, 'otpSms'>>(k: K, patch: Partial<Automations[K]>) => {
     setSaved(false);
     setA({ ...a, [k]: { ...a[k], ...patch } });
   };
@@ -80,7 +81,12 @@ export function NotificationsPage() {
       <div className="row" style={{ alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' }}>
         <div className="card grid" style={{ flex: '1 1 460px', maxWidth: 640 }}>
           {tab === 0 ? (
-            <ChannelsTab channels={a.channels} onChange={(k, p) => setA({ ...a, channels: { ...a.channels, [k]: { ...a.channels[k], ...p } } })} />
+            <ChannelsTab
+              channels={a.channels}
+              onChange={(k, p) => setA({ ...a, channels: { ...a.channels, [k]: { ...a.channels[k], ...p } } })}
+              otpSms={a.otpSms}
+              onOtpSms={(v) => setA({ ...a, otpSms: v })}
+            />
           ) : tab === 1 ? (
             <>
               <p className="muted small" style={{ margin: 0 }}>
@@ -220,7 +226,17 @@ function Channels<T extends { push: boolean; sms: boolean; email?: boolean }>({ 
   );
 }
 
-function ChannelsTab({ channels, onChange }: { channels: Automations['channels']; onChange: (k: Ev, p: Partial<Channel>) => void }) {
+function ChannelsTab({
+  channels,
+  onChange,
+  otpSms,
+  onOtpSms,
+}: {
+  channels: Automations['channels'];
+  onChange: (k: Ev, p: Partial<Channel>) => void;
+  otpSms: boolean;
+  onOtpSms: (v: boolean) => void;
+}) {
   const cols: Array<{ k: keyof Channel; label: string }> = [
     { k: 'enabled', label: 'Activ' },
     { k: 'push', label: 'Push' },
@@ -275,6 +291,14 @@ function ChannelsTab({ channels, onChange }: { channels: Automations['channels']
       {EVENTS.some((e) => channels[e.k].enabled && !channels[e.k].push && !channels[e.k].sms && !channels[e.k].email) ? (
         <div className="err">Un mesaj activ fără niciun canal bifat nu ajunge la nimeni.</div>
       ) : null}
+      <label className="check">
+        <input type="checkbox" checked={otpSms} onChange={(e) => onOtpSms(e.target.checked)} />
+        Codul de intrare în cont poate fi cerut și prin SMS
+      </label>
+      <div className="muted small" style={{ marginTop: -6 }}>
+        Codul pleacă întâi pe e-mail. Bifat: clientul are și butonul „Trimite-mi codul prin SMS”, pentru când nu-i vine e-mailul. Debifat: codul vine doar pe
+        e-mail.
+      </div>
       <div className="muted small">WhatsApp se poate porni după ce salonul își face cont WhatsApp Business (îl legăm atunci).</div>
     </>
   );

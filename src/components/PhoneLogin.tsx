@@ -28,7 +28,7 @@ export function PhoneLogin({
   initialRef?: string;
   initialMode?: Mode;
 }) {
-  const { signIn } = useApp();
+  const { signIn, business } = useApp();
   const { lang, t } = useT();
   const [mode, setMode] = useState<Mode>(initialMode ?? (initialRef ? 'register' : 'login'));
   const [name, setName] = useState('');
@@ -262,6 +262,7 @@ export function PhoneLogin({
         ) : (
           <>
             <Button title={t(register ? 'login.continue' : 'login.sendCode')} disabled={!canSend || !emailOk} loading={busy} onPress={() => send('email')} />
+            {business?.otpSms === false ? null : (
             <Pressable
               onPress={() => send('sms')}
               disabled={!canSend || busy}
@@ -270,6 +271,7 @@ export function PhoneLogin({
             >
               <Text style={{ color: colors.gold, fontSize: 14, fontWeight: '600' }}>{t('login.sendSms')}</Text>
             </Pressable>
+            )}
           </>
         )}
       </View>

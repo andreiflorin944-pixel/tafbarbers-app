@@ -108,6 +108,7 @@ export type Business = {
   hours: Array<{ open: string; close: string } | null>;
   appearance?: Appearance;
   onlinePayments?: boolean; // plata cu cardul în aplicație (Stripe) e pornită
+  otpSms?: boolean; // codul de intrare poate fi cerut și prin SMS
 };
 
 export type Appearance = {
