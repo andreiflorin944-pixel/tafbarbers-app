@@ -22,6 +22,7 @@ import { GiftCardsPage } from './pages/GiftCards';
 import { StockPage } from './pages/Stock';
 import { NotesPage } from './pages/Notes';
 import { SocialPage } from './pages/Social';
+import { QrCodesPage } from './pages/QrCodes';
 
 const PAGES = [
   { key: 'calendar', label: 'Calendar', show: () => true, el: CalendarPage },
@@ -42,6 +43,7 @@ const PAGES = [
   { key: 'promos', label: 'Bannere aplicație', show: (m: Me) => m.owner, el: PromosPage },
   { key: 'campaigns', label: 'Campanii', show: (m: Me) => m.owner, el: CampaignsPage },
   { key: 'social', label: 'Postări pe rețele', show: (m: Me) => m.owner, el: SocialPage },
+  { key: 'qr', label: 'Coduri QR', show: (m: Me) => m.owner, el: QrCodesPage },
   { key: 'legal', label: 'Regulamente și GDPR', show: (m: Me) => m.owner, el: LegalPage },
   { key: 'notifications', label: 'Notificări', show: (m: Me) => m.owner, el: NotificationsPage },
   { key: 'settings', label: 'Setări', show: () => true, el: SettingsPage },
@@ -124,7 +126,7 @@ const NAV: NavSection[] = [
     label: 'Marketing',
     icon: 'marketing',
     groups: [
-      { items: [{ label: 'Postări Facebook, Instagram, TikTok', to: 'social' }, { label: 'Campanii (SMS, e-mail, push)', to: 'campaigns' }, { label: 'Bannere în aplicație', to: 'promos' }] },
+      { items: [{ label: 'Postări Facebook, Instagram, TikTok', to: 'social' }, { label: 'Campanii (SMS, e-mail, push)', to: 'campaigns' }, { label: 'Bannere în aplicație', to: 'promos' }, { label: 'Coduri QR pentru campanii', to: 'qr' }] },
       { title: 'Automatizări', items: [{ label: 'Ne e dor de tine', to: 'notifications/dor' }, { label: 'Ore libere azi', to: 'notifications/ore-libere' }, { label: 'Card cadou', to: 'notifications/card-cadou' }, { label: 'Zile de naștere', to: 'birthdays' }] },
       { title: 'Fidelizare', items: [{ label: 'Recomandări și bonusuri', to: 'referrals' }, { label: 'Abonamente', to: 'subscriptions' }] },
     ],

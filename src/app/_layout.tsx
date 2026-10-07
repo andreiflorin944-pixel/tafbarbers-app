@@ -1,6 +1,7 @@
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { QrLink } from '@/components/QrLink';
 import { I18nProvider } from '@/i18n';
 import { AppStateProvider } from '@/state/AppState';
 import { CartProvider } from '@/state/Cart';
@@ -21,6 +22,7 @@ export default function RootLayout() {
       <CartProvider>
         <ThemeProvider value={theme}>
           <StatusBar style="light" />
+          <QrLink />
           <Stack
             screenOptions={{
               headerStyle: { backgroundColor: colors.bg },

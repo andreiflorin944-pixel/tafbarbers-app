@@ -202,6 +202,7 @@ export const mockApi: BookingApi = {
   createOrder: () => Promise.reject(new ApiError('no_server', 0)),
   cancelOrder: () => Promise.reject(new ApiError('no_server', 0)),
   payOrder: () => Promise.reject(new ApiError('payments_off', 409)),
+  qrOpen: async () => ({ ok: true as const }),
   payBooking: () => Promise.reject(new ApiError('payments_off', 409)),
   assistant: () => Promise.resolve({ reply: 'Asistentul merge când aplicația e legată de server.' }),
   assistantVoice: () => Promise.reject(new ApiError('assistant_off', 409)),

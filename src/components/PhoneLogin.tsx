@@ -9,6 +9,7 @@ import { parseBirth } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
+import { clearQr, pendingQr } from '@/lib/campaign';
 
 type Mode = 'login' | 'register';
 
@@ -101,7 +102,9 @@ export function PhoneLogin({
         birthDate: register ? (parseBirth(birth) ?? undefined) : undefined,
         email: emailOk ? cleanEmail : undefined,
         ref: register ? ref.trim() || undefined : undefined,
+        qr: await pendingQr(),
       });
+      void clearQr();
       await signIn(token);
       await onDone(token);
     } catch (e) {

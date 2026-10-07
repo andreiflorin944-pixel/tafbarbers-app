@@ -19,7 +19,7 @@ export interface BookingApi {
     input: { phone: string; email?: string; channel: 'email' | 'sms' },
     lang: string,
   ): Promise<{ phone: string; channel: 'email' | 'sms'; sentTo: string; newAccount?: boolean; devCode?: string }>;
-  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; email?: string; ref?: string }): Promise<{ token: string }>;
+  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; email?: string; ref?: string; qr?: string }): Promise<{ token: string }>;
   getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null }>;
   exportMe(token: string): Promise<unknown>;
   deleteMe(token: string): Promise<void>;
@@ -63,6 +63,8 @@ export interface BookingApi {
   cancelOrder(token: string, id: string): Promise<Order>;
   payOrder(token: string, id: string): Promise<{ url: string }>;
   payBooking(token: string, id: string): Promise<{ url: string }>;
+  /** Clientul din cont a deschis aplicația dintr-un cod QR de campanie. */
+  qrOpen(token: string, code: string): Promise<{ ok: true }>;
   /** Asistentul: istoricul conversației → răspunsul și, poate, o programare propusă. */
   assistant(input: { messages: AssistantMsg[]; lang: string }, token?: string | null): Promise<{ reply: string; proposal?: AssistantProposal }>;
   /** Înregistrarea vocală (fișier local) → text. */

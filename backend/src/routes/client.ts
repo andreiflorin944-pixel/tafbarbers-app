@@ -6,6 +6,7 @@ import { booking, client, getBusiness, type BookingRow, type ClientRow } from '.
 import { createCheckout } from '../payments';
 import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
+import { attributeQr } from '../qr';
 import { deleteClient, exportClient } from '../gdpr';
 import { createOrder, getOrder, getOrders, setOrderStatus } from '../shop';
 import { myReferrals } from '../referrals';
@@ -20,6 +21,13 @@ clientRoutes.get('/me', async (c) => {
   const r = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(c.get('client').clientId).first<ClientRow>();
   if (!r) throw new HttpError(401, 'unauthorized');
   return c.json(client(r));
+});
+
+/** Clientul deja în cont a deschis aplicația dintr-un cod QR. */
+clientRoutes.post('/me/qr', async (c) => {
+  const b = await c.req.json<{ code?: string }>();
+  await attributeQr(c.env, c.get('client').clientId, false, b.code, null);
+  return c.json({ ok: true });
 });
 
 clientRoutes.patch('/me', async (c) => {

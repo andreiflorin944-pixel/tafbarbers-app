@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = "../admin/dist"
 not_found_handling = "single-page-application"
-run_worker_first = ["/v1/*", "/legal/*", "/r/*", "/programare", "/sterge-cont", "/plata/*"]
+run_worker_first = ["/v1/*", "/legal/*", "/r/*", "/programare", "/sterge-cont", "/plata/*", "/q/*"]
 
 [[d1_databases]]
 binding = "DB"

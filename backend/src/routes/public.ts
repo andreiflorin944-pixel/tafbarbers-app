@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { attributeQr, ipHash } from '../qr';
 import { availability } from '../availability';
 import { createSession, deleteSession, normalizePhone, randomCode, sha256, newId, timingSafeEqual, tokenFrom } from '../auth';
 import { getPlans } from '../subscriptions';
@@ -171,7 +172,7 @@ publicRoutes.post('/auth/otp', async (c) => {
 });
 
 publicRoutes.post('/auth/verify', async (c) => {
-  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean }>();
+  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean; qr?: string }>();
   const phone = normalizePhone(body.phone);
   const row = await c.env.DB.prepare('SELECT code_hash, expires_at, attempts, email FROM otp_codes WHERE phone = ?')
     .bind(phone)
@@ -196,6 +197,7 @@ publicRoutes.post('/auth/verify', async (c) => {
   if (!client && !email) throw new HttpError(400, 'email_required');
   await c.env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(phone).run();
 
+  const isNew = !client;
   if (!client) {
     client = { id: newId('cl'), name: (body.name ?? '').trim().slice(0, 80), email };
     // Ofertele se trimit doar cu bifa separată de la creare (GDPR): fără ea, toate canalele de marketing rămân oprite.
@@ -225,6 +227,12 @@ publicRoutes.post('/auth/verify', async (c) => {
     if (body.acceptTerms === true) {
       await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = coalesce(terms_accepted_at, ?) WHERE id = ?').bind(iso(new Date()), client.id).run();
     }
+  }
+  // Campaniile QR: codul scanat (îl trimite aplicația) sau o scanare recentă din aceeași rețea.
+  try {
+    await attributeQr(c.env, client.id, isNew, body.qr, await ipHash(c.env, c));
+  } catch (e) {
+    console.error('qr', e);
   }
   const token = await createSession(c.env.DB, 'client', client.id);
   return c.json({ token, clientId: client.id });
