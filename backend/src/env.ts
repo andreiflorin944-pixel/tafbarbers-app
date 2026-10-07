@@ -3,6 +3,8 @@ export type Env = {
   TIMEZONE: string;
   CORS_ORIGINS: string;
   SMSADVERT_TOKEN?: string;
+  /** phone = trimite de pe telefonul conectat în SMSAdvert; altfel de pe numărul scurt. */
+  SMSADVERT_SENDER?: string;
   EMAIL_API_KEY?: string;
   EMAIL_FROM?: string;
   ADMIN_SETUP_KEY?: string;

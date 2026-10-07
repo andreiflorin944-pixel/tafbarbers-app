@@ -31,7 +31,8 @@ export async function sendSms(env: Env, l: Omit<Log, 'channel'>, text: string): 
     const res = await fetch('https://www.smsadvert.ro/api/sms/', {
       method: 'POST',
       headers: { Authorization: env.SMSADVERT_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: l.recipient, shortTextMessage: text, sendAsShort: true }),
+      // SMSADVERT_SENDER=phone: pleacă de pe telefonul conectat în contul SMSAdvert (același număr ca alte aplicații); altfel de pe numărul scurt.
+      body: JSON.stringify({ phone: l.recipient, shortTextMessage: text, sendAsShort: env.SMSADVERT_SENDER !== 'phone' }),
     });
     // Răspuns OK: {"successMessage": "...", "msgId": "..."}; altfel apare un mesaj de eroare.
     const raw = await res.text();
