@@ -1,48 +1,4 @@
-// Textele SMS. Fără diacritice: un SMS cu diacritice are 70 de caractere în loc de 160.
-
-type Kind = 'otp' | 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'order_ready';
-type Vars = Record<string, string>;
-
-const T: Record<string, Record<Kind, string>> = {
-  ro: {
-    otp: 'Codul tau {shop}: {code}. Expira in 10 minute.',
-    confirm: 'Programare confirmata la {shop}: {service}, {when}, cu {barber}. Te asteptam!',
-    cancel: 'Programarea ta la {shop} din {when} a fost anulata. Ne pare rau! Poti reprograma din aplicatie.',
-    reminder_24h: 'Reminder {shop}: maine, {when}, ai programare la {barber}. Daca nu poti ajunge, anuleaz-o din aplicatie.',
-    reminder_2h: 'Te asteptam la {shop} in curand: {when}, cu {barber}.',
-    order_ready: 'Comanda ta {code} de la {shop} e gata. O poti ridica din salon, plata la ridicare.',
-  },
-  en: {
-    otp: 'Your {shop} code: {code}. It expires in 10 minutes.',
-    confirm: 'Booking confirmed at {shop}: {service}, {when}, with {barber}. See you!',
-    cancel: 'Your {shop} booking on {when} was cancelled. Sorry! You can rebook in the app.',
-    reminder_24h: 'Reminder from {shop}: tomorrow, {when}, with {barber}. Cannot make it? Cancel in the app.',
-    reminder_2h: 'See you soon at {shop}: {when}, with {barber}.',
-    order_ready: 'Your {shop} order {code} is ready. Pick it up at the shop and pay there.',
-  },
-  fr: {
-    otp: 'Votre code {shop} : {code}. Il expire dans 10 minutes.',
-    confirm: 'Rendez-vous confirme chez {shop} : {service}, {when}, avec {barber}. A bientot !',
-    cancel: 'Votre rendez-vous chez {shop} du {when} a ete annule. Desole ! Reprenez RDV dans l app.',
-    reminder_24h: 'Rappel {shop} : demain, {when}, avec {barber}. Empeche ? Annulez dans l app.',
-    reminder_2h: 'A tout a l heure chez {shop} : {when}, avec {barber}.',
-    order_ready: 'Votre commande {code} chez {shop} est prete. Retrait et paiement au salon.',
-  },
-};
-
-const strip = (s: string) =>
-  s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[șş]/g, 's')
-    .replace(/[țţ]/g, 't')
-    .replace(/[–—]/g, '-');
-
-export function msg(lang: string, kind: Kind, vars: Vars): string {
-  let s = (T[lang] ?? T.ro)[kind];
-  for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v);
-  return strip(s);
-}
+// Textele e-mailului cu codul de intrare (restul mesajelor sunt șabloane editabile, în templates.ts).
 
 const EMAIL_OTP: Record<string, { subject: string; intro: string; expires: string; ignore: string }> = {
   ro: {

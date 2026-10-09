@@ -7,7 +7,7 @@ import { getBusiness, getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
 import { sendEmail, sendPush, sendSms } from './notify';
 import { giveBonus, parseReward, type Reward } from './referrals';
-import { addDays, iso, localDay, localMinutes, localToUtc, roLocal } from './time';
+import { addDays, iso, localDay, localMinutes, localToUtc, QUIET_FROM, roLocal } from './time';
 
 type Lang = 'ro' | 'en' | 'fr';
 type Texts = Record<Lang, string>;
@@ -44,9 +44,9 @@ export type GiftCardSettings = {
 };
 export type LinkSettings = { appStoreUrl: string; playStoreUrl: string; googleReviewUrl: string };
 /** Notificările despre programări, comenzi și carduri cadou: adminul alege dacă pleacă și pe ce canale. */
-export type ChannelEvent = 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started';
+export type ChannelEvent = 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started';
 export type Channel = { enabled: boolean; push: boolean; sms: boolean; email: boolean };
-export const CHANNEL_EVENTS: ChannelEvent[] = ['confirm', 'cancel', 'reminder_24h', 'reminder_2h', 'review', 'order_created', 'order_ready', 'order_cancelled', 'gift_card', 'sub_started'];
+export const CHANNEL_EVENTS: ChannelEvent[] = ['confirm', 'cancel', 'booking_request', 'booking_request_refused', 'booking_request_expired', 'waitlist_slot', 'reminder_24h', 'reminder_2h', 'review', 'order_created', 'order_ready', 'order_cancelled', 'gift_card', 'sub_started'];
 export type Automations = {
   winback: WinbackSettings;
   lastMinute: LastMinuteSettings;
@@ -105,6 +105,10 @@ export const DEFAULT_AUTOMATIONS: Automations = {
   channels: {
     confirm: { enabled: true, push: false, sms: true, email: false },
     cancel: { enabled: true, push: false, sms: true, email: false },
+    booking_request: { enabled: true, push: true, sms: true, email: false },
+    booking_request_refused: { enabled: true, push: true, sms: true, email: false },
+    booking_request_expired: { enabled: true, push: true, sms: true, email: false },
+    waitlist_slot: { enabled: true, push: true, sms: true, email: false },
     reminder_24h: { enabled: true, push: true, sms: true, email: false },
     reminder_2h: { enabled: true, push: true, sms: true, email: false },
     review: { enabled: true, push: true, sms: true, email: false },
@@ -240,6 +244,9 @@ async function pushTokens(env: Env, clientId: string) {
 
 // --- „Ne e dor de tine” ---
 
+/** Câți clienți primesc „Ne e dor de tine” la o rulare (la 5 minute): pornirea lui nu trimite sute de mesaje odată. */
+const WINBACK_PER_RUN = 20;
+
 /**
  * Clienții care nu au mai venit de N săptămâni și nu au nimic programat primesc o dată (pe fiecare absență) mesajul,
  * opțional cu un bonus. Push oricui are aplicația; e-mail și SMS doar cu acordul pentru oferte.
@@ -248,7 +255,9 @@ export async function sendWinback(env: Env, now = new Date()) {
   const { winback: s } = await getAutomations(env);
   if (!s.enabled) return 0;
   const tz = env.TIMEZONE || 'Europe/Bucharest';
-  if (localMinutes(tz, now) < s.hour * 60) return 0;
+  // Doar de la ora aleasă până la 22:00: noaptea nu trimitem oferte (cine n-a primit azi primește mâine).
+  const min = localMinutes(tz, now);
+  if (min < s.hour * 60 || min >= QUIET_FROM) return 0;
   const nowIso = iso(now);
   const cutoff = iso(new Date(now.getTime() - s.weeks * 7 * 86_400_000));
   const oldest = iso(new Date(now.getTime() - 400 * 86_400_000)); // după peste un an nu mai insistăm
@@ -256,8 +265,8 @@ export async function sendWinback(env: Env, now = new Date()) {
     `SELECT c.id, c.name, c.phone, c.email, c.lang, c.marketing_sms, c.marketing_email, v.last FROM clients c
      JOIN (SELECT client_id, max(starts_at) AS last FROM bookings WHERE status IN ('completed','confirmed') AND starts_at <= ? GROUP BY client_id) v ON v.client_id = c.id
      WHERE c.deleted_at IS NULL AND v.last < ? AND v.last > ? AND (c.winback_at IS NULL OR c.winback_at < v.last)
-       AND NOT EXISTS (SELECT 1 FROM bookings f WHERE f.client_id = c.id AND f.status = 'confirmed' AND f.starts_at > ?)
-     LIMIT 100`,
+       AND NOT EXISTS (SELECT 1 FROM bookings f WHERE f.client_id = c.id AND f.status IN ('confirmed','requested') AND f.starts_at > ?)
+     LIMIT ${WINBACK_PER_RUN}`,
   )
     .bind(nowIso, cutoff, oldest, nowIso)
     .all<{ id: string; name: string; phone: string; email: string | null; lang: string; marketing_sms: number; marketing_email: number; last: string }>();
@@ -310,6 +319,9 @@ export async function freeSlotsSoon(env: Env, now: Date, windowHours: number) {
     .map((s) => ({ ...s, barberName: names.get(s.barberId) ?? '' }));
 }
 
+/** Câți clienți primesc anunțul la o oră aleasă: fiecare înseamnă câteva cereri, iar un Worker are o limită de cereri pe rulare. */
+const LAST_MINUTE_PER_RUN = 100;
+
 /**
  * La orele alese, dacă azi mai sunt goluri în următoarele ore, clienții cu notificările pentru oferte pornite
  * primesc un push (cel mult de N ori pe săptămână, niciodată cei care au deja programare azi).
@@ -347,9 +359,9 @@ export async function sendLastMinute(env: Env, now = new Date()) {
     `SELECT c.id, c.name, c.phone, c.email, c.lang, c.marketing_sms, c.marketing_email, c.marketing_push FROM clients c
      WHERE c.deleted_at IS NULL
        AND (c.lastminute_at IS NULL OR c.lastminute_at < ?)
-       AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.client_id = c.id AND b.status = 'confirmed' AND b.starts_at > ?)
+       AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.client_id = c.id AND b.status IN ('confirmed','requested') AND b.starts_at > ?)
        AND (${reach.join(' OR ')})
-     LIMIT 300`,
+     LIMIT ${LAST_MINUTE_PER_RUN}`,
   )
     .bind(since, dayStart)
     .all<{ id: string; name: string; phone: string; email: string | null; lang: string; marketing_sms: number; marketing_email: number; marketing_push: number }>();
@@ -444,7 +456,9 @@ export async function createGiftCard(env: Env, buyerId: string | null, b: { amou
 export async function activateGiftCard(env: Env, id: string, adminId: string | null, pay?: { method: string; ref: string }) {
   const s = (await getAutomations(env)).giftCard;
   const now = new Date();
-  const expires = iso(new Date(Date.parse(addDays(now.toISOString().slice(0, 10), Math.round(s.validMonths * 30.5)) + 'T21:59:59Z')));
+  // Valabil până la sfârșitul ultimei zile, ora României (vara și iarna), socotit de la ziua locală de azi.
+  const tz = env.TIMEZONE || 'Europe/Bucharest';
+  const expires = iso(new Date(localToUtc(tz, addDays(localDay(tz, now), Math.round(s.validMonths * 30.5)), 1440).getTime() - 1000));
   const r = await env.DB.prepare(
     `UPDATE gift_cards SET status = 'active', paid_by = ?, paid_at = ?, expires_at = ?, pay_method = coalesce(?, pay_method), payment_ref = coalesce(?, payment_ref)
      WHERE id = ? AND status = 'pending'`,

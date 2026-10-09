@@ -6,7 +6,7 @@ import { staffApi, type StaffBarber, type StaffBooking, type StaffTimeOff } from
 import { BOOKING_STATUS, BookingSheet } from '@/components/BookingSheet';
 import { BirthdayGlow, Candle } from '@/components/Birthday';
 import { styles as ui } from '@/components/ui';
-import { addDays, dayKey, fromDayKey, formatDate, pad, shortDay, startOfDay } from '@/lib/dates';
+import { addDays, dayKey, dayOfMonth, fromDayKey, formatDate, pad, salonMidnight, shortDay, startOfDay, weekdayOf } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
@@ -51,15 +51,18 @@ export default function StaffCalendar() {
 
   const load = useCallback(async () => {
     if (!staffToken) return;
-    const from = fromDayKey(day);
+    // Ziua de la miezul nopții la miezul nopții, ora salonului.
+    const from = salonMidnight(day);
     setError(null);
     try {
       const [b, t] = await Promise.all([
-        staffApi.bookings(staffToken, from.toISOString(), addDays(from, 1).toISOString()),
+        staffApi.bookings(staffToken, from.toISOString(), salonMidnight(dayKey(addDays(fromDayKey(day), 1))).toISOString()),
         staffApi.listTimeOff(staffToken, from.toISOString()),
       ]);
+      // Pauzele și celelalte blocuri care scot ore din program se hașurează ca timpul liber (cele „doar membri” rămân de lucru).
+      const blocks = await staffApi.blockOccurrences(staffToken, day, day).catch(() => []);
       setBookings(b);
-      setTimeOff(t);
+      setTimeOff([...t, ...blocks.filter((o) => o.kind !== 'members').map((o) => ({ id: 0, barberId: o.barberId, start: o.start, end: o.end, reason: o.label }))]);
     } catch (e) {
       setError(errorMessage(e));
       setBookings([]);
@@ -74,8 +77,8 @@ export default function StaffCalendar() {
 
   if (!staff || !staffToken) return null;
   const p = staff.permissions;
-  const dayStart = fromDayKey(day);
-  const weekday = dayStart.getDay();
+  const dayStart = salonMidnight(day);
+  const weekday = weekdayOf(fromDayKey(day));
   const toMin = (iso: string) => Math.round((new Date(iso).getTime() - dayStart.getTime()) / 60000);
 
   const shown = barbers.filter((b) => (canAll ? sel === 'all' || b.id === sel : b.id === staff.barberId));
@@ -117,7 +120,7 @@ export default function StaffCalendar() {
         <Text style={s.headerSide} numberOfLines={1}>
           {canAll ? (sel === 'all' ? 'Echipa' : barbers.find((b) => b.id === sel)?.name) : ownName}
         </Text>
-        <Text style={s.headerTitle}>{formatDate(dayStart)}</Text>
+        <Text style={s.headerTitle}>{formatDate(fromDayKey(day))}</Text>
         <Pressable onPress={() => setDay(today)} hitSlop={8} style={[s.headerSide, { alignItems: 'flex-end' }]} accessibilityLabel="Azi">
           <Text style={{ color: day === today ? colors.muted : colors.gold, fontWeight: '700' }}>Azi</Text>
         </Pressable>
@@ -135,9 +138,9 @@ export default function StaffCalendar() {
           const key = dayKey(d);
           const on = key === day;
           return (
-            <Pressable key={key} onPress={() => setDay(key)} style={[s.day, on && s.dayOn]} accessibilityLabel={`Ziua ${d.getDate()}`}>
+            <Pressable key={key} onPress={() => setDay(key)} style={[s.day, on && s.dayOn]} accessibilityLabel={`Ziua ${dayOfMonth(d)}`}>
               <Text style={[s.dayName, on && { color: colors.onGold }]}>{shortDay(d)}</Text>
-              <Text style={[s.dayNum, on && { color: colors.onGold }]}>{pad(d.getDate())}</Text>
+              <Text style={[s.dayNum, on && { color: colors.onGold }]}>{pad(dayOfMonth(d))}</Text>
             </Pressable>
           );
         })}

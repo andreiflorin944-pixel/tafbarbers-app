@@ -2,12 +2,12 @@ import { Hono } from 'hono';
 import { getAutomations } from '../growth';
 import { renderTemplate } from '../templates';
 import { attributeQr, ipHash } from '../qr';
-import { availability } from '../availability';
-import { createSession, deleteSession, normalizePhone, randomCode, sha256, newId, timingSafeEqual, tokenFrom } from '../auth';
+import { accessFor, availability } from '../availability';
+import { createSession, deleteSession, normalizePhone, optionalSession, randomCode, sha256, newId, timingSafeEqual, tokenFrom } from '../auth';
 import { getPlans } from '../subscriptions';
-import { barber, BARBER_SERVICE_COLS, getBusiness, promo, service, type BarberRow, type PromoRow, type ServiceRow } from '../db';
+import { barber, BARBER_SERVICE_COLS, emailTaken, getBusiness, promo, service, type BarberRow, type PromoRow, type ServiceRow } from '../db';
 import { HttpError, type AppEnv } from '../env';
-import { msg, otpEmail } from '../messages';
+import { otpEmail } from '../messages';
 import { sendEmail, sendSms } from '../notify';
 import { addDays, iso, isDay, localDay } from '../time';
 import { DOCS, legalDoc, type Doc } from '../legal';
@@ -100,7 +100,10 @@ publicRoutes.get('/availability', async (c) => {
   const biz = await getBusiness(c.env);
   const today = localDay(c.env.TIMEZONE, new Date());
   if (day < today || day > addDays(today, biz.maxDaysAhead ?? 30)) return c.json([]);
-  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, day }));
+  // Cu cont: membrii TAF Club văd și orele „doar membri” (marcate); panoul le vede pe toate.
+  const who = await optionalSession(c);
+  const access = who?.kind === 'admin' ? 'staff' : await accessFor(c.env, who?.id);
+  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, day, access }));
 });
 
 publicRoutes.get('/legal/:doc', async (c) => {
@@ -112,6 +115,10 @@ publicRoutes.get('/legal/:doc', async (c) => {
 // --- Login cu cod pe e-mail (principal) sau SMS (alternativă) ---
 
 const OTP_TTL = 10 * 60_000;
+/** Câte coduri greșite se acceptă pe un număr într-o oră (și la coduri noi: încercările nu se iau de la capăt la retrimitere). */
+const OTP_MAX_TRIES = 8;
+/** Câte coduri se pot cere pe zi pentru același număr sau aceeași adresă. */
+const OTP_PER_DAY = 10;
 // RO, MD, FR, BE, CH, LU, IT, ES, DE, AT, UK, IE, NL.
 const OTP_PREFIXES = ['+40', '+373', '+33', '+32', '+41', '+352', '+39', '+34', '+49', '+43', '+44', '+353', '+31'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -133,6 +140,8 @@ publicRoutes.post('/auth/otp', async (c) => {
     if (!client.email) throw new HttpError(400, 'email_not_on_account');
     if (client.email.toLowerCase() !== email) throw new HttpError(400, 'email_mismatch');
   }
+  // Cont nou: o adresă de e-mail ține de un singur cont (altfel se pot face conturi la nesfârșit cu același e-mail, ex. pentru bonusuri).
+  if (!client && email && (await emailTaken(c.env, email, phone))) throw new HttpError(400, 'email_in_use');
   // Protecție contra abuzului: SMS doar spre prefixe europene uzuale și limite zilnice totale pe canal.
   if (channel === 'sms' && !(await getAutomations(c.env)).otpSms) throw new HttpError(400, 'sms_code_off');
   if (channel === 'sms' && !OTP_PREFIXES.some((p) => phone.startsWith(p))) throw new HttpError(400, 'country_not_supported');
@@ -140,26 +149,36 @@ publicRoutes.post('/auth/otp', async (c) => {
     .bind(channel, iso(new Date(Date.now() - 86_400_000)))
     .first<{ n: number }>();
   if ((today?.n ?? 0) >= (channel === 'sms' ? 500 : 2000)) throw new HttpError(429, 'too_many_requests');
-  const prev = await c.env.DB.prepare('SELECT expires_at FROM otp_codes WHERE phone = ?')
+  // Și pe fiecare număr / adresă: cel mult OTP_PER_DAY coduri pe zi.
+  const mine = await c.env.DB.prepare(`SELECT count(*) AS n FROM message_log WHERE kind = 'otp' AND recipient IN (?, ?) AND created_at > ?`)
+    .bind(phone, email ?? phone, iso(new Date(Date.now() - 86_400_000)))
+    .first<{ n: number }>();
+  if ((mine?.n ?? 0) >= OTP_PER_DAY) throw new HttpError(429, 'too_many_requests');
+  const prev = await c.env.DB.prepare('SELECT expires_at, attempts FROM otp_codes WHERE phone = ?')
     .bind(phone)
-    .first<{ expires_at: string }>();
+    .first<{ expires_at: string; attempts: number }>();
   // Cel mult un cod la 45 de secunde pe număr.
   if (prev && Date.parse(prev.expires_at) - OTP_TTL + 45_000 > Date.now()) throw new HttpError(429, 'too_many_requests');
+  // Prea multe coduri greșite în ultima oră: nici un cod nou până nu trece ora.
+  const recent = iso(new Date(Date.now() - 3_600_000 + OTP_TTL));
+  if (prev && prev.expires_at > recent && prev.attempts >= OTP_MAX_TRIES) throw new HttpError(429, 'too_many_attempts');
 
   // Contul demo pentru verificarea Apple / Google: un număr anume primește mereu același cod, fără SMS.
   const [reviewPhone, reviewCode] = (c.env.REVIEW_LOGIN ?? '').split(':');
   let review = false;
   try {
-    review = !!reviewPhone && /^\d{4}$/.test(reviewCode ?? '') && normalizePhone(reviewPhone) === phone;
+    review = !!reviewPhone && /^\d{6}$/.test(reviewCode ?? '') && normalizePhone(reviewPhone) === phone;
   } catch {
     // REVIEW_LOGIN greșit: contul demo rămâne oprit
   }
   const code = review ? reviewCode! : randomCode();
+  // Încercările greșite din ultima oră rămân socotite și la codul nou (altfel retrimiterea ar da mereu încercări noi).
   await c.env.DB.prepare(
-    `INSERT INTO otp_codes (phone, code_hash, expires_at, attempts, email) VALUES (?, ?, ?, 0, ?)
-     ON CONFLICT(phone) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0, email = excluded.email`,
+    `INSERT INTO otp_codes (phone, code_hash, expires_at, attempts, email, channel) VALUES (?, ?, ?, 0, ?, ?)
+     ON CONFLICT(phone) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at,
+       attempts = CASE WHEN otp_codes.expires_at > ? THEN otp_codes.attempts ELSE 0 END, email = excluded.email, channel = excluded.channel`,
   )
-    .bind(phone, await sha256(`${phone}:${code}`), iso(new Date(Date.now() + OTP_TTL)), email)
+    .bind(phone, await sha256(`${phone}:${code}`), iso(new Date(Date.now() + OTP_TTL)), email, channel, recent)
     .run();
   const biz = await getBusiness(c.env);
   const lang = c.req.query('lang') ?? 'ro';
@@ -180,16 +199,18 @@ publicRoutes.post('/auth/otp', async (c) => {
 publicRoutes.post('/auth/verify', async (c) => {
   const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean; qr?: string }>();
   const phone = normalizePhone(body.phone);
-  const row = await c.env.DB.prepare('SELECT code_hash, expires_at, attempts, email FROM otp_codes WHERE phone = ?')
-    .bind(phone)
-    .first<{ code_hash: string; expires_at: string; attempts: number; email: string | null }>();
-  if (!row || Date.parse(row.expires_at) < Date.now()) throw new HttpError(400, 'code_expired');
-  if (row.attempts >= 5) throw new HttpError(429, 'too_many_attempts');
-  const ok = timingSafeEqual(await sha256(`${phone}:${String(body.code ?? '')}`), row.code_hash);
-  if (!ok) {
-    await c.env.DB.prepare('UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = ?').bind(phone).run();
-    throw new HttpError(400, 'wrong_code');
+  // Încercarea se numără înainte de verificare, în aceeași instrucțiune cu limita: cereri trimise odată nu trec peste ea.
+  const row = await c.env.DB.prepare(
+    `UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = ? AND attempts < ? AND expires_at > ? RETURNING code_hash, email, channel`,
+  )
+    .bind(phone, OTP_MAX_TRIES, iso(new Date()))
+    .first<{ code_hash: string; email: string | null; channel: string | null }>();
+  if (!row) {
+    const cur = await c.env.DB.prepare('SELECT expires_at FROM otp_codes WHERE phone = ?').bind(phone).first<{ expires_at: string }>();
+    throw cur && Date.parse(cur.expires_at) > Date.now() ? new HttpError(429, 'too_many_attempts') : new HttpError(400, 'code_expired');
   }
+  const ok = timingSafeEqual(await sha256(`${phone}:${String(body.code ?? '')}`), row.code_hash);
+  if (!ok) throw new HttpError(400, 'wrong_code');
   let client = await c.env.DB.prepare('SELECT id, name, email FROM clients WHERE phone = ?')
     .bind(phone)
     .first<{ id: string; name: string; email: string | null }>();
@@ -201,7 +222,10 @@ publicRoutes.post('/auth/verify', async (c) => {
   const email = row.email ?? formEmail;
   if (!client && !birthDate) throw new HttpError(400, 'birth_date_required');
   if (!client && !email) throw new HttpError(400, 'email_required');
-  await c.env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(phone).run();
+  if (!client && email && (await emailTaken(c.env, email, phone))) throw new HttpError(400, 'email_in_use');
+  // Codul se folosește o singură dată (două cereri odată cu același cod: doar una intră).
+  const used = await c.env.DB.prepare('DELETE FROM otp_codes WHERE phone = ? AND code_hash = ?').bind(phone, row.code_hash).run();
+  if (!used.meta.changes) throw new HttpError(400, 'code_expired');
 
   const isNew = !client;
   if (!client) {
@@ -209,13 +233,37 @@ publicRoutes.post('/auth/verify', async (c) => {
     // Ofertele se trimit doar cu bifa separată de la creare (GDPR): fără ea, toate canalele de marketing rămân oprite.
     const mk = body.marketing === true ? 1 : 0;
     await c.env.DB.prepare(
-      `INSERT INTO clients (id, phone, name, email, lang, terms_accepted_at, birth_date, marketing_push, marketing_email, marketing_sms, marketing_consent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO clients (id, phone, name, email, lang, terms_accepted_at, birth_date, marketing_push, marketing_email, marketing_sms, marketing_consent_at, phone_unverified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(client.id, phone, client.name, email, ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro', iso(new Date()), birthDate, mk, mk, mk, mk ? iso(new Date()) : null)
+      .bind(
+        client.id,
+        phone,
+        client.name,
+        email,
+        ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro',
+        iso(new Date()),
+        birthDate,
+        mk,
+        mk,
+        mk,
+        mk ? iso(new Date()) : null,
+        row.channel === 'email' ? 1 : 0,
+      )
       .run();
     await applyReferral(c.env, client.id, body.ref);
   } else {
+    // Contul a fost creat cu cod pe e-mail (numărul nu a fost dovedit), iar acum cineva intră cu cod prin SMS pe acel număr:
+    // numărul e al lui. Contul trece la el: celelalte sesiuni se închid, iar e-mailul rămâne doar cel scris acum (dacă l-a scris).
+    if (row.channel === 'sms') {
+      const taken = await c.env.DB.prepare('UPDATE clients SET phone_unverified = 0, email = ? WHERE id = ? AND phone_unverified = 1')
+        .bind(row.email, client.id)
+        .run();
+      if (taken.meta.changes) {
+        await c.env.DB.prepare(`DELETE FROM sessions WHERE kind = 'client' AND subject_id = ?`).bind(client.id).run();
+        client.email = row.email;
+      }
+    }
     if (!client.name && body.name?.trim()) {
       await c.env.DB.prepare('UPDATE clients SET name = ? WHERE id = ?').bind(body.name.trim().slice(0, 80), client.id).run();
     }

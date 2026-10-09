@@ -14,13 +14,17 @@ type Automations = {
   channels: Record<Ev, Channel>;
   otpSms: boolean;
 };
-type Ev = 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started';
+type Ev = 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started';
 type Channel = { enabled: boolean; push: boolean; sms: boolean; email: boolean };
 const EVENTS: Array<{ k: Ev; label: string }> = [
   { k: 'confirm', label: 'Confirmarea programării' },
   { k: 'reminder_24h', label: 'Reminder cu o zi înainte' },
   { k: 'reminder_2h', label: 'Reminder cu 2 ore înainte' },
   { k: 'cancel', label: 'Programare anulată de salon' },
+  { k: 'booking_request', label: 'Cerere de programare primită (când programările cer aprobare)' },
+  { k: 'booking_request_refused', label: 'Cerere de programare refuzată' },
+  { k: 'booking_request_expired', label: 'Cerere expirată (nimeni n-a răspuns la timp)' },
+  { k: 'waitlist_slot', label: 'Listă de așteptare: s-a eliberat un loc' },
   { k: 'review', label: 'Cerere de recenzie după tunsoare' },
   { k: 'order_created', label: 'Comandă primită (magazin)' },
   { k: 'order_ready', label: 'Comanda din magazin e gata' },

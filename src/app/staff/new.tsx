@@ -5,7 +5,7 @@ import { api } from '@/api';
 import { staffApi } from '@/api/staff';
 import { Button, Screen, styles as ui } from '@/components/ui';
 import type { Slot } from '@/data/types';
-import { addDays, dayKey, fromDayKey, formatTime, shortDay, shortMonth, startOfDay } from '@/lib/dates';
+import { addDays, dayKey, dayOfMonth, fromDayKey, formatTime, shortDay, shortMonth, startOfDay } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
@@ -34,7 +34,7 @@ export default function StaffNewBooking() {
     if (!serviceId || !barberId) return;
     setSlots(null);
     setStart(null);
-    api.getAvailability({ serviceId, barberId, day }).then(
+    api.getAvailability({ serviceId, barberId, day, token: staffToken }).then(
       (list) => {
         setSlots(list);
         const wanted = day === params.day && params.time ? list.find((x) => formatTime(new Date(x.start)) === params.time) : undefined;
@@ -99,7 +99,7 @@ export default function StaffNewBooking() {
           return (
             <Pressable key={key} onPress={() => setDay(key)} style={[s.day, on && s.dayOn]}>
               <Text style={[s.small, on && { color: colors.onGold }]}>{shortDay(d)}</Text>
-              <Text style={[s.num, on && { color: colors.onGold }]}>{d.getDate()}</Text>
+              <Text style={[s.num, on && { color: colors.onGold }]}>{dayOfMonth(d)}</Text>
               <Text style={[s.small, on && { color: colors.onGold }]}>{shortMonth(d)}</Text>
             </Pressable>
           );
@@ -115,7 +115,7 @@ export default function StaffNewBooking() {
         <View style={s.wrap}>
           {slots.map((sl) => (
             <Pressable key={sl.start} onPress={() => setStart(sl.start)} style={[s.chip, sl.start === start && s.chipOn]}>
-              <Text style={[s.chipText, sl.start === start && { color: colors.onGold }]}>{formatTime(new Date(sl.start))}</Text>
+              <Text style={[s.chipText, sl.start === start && { color: colors.onGold }]}>{formatTime(new Date(sl.start))}{sl.membersOnly ? ' ★' : ''}</Text>
             </Pressable>
           ))}
         </View>

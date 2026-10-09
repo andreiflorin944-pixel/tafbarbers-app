@@ -30,4 +30,4 @@ Barberly Booking API printr-un server intermediar care ține cheia API.
 
 - Programul de lucru (L–V 10–20, S 10–16, D închis), adresa și telefonul.
 - Orele ocupate sunt generate, nu vin din Barberly.
-- Login-ul acceptă orice cod din 4 cifre și nu se salvează după închiderea aplicației.
+- Login-ul acceptă orice cod din 6 cifre și nu se salvează după închiderea aplicației.

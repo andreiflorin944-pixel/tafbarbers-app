@@ -236,7 +236,18 @@ function ClientAccount() {
       <Text style={styles.label}>Nume</Text>
       <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Numele tău" placeholderTextColor={colors.muted} />
       <Text style={styles.label}>Data nașterii</Text>
-      <TextInput value={birth} onChangeText={setBirth} style={styles.input} placeholder="ZZ.LL.AAAA" placeholderTextColor={colors.muted} keyboardType="numbers-and-punctuation" maxLength={10} />
+      {/* Odată salvată, data nașterii (de care ține cadoul de ziua ta) se schimbă doar la salon. */}
+      <TextInput
+        value={birth}
+        onChangeText={setBirth}
+        editable={!user.birthDate}
+        style={[styles.input, !!user.birthDate && { opacity: 0.6 }]}
+        placeholder="ZZ.LL.AAAA"
+        placeholderTextColor={colors.muted}
+        keyboardType="numbers-and-punctuation"
+        maxLength={10}
+      />
+      {user.birthDate ? <Text style={[styles.muted, { fontSize: 12 }]}>Dacă data e greșită, spune-ne la salon și o corectăm.</Text> : null}
       <Text style={styles.label}>E-mail</Text>
       <TextInput
         value={email}

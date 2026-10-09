@@ -8,6 +8,7 @@ import { scheduled } from './cron';
 import { socialPublic } from './social';
 import { assistantRoutes } from './assistant';
 import { openAppPage, qrPublic } from './qr';
+import { waitlistPublic } from './waitlist';
 import { DOCS, legalDoc, type Doc } from './legal';
 import { getBusiness } from './db';
 
@@ -30,6 +31,7 @@ app.route('/v1', assistantRoutes);
 app.route('/v1/admin', adminRoutes);
 app.route('/v1', clientRoutes);
 app.route('/', qrPublic);
+app.route('/', waitlistPublic);
 
 // Pagini publice pentru regulamente (link pentru App Store / Google Play și site).
 app.get('/legal/:doc', async (c) => {
@@ -72,12 +74,12 @@ button{width:100%;background:#F9A11B;color:#000;font-weight:800;border:0;border-
 <form id="f1"><label>Numărul de telefon din cont<input id="phone" type="tel" placeholder="07xx xxx xxx" required autocomplete="tel"></label>
 <label>E-mailul din cont (opțional; dacă îl scrii, codul vine pe e-mail, altfel prin SMS)<input id="email" type="email" placeholder="nume@exemplu.ro" autocomplete="email"></label>
 <button>Trimite codul</button></form>
-<form id="f2" hidden><label>Codul primit<input id="code" inputmode="numeric" maxlength="4" placeholder="1234" required></label>
+<form id="f2" hidden><label>Codul primit<input id="code" inputmode="numeric" maxlength="6" placeholder="123456" required></label>
 <p id="dev" class="m"></p><button class="d">Șterge definitiv contul</button></form>
 <p id="msg"></p></main>
 <script>
 const $=(i)=>document.getElementById(i),msg=(t,ok)=>{$('msg').textContent=t;$('msg').className=ok?'ok':'e'};
-const E={invalid_phone:'Numărul de telefon nu pare corect.',email_mismatch:'E-mailul nu e cel din cont.',email_not_on_account:'Contul nu are e-mail; lasă câmpul gol și primești codul prin SMS.',too_many_requests:'Ai cerut un cod de curând. Mai încearcă peste un minut.',wrong_code:'Codul nu e corect.',code_expired:'Codul a expirat. Cere altul.',terms_required:'Nu există niciun cont cu acest număr.',birth_date_required:'Nu există niciun cont cu acest număr.',email_required:'Nu există niciun cont cu acest număr.'};
+const E={invalid_phone:'Numărul de telefon nu pare corect.',email_mismatch:'E-mailul nu e cel din cont.',email_not_on_account:'Contul nu are e-mail; lasă câmpul gol și primești codul prin SMS.',too_many_requests:'Ai cerut un cod de curând. Mai încearcă peste un minut.',wrong_code:'Codul nu e corect.',too_many_attempts:'Prea multe încercări greșite. Încearcă din nou peste o oră.',code_expired:'Codul a expirat. Cere altul.',terms_required:'Nu există niciun cont cu acest număr.',birth_date_required:'Nu există niciun cont cu acest număr.',email_required:'Nu există niciun cont cu acest număr.'};
 const call=async(m,p,b,t)=>{const r=await fetch('/v1'+p,{method:m,headers:{'content-type':'application/json',...(t?{authorization:'Bearer '+t}:{})},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.error)||'server_error');return j};
 let phone='';
 $('f1').onsubmit=async(e)=>{e.preventDefault();msg('');try{const email=$('email').value.trim();const r=await call('POST','/auth/otp',{phone:$('phone').value,...(email?{email,channel:'email'}:{channel:'sms'})});

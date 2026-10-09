@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
-import { availability } from './availability';
+import { accessFor, availability, type Access } from './availability';
 import { sha256, tokenFrom } from './auth';
 import { getBusiness } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
 import { onlinePaymentsOn } from './payments';
-import { iso, localDay, weekdayOf } from './time';
+import { addDays, iso, localDay, weekdayOf } from './time';
 
 // Asistentul din aplicație: clientul scrie sau vorbește („Când are Florin loc vineri?”), asistentul răspunde despre
 // servicii, prețuri, program și ore libere, și propune programarea. Programarea o confirmă clientul cu un buton,
@@ -13,6 +13,7 @@ import { iso, localDay, weekdayOf } from './time';
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const STT = '@cf/openai/whisper-large-v3-turbo';
 const DAILY_LIMIT = 60; // mesaje pe zi pentru un client sau o adresă IP
+const GLOBAL_DAILY_LIMIT = 3000; // mesaje pe zi la tot salonul (multe IP-uri diferite nu pot consuma AI-ul fără margine)
 const ROUNDS = 3;
 const WEEKDAYS = ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
 
@@ -140,7 +141,7 @@ const fmtWhen = (env: Env, iso: string, lang: string) =>
   new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : 'ro-RO', { timeZone: env.TIMEZONE, weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 
 /** O conversație: istoricul vine de la aplicație; întoarce răspunsul și, dacă e cazul, programarea propusă. */
-export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boolean): Promise<{ reply: string; proposal?: Proposal }> {
+export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boolean, access: Access = 'public'): Promise<{ reply: string; proposal?: Proposal }> {
   const ai = aiOf(env);
   if (!ai) throw new HttpError(409, 'assistant_off');
   const ctx = await loadCtx(env);
@@ -165,7 +166,10 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
     const barber = barberOf(step.barberId);
     const day = /^\d{4}-\d{2}-\d{2}$/.test(step.day ?? '') ? step.day! : localDay(env.TIMEZONE, new Date());
     if (!svc) return { reply: step.say };
-    const slots = await availability(env, { serviceId: svc.id, barberId: barber?.id ?? null, day });
+    // Aceleași limite ca în aplicație: nici zile trecute, nici mai departe decât „cu câte zile înainte” din setări.
+    const today = localDay(env.TIMEZONE, new Date());
+    const inRange = day >= today && day <= addDays(today, (await getBusiness(env)).maxDaysAhead ?? 30);
+    const slots = inRange ? await availability(env, { serviceId: svc.id, barberId: barber?.id ?? null, day, access }) : [];
 
     if (step.tool === 'free_slots') {
       const byBarber = new Map<string, string[]>();
@@ -202,15 +206,17 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
   return { reply: lang === 'en' ? 'Sorry, I could not find an answer. Please call the salon.' : 'Nu am reușit să găsesc răspunsul. Te rog sună la salon.' };
 }
 
-/** Câte mesaje pe zi: după client sau după adresa IP. */
-async function withinLimit(env: Env, key: string) {
+/** Câte mesaje pe zi: după client sau după adresa IP, plus o limită pentru tot salonul. Aruncă eroarea potrivită peste limită. */
+async function checkLimit(env: Env, key: string) {
   const day = iso(new Date()).slice(0, 10);
-  const r = await env.DB.prepare(
-    `INSERT INTO assistant_usage (day, key, n) VALUES (?, ?, 1) ON CONFLICT (day, key) DO UPDATE SET n = n + 1 RETURNING n`,
-  )
-    .bind(day, key)
-    .first<{ n: number }>();
-  return (r?.n ?? 0) <= DAILY_LIMIT;
+  const count = async (k: string) =>
+    (
+      await env.DB.prepare(`INSERT INTO assistant_usage (day, key, n) VALUES (?, ?, 1) ON CONFLICT (day, key) DO UPDATE SET n = n + 1 RETURNING n`)
+        .bind(day, k)
+        .first<{ n: number }>()
+    )?.n ?? 0;
+  if ((await count(key)) > DAILY_LIMIT) throw new HttpError(429, 'assistant_limit');
+  if ((await count('*')) > GLOBAL_DAILY_LIMIT) throw new HttpError(429, 'assistant_busy');
 }
 
 async function whoIs(env: Env, token: string | null) {
@@ -233,8 +239,8 @@ assistantRoutes.post('/assistant', async (c) => {
   if (!history.length || history[history.length - 1].role !== 'user') throw new HttpError(400, 'message_required');
   const clientId = await whoIs(c.env, tokenFrom(c));
   const key = clientId ?? `ip:${c.req.header('CF-Connecting-IP') ?? 'local'}`;
-  if (!(await withinLimit(c.env, key))) throw new HttpError(429, 'assistant_limit');
-  return c.json(await chat(c.env, history, lang, !!clientId));
+  await checkLimit(c.env, key);
+  return c.json(await chat(c.env, history, lang, !!clientId, await accessFor(c.env, clientId)));
 });
 
 /** Vocea clientului (fișierul audio, max ~1 minut) transformată în text. */
@@ -245,7 +251,7 @@ assistantRoutes.post('/assistant/voice', async (c) => {
   if (!buf.byteLength) throw new HttpError(400, 'empty_file');
   if (buf.byteLength > 3_000_000) throw new HttpError(400, 'audio_too_long');
   const clientId = await whoIs(c.env, tokenFrom(c));
-  if (!(await withinLimit(c.env, clientId ?? `ip:${c.req.header('CF-Connecting-IP') ?? 'local'}`))) throw new HttpError(429, 'assistant_limit');
+  await checkLimit(c.env, clientId ?? `ip:${c.req.header('CF-Connecting-IP') ?? 'local'}`);
   const lang = c.req.query('lang');
   let bin = '';
   const u = new Uint8Array(buf);

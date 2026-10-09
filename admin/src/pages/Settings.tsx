@@ -45,6 +45,7 @@ export function SettingsPage({ me }: { me: Me }) {
 
 function BusinessForm() {
   const biz = useLoad(() => api<Business>('GET', '/admin/settings'));
+  const barbers = useLoad(() => api<Barber[]>('GET', '/admin/barbers'));
   const [v, setV] = useState<Business | null>(null);
   const { busy, error, run } = useAction();
   const [saved, setSaved] = useState(false);
@@ -107,6 +108,59 @@ function BusinessForm() {
         <Field label="Cât de departe în viitor (zile)">
           <input type="number" min={1} max={365} value={v.maxDaysAhead ?? 30} onChange={(e) => set({ maxDaysAhead: Number(e.target.value) })} />
         </Field>
+      </div>
+      <div className="card" style={{ background: 'var(--card-alt)', display: 'grid', gap: 8 }}>
+        <label className="row" style={{ gap: 8, fontWeight: 600 }}>
+          <input type="checkbox" checked={!!v.requireApproval} onChange={(e) => set({ requireApproval: e.target.checked })} />
+          Programările din aplicație cer aprobare
+        </label>
+        <div className="muted small">
+          Când e bifat, programarea făcută de client intră ca cerere: ora rămâne rezervată pentru el, iar voi o acceptați sau o refuzați din clopoțelul din
+          colțul de sus (sună și apare un mesaj când vine una nouă). Clientul primește „Am primit cererea ta”, apoi confirmarea sau refuzul. Dacă nu răspunde
+          nimeni până la ora programării, cererea se anulează singură și clientul e anunțat. Programările puse din panou sunt confirmate direct.
+        </div>
+        {v.requireApproval ? (
+          <>
+            <label className="row" style={{ gap: 8 }}>
+              <input type="radio" checked={!v.approvalBarberIds?.length} onChange={() => set({ approvalBarberIds: [] })} />
+              La toți frizerii
+            </label>
+            <label className="row" style={{ gap: 8 }}>
+              <input
+                type="radio"
+                checked={!!v.approvalBarberIds?.length}
+                onChange={() => {
+                  const first = (barbers.data ?? []).find((b) => b.active);
+                  if (first) set({ approvalBarberIds: [first.id] });
+                }}
+               
+              />
+              Doar la anumiți frizeri
+            </label>
+            {v.approvalBarberIds?.length ? (
+              <div className="row" style={{ gap: 12, paddingLeft: 26 }}>
+                {(barbers.data ?? [])
+                  .filter((b) => b.active || v.approvalBarberIds?.includes(b.id))
+                  .map((b) => {
+                    const on = !!v.approvalBarberIds?.includes(b.id);
+                    return (
+                      <label key={b.id} className="row" style={{ gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          // Măcar un frizer rămâne bifat; pentru niciunul se debifează aprobarea de sus.
+                          disabled={on && v.approvalBarberIds!.length === 1}
+                          onChange={(e) => set({ approvalBarberIds: e.target.checked ? [...v.approvalBarberIds!, b.id] : v.approvalBarberIds!.filter((x) => x !== b.id) })}
+                         
+                        />
+                        {b.name}
+                      </label>
+                    );
+                  })}
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </div>
       <Field label="Politica de anulare (apare la confirmarea programării)">
         <textarea value={v.cancellationPolicy ?? ''} onChange={(e) => set({ cancellationPolicy: e.target.value })} />

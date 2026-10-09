@@ -5,7 +5,7 @@ import { autoTranslate, type Texts3 } from './translate';
 // Șabloanele mesajelor automate (cod de intrare, programări, comenzi, abonamente), pe canale: SMS, push, e-mail.
 // Adminul le scrie în română, cu variabile de tipul ##customerfirstname##; engleza și franceza se traduc singure.
 
-export type TplEvent = 'otp' | 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'sub_started';
+export type TplEvent = 'otp' | 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'sub_started';
 export type TplField = 'sms' | 'pushTitle' | 'pushBody' | 'emailSubject' | 'emailBody';
 type Lang = 'ro' | 'en' | 'fr';
 type Stored = Partial<Record<TplEvent, Partial<Record<TplField, Texts3>>>>;
@@ -22,6 +22,9 @@ export const WILDCARDS: Record<string, string> = {
   reviewlink: 'linkul de recenzie Google',
   membershipplanname: 'numele abonamentului',
   enddate: 'data până la care e valabil abonamentul',
+  reason: 'motivul refuzului',
+  times: 'orele eliberate (ex. 14:30, 15:00)',
+  booklink: 'linkul care deschide programarea în aplicație',
 };
 
 const BOOKING = ['businessname', 'customerfullname', 'customerfirstname', 'servicename', 'barbername', 'datetime'];
@@ -66,6 +69,62 @@ export const TEMPLATE_DEFS: Record<TplEvent, Def> = {
     },
     en: { sms: 'Your ##businessname## booking on ##datetime## was cancelled. Sorry! You can rebook in the app.' },
     fr: { sms: 'Votre rendez-vous chez ##businessname## du ##datetime## a été annulé. Désolé ! Reprenez RDV dans l’app.' },
+  },
+  booking_request: {
+    label: 'Cerere de programare primită (când programările cer aprobare)',
+    vars: BOOKING,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Am primit cererea ta la ##businessname##: ##servicename##, ##datetime##, cu ##barbername##. Îți scriem imediat ce o confirmăm.',
+      pushTitle: 'Am primit cererea ta',
+      pushBody: '##servicename## cu ##barbername##, ##datetime##. Îți scriem imediat ce o confirmăm.',
+      emailSubject: 'Am primit cererea ta · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, am primit cererea ta de programare: ##servicename## cu ##barbername##, ##datetime##. Ora e rezervată pentru tine; îți scriem imediat ce o confirmăm.',
+    },
+    en: { sms: 'We got your request at ##businessname##: ##servicename##, ##datetime##, with ##barbername##. We will text you once it is confirmed.' },
+    fr: { sms: 'Demande reçue chez ##businessname## : ##servicename##, ##datetime##, avec ##barbername##. Nous vous écrivons dès la confirmation.' },
+  },
+  booking_request_refused: {
+    label: 'Cerere de programare refuzată',
+    vars: [...BOOKING, 'reason'],
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Ne pare rău, nu putem confirma programarea la ##businessname## din ##datetime##. ##reason## Poți alege altă oră din aplicație.',
+      pushTitle: 'Cerere neconfirmată',
+      pushBody: 'Nu putem confirma ##servicename##, ##datetime##. ##reason## Alege altă oră din aplicație.',
+      emailSubject: 'Nu putem confirma programarea · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, ne pare rău, nu putem confirma programarea din ##datetime## (##servicename## cu ##barbername##). ##reason## Poți alege altă oră din aplicație.',
+    },
+    en: { sms: 'Sorry, we cannot confirm your ##businessname## booking on ##datetime##. ##reason## Please pick another time in the app.' },
+    fr: { sms: 'Désolé, nous ne pouvons pas confirmer votre RDV chez ##businessname## du ##datetime##. ##reason## Choisissez une autre heure dans l’app.' },
+  },
+  booking_request_expired: {
+    label: 'Cerere de programare expirată (salonul n-a răspuns la timp)',
+    vars: BOOKING,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Ne pare rău, cererea ta la ##businessname## din ##datetime## n-a putut fi confirmată la timp și s-a anulat. Poți alege altă oră din aplicație.',
+      pushTitle: 'Cerere expirată',
+      pushBody: 'Cererea pentru ##datetime## n-a fost confirmată la timp. Alege altă oră din aplicație.',
+      emailSubject: 'Cererea de programare a expirat · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, ne pare rău, cererea ta pentru ##servicename## cu ##barbername##, ##datetime##, n-a putut fi confirmată la timp și s-a anulat. Poți alege altă oră din aplicație.',
+    },
+    en: { sms: 'Sorry, your ##businessname## request for ##datetime## could not be confirmed in time and was cancelled. Pick another time in the app.' },
+    fr: { sms: 'Désolé, votre demande chez ##businessname## du ##datetime## n’a pas pu être confirmée à temps et a été annulée. Choisissez une autre heure dans l’app.' },
+  },
+  waitlist_slot: {
+    label: 'Listă de așteptare: s-a eliberat un loc',
+    vars: [...BOOKING, 'times', 'booklink'],
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'S-a eliberat un loc la ##businessname##: ##servicename##, ##datetime##, cu ##barbername## (ore libere: ##times##). Rezervă repede: ##booklink##',
+      pushTitle: 'S-a eliberat un loc',
+      pushBody: '##servicename##, ##datetime## (ore libere: ##times##). Rezervă până nu-l ia altcineva.',
+      emailSubject: 'S-a eliberat un loc · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, s-a eliberat un loc în ziua pentru care ai cerut să te anunțăm: ##servicename## cu ##barbername##, ##datetime## (ore libere: ##times##). Locul nu e rezervat pentru tine, așa că programează-te repede din aplicație: ##booklink##',
+    },
+    en: { sms: 'A spot opened up at ##businessname##: ##servicename##, ##datetime##, with ##barbername## (free times: ##times##). Book fast: ##booklink##' },
+    fr: { sms: 'Une place s’est libérée chez ##businessname## : ##servicename##, ##datetime##, avec ##barbername## (horaires libres : ##times##). Réservez vite : ##booklink##' },
   },
   reminder_24h: {
     label: 'Memento cu o zi înainte',
@@ -201,6 +260,8 @@ export async function saveTemplate(env: Env, e: TplEvent, patch: Partial<Record<
     if (ro.length > MAX[f]) throw new HttpError(400, 'text_too_long');
     const unknown = [...ro.matchAll(/##([a-z_]+)##/g)].map((m) => m[1]).filter((v) => !def.vars.includes(v));
     if (unknown.length) throw new HttpError(400, 'unknown_wildcard');
+    // Româna neschimbată (panoul trimite toate câmpurile): traducerile rămân cum erau, nu se refac (și nu se pierd dacă AI-ul nu răspunde).
+    if (cur[f]?.ro === ro) continue;
     cur[f] = await autoTranslate(env, cur[f], { ro, en: '', fr: '' });
   }
   await setSetting(env, 'templates', { ...s, [e]: cur });

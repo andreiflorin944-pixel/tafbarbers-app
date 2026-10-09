@@ -18,7 +18,7 @@ export function randomToken(bytes = 32): string {
 export function randomCode(): string {
   const a = new Uint32Array(1);
   crypto.getRandomValues(a);
-  return String(a[0] % 10000).padStart(4, '0');
+  return String(a[0] % 1_000_000).padStart(6, '0');
 }
 
 export function newId(prefix: string): string {
@@ -113,3 +113,13 @@ export async function requireAdmin(c: Context<AppEnv>, next: Next) {
 }
 
 export const tokenFrom = bearer;
+
+/** Sesiunea din cerere, oricare ar fi (client sau echipă), pe rutele publice unde contul e opțional. */
+export async function optionalSession(c: Context<AppEnv>) {
+  const token = bearer(c);
+  if (!token) return null;
+  const s = await c.env.DB.prepare('SELECT kind, subject_id FROM sessions WHERE token_hash = ? AND expires_at > ?')
+    .bind(await sha256(token), iso(new Date()))
+    .first<{ kind: 'client' | 'admin'; subject_id: string }>();
+  return s ? { kind: s.kind, id: s.subject_id } : null;
+}

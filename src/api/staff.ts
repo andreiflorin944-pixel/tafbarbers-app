@@ -27,7 +27,7 @@ export type StaffBooking = {
   start: string;
   end: string;
   price: number;
-  status: 'confirmed' | 'cancelled' | 'completed' | 'no_show';
+  status: 'requested' | 'confirmed' | 'cancelled' | 'completed' | 'no_show'; // requested = cerere care așteaptă răspuns
   source: string;
   note: string;
   clientName: string;
@@ -88,11 +88,21 @@ export const staffApi = {
   logoutOthers: (t: string) => call<{ loggedOut: number }>('POST', '/admin/me/logout-others', t),
   bookings: (t: string, from: string, to: string) => call<StaffBooking[]>('GET', `/admin/bookings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, t),
   setStatus: (t: string, id: string, status: string) => call<StaffBooking>('PATCH', `/admin/bookings/${id}`, t, { status }),
+  // Cererile de programare (când programările din aplicație cer aprobare).
+  requests: (t: string) => call<{ count: number; items: StaffBooking[] }>('GET', '/admin/bookings/requests', t),
+  acceptRequest: (t: string, id: string) => call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/accept`, t),
+  refuseRequest: (t: string, id: string, reason: string) => call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/refuse`, t, { reason }),
   create: (t: string, body: { phone: string; name: string; serviceId: string; barberId: string; start: string; notify: boolean }) =>
     call<StaffBooking>('POST', '/admin/bookings', t, body),
   timeOff: (t: string, body: { fromDay: string; toDay: string; reason: string; barberId?: string | null }) => call('POST', '/admin/time-off', t, body),
   listTimeOff: (t: string, from: string) => call<StaffTimeOff[]>('GET', `/admin/time-off?from=${encodeURIComponent(from)}`, t),
   deleteTimeOff: (t: string, id: number) => call('DELETE', `/admin/time-off/${id}`, t),
+  // Blocuri în program: pauză de masă, liber, educațional, altceva, doar membri TAF Club.
+  listBlocks: (t: string) => call<StaffBlock[]>('GET', '/admin/blocks', t),
+  blockOccurrences: (t: string, from: string, to: string) =>
+    call<Array<{ blockId: string; barberId: string | null; kind: BlockKind; label: string; start: string; end: string }>>('GET', `/admin/blocks/occurrences?from=${from}&to=${to}`, t),
+  addBlock: (t: string, body: StaffBlockInput) => call<{ block: StaffBlock; conflicts: number }>('POST', '/admin/blocks', t, body),
+  deleteBlock: (t: string, id: string) => call('DELETE', `/admin/blocks/${encodeURIComponent(id)}`, t),
   barbers: (t: string) => call<StaffBarber[]>('GET', '/admin/barbers', t),
   clients: (t: string, q: string) => call<StaffClient[]>('GET', `/admin/clients?q=${encodeURIComponent(q)}`, t),
   client: (t: string, id: string) => call<StaffClient>('GET', `/admin/clients/${encodeURIComponent(id)}`, t),
@@ -178,6 +188,28 @@ export type StaffBarber = {
   active: boolean;
   hours: Array<{ weekday: number; start: number; end: number }>; // minute de la miezul nopții
 };
+export type BlockKind = 'lunch' | 'off' | 'education' | 'other' | 'members';
+export const BLOCK_KINDS: Array<{ kind: BlockKind; label: string; color: string }> = [
+  { kind: 'lunch', label: 'Pauză de masă', color: '#F2A541' },
+  { kind: 'off', label: 'Liber', color: '#8B8B94' },
+  { kind: 'education', label: 'Educațional', color: '#3E7BFA' },
+  { kind: 'other', label: 'Altceva', color: '#8E4EC6' },
+  { kind: 'members', label: 'Doar membri TAF Club', color: '#D4AF37' },
+];
+export type StaffBlock = {
+  id: string;
+  barberId: string | null;
+  kind: BlockKind;
+  label: string;
+  repeat: boolean;
+  day: string | null;
+  weekdays: number[];
+  start: string;
+  end: string;
+  fromDay: string | null;
+  untilDay: string | null;
+};
+export type StaffBlockInput = { barberId?: string | null; kind: BlockKind; label?: string; repeat: boolean; day?: string; weekdays?: number[]; start: string; end: string };
 export type StaffTimeOff = { id: number; barberId: string | null; start: string; end: string; reason: string };
 export type StaffClient = {
   id: string;

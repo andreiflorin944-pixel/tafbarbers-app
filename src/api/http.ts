@@ -42,8 +42,8 @@ export function httpApi(baseUrl: string): BookingApi {
     getServices: () => call('GET', '/services'),
     getBarbers: () => call('GET', '/barbers'),
     getPromos: (lang) => call('GET', `/promos?lang=${encodeURIComponent(lang)}`),
-    getAvailability: ({ serviceId, barberId, day }) =>
-      call('GET', `/availability?serviceId=${encodeURIComponent(serviceId)}&barberId=${encodeURIComponent(barberId ?? '')}&day=${day}`),
+    getAvailability: ({ serviceId, barberId, day, token }) =>
+      call('GET', `/availability?serviceId=${encodeURIComponent(serviceId)}&barberId=${encodeURIComponent(barberId ?? '')}&day=${day}`, { token: token ?? undefined }),
 
     requestCode: (input, lang) => call('POST', `/auth/otp?lang=${lang}`, { body: input }),
     verifyCode: (input) => call('POST', '/auth/verify', { body: input }),
@@ -85,6 +85,11 @@ export function httpApi(baseUrl: string): BookingApi {
     listBookings: (token) => call('GET', '/me/bookings', { token }),
     createBooking: (token, input) => call('POST', '/bookings', { token, body: input }),
     cancelBooking: (token, id) => call('POST', `/bookings/${encodeURIComponent(id)}/cancel`, { token }),
+    getWaitlist: (token) => call('GET', '/me/waitlist', { token }),
+    joinWaitlist: (token, input) => call('POST', '/me/waitlist', { token, body: input }),
+    leaveWaitlist: async (token, id) => {
+      await call('DELETE', `/me/waitlist/${encodeURIComponent(id)}`, { token });
+    },
     registerPushToken: async (token, pushToken, platform) => {
       await call('POST', '/push-tokens', { token, body: { token: pushToken, platform } });
     },

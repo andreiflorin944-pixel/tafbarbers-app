@@ -203,17 +203,17 @@ export function PhoneLogin({
           <TextInput
             value={code}
             onChangeText={(v) => setCode(v.replace(/\D/g, ''))}
-            placeholder="• • • •"
+            placeholder="• • • • • •"
             placeholderTextColor={colors.muted}
             style={[styles.input, local.code]}
             keyboardType="number-pad"
             autoComplete={channel === 'sms' ? 'sms-otp' : 'one-time-code'}
             textContentType="oneTimeCode"
-            maxLength={4}
+            maxLength={6}
             autoFocus
           />
           {usingMock ? (
-            <Text style={local.hint}>Versiune de test: orice cod din 4 cifre e acceptat.</Text>
+            <Text style={local.hint}>Versiune de test: orice cod din 6 cifre e acceptat.</Text>
           ) : devCode ? (
             <Text style={local.hint}>Server de test, codul este {devCode}.</Text>
           ) : null}
@@ -255,7 +255,7 @@ export function PhoneLogin({
         {sentTo ? (
           <Button
             title={submitTitle ?? t(register ? 'login.submitRegister' : 'login.submitLogin')}
-            disabled={code.length !== 4 || (register && (!accepted || !birthOk || !emailOk || !nameOk))}
+            disabled={code.length !== 6 || (register && (!accepted || !birthOk || !emailOk || !nameOk))}
             loading={busy}
             onPress={verify}
           />
@@ -328,5 +328,5 @@ const local = StyleSheet.create({
   locked: { opacity: 0.6 },
   notice: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', backgroundColor: colors.cardAlt, borderRadius: radius.md, padding: space.sm, marginTop: space.md, borderWidth: 1, borderColor: colors.goldDark },
   codeBox: { marginTop: space.lg, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.card },
-  code: { fontSize: 26, letterSpacing: 12, textAlign: 'center', fontWeight: '800' },
+  code: { fontSize: 26, letterSpacing: 8, textAlign: 'center', fontWeight: '800' },
 });

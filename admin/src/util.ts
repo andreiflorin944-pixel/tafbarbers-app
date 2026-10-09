@@ -51,6 +51,7 @@ export const parseHm = (s: string) => {
 
 export const WEEKDAYS = ['Duminică', 'Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă'];
 export const STATUS: Record<string, string> = {
+  requested: 'Cerere în așteptare',
   confirmed: 'Confirmată',
   cancelled: 'Anulată',
   completed: 'Finalizată',

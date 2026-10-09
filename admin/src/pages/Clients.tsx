@@ -302,6 +302,32 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
           ) : null}
           <ClientBonuses clientId={id} bonuses={c.data.bonuses ?? []} owner={canDelete} onChange={c.reload} />
           <h2 style={{ margin: '6px 0 0' }}>Abonament</h2>
+          <div className="row small" style={{ gap: 10, flexWrap: 'wrap' }}>
+            {c.data.clubMember ? (
+              <span className="pill" style={{ background: 'var(--gold)', color: '#000' }}>
+                Membru TAF Club
+              </span>
+            ) : (
+              <span className="muted">Nu e membru TAF Club</span>
+            )}
+            {canDelete ? (
+              <label className="check small" title="Membrii văd în aplicație și orele „Doar membri TAF Club”.">
+                <input
+                  type="checkbox"
+                  checked={!!c.data.clubManual}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    run(async () => {
+                      await api('PATCH', `/admin/clients/${id}`, { clubMember: on });
+                      c.reload();
+                    });
+                  }}
+                />{' '}
+                Membru TAF Club și fără abonament (pus de mână)
+              </label>
+            ) : null}
+          </div>
           <ClientSubscriptions clientId={id} subs={c.data.subscriptions ?? []} owner={canDelete} onChange={c.reload} />
           <h2 style={{ margin: '6px 0 0' }}>TAF Identity (de la client)</h2>
           {c.data.identity?.note ? <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{c.data.identity.note}</div> : null}

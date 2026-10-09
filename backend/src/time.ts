@@ -103,3 +103,6 @@ export function roLocal(t: string | Date) {
   const s = new Date(ms + roOffsetMs(ms)).toISOString();
   return { day: s.slice(0, 10), hm: s.slice(11, 16) };
 }
+
+/** De la ce oră (minute locale) nu mai trimitem mesaje cu oferte (urări, „Ne e dor de tine”), până a doua zi. */
+export const QUIET_FROM = 22 * 60;

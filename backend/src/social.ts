@@ -2,6 +2,7 @@ import { Hono, type Context, type Next } from 'hono';
 import { newId } from './auth';
 import { HttpError, type AppEnv, type Env } from './env';
 import { iso } from './time';
+import { tryLock, unlock } from './db';
 
 // Postări programate pe Facebook, Instagram și TikTok. Adminul își conectează conturile o singură dată (OAuth),
 // urcă poze sau un clip, scrie textul, bifează unde pleacă și ora; cron-ul de la 5 minute le publică.
@@ -334,6 +335,16 @@ function overall(targets: string[], results: Record<string, TargetResult>): Post
  */
 export async function publishPost(env: Env, id: string, base: string, waitMs = 20_000) {
   apiBases(env);
+  // O singură publicare odată pe postare: două rulări suprapuse (cron + „Publică acum”) ar posta de două ori.
+  if (!(await tryLock(env, `social:${id}`, 5 * 60_000))) return;
+  try {
+    await publishLocked(env, id, base, waitMs);
+  } finally {
+    await unlock(env, `social:${id}`);
+  }
+}
+
+async function publishLocked(env: Env, id: string, base: string, waitMs: number) {
   const p = await env.DB.prepare('SELECT * FROM social_posts WHERE id = ?').bind(id).first<PostRow>();
   if (!p || p.status !== 'posting') return;
   const targets = parse<string[]>(p.targets, []);

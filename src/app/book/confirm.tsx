@@ -8,22 +8,26 @@ import { errorMessage } from '@/lib/errors';
 import { useLoginGate } from '@/components/LoginGate';
 import { barberDuration, barberPrice } from '@/lib/price';
 import { useApp } from '@/state/AppState';
+import { useT } from '@/i18n';
 import { colors, space } from '@/theme';
 
 export default function Confirm() {
   const { draft, serviceById, barberById, user, token, addBooking, business } = useApp();
   const gate = useLoginGate();
+  const { t } = useT();
   const service = serviceById(draft.serviceId);
   const barber = barberById(draft.slotBarberId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [slotTaken, setSlotTaken] = useState(false);
-  const online = !!business?.onlinePayments;
   const [payNow, setPayNow] = useState(false);
 
   if (gate) return gate;
   if (!service || !draft.start || !barber) return <Redirect href="/book/service" />;
   const start = new Date(draft.start);
+  // Salonul cere aprobare pentru acest frizer: programarea pleacă drept cerere, iar plata online se face după confirmare.
+  const approval = !!business?.requireApproval && (!business.approvalBarberIds?.length || business.approvalBarberIds.includes(barber.id));
+  const online = !!business?.onlinePayments && !approval;
 
   const book = async (t: string) => {
     setSaving(true);
@@ -85,6 +89,12 @@ export default function Confirm() {
       ) : (
         <Text style={[styles.muted, { fontSize: 12, marginTop: space.sm }]}>Plata se face la locație. Vei primi o confirmare pe SMS.</Text>
       )}
+      {approval ? (
+        <Card style={{ marginTop: space.sm, flexDirection: 'row', gap: space.sm, alignItems: 'center' }}>
+          <Icon name="hourglass" color={colors.gold} />
+          <Text style={[styles.muted, { flex: 1, lineHeight: 20 }]}>{t('confirm.approvalNote')}</Text>
+        </Card>
+      ) : null}
       {policy ? (
         <Text style={[styles.muted, { fontSize: 12, marginTop: space.sm, lineHeight: 18 }]}>
           <Text style={{ color: colors.gold, fontWeight: '700' }}>Atenție! </Text>
@@ -102,7 +112,7 @@ export default function Confirm() {
           {slotTaken ? (
             <Button title="Alege altă oră" onPress={() => router.back()} />
           ) : (
-            <Button title={online && payNow ? 'Confirmă și plătește' : 'Confirmă programarea'} onPress={() => book(token)} loading={saving} />
+            <Button title={approval ? t('confirm.sendRequest') : online && payNow ? 'Confirmă și plătește' : 'Confirmă programarea'} onPress={() => book(token)} loading={saving} />
           )}
         </View>
       ) : null}

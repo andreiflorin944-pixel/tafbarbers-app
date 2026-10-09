@@ -26,6 +26,7 @@ export const BOOKING_STATUS: Record<
   StaffBooking["status"],
   { label: string; color: string }
 > = {
+  requested: { label: "Cerere în așteptare", color: "#7FB6E6" },
   confirmed: { label: "Confirmată", color: colors.gold },
   completed: { label: "Finalizată", color: "#4CAF7A" },
   no_show: { label: "Neprezentare", color: colors.danger },
@@ -157,6 +158,16 @@ export function BookingSheet({
                   </View>
                 ) : null}
               </View>
+            ) : null}
+            {p.bookings_manage && b.status === "requested" ? (
+              <RequestButtons
+                booking={b}
+                token={staffToken}
+                onDone={(nb) => {
+                  onChange({ ...b, ...nb });
+                  onClose();
+                }}
+              />
             ) : null}
             {canComplete && checkout ? (
               <Checkout
@@ -464,6 +475,81 @@ function Choice({
       </View>
       {children}
     </Pressable>
+  );
+}
+
+/** Acceptă sau refuză o cerere de programare; la refuz se poate scrie motivul, pe care îl primește clientul. */
+function RequestButtons({
+  booking: b,
+  token,
+  onDone,
+}: {
+  booking: StaffBooking;
+  token: string;
+  onDone: (b: StaffBooking) => void;
+}) {
+  const [refusing, setRefusing] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const act = async (fn: () => Promise<StaffBooking>) => {
+    setBusy(true);
+    setErr("");
+    try {
+      onDone(await fn());
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={{ gap: space.sm }}>
+      <Text style={ui.muted}>
+        Clientul a cerut programarea din aplicație și așteaptă confirmarea. Ora
+        e rezervată până răspunzi.
+      </Text>
+      {refusing ? (
+        <>
+          <TextInput
+            value={reason}
+            onChangeText={setReason}
+            placeholder="Motivul (opțional), ex. Frizerul nu e disponibil atunci."
+            placeholderTextColor={colors.muted}
+            maxLength={200}
+            style={ui.input}
+            accessibilityLabel="Motivul refuzului"
+          />
+          <View style={{ flexDirection: "row", gap: space.sm }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                title="Trimite refuzul"
+                variant="danger"
+                loading={busy}
+                onPress={() => act(() => staffApi.refuseRequest(token, b.id, reason))}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button title="Înapoi" variant="ghost" onPress={() => setRefusing(false)} />
+            </View>
+          </View>
+        </>
+      ) : (
+        <View style={{ flexDirection: "row", gap: space.sm }}>
+          <View style={{ flex: 1 }}>
+            <Button
+              title="Acceptă"
+              loading={busy}
+              onPress={() => act(() => staffApi.acceptRequest(token, b.id))}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button title="Refuză" variant="danger" onPress={() => setRefusing(true)} />
+          </View>
+        </View>
+      )}
+      {err ? <Text style={{ color: colors.danger }}>{err}</Text> : null}
+    </View>
   );
 }
 

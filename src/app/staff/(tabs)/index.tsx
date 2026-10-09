@@ -7,7 +7,7 @@ import { ROLE_LABELS, staffApi, type StaffBooking, type StaffStats } from '@/api
 import { BOOKING_STATUS, BookingSheet } from '@/components/BookingSheet';
 import { BirthdayGlow, Candle } from '@/components/Birthday';
 import { Card, styles as ui } from '@/components/ui';
-import { addDays, formatTime, startOfDay } from '@/lib/dates';
+import { SALON_TZ, dayKey, formatTime, salonMidnight } from '@/lib/dates';
 import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
@@ -20,15 +20,18 @@ export default function StaffHome() {
   const [open, setOpen] = useState<StaffBooking | null>(null);
   const [unclosed, setUnclosed] = useState<StaffBooking[]>([]);
   const [todo, setTodo] = useState(0);
+  const [requests, setRequests] = useState<StaffBooking[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       if (!staffToken || !staff) return;
-      const d0 = startOfDay(new Date());
-      staffApi.bookings(staffToken, d0.toISOString(), addDays(d0, 1).toISOString()).then(setToday, () => setToday([]));
+      // Azi, ca zi a salonului (de la miezul nopții, ora României, timp de 24 de ore).
+      const d0 = salonMidnight(dayKey(new Date()));
+      staffApi.bookings(staffToken, d0.toISOString(), new Date(d0.getTime() + 86_400_000).toISOString()).then(setToday, () => setToday([]));
       staffApi.stats(staffToken).then(setStats, () => undefined);
       staffApi.unclosed(staffToken).then(setUnclosed, () => undefined);
       staffApi.notes(staffToken, 'open').then((n) => setTodo(n.length), () => undefined);
+      if (staff.permissions.bookings_manage) staffApi.requests(staffToken).then((r) => setRequests(r.items), () => undefined);
       if (staff.permissions.shop) staffApi.orders(staffToken, 'open').then((o) => setOrders(o.length), () => undefined);
     }, [staffToken, staff]),
   );
@@ -69,6 +72,34 @@ export default function StaffHome() {
           </Pressable>
         ) : null}
 
+        {requests.length ? (
+          <>
+            <Text style={[ui.label, { marginTop: space.lg, color: BOOKING_STATUS.requested.color }]}>
+              {requests.length === 1 ? 'O cerere de programare așteaptă răspuns' : `${requests.length} cereri de programare așteaptă răspuns`}
+            </Text>
+            <Text style={[ui.muted, { fontSize: 13, marginBottom: space.xs }]}>Apasă și alege: acceptă sau refuză. Ora rămâne rezervată până răspunzi.</Text>
+            <View style={{ gap: space.sm }}>
+              {requests.slice(0, 10).map((b) => (
+                <Pressable key={b.id} onPress={() => setOpen(b)}>
+                  <Card style={[s.row, { borderLeftWidth: 5, borderLeftColor: BOOKING_STATUS.requested.color }]}>
+                    <Ionicons name="hourglass-outline" size={22} color={BOOKING_STATUS.requested.color} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={ui.cardTitle} numberOfLines={1}>
+                        {b.clientName || b.clientPhone}
+                      </Text>
+                      <Text style={ui.muted} numberOfLines={1}>
+                        {new Date(b.start).toLocaleDateString('ro-RO', { timeZone: SALON_TZ, weekday: 'short', day: 'numeric', month: 'short' })}, {formatTime(new Date(b.start))} · {b.serviceName}
+                        {staff.permissions.bookings_all ? ` · ${b.barberName}` : ''}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+                  </Card>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : null}
+
         {unclosed.length ? (
           <>
             <Text style={[ui.label, { marginTop: space.lg, color: colors.danger }]}>
@@ -85,7 +116,7 @@ export default function StaffHome() {
                         {b.clientName || b.clientPhone}
                       </Text>
                       <Text style={ui.muted} numberOfLines={1}>
-                        {new Date(b.start).toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' })} · {b.serviceName}
+                        {new Date(b.start).toLocaleDateString('ro-RO', { timeZone: SALON_TZ, day: 'numeric', month: 'short' })} · {b.serviceName}
                         {staff.permissions.bookings_all ? ` · ${b.barberName}` : ''}
                       </Text>
                     </View>
@@ -151,6 +182,7 @@ export default function StaffHome() {
         onChange={(u) => {
           setToday((l) => (l ?? []).map((x) => (x.id === u.id ? u : x)));
           setUnclosed((l) => (u.status === 'confirmed' ? l.map((x) => (x.id === u.id ? u : x)) : l.filter((x) => x.id !== u.id)));
+          setRequests((l) => l.filter((x) => x.id !== u.id || u.status === 'requested'));
         }}
       />
     </SafeAreaView>

@@ -41,14 +41,20 @@ export async function translate(env: Env, text: string, to: 'en' | 'fr'): Promis
  */
 export async function autoTranslate(env: Env, prev: Partial<Texts3> | undefined, next: Texts3): Promise<Texts3> {
   const out = { ...next };
-  if (!out.ro.trim()) return out;
+  // Româna golită (ex. subtitlul unui banner scos): dispar și traducerile vechi, afară de cele scrise de mână acum.
+  if (!out.ro.trim()) {
+    for (const l of ['en', 'fr'] as const) if (out[l] === (prev?.[l] ?? '')) out[l] = '';
+    return out;
+  }
   const roChanged = out.ro !== (prev?.ro ?? '');
   for (const l of ['en', 'fr'] as const) {
     const edited = out[l].trim() !== '' && out[l] !== (prev?.[l] ?? '');
     if (edited) continue;
     if (!roChanged && out[l].trim()) continue;
     const t = await translate(env, out.ro, l);
+    // Traducerea n-a mers: o traducere veche a altui text român ar fi greșită; goală, se folosește româna.
     if (t) out[l] = t;
+    else if (roChanged) out[l] = '';
   }
   return out;
 }

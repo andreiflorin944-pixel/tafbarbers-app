@@ -1,8 +1,9 @@
-import { BOOKING_SELECT } from './bookings';
+import { BOOKING_SELECT, freedSlot } from './bookings';
+import { refundBooking } from './payments';
 import type { Cell } from './xlsx';
 import { booking, client, type BookingRow, type ClientRow } from './db';
 import { HttpError, type Env } from './env';
-import { iso } from './time';
+import { iso, localDay } from './time';
 import { getOrders, setOrderStatus } from './shop';
 import { getIdentity, wipeIdentity } from './identity';
 import { getBonuses } from './referrals';
@@ -41,6 +42,7 @@ export async function exportClient(env: Env, id: string) {
         .all()
     ).results,
     beforeAfter: (await env.DB.prepare('SELECT id, created_at FROM before_after WHERE client_id = ?').bind(id).all()).results,
+    waitlist: (await env.DB.prepare('SELECT service_id, barber_id, day, part, status, notify_count, created_at FROM waitlist WHERE client_id = ? ORDER BY created_at').bind(id).all()).results,
   };
 }
 
@@ -56,11 +58,17 @@ export async function deleteClient(env: Env, id: string) {
   const open = await env.DB.prepare(`SELECT id FROM orders WHERE client_id = ? AND status IN ('new', 'ready')`).bind(id).all<{ id: string }>();
   for (const o of open.results) await setOrderStatus(env, o.id, 'cancelled', ['new', 'ready']);
   await wipeIdentity(env, id);
+  // Programările viitoare care se anulează: după ștergere le întoarcem banii (dacă au fost plătite online) și anunțăm lista de așteptare.
+  const future = await env.DB.prepare(`SELECT id, starts_at FROM bookings WHERE client_id = ? AND status IN ('confirmed','requested') AND starts_at > ?`)
+    .bind(id, now)
+    .all<{ id: string; starts_at: string }>();
   await env.DB.batch([
     env.DB.prepare(`UPDATE orders SET note = '' WHERE client_id = ?`).bind(id),
-    env.DB.prepare(`UPDATE bookings SET status = 'cancelled', cancelled_at = ? WHERE client_id = ? AND status = 'confirmed' AND starts_at > ?`).bind(now, id, now),
+    // Anulate la cererea clientului (și-a șters contul), nu de echipă.
+    env.DB.prepare(`UPDATE bookings SET status = 'cancelled', cancelled_at = ?, cancelled_by = 'client' WHERE client_id = ? AND status IN ('confirmed','requested') AND starts_at > ?`).bind(now, id, now),
     env.DB.prepare(`UPDATE bookings SET note = '' WHERE client_id = ?`).bind(id),
     env.DB.prepare('DELETE FROM push_tokens WHERE client_id = ?').bind(id),
+    env.DB.prepare(`UPDATE waitlist SET status = 'removed', removed_by = 'client', closed_at = ? WHERE client_id = ? AND status IN ('waiting','notified')`).bind(now, id),
     // Pozele înainte/după arată fața clientului: se șterg cu tot cu fișiere.
     env.DB.prepare('DELETE FROM media WHERE id IN (SELECT before_media FROM before_after WHERE client_id = ?1 UNION SELECT after_media FROM before_after WHERE client_id = ?1)').bind(id),
     env.DB.prepare('DELETE FROM before_after WHERE client_id = ?').bind(id),
@@ -74,6 +82,16 @@ export async function deleteClient(env: Env, id: string) {
       `UPDATE clients SET phone = ?, name = '', email = NULL, notes = '', marketing_sms = 0, marketing_email = 0, marketing_push = 0, marketing_consent_at = NULL, deleted_at = ? WHERE id = ?`,
     ).bind(`deleted:${id}`, now, id),
   ]);
+  for (const b of future.results) {
+    try {
+      await refundBooking(env, b.id);
+    } catch (e) {
+      console.error('refund on delete', b.id, e);
+    }
+  }
+  // O singură verificare pe zi.
+  const days = new Map(future.results.map((b) => [localDay(env.TIMEZONE, new Date(b.starts_at)), b.starts_at]));
+  for (const start of days.values()) await freedSlot(env, start);
 }
 
 const csvCell = (v: unknown) => {

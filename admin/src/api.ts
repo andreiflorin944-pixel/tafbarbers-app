@@ -69,6 +69,11 @@ const MESSAGES: Record<string, string> = {
   invalid_range: 'Verifică datele (sfârșitul după început).',
   not_sendable: 'Campania a fost deja trimisă.',
   title_and_body_required: 'Completează titlul și mesajul.',
+  sms_too_long: 'SMS-ul e prea lung: cel mult 320 de caractere.',
+  use_checkout: 'O programare se încheie din „✓ Încheiată”, cu plata.',
+  booking_completed: 'Programarea e încheiată. Pentru a o redeschide, anulează întâi confirmarea plății.',
+  timeoff_no_barber: 'Contul tău nu e legat de un frizer: cere proprietarului să pună pauza sau concediul.',
+  review_in_progress: 'Cererea de recenzie se trimite chiar acum.',
   wrong_password: 'Parola actuală nu e corectă.',
   cannot_delete_self: 'Nu îți poți șterge propriul cont.',
   range_too_long: 'Perioada e prea lungă. Alege cel mult un an.',
@@ -77,6 +82,15 @@ const MESSAGES: Record<string, string> = {
   cannot_demote_self: 'Nu îți poți lua singur drepturile de proprietar.',
   ro_required: 'Completează titlul și textul în română.',
   not_cancellable: 'Nu mai poate fi anulat.',
+  request_expired: 'Cererea a expirat: ora programării a trecut fără răspuns.',
+  invalid_block_kind: 'Alege tipul blocului.',
+  block_label_required: 'Pentru „Altceva” scrie și un nume (ex.: ședință foto).',
+  weekdays_required: 'Bifează cel puțin o zi a săptămânii.',
+  day_passed: 'Ziua a trecut deja. Alege azi sau o zi viitoare.',
+  barber_not_found: 'Frizerul nu mai există.',
+  request_already_answered: 'Cineva a răspuns deja la această cerere. Reîncarcă lista.',
+  booking_requested: 'E o cerere încă neconfirmată: întâi o accepți sau o refuzi.',
+  waitlist_closed: 'Înscrierea nu mai e pe listă (s-a programat, a expirat sau a fost scoasă). Reîncarcă pagina.',
   barber_required: 'Alege frizerul.',
   unsupported_image: 'Poza trebuie să fie JPG, PNG sau WebP.',
   image_too_large: 'Poza e prea mare.',
@@ -86,7 +100,7 @@ const MESSAGES: Record<string, string> = {
   invalid_transition: 'Comanda și-a schimbat deja starea. Reîncarcă pagina.',
   no_active_subscription: 'Clientul nu are un abonament activ (cu tunsori rămase) pentru acest serviciu.',
   already_completed: 'Tunsoarea a fost deja confirmată.',
-  booking_cancelled: 'Programarea e anulată.',
+  booking_cancelled: 'Programarea e anulată și nu se mai poate confirma (ora poate fi deja luată). Fă o programare nouă.',
   plan_not_found: 'Abonamentul nu mai există sau e ascuns.',
   invalid_amount: 'Suma nu e corectă (cardurile cadou: între 10 și 5000 de lei, maxim 6 sume propuse).',
   bonus_not_active: 'Bonusul nu mai e activ.',
@@ -256,7 +270,7 @@ export type Booking = {
   start: string;
   end: string;
   price: number;
-  status: 'confirmed' | 'cancelled' | 'completed' | 'no_show';
+  status: 'requested' | 'confirmed' | 'cancelled' | 'completed' | 'no_show';
   source: string;
   note: string;
   clientName: string;
@@ -269,6 +283,8 @@ export type Booking = {
   onlineRefunded?: boolean;
   tip?: number | null;
   cancelledBy?: 'client' | 'staff' | null;
+  requestOutcome?: 'accepted' | 'refused' | 'expired' | null; // cererile cu aprobare: cum s-au încheiat
+  refuseReason?: string | null;
   bonusId?: string | null;
   clientBirthday?: boolean;
 };
@@ -331,6 +347,9 @@ export type Client = {
   subscriptions?: Subscription[];
   referredBy?: { id: string; name: string } | null;
   referredCount?: number;
+  /** Membru TAF Club acum (abonament activ sau bifat de mână) și bifa manuală. */
+  clubMember?: boolean;
+  clubManual?: boolean;
   visits?: number;
   lastVisit?: string | null;
   bookings?: Booking[];
@@ -372,6 +391,9 @@ export type Business = {
   minLeadMin?: number;
   maxDaysAhead?: number;
   cancellationPolicy?: string;
+  /** Programările din aplicație cer aprobare (doar pentru frizerii din listă; listă goală = toți). */
+  requireApproval?: boolean;
+  approvalBarberIds?: string[];
 };
 export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'contacts' | 'timeoff' | 'stats' | 'reports' | 'shop';
 export type Role = 'org_admin' | 'location_admin' | 'barber';
@@ -409,4 +431,29 @@ export type Campaign = {
   recipients: number;
   created_at: string;
 };
-export type Slot = { start: string; end: string; barberId: string };
+/** `membersOnly`: ora e în intervalul „Doar membri TAF Club”. */
+export type Slot = { start: string; end: string; barberId: string; membersOnly?: boolean };
+export type BlockKind = 'lunch' | 'off' | 'education' | 'other' | 'members';
+export const BLOCK_KINDS: Array<{ kind: BlockKind; label: string; help: string; color: string }> = [
+  { kind: 'lunch', color: '#F2A541', label: 'Pauză de masă', help: 'Orele dispar din programările online.' },
+  { kind: 'off', color: '#8B8B94', label: 'Liber', help: 'Orele dispar din programările online.' },
+  { kind: 'education', color: '#3E7BFA', label: 'Educațional', help: 'Curs, training. Orele dispar din programările online.' },
+  { kind: 'other', color: '#8E4EC6', label: 'Altceva', help: 'Cu un nume ales de tine. Orele dispar din programările online.' },
+  { kind: 'members', color: '#D4AF37', label: 'Doar membri TAF Club', help: 'Orele rămân libere doar pentru clienții cu abonament activ sau marcați ca membri.' },
+];
+export const blockKind = (k: BlockKind) => BLOCK_KINDS.find((x) => x.kind === k) ?? BLOCK_KINDS[3];
+export type Block = {
+  id: string;
+  barberId: string | null;
+  kind: BlockKind;
+  label: string;
+  customLabel: string;
+  repeat: boolean;
+  day: string | null;
+  weekdays: number[];
+  start: string;
+  end: string;
+  fromDay: string | null;
+  untilDay: string | null;
+};
+export type BlockOccurrence = { blockId: string; barberId: string | null; kind: BlockKind; label: string; repeat: boolean; day: string; start: string; end: string };

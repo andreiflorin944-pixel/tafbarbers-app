@@ -26,9 +26,12 @@ export type Barber = {
 export type Slot = {
   start: string; // ISO datetime
   barberId: string;
+  /** Oră „Doar membri TAF Club”: o primesc doar membrii (și echipa). */
+  membersOnly?: boolean;
 };
 
-export type BookingStatus = 'confirmed' | 'cancelled' | 'completed' | 'no_show';
+// requested = cerere trimisă, în așteptarea confirmării salonului (când programările cer aprobare).
+export type BookingStatus = 'requested' | 'confirmed' | 'cancelled' | 'completed' | 'no_show';
 
 export type Booking = {
   id: string;
@@ -44,6 +47,29 @@ export type Booking = {
   paidAmount?: number | null;
   onlinePaid?: number | null; // plătită cu cardul din aplicație
   onlineRefunded?: boolean;
+  requestOutcome?: 'accepted' | 'refused' | 'expired' | null;
+  refuseReason?: string | null;
+};
+
+/** Intervalul din zi pentru lista de așteptare. */
+export type DayPart = 'any' | 'morning' | 'afternoon' | 'evening';
+
+/** O înscriere pe lista de așteptare („Anunță-mă dacă se eliberează un loc”). */
+export type WaitlistEntry = {
+  id: string;
+  serviceId: string;
+  serviceName: string;
+  barberId: string | null; // null = orice frizer
+  barberName: string | null;
+  day: string; // AAAA-LL-ZZ
+  part: DayPart;
+  // waiting = încă nimic; notified = a primit mesaj; booked = s-a programat; expired = ziua a trecut; removed = scos
+  status: 'waiting' | 'notified' | 'booked' | 'expired' | 'removed';
+  notifyCount: number;
+  maxNotices: number;
+  active: boolean; // încă poate primi mesaj
+  lastSlot: string | null;
+  createdAt: string;
 };
 
 export type Me = {
@@ -103,12 +129,15 @@ export type Business = {
   facebook?: string;
   tiktok?: string;
   cancelHours?: number;
+  maxDaysAhead?: number; // cu câte zile înainte se poate programa (Setări → Reguli de programare)
   cancellationPolicy?: string;
   // 0 = duminică ... 6 = sâmbătă; null = închis
   hours: Array<{ open: string; close: string } | null>;
   appearance?: Appearance;
   onlinePayments?: boolean; // plata cu cardul în aplicație (Stripe) e pornită
   otpSms?: boolean; // codul de intrare poate fi cerut și prin SMS
+  requireApproval?: boolean; // programările din aplicație intră ca cereri, confirmate de salon
+  approvalBarberIds?: string[]; // doar la acești frizeri (listă goală = la toți)
 };
 
 export type Appearance = {

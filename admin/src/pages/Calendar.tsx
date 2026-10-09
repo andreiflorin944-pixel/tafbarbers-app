@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, errorText, type Barber, type Booking, type Checkout, type Me, type Service, type Slot, type TimeOff } from '../api';
+import { api, blockKind, errorText, type Barber, type BlockOccurrence, type Booking, type Checkout, type Client, type Me, type Service, type Slot, type TimeOff } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
+import { BOOKINGS_CHANGED, bookingsChanged, RequestActions } from '../Requests';
 import { addDays, date, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
 
 const PX = 1.2; // pixeli pe minut
@@ -24,7 +25,11 @@ export function CalendarPage({ me }: { me: Me }) {
   const to = localToIso(addDays(day, 1), '00:00');
   const bookings = useLoad(() => api<Booking[]>('GET', `/admin/bookings?from=${from}&to=${to}`), [day]);
   const off = useLoad(() => api<TimeOff[]>('GET', `/admin/time-off?from=${from}`), [day]);
+  // Blocurile din program (pauză, liber, curs, doar membri) în ziua afișată.
+  const blocks = useLoad(() => api<BlockOccurrence[]>('GET', `/admin/blocks/occurrences?from=${day}&to=${day}`), [day]);
   const unclosed = useLoad(() => api<Booking[]>('GET', '/admin/bookings/unclosed'));
+  // Câți clienți așteaptă un loc liber în ziua afișată (Listă de așteptare).
+  const waiting = useLoad(() => api<Array<{ active: boolean }>>('GET', `/admin/waitlist?from=${day}&to=${day}`), [day]);
 
   const [barbers, services] = meta.data ?? [[], []];
   const own = me.permissions.bookings_all ? null : me.barberId;
@@ -60,6 +65,13 @@ export function CalendarPage({ me }: { me: Me }) {
     stats.reload();
     unclosed.reload();
   };
+  // Clopoțelul anunță cererile noi și răspunsurile date din listă: calendarul se reîncarcă singur.
+  useEffect(() => {
+    const f = () => bookings.reload();
+    window.addEventListener(BOOKINGS_CHANGED, f);
+    return () => window.removeEventListener(BOOKINGS_CHANGED, f);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
@@ -110,6 +122,11 @@ export function CalendarPage({ me }: { me: Me }) {
         <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} style={{ width: 170 }} />
         <strong style={{ textTransform: 'capitalize' }}>{longDate(day + 'T12:00:00Z')}</strong>
         <span className="muted small">{(bookings.data ?? []).filter((b) => b.status !== 'cancelled').length} programări</span>
+        {waiting.data?.some((w) => w.active) ? (
+          <a className="small" href="#/waitlist">
+            {waiting.data.filter((w) => w.active).length} pe lista de așteptare
+          </a>
+        ) : null}
       </div>
 
       {activeBarbers.length > 1 ? (
@@ -128,6 +145,17 @@ export function CalendarPage({ me }: { me: Me }) {
               </button>
             );
           })}
+        </div>
+      ) : null}
+
+      {blocks.data?.length ? (
+        <div className="row small muted" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+          {[...new Map(blocks.data.map((o) => [o.kind === 'other' ? o.label : o.kind, o])).values()].map((o) => (
+            <span key={o.blockId}>
+              <span className="dot" style={{ background: blockKind(o.kind).color, marginRight: 4 }} />
+              {o.label}
+            </span>
+          ))}
         </div>
       ) : null}
 
@@ -178,7 +206,8 @@ export function CalendarPage({ me }: { me: Me }) {
                     key={b.id}
                     className="cal-col cal-empty"
                     onClick={(e) => {
-                      if (e.target !== e.currentTarget && !(e.target as HTMLElement).classList.contains('cal-off') && !(e.target as HTMLElement).classList.contains('cal-line')) return;
+                      const cl = (e.target as HTMLElement).classList;
+                      if (e.target !== e.currentTarget && !cl.contains('cal-off') && !cl.contains('cal-line') && !cl.contains('cal-block')) return;
                       const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
                       const m = Math.floor((startMin + y / PX) / 15) * 15;
                       if (me.permissions.bookings_create) setCreate({ barberId: b.id, time: hm(m) });
@@ -191,6 +220,23 @@ export function CalendarPage({ me }: { me: Me }) {
                     {gaps.map(([s, e], i) => (
                       <div key={i} className="cal-off" style={{ top: (s - startMin) * PX, height: (e - s) * PX }} />
                     ))}
+                    {(blocks.data ?? [])
+                      .filter((o) => !o.barberId || o.barberId === b.id)
+                      .map((o) => {
+                        const s = Math.max(minutesOf(o.start), startMin);
+                        const e = Math.min(minutesOf(o.end) || 1440, endMin);
+                        if (e <= s) return null;
+                        return (
+                          <div
+                            key={o.blockId}
+                            className={`cal-block ${o.kind}`}
+                            style={{ top: (s - startMin) * PX, height: (e - s) * PX, ['--c' as string]: blockKind(o.kind).color }}
+                            title={`${o.label} · ${time(o.start)}–${time(o.end)}${o.repeat ? ' · în fiecare săptămână' : ''}${o.kind === 'members' ? ' · în aplicație orele le văd doar membrii' : ''}`}
+                          >
+                            <span>{o.label}</span>
+                          </div>
+                        );
+                      })}
                     {nowMin >= startMin && nowMin <= endMin ? <div className="cal-now" style={{ top: (nowMin - startMin) * PX }} /> : null}
                     {(bookings.data ?? [])
                       .filter((x) => x.barberId === b.id && x.status !== 'cancelled')
@@ -201,7 +247,7 @@ export function CalendarPage({ me }: { me: Me }) {
                           <div
                             key={x.id}
                             className={`cal-ev ${x.status}${x.clientBirthday ? ' bday' : ''}${open?.id === x.id ? ' sel' : ''}`}
-                            title={x.clientBirthday ? 'E ziua de naștere a clientului' : `${STATUS[x.status]} · ${x.serviceName}`}
+                            title={x.status === 'requested' ? 'Cerere în așteptare: apasă ca s-o accepți sau s-o refuzi' : x.clientBirthday ? 'E ziua de naștere a clientului' : `${STATUS[x.status]} · ${x.serviceName}`}
                             style={{ top: (s - startMin) * PX + 1, height: Math.max(len * PX - 2, 22), ['--c' as string]: colorOf(b.id) }}
                             onClick={() => setOpen(x)}
                           >
@@ -210,6 +256,7 @@ export function CalendarPage({ me }: { me: Me }) {
                               {x.clientBirthday ? '🕯️ ' : ''}
                               {x.clientName || x.clientPhone}
                             </b>
+                            {x.status === 'requested' ? 'Cerere · ' : ''}
                             {x.serviceName}
                           </div>
                         );
@@ -230,6 +277,7 @@ export function CalendarPage({ me }: { me: Me }) {
             .map((b) => (
               <div key={b.id} className="small muted" style={{ padding: '4px 0' }}>
                 {time(b.start)} · {b.clientName || b.clientPhone} · {b.serviceName} · {b.barberName}
+                {b.requestOutcome === 'refused' ? ` · cerere refuzată${b.refuseReason ? `: ${b.refuseReason}` : ''}` : b.requestOutcome === 'expired' ? ' · cerere expirată (fără răspuns)' : ''}
               </div>
             ))}
         </details>
@@ -381,7 +429,24 @@ function BookingPanel({ b, color, canManage, owner, onClose, onChange }: { b: Bo
                 </span>
               ) : null}
             </div>
-            {canManage && !checkout ? (
+            {b.status === 'requested' ? (
+              <>
+                <div className="small">Clientul a cerut programarea din aplicație și așteaptă confirmarea. Ora e rezervată până răspunzi.</div>
+                {canManage ? (
+                  <RequestActions
+                    b={b}
+                    onDone={() => {
+                      bookingsChanged();
+                      onChange();
+                      onClose();
+                    }}
+                  />
+                ) : null}
+              </>
+            ) : null}
+            {b.requestOutcome === 'refused' ? <div className="muted small">Cerere refuzată{b.refuseReason ? `: ${b.refuseReason}` : '.'}</div> : null}
+            {b.requestOutcome === 'expired' ? <div className="muted small">Cererea a expirat: nimeni n-a răspuns până la ora programării.</div> : null}
+            {canManage && !checkout && b.status !== 'requested' ? (
               <div className="row" style={{ gap: 6, marginTop: 8 }}>
                 {canComplete ? (
                   <button className="sm" disabled={busy} onClick={() => setCheckout(true)}>
@@ -619,7 +684,27 @@ function NewBooking({
   const [force, setForce] = useState(false);
   const [forceTime, setForceTime] = useState(initial.time ?? '10:00');
   const [notify, setNotify] = useState(true);
+  // Clientul ales din bază (căutat după telefon sau nume); fără el se face client nou din telefon + nume.
+  const [picked, setPicked] = useState<(Client & { visits?: number }) | null>(null);
+  const [hits, setHits] = useState<(Client & { visits?: number })[]>([]);
+  const [searchIn, setSearchIn] = useState<'phone' | 'name' | null>(null);
   const { busy, error, run } = useAction();
+
+  const term = searchIn === 'phone' ? phone : searchIn === 'name' ? name : '';
+  useEffect(() => {
+    const q = term.trim();
+    if (!me.permissions.clients || picked || q.replace(/\s/g, '').length < 3) {
+      setHits([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      api<(Client & { visits?: number })[]>('GET', `/admin/clients?q=${encodeURIComponent(q)}`).then(
+        (r) => setHits(r.slice(0, 8)),
+        () => setHits([]),
+      );
+    }, 250);
+    return () => clearTimeout(t);
+  }, [term, picked, me.permissions.clients]);
 
   useEffect(() => {
     if (!serviceId || !barberId) return;
@@ -640,8 +725,7 @@ function NewBooking({
   const submit = () =>
     run(async () => {
       await api('POST', '/admin/bookings', {
-        phone,
-        name,
+        ...(picked ? { clientId: picked.id } : { phone, name }),
         serviceId,
         barberId,
         start: force ? localToIso(day, forceTime) : start,
@@ -651,19 +735,71 @@ function NewBooking({
       onDone(day);
     });
 
-  const ok = phone.trim().length >= 9 && serviceId && barberId && (force ? !!forceTime : !!start);
+  const ok = (picked || phone.trim().length >= 9) && serviceId && barberId && (force ? !!forceTime : !!start);
 
   return (
     <Modal title="Programare nouă" onClose={onClose}>
       <div className="grid">
-        <div className="grid two">
-          <Field label="Telefon client">
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" autoFocus />
-          </Field>
-          <Field label="Nume (pentru client nou)">
-            <input value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-        </div>
+        {picked ? (
+          <div className="card row" style={{ background: 'var(--card-alt)', justifyContent: 'space-between', padding: '10px 14px' }}>
+            <div>
+              <strong>{picked.name || 'Fără nume'}</strong>
+              <div className="muted small">
+                {[picked.phone, picked.visits ? `${picked.visits} ${picked.visits === 1 ? 'vizită' : 'vizite'}` : 'nicio vizită încă'].filter(Boolean).join(' · ')}
+              </div>
+            </div>
+            <button type="button" className="ghost sm" onClick={() => setPicked(null)}>
+              Alt client
+            </button>
+          </div>
+        ) : (
+          <div style={{ position: 'relative' }}>
+            <div className="grid two">
+              <Field label="Telefon client">
+                <input
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setSearchIn('phone');
+                  }}
+                  placeholder="07xx xxx xxx"
+                  autoFocus
+                />
+              </Field>
+              <Field label={me.permissions.clients ? 'Nume (caută sau client nou)' : 'Nume (pentru client nou)'}>
+                <input
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setSearchIn('name');
+                  }}
+                />
+              </Field>
+            </div>
+            {hits.length ? (
+              <div className="suggest">
+                <div className="muted small" style={{ padding: '6px 12px' }}>
+                  Clienți găsiți în bază:
+                </div>
+                {hits.map((h) => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    onClick={() => {
+                      setPicked(h);
+                      setHits([]);
+                    }}
+                  >
+                    <strong>{h.name || 'Fără nume'}</strong>
+                    <span className="muted small">
+                      {[h.phone, h.visits ? `${h.visits} ${h.visits === 1 ? 'vizită' : 'vizite'}` : ''].filter(Boolean).join(' · ')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )}
         <Field label="Serviciu">
           <select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
             {services.map((s) => (
@@ -697,13 +833,23 @@ function NewBooking({
             ) : slots.length === 0 ? (
               <span className="muted small">Nicio oră liberă în ziua asta.</span>
             ) : (
-              <div className="slots">
-                {slots.map((s) => (
-                  <button key={s.start} type="button" className={s.start === start ? 'on' : ''} onClick={() => setStart(s.start)}>
-                    {time(s.start)}
-                  </button>
-                ))}
-              </div>
+              <>
+                {slots.some((s) => s.membersOnly) ? <div className="muted small" style={{ marginBottom: 6 }}>★ = oră doar pentru membri TAF Club</div> : null}
+                <div className="slots">
+                  {slots.map((s) => (
+                    <button
+                      key={s.start}
+                      type="button"
+                      className={`${s.start === start ? 'on' : ''}${s.membersOnly ? ' members' : ''}`}
+                      onClick={() => setStart(s.start)}
+                      title={s.membersOnly ? 'Oră doar pentru membri TAF Club (din panou o poți da oricui)' : undefined}
+                    >
+                      {time(s.start)}
+                      {s.membersOnly ? ' ★' : ''}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         ) : (

@@ -92,7 +92,8 @@ h2 { font-size: 17px; margin: 0 0 10px; }
   .rail-btn { width: 62px; flex-shrink: 0; }
   .flyout { left: 0; right: 0; top: 64px; width: auto; }
   .main { padding: 16px 16px 60px; }
-  .topbar { display: none; }
+  .topbar { margin: 0 0 10px; }
+  .topbar .crumb { display: none; }
   .grid.two { grid-template-columns: 1fr; }
 }
 
@@ -159,6 +160,16 @@ tr.click:hover td { background: var(--card-alt); }
 .cal-ev.no_show { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--danger) 10%, var(--card)), color-mix(in srgb, var(--danger) 10%, var(--card)) 6px, var(--card) 6px, var(--card) 12px); opacity: 0.8; }
 .cal-ev.no_show b { text-decoration: line-through; }
 .cal-ev b { display: block; }
+/* Blocurile din program: hașurate în culoarea tipului; „doar membri” e doar colorat (orele rămân de lucru). */
+.cal-block {
+  position: absolute; left: 0; right: 0; overflow: hidden;
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--c) 16%, transparent), color-mix(in srgb, var(--c) 16%, transparent) 6px, color-mix(in srgb, var(--c) 6%, transparent) 6px, color-mix(in srgb, var(--c) 6%, transparent) 12px);
+  border-top: 2px solid var(--c);
+}
+.cal-block.members { background: color-mix(in srgb, var(--c) 9%, transparent); border-top: 2px dashed var(--c); }
+.cal-block span { position: absolute; top: 2px; right: 6px; font-size: 11px; font-weight: 700; color: var(--c); pointer-events: none; white-space: nowrap; }
+.cal-ev { z-index: 1; }
+.slots button.members { border-color: var(--gold); }
 .cal-now { position: absolute; left: 0; right: 0; border-top: 2px solid var(--danger); z-index: 1; }
 .cal-empty { cursor: copy; }
 
@@ -247,3 +258,21 @@ table.report tr.total td { font-weight: 800; border-top: 2px solid var(--border)
 .drawer-sec { display: grid; gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
 .drawer-sec h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
 .drawer .card { background: var(--card-alt); }
+
+/* Clopoțelul cererilor de programare și mesajul care apare când vine una nouă. */
+.bell { position: relative; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.bell.on { color: var(--accent-text); border-color: var(--gold); animation: ring 2.4s ease-in-out infinite; }
+.bell-n { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 800; line-height: 20px; text-align: center; }
+@keyframes ring { 0%, 70%, 100% { transform: rotate(0); } 75% { transform: rotate(14deg); } 80% { transform: rotate(-12deg); } 85% { transform: rotate(8deg); } 90% { transform: rotate(-5deg); } }
+@media (prefers-reduced-motion: reduce) { .bell.on { animation: none; } }
+.toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; max-width: min(380px, calc(100vw - 32px)); display: grid; gap: 2px; text-align: left; background: var(--card); color: var(--text); border: 1px solid var(--gold); border-radius: 12px; padding: 12px 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+.pill.requested { background: #13283a; color: #7fb6e6; }
+:root[data-theme='light'] .pill.requested { background: #e1eefa; color: #1f5f99; }
+/* Cererea în calendar: chenar punctat și hașură, ca să se vadă că nu e încă confirmată. */
+.cal-ev.requested { border: 2px dashed var(--c); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 14%, var(--card)), color-mix(in srgb, var(--c) 14%, var(--card)) 6px, var(--card) 6px, var(--card) 12px); }
+.cal-ev.requested b::before { content: '⏳ '; }
+
+/* Sugestii de clienți la programarea din calendar. */
+.suggest { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; margin-top: 4px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.35); max-height: 300px; overflow: auto; }
+.suggest button { display: flex; width: 100%; justify-content: space-between; gap: 12px; align-items: baseline; background: none; color: var(--text); border: 0; border-radius: 0; padding: 9px 12px; text-align: left; font-weight: 400; }
+.suggest button:hover { background: var(--card-alt); }

@@ -1,5 +1,5 @@
 import { barbers, business, promos, services } from '@/data/mock';
-import type { Booking, Identity, Me, Slot } from '@/data/types';
+import type { Booking, Identity, Me, Slot, WaitlistEntry } from '@/data/types';
 import { dayKey, formatTime, fromDayKey, parseHM } from '@/lib/dates';
 import { ApiError, type BookingApi } from './client';
 
@@ -8,6 +8,7 @@ const STEP_MIN = 15;
 // Token-ul e chiar numărul de telefon.
 const bookings: Array<Booking & { phone: string }> = [];
 const users = new Map<string, Me>();
+const waitlist: Array<WaitlistEntry & { phone: string }> = [];
 
 const delay = <T,>(value: T, ms = 250) => new Promise<T>((r) => setTimeout(() => r(value), ms));
 
@@ -85,7 +86,7 @@ export const mockApi: BookingApi = {
     return delay({ phone: p, channel, sentTo: channel === 'email' && email ? email : p, devCode: undefined });
   },
   async verifyCode({ phone, code, name, lang }) {
-    if (!/^\d{4}$/.test(code)) throw new ApiError('wrong_code', 400);
+    if (!/^\d{6}$/.test(code)) throw new ApiError('wrong_code', 400);
     const p = phone.replace(/\s/g, '');
     if (!users.has(p))
       users.set(p, { id: p, phone: p, name, email: null, lang, marketing: { sms: false, email: false, push: true } });
@@ -193,6 +194,38 @@ export const mockApi: BookingApi = {
     if (!b) throw new ApiError('booking_not_found', 404);
     b.status = 'cancelled';
     return delay({ ...b });
+  },
+  // Lista de așteptare în modul de test: se ține minte, dar nu pleacă niciun mesaj.
+  getWaitlist: (token) => delay(waitlist.filter((w) => w.phone === token && w.status !== 'removed').map(({ phone: _p, ...w }) => w)),
+  async joinWaitlist(token, input) {
+    const service = services.find((s) => s.id === input.serviceId);
+    if (!service) throw new ApiError('service_not_found', 404);
+    const same = waitlist.find((w) => w.phone === token && w.active && w.serviceId === input.serviceId && w.barberId === input.barberId && w.day === input.day && w.part === input.part);
+    if (same) return delay({ ...same });
+    const entry = {
+      id: `wl-${Date.now()}`,
+      serviceId: service.id,
+      serviceName: service.name,
+      barberId: input.barberId,
+      barberName: barbers.find((b) => b.id === input.barberId)?.name ?? null,
+      day: input.day,
+      part: input.part,
+      status: 'waiting' as const,
+      notifyCount: 0,
+      maxNotices: 3,
+      active: true,
+      lastSlot: null,
+      createdAt: new Date().toISOString(),
+      phone: token,
+    };
+    waitlist.push(entry);
+    return delay({ ...entry });
+  },
+  async leaveWaitlist(token, id) {
+    const w = waitlist.find((x) => x.id === id && x.phone === token);
+    if (!w) throw new ApiError('not_found', 404);
+    Object.assign(w, { status: 'removed', active: false });
+    return delay(undefined);
   },
   registerPushToken: () => delay(undefined),
 

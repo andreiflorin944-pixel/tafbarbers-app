@@ -17,6 +17,10 @@ export type Business = {
   minLeadMin?: number;
   maxDaysAhead?: number;
   cancellationPolicy?: string;
+  /** Programările făcute de clienți (aplicație, pagina web) intră ca cereri, pe care salonul le acceptă sau le refuză. */
+  requireApproval?: boolean;
+  /** Doar pentru acești frizeri; listă goală = pentru toți. */
+  approvalBarberIds?: string[];
 };
 
 export async function getSetting<T>(env: Env, key: string, fallback: T): Promise<T> {
@@ -32,6 +36,32 @@ export async function setSetting(env: Env, key: string, value: unknown) {
     .run();
 }
 
+/** E-mailul e deja al altui cont (altul decât cel cu acest telefon)? */
+export async function emailTaken(env: Env, email: string, phone: string) {
+  const r = await env.DB.prepare('SELECT 1 FROM clients WHERE lower(email) = ? AND phone != ? AND deleted_at IS NULL LIMIT 1')
+    .bind(email.toLowerCase(), phone)
+    .first();
+  return !!r;
+}
+
+/**
+ * Lacăt scurt (în setări), ca o lucrare să nu ruleze de două ori în paralel (ex. cron-ul peste o trimitere pornită din panou).
+ * Întoarce true dacă l-am luat; expiră singur după `ms`, chiar dacă procesul a fost oprit între timp.
+ */
+export async function tryLock(env: Env, name: string, ms: number) {
+  const now = Date.now();
+  const r = await env.DB.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value WHERE CAST(settings.value AS INTEGER) < ?`,
+  )
+    .bind(`lock:${name}`, String(now + ms), now)
+    .run();
+  return r.meta.changes > 0;
+}
+
+export async function unlock(env: Env, name: string) {
+  await env.DB.prepare('DELETE FROM settings WHERE key = ?').bind(`lock:${name}`).run();
+}
+
 const DEFAULT_BUSINESS: Business = {
   name: 'TAFBarbers',
   tagline: 'Barbershop',
@@ -44,6 +74,8 @@ const DEFAULT_BUSINESS: Business = {
   cancelHours: 12,
   minLeadMin: 30,
   maxDaysAhead: 30,
+  requireApproval: false,
+  approvalBarberIds: [],
 };
 
 export const getBusiness = (env: Env) => getSetting(env, 'business', DEFAULT_BUSINESS);
@@ -146,6 +178,8 @@ export type BookingRow = {
   online_paid_bani?: number | null;
   online_refunded_at?: string | null;
   cancelled_by?: string | null;
+  request_outcome?: string | null;
+  refuse_reason?: string | null;
   client_name?: string;
   client_phone?: string;
   client_birth_date?: string | null;
@@ -178,6 +212,9 @@ export const booking = (r: BookingRow) => ({
   onlinePaid: r.online_paid_bani ? r.online_paid_bani / 100 : null,
   onlineRefunded: !!r.online_refunded_at,
   cancelledBy: (r.cancelled_by ?? null) as 'client' | 'staff' | null,
+  // Cererile de programare (cu aprobare): cum s-au încheiat și motivul refuzului, spus clientului.
+  requestOutcome: (r.request_outcome ?? null) as 'accepted' | 'refused' | 'expired' | null,
+  refuseReason: r.refuse_reason ?? null,
   ...(r.client_name !== undefined && { clientName: r.client_name, clientPhone: r.client_phone }),
   // Programare în ziua de naștere a clientului (frizerul vede o lumânare); data nașterii nu se trimite.
   ...(r.client_birth_date !== undefined && { clientBirthday: isBirthdayOn(r.client_birth_date, roLocal(r.starts_at).day) }),
@@ -199,6 +236,7 @@ export type ClientRow = {
   photo_url?: string | null;
   identity_note?: string;
   referred_by?: string | null;
+  club_member?: number;
 };
 export const client = (r: ClientRow) => ({
   id: r.id,

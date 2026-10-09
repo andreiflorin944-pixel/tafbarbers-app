@@ -29,7 +29,7 @@ export default function Home() {
   const welcome = look?.welcome?.[lang as 'ro' | 'en' | 'fr'];
 
   const next = bookings
-    .filter((b) => b.status === 'confirmed' && new Date(b.start).getTime() > Date.now())
+    .filter((b) => (b.status === 'confirmed' || b.status === 'requested') && new Date(b.start).getTime() > Date.now())
     .sort((a, b) => a.start.localeCompare(b.start))[0];
 
   const startBooking = (service?: Service) => {
@@ -109,6 +109,12 @@ export default function Home() {
                 {serviceById(next.serviceId)?.name} · {barberById(next.barberId)?.name}
               </Text>
             </View>
+            {next.status === 'requested' ? (
+              <View style={s.heroRow}>
+                <Ionicons name="hourglass-outline" size={16} color={colors.onGold} />
+                <Text style={s.heroText}>{t('bookings.pending')}</Text>
+              </View>
+            ) : null}
           </Pressable>
         ) : (
           <Button title={t('home.book')} onPress={() => startBooking()} />

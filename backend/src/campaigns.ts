@@ -1,5 +1,5 @@
 import type { Env } from './env';
-import { getBusiness } from './db';
+import { getBusiness, tryLock, unlock } from './db';
 import { sendEmail, sendPush, sendSms } from './notify';
 import { iso } from './time';
 
@@ -16,40 +16,64 @@ export function emailHtml(shop: string, title: string, body: string, transaction
 </table></td></tr></table></body></html>`;
 }
 
-/** Trimite o campanie către clienții care au acceptat canalul respectiv. */
+/** Câți destinatari se trimit dintr-o rulare; restul îi ia cron-ul la următoarele rulări (limita de cereri a unui Worker). */
+const BATCH = 100;
+
+/**
+ * Trimite (sau continuă) o campanie către clienții care au acceptat canalul. Merge pe bucăți: fiecare destinatar e trecut
+ * în jurnal, iar o rulare nouă (cron-ul, la 5 minute, sau „Reia trimiterea”) sare peste cei care au primit-o deja,
+ * așa că o trimitere întreruptă se continuă fără ca cineva să primească mesajul de două ori.
+ */
 export async function runCampaign(env: Env, id: string) {
-  const cmp = await env.DB.prepare('SELECT * FROM campaigns WHERE id = ?').bind(id).first<{
-    id: string;
-    channel: 'push' | 'email' | 'sms';
-    title: string;
-    body: string;
-  }>();
-  if (!cmp) return;
-  const biz = await getBusiness(env);
-  let recipients = 0;
+  // O singură rulare odată pe campanie (trimiterea din panou și cron-ul se pot suprapune).
+  if (!(await tryLock(env, `campaign:${id}`, 5 * 60_000))) return;
   try {
+    const cmp = await env.DB.prepare('SELECT * FROM campaigns WHERE id = ?').bind(id).first<{
+      id: string;
+      channel: 'push' | 'email' | 'sms';
+      title: string;
+      body: string;
+      status: string;
+    }>();
+    if (!cmp || cmp.status !== 'sending') return;
+    const biz = await getBusiness(env);
+    const notYet = `NOT EXISTS (SELECT 1 FROM message_log m WHERE m.campaign_id = ?1 AND m.recipient = %s)`;
+    let left = 0;
     if (cmp.channel === 'push') {
       const t = await env.DB.prepare(
-        'SELECT p.token FROM push_tokens p JOIN clients c ON c.id = p.client_id WHERE c.marketing_push = 1',
-      ).all<{ token: string }>();
-      recipients = await sendPush(env, { kind: 'campaign', campaignId: id }, t.results.map((x) => x.token), cmp.title, cmp.body, {
-        campaignId: id,
-      });
+        `SELECT p.token FROM push_tokens p JOIN clients c ON c.id = p.client_id WHERE c.marketing_push = 1 AND c.deleted_at IS NULL AND ${notYet.replace('%s', 'p.token')} LIMIT ${BATCH * 3}`,
+      )
+        .bind(id)
+        .all<{ token: string }>();
+      await sendPush(env, { kind: 'campaign', campaignId: id }, t.results.map((x) => x.token), cmp.title, cmp.body, { campaignId: id });
+      left = t.results.length >= BATCH * 3 ? 1 : 0;
     } else if (cmp.channel === 'email') {
       const r = await env.DB.prepare(
-        `SELECT email FROM clients WHERE marketing_email = 1 AND email IS NOT NULL AND email != ''`,
-      ).all<{ email: string }>();
+        `SELECT DISTINCT c.email FROM clients c WHERE c.marketing_email = 1 AND c.deleted_at IS NULL AND c.email IS NOT NULL AND c.email != '' AND ${notYet.replace('%s', 'c.email')} LIMIT ${BATCH}`,
+      )
+        .bind(id)
+        .all<{ email: string }>();
       const html = emailHtml(biz.name, cmp.title, cmp.body);
-      for (const x of r.results) if (await sendEmail(env, { kind: 'campaign', recipient: x.email, campaignId: id }, cmp.title, html)) recipients++;
+      for (const x of r.results) await sendEmail(env, { kind: 'campaign', recipient: x.email, campaignId: id }, cmp.title, html);
+      left = r.results.length >= BATCH ? 1 : 0;
     } else {
-      const r = await env.DB.prepare('SELECT phone FROM clients WHERE marketing_sms = 1').all<{ phone: string }>();
-      for (const x of r.results) if (await sendSms(env, { kind: 'campaign', recipient: x.phone, campaignId: id }, cmp.body)) recipients++;
+      const r = await env.DB.prepare(
+        `SELECT c.phone FROM clients c WHERE c.marketing_sms = 1 AND c.deleted_at IS NULL AND ${notYet.replace('%s', 'c.phone')} LIMIT ${BATCH}`,
+      )
+        .bind(id)
+        .all<{ phone: string }>();
+      for (const x of r.results) await sendSms(env, { kind: 'campaign', recipient: x.phone, campaignId: id }, cmp.body);
+      left = r.results.length >= BATCH ? 1 : 0;
     }
-    await env.DB.prepare(`UPDATE campaigns SET status = 'sent', sent_at = ?, recipients = ? WHERE id = ?`)
-      .bind(iso(new Date()), recipients, id)
+    // Câți au primit-o până acum; „Trimisă” abia când nu mai e nimeni de trimis.
+    const n = await env.DB.prepare(`SELECT count(DISTINCT recipient) AS n FROM message_log WHERE campaign_id = ? AND status = 'sent'`).bind(id).first<{ n: number }>();
+    await env.DB.prepare(`UPDATE campaigns SET status = ?, sent_at = CASE WHEN ? = 'sent' THEN ? ELSE sent_at END, recipients = ? WHERE id = ? AND status = 'sending'`)
+      .bind(left ? 'sending' : 'sent', left ? 'sending' : 'sent', iso(new Date()), n?.n ?? 0, id)
       .run();
   } catch (e) {
     console.error('campaign failed', id, e);
-    await env.DB.prepare(`UPDATE campaigns SET status = 'failed', recipients = ? WHERE id = ?`).bind(recipients, id).run();
+    await env.DB.prepare(`UPDATE campaigns SET status = 'failed' WHERE id = ?`).bind(id).run();
+  } finally {
+    await unlock(env, `campaign:${id}`);
   }
 }

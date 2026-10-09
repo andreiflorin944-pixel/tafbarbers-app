@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
-import { ScrollView, Text, View } from 'react-native';
+import { Image, ScrollView, Text, View } from 'react-native';
 import { Button, styles } from '@/components/ui';
+import { mediaUrl } from '@/api/staff';
 import { usePriceLabel } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
@@ -15,9 +16,13 @@ export default function ServiceDetail() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: space.xl }}>
-      {/* Hero: replaced by the service photo once we load images from Barberly */}
+      {/* Poza serviciului (din panou); fără poză rămâne foarfeca. */}
       <View style={{ height: 320, backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name="cut" size={96} color={colors.goldDark} />
+        {service.imageUrl ? (
+          <Image source={{ uri: mediaUrl(service.imageUrl)! }} style={{ width: '100%', height: '100%' }} resizeMode="cover" accessibilityIgnoresInvertColors />
+        ) : (
+          <Ionicons name="cut" size={96} color={colors.goldDark} />
+        )}
       </View>
       <View style={{ width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: space.md }}>
         <View style={{ backgroundColor: colors.gold, borderRadius: radius.md, padding: space.md, marginTop: -48, gap: 4 }}>

@@ -2,8 +2,19 @@ import type { Env } from './env';
 import { HttpError } from './env';
 import { getBusiness } from './db';
 import { iso, localToUtc, weekdayOf } from './time';
+import { blocksForDay, blocksTime } from './blocks';
+import { isClubMember } from './subscriptions';
 
-export type Slot = { start: string; end: string; barberId: string };
+/** `membersOnly`: ora cade în intervalul „Doar membri TAF Club” (o văd doar membrii și echipa). */
+export type Slot = { start: string; end: string; barberId: string; membersOnly?: boolean };
+
+/**
+ * Cine cere orele: `public` (fără cont sau client fără abonament) nu vede orele „doar membri”,
+ * `member` le vede marcate, `staff` (panoul) le vede pe toate, marcate.
+ */
+export type Access = 'public' | 'member' | 'staff';
+export const accessFor = async (env: Env, clientId: string | null | undefined): Promise<Access> =>
+  (await isClubMember(env, clientId)) ? 'member' : 'public';
 
 type Interval = { s: number; e: number }; // ms UTC
 
@@ -28,8 +39,9 @@ export async function eligibleBarbers(env: Env, serviceId: string, barberId: str
  */
 export async function availability(
   env: Env,
-  opts: { serviceId: string; barberId: string | null; day: string; excludeBookingId?: string },
+  opts: { serviceId: string; barberId: string | null; day: string; excludeBookingId?: string; access?: Access },
 ): Promise<Slot[]> {
+  const access = opts.access ?? 'public';
   const biz = await getBusiness(env);
   const tz = env.TIMEZONE;
   const service = await env.DB.prepare('SELECT duration_min FROM services WHERE id = ? AND active = 1')
@@ -47,7 +59,7 @@ export async function availability(
   const earliest = Date.now() + (biz.minLeadMin ?? 0) * 60_000;
 
   const ph = barbers.map(() => '?').join(',');
-  const [own, hours, busy, off] = await Promise.all([
+  const [own, hours, busy, off, blocks] = await Promise.all([
     env.DB.prepare(`SELECT barber_id, duration_min FROM barber_services WHERE service_id = ? AND duration_min IS NOT NULL AND barber_id IN (${ph})`)
       .bind(opts.serviceId, ...barbers)
       .all<{ barber_id: string; duration_min: number }>(),
@@ -56,7 +68,7 @@ export async function availability(
       .all<{ barber_id: string; start_min: number; end_min: number }>(),
     env.DB.prepare(
       `SELECT id, barber_id, starts_at, ends_at FROM bookings
-       WHERE status = 'confirmed' AND barber_id IN (${ph}) AND starts_at < ? AND ends_at > ?`,
+       WHERE status IN ('confirmed','requested') AND barber_id IN (${ph}) AND starts_at < ? AND ends_at > ?`,
     )
       .bind(...barbers, iso(dayEnd), iso(dayStart))
       .all<{ id: string; barber_id: string; starts_at: string; ends_at: string }>(),
@@ -66,6 +78,7 @@ export async function availability(
     )
       .bind(...barbers, iso(dayEnd), iso(dayStart))
       .all<{ barber_id: string | null; starts_at: string; ends_at: string }>(),
+    blocksForDay(env, opts.day, barbers),
   ]);
 
   const blocked = new Map<string, Interval[]>(barbers.map((b) => [b, []]));
@@ -77,6 +90,12 @@ export async function availability(
     const iv = { s: Date.parse(t.starts_at), e: Date.parse(t.ends_at) };
     for (const b of t.barber_id ? [t.barber_id] : barbers) blocked.get(b)?.push(iv);
   }
+  // Blocurile din program: pauza, liberul, cursul etc. scot orele; „doar membri” le lasă doar pentru membri.
+  const members = new Map<string, Interval[]>(barbers.map((b) => [b, []]));
+  for (const k of blocks) {
+    const iv = { s: k.s, e: k.e };
+    for (const b of k.barberId ? [k.barberId] : barbers) (blocksTime(k.kind) ? blocked : members).get(b)?.push(iv);
+  }
 
   const byStart = new Map<number, Slot>();
   for (const barber of barbers) {
@@ -86,10 +105,14 @@ export async function availability(
       const winS = localToUtc(tz, opts.day, h.start_min).getTime();
       const winE = localToUtc(tz, opts.day, h.end_min).getTime();
       for (let s = winS; s + durMs <= winE; s += step) {
-        if (s < earliest || byStart.has(s)) continue;
+        const prev = byStart.get(s);
+        // Ora e deja luată de un frizer liber pentru toți; una „doar membri” se poate înlocui cu una obișnuită.
+        if (s < earliest || (prev && !prev.membersOnly)) continue;
         const slot = { s, e: s + durMs };
         if (blocked.get(barber)!.some((iv) => overlaps(iv, slot))) continue;
-        byStart.set(s, { start: iso(new Date(s)), end: iso(new Date(s + durMs)), barberId: barber });
+        const membersOnly = members.get(barber)!.some((iv) => overlaps(iv, slot));
+        if (membersOnly && (access === 'public' || prev)) continue;
+        byStart.set(s, { start: iso(new Date(s)), end: iso(new Date(s + durMs)), barberId: barber, ...(membersOnly && { membersOnly: true }) });
       }
     }
   }

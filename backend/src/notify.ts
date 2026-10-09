@@ -16,12 +16,29 @@ async function log(env: Env, l: Log, ok: boolean, error?: string) {
     .run();
 }
 
+/** SMS-ul pleacă fără diacritice (altfel încap doar 70 de caractere) și cel mult 3 bucăți (459 de caractere). */
+export const SMS_MAX = 459;
+export function smsPlain(s: string) {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[șş]/g, 's')
+    .replace(/[țţ]/g, 't')
+    .replace(/[ȘŞ]/g, 'S')
+    .replace(/[ȚŢ]/g, 'T')
+    .replace(/[–—]/g, '-')
+    .replace(/[„”“]/g, '"')
+    .replace(/[’‘]/g, "'")
+    .slice(0, SMS_MAX);
+}
+
 /**
  * SMS prin SMSAdvert (smsadvert.ro). Fără cheie configurată, mesajul doar se jurnalizează
  * (mod test), ca restul fluxului să poată fi încercat.
  */
-export async function sendSms(env: Env, l: Omit<Log, 'channel'>, text: string): Promise<boolean> {
+export async function sendSms(env: Env, l: Omit<Log, 'channel'>, raw: string): Promise<boolean> {
   const entry = { ...l, channel: 'sms' as const };
+  const text = smsPlain(raw);
   if (!env.SMSADVERT_TOKEN) {
     console.log(`[sms:test] ${l.recipient}: ${text}`);
     await log(env, entry, true, 'test-mode');

@@ -35,7 +35,7 @@ export type ReportKind = (typeof REPORTS)[number]['kind'];
 const TZ = 'Europe/Bucharest';
 const MAX_DAYS = 400;
 
-const STATUS: Record<string, string> = { confirmed: 'Confirmată', completed: 'Finalizată', cancelled: 'Anulată', no_show: 'Neprezentare' };
+const STATUS: Record<string, string> = { requested: 'Cerere în așteptare', confirmed: 'Confirmată', completed: 'Finalizată', cancelled: 'Anulată', no_show: 'Neprezentare' };
 const SOURCE: Record<string, string> = { app: 'Aplicație', admin: 'Echipă', web: 'Site' };
 const PAYMENT: Record<string, string> = { paid: 'Plătită', subscription: 'Abonament' };
 const METHOD: Record<string, string> = { cash: 'Numerar', card: 'Card (POS)', transfer: 'Transfer', online: 'Online' };
@@ -58,6 +58,7 @@ type BRow = {
   ends_at: string;
   cancelled_at: string | null;
   cancelled_by: string | null;
+  request_outcome: string | null;
   completed_by: string | null;
   client_name: string;
   client_phone: string;
@@ -68,6 +69,10 @@ type BRow = {
   completer_name: string | null;
   day: string;
 };
+/** Cererile la care nu a răspuns nimeni se anulează singure: nu sunt anulări ale echipei. */
+const expiredRequest = (b: BRow) => b.status === 'cancelled' && b.request_outcome === 'expired';
+const staffCancelled = (b: BRow) => b.status === 'cancelled' && b.cancelled_by !== 'client' && !expiredRequest(b);
+
 type SRow = {
   id: string;
   client_id: string;
@@ -110,7 +115,7 @@ async function loadBookings(env: Env, scope: Scope, from: string, to: string, f:
   if (f.serviceId) where.push('b.service_id = ?'), vals.push(f.serviceId);
   const r = await env.DB.prepare(
     `SELECT b.id, b.client_id, b.barber_id, b.service_id, b.starts_at, b.created_at, b.price_bani, b.status, b.source, b.payment, b.paid_bani,
-       b.tip_bani, b.gift_bani, b.pay_method, b.ends_at, b.cancelled_at, b.cancelled_by, b.completed_by, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+       b.tip_bani, b.gift_bani, b.pay_method, b.ends_at, b.cancelled_at, b.cancelled_by, b.request_outcome, b.completed_by, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
        s.name AS service_name, br.name AS barber_name, coalesce(nullif(ca.name, ''), ca.email) AS canceller_name,
        coalesce(nullif(cb.name, ''), cb.email) AS completer_name
      FROM bookings b JOIN clients c ON c.id = b.client_id JOIN services s ON s.id = b.service_id JOIN barbers br ON br.id = b.barber_id
@@ -239,7 +244,8 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         line('Finalizate', bk.filter((b) => b.status === 'completed').length),
         line('Încă de confirmat', bk.filter((b) => b.status === 'confirmed').length),
         line('Anulate de client', bk.filter((b) => b.status === 'cancelled' && b.cancelled_by === 'client').length),
-        line('Anulate de echipă', bk.filter((b) => b.status === 'cancelled' && b.cancelled_by !== 'client').length),
+        line('Anulate de echipă', bk.filter(staffCancelled).length),
+        line('Cereri expirate (fără răspuns)', bk.filter(expiredRequest).length),
         line('Neprezentări', bk.filter((b) => b.status === 'no_show').length),
         line('Clienți serviți', clientsSeen.size),
         line('din care clienți noi', newClients),
@@ -393,7 +399,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
     case 'cancel-staff':
     case 'cancel-client': {
       const bk = (await loadBookings(env, scope, from, to, filters)).filter(
-        (b) => b.status === 'cancelled' && (kind === 'cancel-client' ? b.cancelled_by === 'client' : b.cancelled_by !== 'client'),
+        (b) => (kind === 'cancel-client' ? b.status === 'cancelled' && b.cancelled_by === 'client' : staffCancelled(b)),
       );
       columns = bookingCols([
         { key: 'cancelledAt', label: 'Anulată la', type: 'datetime' },
@@ -654,7 +660,9 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
             : b.status === 'cancelled'
               ? b.cancelled_by === 'client'
                 ? 'Anulată de client'
-                : 'Anulată de salon'
+                : expiredRequest(b)
+                  ? 'Cerere expirată'
+                  : 'Anulată de salon'
               : b.ends_at < now
                 ? 'NEÎNCHISĂ'
                 : 'Urmează';

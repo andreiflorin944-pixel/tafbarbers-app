@@ -189,6 +189,8 @@ export async function completeBooking(
     .first<{ id: string; client_id: string; service_id: string; price_bani: number; status: string; payment: string | null; online_paid_bani: number | null }>();
   if (!bk) throw new HttpError(404, 'not_found');
   if (bk.status === 'cancelled') throw new HttpError(409, 'booking_cancelled');
+  // O cerere încă neacceptată nu se poate încheia.
+  if (bk.status === 'requested') throw new HttpError(409, 'booking_requested');
   if (bk.payment) throw new HttpError(409, 'already_completed');
   if (b.payment !== 'paid' && b.payment !== 'subscription') throw new HttpError(400, 'invalid_payment');
 
@@ -238,7 +240,7 @@ export async function completeBooking(
   const now = iso(new Date());
   const claimed = await env.DB.prepare(
     `UPDATE bookings SET status = 'completed', payment = ?, paid_bani = ?, subscription_id = ?, bonus_id = ?, tip_bani = ?, gift_card_id = ?, gift_bani = ?, pay_method = ?, completed_at = ?, completed_by = ?
-     WHERE id = ? AND payment IS NULL AND status != 'cancelled'`,
+     WHERE id = ? AND payment IS NULL AND status NOT IN ('cancelled','requested')`,
   )
     .bind(b.payment, paidBani, sub?.id ?? null, bonusId, tipBani, gift?.id ?? null, gift?.take ?? null, payMethod, now, adminId, bookingId)
     .run();
@@ -289,4 +291,22 @@ export async function undoCompletion(env: Env, bookingId: string) {
 export async function mySubscriptions(env: Env, clientId: string) {
   const [plans, subs] = await Promise.all([getPlans(env, false), getSubscriptions(env, clientId, false)]);
   return { plans, subscriptions: subs };
+}
+
+/**
+ * Membru TAF Club: are acum un abonament activ (început, neexpirat, cu tunsori rămase, oricare plan)
+ * sau a fost marcat de mână ca membru în fișa lui din panou. Membrii văd și orele „doar membri”.
+ */
+export async function isClubMember(env: Env, clientId: string | null | undefined) {
+  if (!clientId) return false;
+  const now = iso(new Date());
+  const r = await env.DB.prepare(
+    `SELECT c.club_member AS manual,
+       EXISTS (SELECT 1 FROM subscriptions s WHERE s.client_id = c.id AND s.status = 'active' AND s.starts_at <= ? AND s.ends_at > ?
+               AND (s.cuts_total IS NULL OR s.cuts_used < s.cuts_total)) AS sub
+     FROM clients c WHERE c.id = ? AND c.deleted_at IS NULL`,
+  )
+    .bind(now, now, clientId)
+    .first<{ manual: number; sub: number }>();
+  return !!r && (!!r.manual || !!r.sub);
 }

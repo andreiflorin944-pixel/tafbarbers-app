@@ -37,6 +37,13 @@ export function CampaignsPage(_: { me: Me }) {
       list.reload();
     });
 
+  const resume = (id: string) =>
+    run(async () => {
+      await api('POST', `/admin/campaigns/${id}/send`);
+      setTimeout(list.reload, 1200);
+      list.reload();
+    });
+
   return (
     <>
       <div className="head">
@@ -102,8 +109,17 @@ export function CampaignsPage(_: { me: Me }) {
                   <td>
                     {STATUS[c.status] ?? c.status}
                     {c.status === 'scheduled' && c.scheduled_at ? <div className="muted small">{date(c.scheduled_at)}, {time(c.scheduled_at)}</div> : null}
+                    {c.status === 'sending' ? <div className="muted small">Se trimite pe rând, câte 100 la 5 minute.</div> : null}
+                    {c.status === 'failed' ? (
+                      <div>
+                        <button className="ghost sm" disabled={busy} onClick={() => resume(c.id)}>
+                          Reia trimiterea
+                        </button>
+                        <div className="muted small">Primesc doar cei la care nu a ajuns încă.</div>
+                      </div>
+                    ) : null}
                   </td>
-                  <td>{c.status === 'sent' ? c.recipients : '–'}</td>
+                  <td>{c.status === 'sent' || c.status === 'sending' || c.status === 'failed' ? c.recipients : '–'}</td>
                   <td className="small">{date(c.sent_at ?? c.created_at)}</td>
                 </tr>
               ))}

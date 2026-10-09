@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { normalizePhone, requireClient } from '../auth';
 import { createGiftCard, getAutomations, giftCard, type GiftCardRow } from '../growth';
 import { BOOKING_SELECT, cancelBooking, createBooking } from '../bookings';
-import { booking, client, getBusiness, type BookingRow, type ClientRow } from '../db';
+import { booking, client, emailTaken, getBusiness, type BookingRow, type ClientRow } from '../db';
 import { createCheckout } from '../payments';
 import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
@@ -11,6 +11,7 @@ import { deleteClient, exportClient } from '../gdpr';
 import { createOrder, getOrder, getOrders, notifyOrder, setOrderStatus } from '../shop';
 import { myReferrals } from '../referrals';
 import { mySubscriptions } from '../subscriptions';
+import { joinWaitlist, myWaitlist, removeWaitlist } from '../waitlist';
 import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
 
 export const clientRoutes = new Hono<AppEnv>();
@@ -44,10 +45,19 @@ clientRoutes.patch('/me', async (c) => {
   if (typeof b.name === 'string') sets.push('name = ?'), vals.push(b.name.trim().slice(0, 80));
   if (b.email !== undefined) {
     if (b.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email)) throw new HttpError(400, 'invalid_email');
+    const me = await c.env.DB.prepare('SELECT phone, email FROM clients WHERE id = ?').bind(id).first<{ phone: string; email: string | null }>();
+    // Adresa altui cont nu se poate lua (cu ea se intră în cont).
+    if (b.email && b.email.toLowerCase() !== (me?.email ?? '').toLowerCase() && (await emailTaken(c.env, b.email, me?.phone ?? ''))) throw new HttpError(400, 'email_in_use');
     sets.push('email = ?'), vals.push(b.email || null);
   }
   if (b.lang && ['ro', 'en', 'fr'].includes(b.lang)) sets.push('lang = ?'), vals.push(b.lang);
-  if (b.birthDate !== undefined) sets.push('birth_date = ?'), vals.push(parseBirthDate(b.birthDate));
+  if (b.birthDate !== undefined) {
+    // Data nașterii (de ea ține cadoul de ziua clientului) se pune o singură dată; o schimbare o face salonul, din panou.
+    const bd = parseBirthDate(b.birthDate);
+    const cur = await c.env.DB.prepare('SELECT birth_date FROM clients WHERE id = ?').bind(id).first<{ birth_date: string | null }>();
+    if (cur?.birth_date && bd !== cur.birth_date) throw new HttpError(409, 'birth_date_locked');
+    if (!cur?.birth_date && bd) sets.push('birth_date = ?'), vals.push(bd);
+  }
   for (const ch of ['sms', 'email', 'push'] as const) {
     if (typeof b.marketing?.[ch] === 'boolean') sets.push(`marketing_${ch} = ?`), vals.push(b.marketing[ch] ? 1 : 0);
   }
@@ -211,14 +221,14 @@ clientRoutes.get('/me/bookings', async (c) => {
 clientRoutes.post('/bookings', async (c) => {
   const b = await c.req.json<{ serviceId?: string; barberId?: string | null; start?: string; note?: string }>();
   if (!b.serviceId || !b.start) throw new HttpError(400, 'invalid_body');
-  // Maxim 3 programări viitoare active pe client, ca să nu se blocheze orele.
-  const active = await c.env.DB.prepare(
-    `SELECT count(*) AS n FROM bookings WHERE client_id = ? AND status = 'confirmed' AND starts_at > ?`,
-  )
-    .bind(c.get('client').clientId, iso(new Date()))
+  // Programare și anulare la nesfârșit ar trimite tot atâtea SMS-uri de confirmare: cel mult 10 programări noi pe zi.
+  const today = await c.env.DB.prepare(`SELECT count(*) AS n FROM bookings WHERE client_id = ? AND source = 'app' AND created_at > ?`)
+    .bind(c.get('client').clientId, iso(new Date(Date.now() - 86_400_000)))
     .first<{ n: number }>();
-  if ((active?.n ?? 0) >= 3) throw new HttpError(409, 'too_many_active_bookings');
+  if ((today?.n ?? 0) >= 10) throw new HttpError(429, 'too_many_bookings_today');
+  // Maxim 3 programări viitoare active pe client (cererile în așteptare se numără și ele), ca să nu se blocheze orele.
   const created = await createBooking(c.env, {
+    maxActive: 3,
     clientId: c.get('client').clientId,
     serviceId: b.serviceId,
     barberId: b.barberId ?? null,
@@ -227,6 +237,21 @@ clientRoutes.post('/bookings', async (c) => {
     source: 'app',
   });
   return c.json(created, 201);
+});
+
+// --- Lista de așteptare: „Anunță-mă dacă se eliberează un loc” ---
+
+clientRoutes.get('/me/waitlist', async (c) => c.json(await myWaitlist(c.env, c.get('client').clientId)));
+
+clientRoutes.post('/me/waitlist', async (c) => {
+  const b = await c.req.json<{ serviceId?: string; barberId?: string | null; day?: string; part?: string }>().catch(() => ({}));
+  const r = await joinWaitlist(c.env, c.get('client').clientId, b);
+  return c.json(r.entry, r.created ? 201 : 200);
+});
+
+clientRoutes.delete('/me/waitlist/:id', async (c) => {
+  await removeWaitlist(c.env, c.req.param('id'), 'client', { clientId: c.get('client').clientId });
+  return c.json({ ok: true });
 });
 
 clientRoutes.post('/bookings/:id/cancel', async (c) => {

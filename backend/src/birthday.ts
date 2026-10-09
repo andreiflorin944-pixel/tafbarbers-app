@@ -4,7 +4,7 @@ import { getBusiness, getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
 import { sendEmail, sendPush, sendSms } from './notify';
 import { giveBonus, parseReward, type Reward } from './referrals';
-import { isLeap as leap, localDay, localMinutes } from './time';
+import { isLeap as leap, localDay, localMinutes, QUIET_FROM } from './time';
 
 // Ziua de naștere a clientului: programările din ziua lui se văd la frizer (lumânare),
 // iar dimineața pleacă automat „La mulți ani”, opțional cu un bonus.
@@ -79,7 +79,9 @@ export async function greetBirthdays(env: Env, now = new Date()) {
   const s = await getBirthdaySettings(env);
   if (!s.enabled) return 0;
   const tz = env.TIMEZONE || 'Europe/Bucharest';
-  if (localMinutes(tz, now) < s.hour * 60) return 0;
+  // Doar de la ora aleasă până la 22:00: noaptea nu trimitem (cine n-a primit azi nu primește noaptea târziu).
+  const min = localMinutes(tz, now);
+  if (min < s.hour * 60 || min >= QUIET_FROM) return 0;
   const day = localDay(tz, now);
   const year = Number(day.slice(0, 4));
   const md = day.slice(5, 10);

@@ -24,11 +24,14 @@ import { NotesPage } from './pages/Notes';
 import { SocialPage } from './pages/Social';
 import { QrCodesPage } from './pages/QrCodes';
 import { TemplatesPage } from './pages/Templates';
+import { WaitlistPage } from './pages/Waitlist';
+import { RequestsBell } from './Requests';
 
 const PAGES = [
   { key: 'calendar', label: 'Calendar', show: () => true, el: CalendarPage },
   { key: 'dashboard', label: 'Tablou de bord', show: (m: Me) => m.permissions.reports, el: DashboardPage },
   { key: 'reports', label: 'Rapoarte', show: (m: Me) => m.permissions.reports, el: ReportsPage },
+  { key: 'waitlist', label: 'Listă de așteptare', show: () => true, el: WaitlistPage },
   { key: 'notes', label: 'Notițe echipă', show: () => true, el: NotesPage },
   { key: 'clients', label: 'Clienți', show: (m: Me) => m.permissions.clients, el: ClientsPage },
   { key: 'services', label: 'Servicii', show: (m: Me) => m.owner, el: ServicesPage },
@@ -39,7 +42,7 @@ const PAGES = [
   { key: 'giftcards', label: 'Carduri cadou', show: (m: Me) => m.permissions.bookings_manage, el: GiftCardsPage },
   { key: 'birthdays', label: 'Zile de naștere', show: (m: Me) => m.owner, el: BirthdaysPage },
   { key: 'referrals', label: 'Recomandări și bonusuri', show: (m: Me) => m.owner, el: ReferralsPage },
-  { key: 'timeoff', label: 'Concedii', show: (m: Me) => m.permissions.timeoff, el: TimeOffPage },
+  { key: 'timeoff', label: 'Pauze și concedii', show: (m: Me) => m.permissions.timeoff, el: TimeOffPage },
   { key: 'appearance', label: 'Aspect aplicație', show: (m: Me) => m.owner, el: AppearancePage },
   { key: 'promos', label: 'Bannere aplicație', show: (m: Me) => m.owner, el: PromosPage },
   { key: 'campaigns', label: 'Campanii', show: (m: Me) => m.owner, el: CampaignsPage },
@@ -90,7 +93,7 @@ const NAV: NavSection[] = [
     icon: 'business',
     groups: [
       { items: [{ label: 'Tablou de bord', to: 'dashboard' }] },
-      { title: 'Echipa', items: [{ label: 'Frizeri, culori și program', to: 'barbers' }, { label: 'Concedii și zile libere', to: 'timeoff' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }] },
+      { title: 'Echipa', items: [{ label: 'Frizeri, culori și program', to: 'barbers' }, { label: 'Pauze, ore speciale și concedii', to: 'timeoff' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }] },
       { title: 'Ce oferim', items: [{ label: 'Servicii și prețuri', to: 'services' }, { label: 'Abonamente', to: 'subscriptions' }] },
       { title: 'Salonul', items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }] },
     ],
@@ -101,8 +104,8 @@ const NAV: NavSection[] = [
     icon: 'work',
     groups: [
       { items: [{ label: 'Calendar', to: 'calendar' }, { label: 'Notițe echipă', to: 'notes' }] },
-      { title: 'Programări', items: [{ label: 'Lista programărilor', to: 'reports/bookings' }, { label: 'Rezervări viitoare', to: 'reports/upcoming' }, { label: 'Raportul zilei', to: 'reports/day' }] },
-      { title: 'Program', items: [{ label: 'Concedii și zile libere', to: 'timeoff' }, { label: 'Ore de lucru', to: 'barbers' }] },
+      { title: 'Programări', items: [{ label: 'Lista programărilor', to: 'reports/bookings' }, { label: 'Rezervări viitoare', to: 'reports/upcoming' }, { label: 'Listă de așteptare', to: 'waitlist' }, { label: 'Raportul zilei', to: 'reports/day' }] },
+      { title: 'Program', items: [{ label: 'Pauze, ore speciale și concedii', to: 'timeoff' }, { label: 'Ore de lucru', to: 'barbers' }] },
     ],
   },
   {
@@ -305,11 +308,14 @@ export function App() {
       ) : null}
       <main className="main">
         <div className="topbar">
-          <span className="muted small">
+          <span className="muted small crumb">
             {activeSection ? `${activeSection.label} · ` : ''}
             {current.label}
           </span>
-          <span className="muted small">{me.name || me.email}</span>
+          <span className="row" style={{ gap: 12, marginLeft: 'auto' }}>
+            <RequestsBell me={me} />
+            <span className="muted small crumb">{me.name || me.email}</span>
+          </span>
         </div>
         <Page me={me} />
       </main>

@@ -14,7 +14,7 @@ import {
   tokenFrom,
   verifyPassword,
 } from '../auth';
-import { BOOKING_SELECT, cancelBooking, createBooking, getBooking } from '../bookings';
+import { acceptRequest, BOOKING_SELECT, cancelBooking, createBooking, getBooking, HOLDS_SLOT, pendingRequests, refuseRequest } from '../bookings';
 import {
   barber,
   booking,
@@ -23,6 +23,8 @@ import {
   promo,
   service,
   setSetting,
+  tryLock,
+  unlock,
   type BarberRow,
   type BookingRow,
   type ClientRow,
@@ -49,6 +51,7 @@ import {
   subscription,
   undoCompletion,
   usableSubscription,
+  isClubMember,
   type PlanInput,
 } from '../subscriptions';
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
@@ -58,6 +61,8 @@ import { adjustMove, cancelNir, createNir, getNir, listNir, stockOut, type NirIn
 import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCard, saveAutomations, type GiftCardRow } from '../growth';
 import { sendPush, sendSms } from '../notify';
 import { autoTranslate } from '../translate';
+import { adminWaitlist, checkWaitlist, removeWaitlist } from '../waitlist';
+import { blockOccurrences, createBlock, deleteBlock, listBlocks, type BlockInput } from '../blocks';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -97,8 +102,8 @@ adminRoutes.use('*', requireAdmin);
 
 // Fără dreptul „contacts”, telefonul și e-mailul clienților nu pleacă de pe server: le scoatem din
 // toate răspunsurile cu date de clienți (programări, fișe, comenzi, abonamente, recomandări, zile de naștere).
-const CLIENT_DATA = /^\/v1\/admin\/(bookings|clients|referrals|subscriptions|birthdays|orders)(\/|$)/;
-const CONTACT_KEYS = new Set(['phone', 'email', 'clientPhone', 'clientEmail']);
+const CLIENT_DATA = /^\/v1\/admin\/(bookings|clients|referrals|subscriptions|birthdays|orders|waitlist|gift-cards)(\/|$)/;
+const CONTACT_KEYS = new Set(['phone', 'email', 'clientPhone', 'clientEmail', 'recipientPhone']);
 function stripContacts(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(stripContacts);
   if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).filter(([k]) => !CONTACT_KEYS.has(k)).map(([k, x]) => [k, stripContacts(x)]));
@@ -269,6 +274,15 @@ adminRoutes.put('/settings', ownerOnly, async (c) => {
   ];
   const next = { ...cur } as Record<string, unknown>;
   for (const k of allowed) if (k in b) next[k] = b[k];
+  // Aprobarea programărilor din aplicație: pornită / oprită și, opțional, doar pentru anumiți frizeri.
+  if ('requireApproval' in b) next.requireApproval = b.requireApproval === true;
+  if ('approvalBarberIds' in b) {
+    const ids = Array.isArray(b.approvalBarberIds) ? b.approvalBarberIds.filter((x): x is string => typeof x === 'string').slice(0, 100) : [];
+    const known = ids.length
+      ? (await c.env.DB.prepare(`SELECT id FROM barbers WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all<{ id: string }>()).results.map((r) => r.id)
+      : [];
+    next.approvalBarberIds = ids.filter((id, i) => known.includes(id) && ids.indexOf(id) === i);
+  }
   await setSetting(c.env, 'business', next);
   return c.json(next);
 });
@@ -572,8 +586,19 @@ adminRoutes.patch('/barbers/:id', ownerOnly, async (c) => {
   if (b.active !== undefined) v.active = b.active ? 1 : 0;
   await update(c.env.DB, 'barbers', id, v);
   await saveBarberRelations(c.env.DB, id, b);
+  // Programul s-a schimbat: poate s-au eliberat ore pentru lista de așteptare.
+  if (b.hours || b.serviceIds || b.durations || b.active) await waitlistNow(c.env);
   return c.json({ ok: true });
 });
+
+/** Verifică pe loc lista de așteptare după o schimbare de program (fără să strice răspunsul dacă eșuează). */
+async function waitlistNow(env: Env) {
+  try {
+    await checkWaitlist(env);
+  } catch (e) {
+    console.error('waitlist check', e);
+  }
+}
 
 adminRoutes.delete('/barbers/:id', ownerOnly, async (c) => {
   const id = c.req.param('id')!;
@@ -642,10 +667,22 @@ adminRoutes.get('/time-off', async (c) => {
 });
 
 /** Acceptă fie ISO {start,end}, fie zile locale {fromDay,toDay} (zile întregi, inclusiv). */
+/**
+ * Pentru cine pune un cont concedii și blocuri: proprietarul și administratorul de locație pentru oricine (și tot salonul),
+ * frizerul doar pentru el. Un cont fără frizer legat și fără „toate programările” nu poate închide tot salonul.
+ */
+function timeOffScope(c: Context<AppEnv>): string | null {
+  const a = c.get('admin');
+  if (a.owner) return null;
+  if (a.barberId) return a.barberId;
+  if (a.perms.bookings_all) return null;
+  throw new HttpError(403, 'timeoff_no_barber');
+}
+
 adminRoutes.post('/time-off', async (c) => {
   const b = await c.req.json<{ barberId?: string | null; start?: string; end?: string; fromDay?: string; toDay?: string; reason?: string }>();
   need(c, 'timeoff');
-  const scoped = c.get('admin').owner ? null : c.get('admin').barberId;
+  const scoped = timeOffScope(c);
   const barberId = scoped ?? (b.barberId || null);
   let start: string, end: string;
   if (isDay(b.fromDay) && isDay(b.toDay)) {
@@ -665,10 +702,43 @@ adminRoutes.post('/time-off', async (c) => {
 
 adminRoutes.delete('/time-off/:id', async (c) => {
   need(c, 'timeoff');
-  const scoped = c.get('admin').owner ? null : c.get('admin').barberId;
-  await c.env.DB.prepare(`DELETE FROM time_off WHERE id = ? ${scoped ? 'AND barber_id = ?' : ''}`)
+  const scoped = timeOffScope(c);
+  const r = await c.env.DB.prepare(`DELETE FROM time_off WHERE id = ? ${scoped ? 'AND barber_id = ?' : ''}`)
     .bind(...(scoped ? [c.req.param('id')!, scoped] : [c.req.param('id')!]))
     .run();
+  if (r.meta.changes) await waitlistNow(c.env);
+  return c.json({ ok: true });
+});
+
+// --- Blocuri în program: pauză de masă, liber, educațional, altceva, doar membri TAF Club ---
+
+adminRoutes.get('/blocks', async (c) => {
+  const scoped = c.get('admin').owner ? null : c.get('admin').barberId;
+  return c.json(await listBlocks(c.env, scoped ?? c.req.query('barberId') ?? null));
+});
+
+/** Aparițiile blocurilor pe zile (pentru calendar): ?from=AAAA-LL-ZZ&to=AAAA-LL-ZZ (cel mult 62 de zile). */
+adminRoutes.get('/blocks/occurrences', async (c) => {
+  const { from, to } = c.req.query();
+  if (!isDay(from) || !isDay(to) || to < from) throw new HttpError(400, 'invalid_query');
+  const own = ownBarber(c);
+  return c.json(await blockOccurrences(c.env, from, to, own));
+});
+
+adminRoutes.post('/blocks', async (c) => {
+  need(c, 'timeoff');
+  const b = await c.req.json<BlockInput>().catch(() => ({}) as BlockInput);
+  // Frizerul pune blocuri doar în programul lui, ca la concedii.
+  const scoped = timeOffScope(c);
+  const r = await createBlock(c.env, { ...b, barberId: scoped ?? (b.barberId || null) }, c.get('admin').adminId);
+  return c.json(r, 201);
+});
+
+adminRoutes.delete('/blocks/:id', async (c) => {
+  need(c, 'timeoff');
+  const scoped = timeOffScope(c);
+  // S-au eliberat ore: poate are cineva nevoie de ele pe lista de așteptare.
+  if (await deleteBlock(c.env, c.req.param('id')!, scoped)) await waitlistNow(c.env);
   return c.json({ ok: true });
 });
 
@@ -692,6 +762,7 @@ adminRoutes.get('/bookings', async (c) => {
 adminRoutes.post('/bookings', async (c) => {
   const b = await c.req.json<{
     phone?: string;
+    clientId?: string;
     name?: string;
     serviceId?: string;
     barberId?: string | null;
@@ -702,8 +773,15 @@ adminRoutes.post('/bookings', async (c) => {
   }>();
   need(c, 'bookings_create');
   if (!b.serviceId || !b.start) throw new HttpError(400, 'invalid_body');
-  const phone = normalizePhone(b.phone);
-  let cl = await c.env.DB.prepare('SELECT id, name FROM clients WHERE phone = ?').bind(phone).first<{ id: string; name: string }>();
+  // Client ales din bază în panou (căutat după telefon sau nume), sau după numărul de telefon.
+  let cl: { id: string; name: string } | null = null;
+  if (b.clientId) {
+    need(c, 'clients');
+    cl = await c.env.DB.prepare('SELECT id, name FROM clients WHERE id = ? AND deleted_at IS NULL').bind(b.clientId).first<{ id: string; name: string }>();
+    if (!cl) throw new HttpError(404, 'client_not_found');
+  }
+  const phone = cl ? '' : normalizePhone(b.phone);
+  if (!cl) cl = await c.env.DB.prepare('SELECT id, name FROM clients WHERE phone = ?').bind(phone).first<{ id: string; name: string }>();
   if (!cl) {
     cl = { id: newId('cl'), name: (b.name ?? '').trim() };
     await c.env.DB.prepare('INSERT INTO clients (id, phone, name, marketing_push) VALUES (?, ?, ?, 0)').bind(cl.id, phone, cl.name.slice(0, 80)).run();
@@ -732,10 +810,27 @@ adminRoutes.patch('/bookings/:id', async (c) => {
   if (!cur || (scoped && cur.barberId !== scoped)) throw new HttpError(404, 'not_found');
   const b = await c.req.json<{ status?: string; note?: string }>();
   if (b.status === 'cancelled') return c.json(await cancelBooking(c.env, id, 'admin', undefined, c.get('admin').adminId));
+  // O cerere se acceptă (cu mesaj la client) sau se refuză; nu se poate marca direct încheiată sau neprezentare.
+  if (cur.status === 'requested' && b.status === 'confirmed') return c.json(await acceptRequest(c.env, id, c.get('admin').adminId));
+  if (cur.status === 'requested' && b.status) throw new HttpError(409, 'booking_requested');
+  // O programare anulată (sau o cerere refuzată / expirată) nu se reînvie: ora ei poate fi deja luată de altcineva.
+  if (cur.status === 'cancelled' && b.status) throw new HttpError(409, 'booking_cancelled');
   const v: Record<string, unknown> = {};
-  if (b.status) {
+  if (b.status && b.status !== cur.status) {
     if (!['confirmed', 'completed', 'no_show'].includes(b.status)) throw new HttpError(400, 'invalid_status');
-    v.status = b.status;
+    // Încheiată se marchează doar din „Încasează” (cu plata); o tunsoare încheiată se redeschide doar cu „Anulează confirmarea plății”.
+    if (b.status === 'completed') throw new HttpError(409, 'use_checkout');
+    if (cur.status === 'completed') throw new HttpError(409, 'booking_completed');
+    if (b.status === 'confirmed') {
+      // „Readu la confirmată” după „Nu a venit”: doar dacă ora n-a fost luată între timp de altcineva.
+      const r = await c.env.DB.prepare(
+        `UPDATE bookings SET status = 'confirmed' WHERE id = ? AND status = 'no_show'
+         AND NOT EXISTS (SELECT 1 FROM bookings o WHERE o.id != ?1 AND o.barber_id = ? AND o.status IN ${HOLDS_SLOT} AND o.starts_at < ? AND o.ends_at > ?)`,
+      )
+        .bind(id, cur.barberId, cur.end, cur.start)
+        .run();
+      if (!r.meta.changes) throw new HttpError(409, 'slot_unavailable');
+    } else v.status = b.status;
   }
   if (b.note !== undefined) v.note = String(b.note).slice(0, 500);
   await update(c.env.DB, 'bookings', id, v);
@@ -751,6 +846,40 @@ adminRoutes.get('/bookings/:id/checkout', async (c) => {
     subscription: await usableSubscription(c.env, cur.clientId, cur.serviceId),
     bonuses,
   });
+});
+
+/** Cererile de programare care așteaptă răspuns (clopoțelul din panou). Frizerul le vede doar pe ale lui. */
+adminRoutes.get('/bookings/requests', async (c) => {
+  need(c, 'bookings_manage');
+  const items = await pendingRequests(c.env, ownBarber(c));
+  return c.json({ count: items.length, items });
+});
+
+/** Acceptă cererea: devine confirmată și clientul primește confirmarea. */
+adminRoutes.post('/bookings/:id/accept', async (c) => {
+  const cur = await bookingForStaff(c);
+  return c.json(await acceptRequest(c.env, cur.id, c.get('admin').adminId));
+});
+
+/** Refuză cererea, cu un motiv opțional pe care îl primește clientul. */
+adminRoutes.post('/bookings/:id/refuse', async (c) => {
+  const cur = await bookingForStaff(c);
+  const b = await c.req.json<{ reason?: string }>().catch(() => ({}) as { reason?: string });
+  return c.json(await refuseRequest(c.env, cur.id, c.get('admin').adminId, String(b.reason ?? '')));
+});
+
+// --- Lista de așteptare ---
+
+/** GET /waitlist?from=AAAA-LL-ZZ&to=…&all=1 — înscrierile pe zile; implicit doar cele deschise. Frizerul vede lista lui și „orice frizer”. */
+adminRoutes.get('/waitlist', async (c) => {
+  const q = c.req.query();
+  return c.json(await adminWaitlist(c.env, { from: q.from, to: q.to, all: q.all === '1', barberId: ownBarber(c) }));
+});
+
+adminRoutes.delete('/waitlist/:id', async (c) => {
+  need(c, 'bookings_manage');
+  await removeWaitlist(c.env, c.req.param('id')!, 'staff', { barberId: ownBarber(c) });
+  return c.json({ ok: true });
 });
 
 /** Programările trecute care n-au fost închise (încheiată / nu a venit / anulată). Frizerul le vede doar pe ale lui. */
@@ -787,12 +916,19 @@ adminRoutes.post('/bookings/:id/review-request', async (c) => {
   if (cur.status !== 'completed') throw new HttpError(409, 'review_not_completed');
   const { links } = await getAutomations(c.env);
   if (!links.googleReviewUrl) throw new HttpError(400, 'review_link_missing');
-  const sent = await c.env.DB.prepare(`SELECT 1 FROM message_log WHERE kind = 'review' AND booking_id = ? AND status = 'sent' LIMIT 1`).bind(cur.id).first();
-  if (sent) throw new HttpError(409, 'review_already_sent');
-  const r = await sendTemplate(c.env, 'review', cur.clientId, { servicename: cur.serviceName ?? '', barbername: cur.barberName ?? '', datetime: '', reviewlink: links.googleReviewUrl }, {
-    bookingId: cur.id,
-    data: { url: links.googleReviewUrl },
-  });
+  // Un dublu-clic (sau doi oameni odată) nu trimite cererea de două ori: o singură trimitere odată pe programare.
+  if (!(await tryLock(c.env, `review:${cur.id}`, 60_000))) throw new HttpError(409, 'review_in_progress');
+  let r;
+  try {
+    const sent = await c.env.DB.prepare(`SELECT 1 FROM message_log WHERE kind = 'review' AND booking_id = ? AND status = 'sent' LIMIT 1`).bind(cur.id).first();
+    if (sent) throw new HttpError(409, 'review_already_sent');
+    r = await sendTemplate(c.env, 'review', cur.clientId, { servicename: cur.serviceName ?? '', barbername: cur.barberName ?? '', datetime: '', reviewlink: links.googleReviewUrl }, {
+      bookingId: cur.id,
+      data: { url: links.googleReviewUrl },
+    });
+  } finally {
+    await unlock(c.env, `review:${cur.id}`);
+  }
   if (r.off) throw new HttpError(400, 'review_off');
   if (!r.sms && !r.push && !r.email) throw new HttpError(500, 'send_failed');
   return c.json({ ok: true, sms: r.sms, push: r.push, email: r.email });
@@ -899,10 +1035,10 @@ adminRoutes.get('/clients', async (c) => {
     `SELECT c.*,
        (SELECT count(*) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS visits,
        (SELECT max(starts_at) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS last_visit
-     FROM clients c WHERE c.deleted_at IS NULL ${q ? 'AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)' : ''}
+     FROM clients c WHERE c.deleted_at IS NULL ${q ? "AND (c.name LIKE ? OR c.phone LIKE ? OR replace(c.phone, '+40', '0') LIKE ? OR c.email LIKE ?)" : ''}
      ORDER BY c.created_at DESC LIMIT 500`,
   )
-    .bind(...(q ? [like, like, like] : []))
+    .bind(...(q ? [like, `%${q.replace(/[^\d+]/g, '') || q}%`, `%${q.replace(/[^\d]/g, '') || q}%`, like] : []))
     .all<ClientRow & { visits: number; last_visit: string | null }>();
   return c.json(r.results.map((x) => ({ ...client(x), visits: x.visits, lastVisit: x.last_visit })));
 });
@@ -1043,6 +1179,9 @@ adminRoutes.get('/clients/:id', async (c) => {
     identity: await getIdentity(c.env, id, true),
     bonuses: await getBonuses(c.env, id, true),
     subscriptions: await getSubscriptions(c.env, id, true),
+    // TAF Club: membru prin abonament activ sau marcat de mână (bifa din fișă).
+    clubMember: await isClubMember(c.env, id),
+    clubManual: !!r.club_member,
     referredBy: ref,
     referredCount: referred?.n ?? 0,
     beforeAfter: await beforeAfterOf(c.env, id),
@@ -1306,15 +1445,20 @@ adminRoutes.delete('/clients/:id/photos/:pid', async (c) => {
 
 adminRoutes.patch('/clients/:id', async (c) => {
   await needClient(c, c.req.param('id')!);
-  const b = await c.req.json<{ name?: string; email?: string | null; notes?: string; birthDate?: string | null }>();
+  const b = await c.req.json<{ name?: string; email?: string | null; notes?: string; birthDate?: string | null; clubMember?: boolean }>();
   // Fără dreptul „clients”, frizerul poate doar să scrie notițe despre clienții lui.
   if (!c.get('admin').perms.clients && (b.name !== undefined || b.email !== undefined || b.birthDate !== undefined)) throw new HttpError(403, 'no_permission');
+  // Membru TAF Club pus de mână: dă acces la orele „doar membri”, deci îl schimbă doar proprietarul.
+  if (b.clubMember !== undefined && !c.get('admin').owner) throw new HttpError(403, 'owner_only');
   const v: Record<string, unknown> = {};
   if (b.name !== undefined) v.name = String(b.name).slice(0, 80);
   if (b.email !== undefined) v.email = b.email || null;
   if (b.notes !== undefined) v.notes = String(b.notes).slice(0, 2000);
   if (b.birthDate !== undefined) v.birth_date = parseBirthDate(b.birthDate);
+  if (b.clubMember !== undefined) v.club_member = b.clubMember ? 1 : 0;
   await update(c.env.DB, 'clients', c.req.param('id')!, v);
+  // A devenit membru: poate primi acum și orele „doar membri” de pe lista de așteptare.
+  if (b.clubMember) await waitlistNow(c.env);
   return c.json({ ok: true });
 });
 
@@ -1474,6 +1618,8 @@ adminRoutes.post('/campaigns', ownerOnly, async (c) => {
   const b = await c.req.json<{ channel?: string; title?: string; body?: string; scheduledAt?: string | null; sendNow?: boolean }>();
   if (!['push', 'email', 'sms'].includes(b.channel ?? '')) throw new HttpError(400, 'invalid_channel');
   if (!b.title?.trim() || !b.body?.trim()) throw new HttpError(400, 'title_and_body_required');
+  // SMS: cel mult 320 de caractere (2 mesaje), ca în panou.
+  if (b.channel === 'sms' && b.body.trim().length > 320) throw new HttpError(400, 'sms_too_long');
   const id = newId('cmp');
   const status = b.sendNow ? 'sending' : b.scheduledAt ? 'scheduled' : 'draft';
   await c.env.DB.prepare('INSERT INTO campaigns (id, channel, title, body, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -1484,7 +1630,8 @@ adminRoutes.post('/campaigns', ownerOnly, async (c) => {
 });
 
 adminRoutes.post('/campaigns/:id/send', ownerOnly, async (c) => {
-  const r = await c.env.DB.prepare(`UPDATE campaigns SET status = 'sending' WHERE id = ? AND status IN ('draft','scheduled')`)
+  // Una eșuată se poate relua: primesc doar cei la care nu a ajuns încă.
+  const r = await c.env.DB.prepare(`UPDATE campaigns SET status = 'sending' WHERE id = ? AND status IN ('draft','scheduled','failed')`)
     .bind(c.req.param('id')!)
     .run();
   if (!r.meta.changes) throw new HttpError(409, 'not_sendable');

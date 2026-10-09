@@ -1,4 +1,4 @@
-import type { BeforeAfter, GiftCards, Barber, Booking, Business, Identity, Referrals, IdentityPhoto, Plan, Subscription, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
+import type { BeforeAfter, DayPart, WaitlistEntry, GiftCards, Barber, Booking, Business, Identity, Referrals, IdentityPhoto, Plan, Subscription, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
 
 // Singura legătură dintre interfață și server. `http.ts` vorbește cu serverul nostru
 // (Cloudflare Worker); `mock.ts` e varianta de test, folosită cât timp aplicația nu are
@@ -12,6 +12,8 @@ export interface BookingApi {
     serviceId: string;
     barberId: string | null; // null = oricine e liber
     day: string; // YYYY-MM-DD
+    /** Cu contul clientului (membrii TAF Club văd și orele pentru membri) sau al echipei (le vede pe toate). */
+    token?: string | null;
   }): Promise<Slot[]>;
 
   /** Trimite codul pe e-mail (principal) sau SMS (alternativă). `devCode` vine doar de la serverul de test. */
@@ -54,6 +56,10 @@ export interface BookingApi {
     input: { serviceId: string; barberId: string | null; start: string; note?: string },
   ): Promise<Booking>;
   cancelBooking(token: string, id: string): Promise<Booking>;
+  /** Lista de așteptare: înscrierile clientului, înscriere când ziua e plină, scoatere. */
+  getWaitlist(token: string): Promise<WaitlistEntry[]>;
+  joinWaitlist(token: string, input: { serviceId: string; barberId: string | null; day: string; part: DayPart }): Promise<WaitlistEntry>;
+  leaveWaitlist(token: string, id: string): Promise<void>;
   registerPushToken(token: string, pushToken: string, platform: string): Promise<void>;
 
   // Magazin: plata la ridicare din salon.
