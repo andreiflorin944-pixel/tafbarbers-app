@@ -47,6 +47,8 @@ export function httpApi(baseUrl: string): BookingApi {
 
     requestCode: (input, lang) => call('POST', `/auth/otp?lang=${lang}`, { body: input }),
     verifyCode: (input) => call('POST', '/auth/verify', { body: input }),
+    socialSignIn: (input) => call('POST', '/auth/social', { body: input }),
+    socialComplete: (input) => call('POST', '/auth/social/complete', { body: input }),
     logout: async (token) => {
       await call('POST', '/auth/logout', { token }).catch(() => undefined);
     },

@@ -5,6 +5,14 @@ export type Env = {
   SMSADVERT_TOKEN?: string;
   /** phone = trimite de pe telefonul conectat în SMSAdvert; altfel de pe numărul scurt. */
   SMSADVERT_SENDER?: string;
+  /** Logare cu Apple: id-urile aplicației acceptate (implicit ro.tafbarbers.app și Expo Go). */
+  APPLE_AUDIENCES?: string;
+  /** Logare cu Google: id-urile de client OAuth (nu sunt secrete). Fără ele butonul Google nu apare. */
+  GOOGLE_IOS_CLIENT_ID?: string;
+  GOOGLE_ANDROID_CLIENT_ID?: string;
+  GOOGLE_WEB_CLIENT_ID?: string;
+  /** Doar pentru teste locale: de unde se iau cheile publice Apple / Google. */
+  SOCIAL_JWKS_BASE?: string;
   EMAIL_API_KEY?: string;
   EMAIL_FROM?: string;
   /** Adresa la care ajung răspunsurile clienților (altfel e-mailul de contact din Datele firmei). */

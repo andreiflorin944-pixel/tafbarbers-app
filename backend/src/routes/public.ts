@@ -16,6 +16,7 @@ import { product, type ProductRow } from '../shop';
 import { parseBirthDate } from '../identity';
 import { applyReferral } from '../referrals';
 import { handleStripeEvent, onlinePaymentsOn, verifyStripeSignature } from '../payments';
+import { linkTicket, readTicket, socialConfig, socialSignIn, verifyIdToken, type Provider } from '../socialLogin';
 
 export const publicRoutes = new Hono<AppEnv>();
 
@@ -31,7 +32,7 @@ publicRoutes.get('/business', async (c) => {
     const r = rows.results.find((x) => x.weekday === wd);
     return r ? { open: hm(r.s), close: hm(r.e) } : null;
   });
-  return c.json({ ...biz, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms });
+  return c.json({ ...biz, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env) });
 });
 
 // Stripe ne anunță aici plățile. Semnătura se verifică pe corpul exact, cu secretul webhook-ului.
@@ -197,7 +198,7 @@ publicRoutes.post('/auth/otp', async (c) => {
 });
 
 publicRoutes.post('/auth/verify', async (c) => {
-  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean; qr?: string }>();
+  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean; qr?: string; socialTicket?: string }>();
   const phone = normalizePhone(body.phone);
   // Încercarea se numără înainte de verificare, în aceeași instrucțiune cu limita: cereri trimise odată nu trec peste ea.
   const row = await c.env.DB.prepare(
@@ -288,8 +289,78 @@ publicRoutes.post('/auth/verify', async (c) => {
   } catch (e) {
     console.error('qr', e);
   }
+  // Prima logare cu Apple / Google, terminată cu codul pe acest număr: legăm contul extern de client.
+  if (body.socialTicket) {
+    try {
+      await linkTicket(c.env, await readTicket(c.env, body.socialTicket), client.id);
+    } catch (e) {
+      if (!(e instanceof HttpError)) console.error('social link', e);
+    }
+  }
   const token = await createSession(c.env.DB, 'client', client.id);
   return c.json({ token, clientId: client.id });
+});
+
+// Logare cu Apple sau Google. Contul extern deja legat intră direct; altfel aplicația cere numărul de telefon.
+publicRoutes.post('/auth/social', async (c) => {
+  const body = await c.req.json<{ provider?: string; idToken?: string; nonce?: string; name?: string }>().catch(() => ({}) as { provider?: string });
+  const provider = body.provider === 'apple' || body.provider === 'google' ? (body.provider as Provider) : null;
+  if (!provider) throw new HttpError(400, 'invalid_body');
+  const id = await verifyIdToken(c.env, provider, (body as { idToken?: string }).idToken ?? '', (body as { nonce?: string }).nonce);
+  return c.json(await socialSignIn(c.env, id, String((body as { name?: string }).name ?? '').trim()));
+});
+
+// Prima logare cu Apple / Google: completarea contului cu telefonul (și data nașterii, acordurile).
+// E-mailul confirmat de Apple / Google ține loc de cod. Numărul nu e dovedit încă (ca la contul făcut cu cod pe e-mail):
+// prima intrare cu cod prin SMS pe acel număr îl confirmă.
+publicRoutes.post('/auth/social/complete', async (c) => {
+  const body = await c.req.json<{ ticket?: string; phone?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; ref?: string; marketing?: boolean; qr?: string }>();
+  const t = await readTicket(c.env, body.ticket);
+  const phone = normalizePhone(body.phone);
+  const existing = await c.env.DB.prepare('SELECT id, email FROM clients WHERE phone = ? AND deleted_at IS NULL').bind(phone).first<{ id: string; email: string | null }>();
+  let clientId: string;
+  let isNew = false;
+  if (existing) {
+    // Numărul are deja cont: îl legăm doar dacă e același e-mail confirmat; altfel trebuie codul pe acest număr.
+    if (!(t.email_verified && t.email && existing.email?.toLowerCase() === t.email)) throw new HttpError(409, 'phone_has_account');
+    clientId = existing.id;
+  } else {
+    if (!t.email_verified || !t.email) throw new HttpError(400, 'code_required');
+    if (body.acceptTerms !== true) throw new HttpError(400, 'terms_required');
+    const birthDate = body.birthDate ? parseBirthDate(body.birthDate) : null;
+    if (!birthDate) throw new HttpError(400, 'birth_date_required');
+    if (await emailTaken(c.env, t.email, phone)) throw new HttpError(400, 'email_in_use');
+    clientId = newId('cl');
+    isNew = true;
+    const mk = body.marketing === true ? 1 : 0;
+    await c.env.DB.prepare(
+      `INSERT INTO clients (id, phone, name, email, lang, terms_accepted_at, birth_date, marketing_push, marketing_email, marketing_sms, marketing_consent_at, phone_unverified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+    )
+      .bind(
+        clientId,
+        phone,
+        (body.name ?? '').trim().slice(0, 80) || t.name,
+        t.email,
+        ['ro', 'en', 'fr'].includes(body.lang ?? '') ? body.lang : 'ro',
+        iso(new Date()),
+        birthDate,
+        mk,
+        mk,
+        mk,
+        mk ? iso(new Date()) : null,
+      )
+      .run();
+    await applyReferral(c.env, clientId, body.ref);
+  }
+  await linkTicket(c.env, t, clientId);
+  try {
+    await attributeQr(c.env, clientId, isNew, body.qr, await ipHash(c.env, c));
+  } catch (e) {
+    console.error('qr', e);
+  }
+  const token = await createSession(c.env.DB, 'client', clientId);
+  return c.json({ token, clientId });
 });
 
 publicRoutes.post('/auth/logout', async (c) => {

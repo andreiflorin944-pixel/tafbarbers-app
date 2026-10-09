@@ -92,6 +92,8 @@ export const mockApi: BookingApi = {
       users.set(p, { id: p, phone: p, name, email: null, lang, marketing: { sms: false, email: false, push: true } });
     return delay({ token: p });
   },
+  socialSignIn: () => Promise.reject(new ApiError('social_unavailable', 400)),
+  socialComplete: () => Promise.reject(new ApiError('social_unavailable', 400)),
   logout: () => delay(undefined),
   getLegal: (doc) =>
     delay({

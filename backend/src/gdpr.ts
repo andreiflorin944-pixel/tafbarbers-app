@@ -77,6 +77,7 @@ export async function deleteClient(env: Env, id: string) {
     env.DB.prepare(`UPDATE gift_cards SET message = '' WHERE buyer_client_id = ?`).bind(id),
     env.DB.prepare(`DELETE FROM sessions WHERE kind = 'client' AND subject_id = ?`).bind(id),
     env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(c.phone),
+    env.DB.prepare('DELETE FROM client_identities WHERE client_id = ?').bind(id),
     env.DB.prepare(`UPDATE message_log SET recipient = 'sters' WHERE recipient = ? OR recipient = ?`).bind(c.phone, c.email ?? '\u0000'),
     env.DB.prepare(
       `UPDATE clients SET phone = ?, name = '', email = NULL, notes = '', marketing_sms = 0, marketing_email = 0, marketing_push = 0, marketing_consent_at = NULL, deleted_at = ? WHERE id = ?`,

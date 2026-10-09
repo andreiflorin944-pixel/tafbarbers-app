@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, usingMock } from '@/api';
+import { ApiError } from '@/api/client';
+import { SocialLogin, type SocialResult } from '@/components/SocialLogin';
 import { Button, styles } from '@/components/ui';
 import { useT } from '@/i18n';
 import { parseBirth } from '@/lib/dates';
@@ -46,6 +48,9 @@ export function PhoneLogin({
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Prima logare cu Apple / Google: tichetul până completăm contul cu telefonul. `needCode`: numărul trebuie confirmat cu cod.
+  const [social, setSocial] = useState<{ ticket: string; email: string | null } | null>(null);
+  const [needCode, setNeedCode] = useState(false);
 
   const register = mode === 'register';
   const cleanPhone = phone.replace(/[\s\-().]/g, '');
@@ -87,6 +92,63 @@ export function PhoneLogin({
     }
   };
 
+  const finish = async (token: string) => {
+    void clearQr();
+    await signIn(token);
+    await onDone(token);
+  };
+
+  const onSocial = async (r: SocialResult) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await api.socialSignIn(r);
+      if (res.token) return await finish(res.token);
+      if (!res.ticket) return;
+      setSocial({ ticket: res.ticket, email: res.email ?? null });
+      setNeedCode(false);
+      setMode('register');
+      if (res.name) setName(res.name);
+      if (res.email) setEmail(res.email);
+      setNotice(t('login.socialMore'));
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Contul nou din Apple / Google: e-mailul e confirmat de ei, deci nu mai trimitem cod.
+  const completeSocial = async () => {
+    if (!social) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { token } = await api.socialComplete({
+        ticket: social.ticket,
+        phone: cleanPhone,
+        name: name.trim(),
+        lang,
+        acceptTerms: accepted,
+        marketing,
+        birthDate: parseBirth(birth) ?? undefined,
+        ref: ref.trim() || undefined,
+        qr: await pendingQr(),
+      });
+      await finish(token);
+    } catch (e) {
+      // Numărul are deja cont (sau e-mailul nu e confirmat): îl confirmăm o dată cu codul, iar contul extern se leagă.
+      if (e instanceof ApiError && (e.code === 'phone_has_account' || e.code === 'code_required')) {
+        setNeedCode(true);
+        if (e.code === 'phone_has_account') setMode('login');
+        setNotice(errorMessage(e));
+      } else setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const verify = async () => {
     setBusy(true);
     setError(null);
@@ -103,10 +165,9 @@ export function PhoneLogin({
         email: emailOk ? cleanEmail : undefined,
         ref: register ? ref.trim() || undefined : undefined,
         qr: await pendingQr(),
+        socialTicket: social?.ticket,
       });
-      void clearQr();
-      await signIn(token);
-      await onDone(token);
+      await finish(token);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -122,8 +183,11 @@ export function PhoneLogin({
     </View>
   );
 
+  const socialOnly = !!social && !needCode;
+
   return (
     <View>
+      {!social && !sentTo ? <SocialLogin social={business?.social} busy={busy} onToken={(r) => void onSocial(r)} /> : null}
       <View style={local.tabs} accessibilityRole="tablist">
         {(['login', 'register'] as const).map((m) => (
           <Pressable
@@ -162,10 +226,10 @@ export function PhoneLogin({
         <TextInput
           value={email}
           onChangeText={setEmail}
-          editable={!sentTo}
+          editable={!sentTo && !social?.email}
           placeholder="nume@exemplu.ro"
           placeholderTextColor={colors.muted}
-          style={[styles.input, sentTo ? local.locked : null]}
+          style={[styles.input, sentTo || social?.email ? local.locked : null]}
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -252,7 +316,9 @@ export function PhoneLogin({
       {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
 
       <View style={{ marginTop: space.lg }}>
-        {sentTo ? (
+        {socialOnly && register ? (
+          <Button title={t('login.socialDone')} disabled={!phoneOk || !nameOk || !birthOk || !accepted} loading={busy} onPress={completeSocial} />
+        ) : sentTo ? (
           <Button
             title={submitTitle ?? t(register ? 'login.submitRegister' : 'login.submitLogin')}
             disabled={code.length !== 6 || (register && (!accepted || !birthOk || !emailOk || !nameOk))}

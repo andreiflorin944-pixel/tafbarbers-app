@@ -136,6 +136,8 @@ export type Business = {
   appearance?: Appearance;
   onlinePayments?: boolean; // plata cu cardul în aplicație (Stripe) e pornită
   otpSms?: boolean; // codul de intrare poate fi cerut și prin SMS
+  // Logare cu Apple / Google (Google apare doar cu id-urile de client OAuth puse pe server).
+  social?: { apple: boolean; google: { iosClientId: string | null; androidClientId: string | null; webClientId: string | null } | null };
   requireApproval?: boolean; // programările din aplicație intră ca cereri, confirmate de salon
   approvalBarberIds?: string[]; // doar la acești frizeri (listă goală = la toți)
 };
