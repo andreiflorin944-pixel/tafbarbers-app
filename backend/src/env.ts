@@ -7,6 +7,8 @@ export type Env = {
   SMSADVERT_SENDER?: string;
   EMAIL_API_KEY?: string;
   EMAIL_FROM?: string;
+  /** Adresa la care ajung răspunsurile clienților (altfel e-mailul de contact din Datele firmei). */
+  EMAIL_REPLY_TO?: string;
   ADMIN_SETUP_KEY?: string;
   // Plata online (Stripe). Fără ele butoanele „Plătește online” nu apar și totul se plătește la salon.
   STRIPE_SECRET_KEY?: string;

@@ -1,3 +1,4 @@
+import { getBusiness } from './db';
 import type { Env } from './env';
 
 type Log = {
@@ -82,14 +83,18 @@ export async function sendEmail(
     return true;
   }
   try {
+    // Răspunsurile clienților ajung la adresa de contact a salonului (Setări → Datele firmei), ca la Barberly.
+    const biz = (await getBusiness(env).catch(() => null)) as { legalEmail?: string } | null;
+    const replyTo = env.EMAIL_REPLY_TO || biz?.legalEmail || undefined;
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: env.EMAIL_FROM ?? 'TAFBarbers <oferte@tafbarbers.ro>',
+        from: env.EMAIL_FROM ?? 'TAFBarbers <programari@tafbarbers.ro>',
         to: [l.recipient],
         subject,
         html,
+        ...(replyTo ? { reply_to: replyTo } : {}),
       }),
     });
     await log(env, entry, res.ok, res.ok ? undefined : `HTTP ${res.status}`);
