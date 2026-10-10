@@ -17,7 +17,7 @@ export default function Login() {
           {t('login.bookReason')}
         </Text>
       ) : null}
-      <PhoneLogin initialMode={mode === 'register' ? 'register' : undefined} initialRef={typeof ref === 'string' ? ref : undefined} onDone={() => (safeNext ? router.replace(safeNext as Href) : router.canGoBack() ? router.back() : router.replace('/'))} />
+      <PhoneLogin allowStaff initialMode={mode === 'register' ? 'register' : undefined} initialRef={typeof ref === 'string' ? ref : undefined} onDone={() => (safeNext ? router.replace(safeNext as Href) : router.canGoBack() ? router.back() : router.replace('/'))} />
     </Screen>
   );
 }

@@ -14,7 +14,7 @@ import { useT } from '@/i18n';
 import { colors, space } from '@/theme';
 
 // Un singur loc de cont. Fără cont: alegi Client (rezervări) sau Echipă (proprietar / frizeri).
-// Clientul în cont vede doar contul lui; echipa ajunge la intrarea ei din linkul discret de la final.
+// Clientul în cont vede doar contul lui (fără nicio intrare pentru echipă).
 export default function Account() {
   const { staff } = useStaff();
   const { user } = useApp();
@@ -25,13 +25,6 @@ export default function Account() {
       <Screen tab>
         <Title>{t('account.yours')}</Title>
         <ClientAccount />
-        <Pressable
-          onPress={() => router.push(staff ? '/staff' : '/staff/login')}
-          accessibilityRole="link"
-          style={{ marginTop: space.xl, paddingVertical: space.sm, alignSelf: 'center' }}
-        >
-          <Text style={[styles.muted, { fontSize: 12, textDecorationLine: 'underline' }]}>{t('account.staffLink')}</Text>
-        </Pressable>
       </Screen>
     );
   }

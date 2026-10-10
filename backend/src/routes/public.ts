@@ -152,8 +152,10 @@ publicRoutes.post('/auth/otp', async (c) => {
 });
 
 publicRoutes.post('/auth/verify', async (c) => {
-  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean; qr?: string; socialTicket?: string }>();
+  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean; qr?: string; socialTicket?: string; password?: string }>();
   const phone = normalizePhone(body.phone);
+  // Parola aleasă la „Creează cont” (opțională aici: conturile din Apple / Google sau din panou nu au una).
+  const password = body.password === undefined || body.password === '' ? null : validClientPassword(body.password);
   const row = await checkCode(c.env, phone, body.code);
   let client = await c.env.DB.prepare('SELECT id, name, email FROM clients WHERE phone = ?')
     .bind(phone)
@@ -258,6 +260,12 @@ publicRoutes.post('/auth/verify', async (c) => {
     } catch (e) {
       if (!(e instanceof HttpError)) console.error('social link', e);
     }
+  }
+  // Parola de la crearea contului: se pune doar dacă contul nu are deja una (codul a dovedit e-mailul sau telefonul).
+  if (password) {
+    await c.env.DB.prepare('UPDATE clients SET password_hash = ?, password_set_at = ? WHERE id = ? AND password_hash IS NULL')
+      .bind(await hashPassword(password), iso(new Date()), client.id)
+      .run();
   }
   const token = await createSession(c.env.DB, 'client', client.id);
   return c.json({ token, clientId: client.id });

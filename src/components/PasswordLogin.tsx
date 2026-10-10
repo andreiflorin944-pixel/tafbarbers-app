@@ -58,10 +58,10 @@ export function PasswordInput({
  * Intrarea cu e-mail (sau telefon) și parolă, plus „Am uitat parola”: codul de recuperare vine pe e-mailul contului,
  * apoi codul + parola nouă intră direct în cont.
  */
-export function PasswordLogin({ onDone }: { onDone: (token: string) => Promise<void> }) {
+export function PasswordLogin({ onDone, initialIdentifier }: { onDone: (token: string) => Promise<void>; initialIdentifier?: string }) {
   const { lang, t } = useT();
   const [step, setStep] = useState<Step>('login');
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(initialIdentifier ?? '');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');

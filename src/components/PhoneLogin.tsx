@@ -1,48 +1,59 @@
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { api, usingMock } from '@/api';
-import { ApiError } from '@/api/client';
-import { SocialLogin, type SocialResult } from '@/components/SocialLogin';
-import { PasswordLogin } from '@/components/PasswordLogin';
-import { Button, Segmented, styles } from '@/components/ui';
-import { useT } from '@/i18n';
-import { parseBirth } from '@/lib/dates';
-import { errorMessage } from '@/lib/errors';
-import { useApp } from '@/state/AppState';
-import { colors, radius, space } from '@/theme';
-import { clearQr, pendingQr } from '@/lib/campaign';
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import { useState, type ReactNode } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { api, usingMock } from "@/api";
+import { ApiError } from "@/api/client";
+import { SocialLogin, type SocialResult } from "@/components/SocialLogin";
+import {
+  PASSWORD_MIN,
+  PasswordInput,
+  PasswordLogin,
+} from "@/components/PasswordLogin";
+import { StaffLoginForm } from "@/components/StaffLoginForm";
+import { Button, Segmented, styles } from "@/components/ui";
+import { useT } from "@/i18n";
+import { parseBirth } from "@/lib/dates";
+import { errorMessage } from "@/lib/errors";
+import { useApp } from "@/state/AppState";
+import { colors, radius, space } from "@/theme";
+import { clearQr, pendingQr } from "@/lib/campaign";
 
-type Mode = 'login' | 'register';
+type Mode = "login" | "register";
 
 /**
- * Intrare în cont și cont nou, pe două taburi clare. Intrarea: telefon + e-mailul din cont, apoi codul primit.
- * Contul nou: nume, telefon, e-mail, ziua de naștere și (opțional) codul de recomandare de la un prieten.
+ * Intrare în cont și cont nou, pe două taburi clare. Intrarea: telefon sau e-mail și parola (plus „Am uitat parola”).
+ * Contul nou: nume, telefon, e-mail, ziua de naștere, parola aleasă și (opțional) codul de recomandare de la un prieten;
+ * e-mailul (sau telefonul) se confirmă o singură dată, cu un cod.
  */
 export function PhoneLogin({
   submitTitle,
   onDone,
   initialRef,
   initialMode,
+  allowStaff,
 }: {
   submitTitle?: string;
   onDone: (token: string) => void | Promise<void>;
   initialRef?: string;
   initialMode?: Mode;
+  /** Pe ecranul de intrare: alegerea „Cont client” / „Cont frizer” (frizerul intră în modul echipei). */
+  allowStaff?: boolean;
 }) {
   const { signIn, business } = useApp();
   const { lang, t } = useT();
-  const [mode, setMode] = useState<Mode>(initialMode ?? (initialRef ? 'register' : 'login'));
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [channel, setChannel] = useState<'email' | 'sms'>('email');
-  const [code, setCode] = useState('');
+  const [mode, setMode] = useState<Mode>(
+    initialMode ?? (initialRef ? "register" : "login"),
+  );
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [channel, setChannel] = useState<"email" | "sms">("email");
+  const [code, setCode] = useState("");
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [phoneSent, setPhoneSent] = useState<string | null>(null);
-  const [birth, setBirth] = useState('');
-  const [ref, setRef] = useState(initialRef?.toUpperCase() ?? '');
+  const [birth, setBirth] = useState("");
+  const [ref, setRef] = useState(initialRef?.toUpperCase() ?? "");
   const [devCode, setDevCode] = useState<string | undefined>();
   const [accepted, setAccepted] = useState(false);
   const [marketing, setMarketing] = useState(false);
@@ -50,26 +61,29 @@ export function PhoneLogin({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Prima logare cu Apple / Google: tichetul până completăm contul cu telefonul. `needCode`: numărul trebuie confirmat cu cod.
-  const [social, setSocial] = useState<{ ticket: string; email: string | null } | null>(null);
+  const [social, setSocial] = useState<{
+    ticket: string;
+    email: string | null;
+  } | null>(null);
   const [needCode, setNeedCode] = useState(false);
 
-  // Intrarea: cu cod (e-mail / SMS) sau cu e-mail (ori telefon) și parolă.
-  const [method, setMethod] = useState<'code' | 'password'>('code');
+  const [password, setPassword] = useState("");
+  const [asStaff, setAsStaff] = useState(false);
 
-  const register = mode === 'register';
-  const passwordMode = !register && !social && method === 'password';
-  const switchMethod = (m: 'code' | 'password') => {
-    setMethod(m);
-    setError(null);
-    setNotice(null);
-  };
-  const cleanPhone = phone.replace(/[\s\-().]/g, '');
+  const register = mode === "register";
+  // Intrarea e doar cu parolă. Codul la intrare rămâne doar pentru legarea unui cont Apple / Google de un cont existent.
+  const passwordMode = !register && !social;
+  const cleanPhone = phone.replace(/[\s\-().]/g, "");
   const cleanEmail = email.trim().toLowerCase();
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail);
   const birthOk = !!parseBirth(birth);
   const phoneOk = /^\+?\d{9,15}$/.test(cleanPhone);
   const nameOk = name.trim().length >= 2;
-  const canSend = register ? phoneOk && nameOk && emailOk && birthOk && accepted : phoneOk;
+  // Parola se alege la contul nou (nu și la cel din Apple / Google, care intră cu Apple / Google).
+  const passwordOk = !!social || password.length >= PASSWORD_MIN;
+  const canSend = register
+    ? phoneOk && nameOk && emailOk && birthOk && accepted && passwordOk
+    : phoneOk;
 
   const switchMode = (m: Mode) => {
     setMode(m);
@@ -77,23 +91,35 @@ export function PhoneLogin({
     setNotice(null);
   };
 
-  const send = async (via: 'email' | 'sms') => {
+  const send = async (via: "email" | "sms") => {
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const r = await api.requestCode({ phone: cleanPhone, email: emailOk ? cleanEmail : undefined, channel: via }, lang);
+      const r = await api.requestCode(
+        {
+          phone: cleanPhone,
+          email: emailOk ? cleanEmail : undefined,
+          channel: via,
+        },
+        lang,
+      );
       setChannel(r.channel);
       setSentTo(r.sentTo);
       setPhoneSent(r.phone);
       setDevCode(r.devCode);
       // Numărul spune dacă e cont nou sau nu; trecem singuri pe tabul potrivit, fără să pierdem ce ai scris.
       if (r.newAccount && !register) {
-        setMode('register');
-        setNotice(t('login.noAccount'));
+        setMode("register");
+        setNotice(t("login.noAccount"));
+      } else if (!r.newAccount && register && !social) {
+        // Numărul are deja cont: intră cu parola (sau „Am uitat parola”), nu cu codul.
+        setSentTo(null);
+        setMode("login");
+        setNotice(t("login.hasAccountPw"));
       } else if (!r.newAccount && register) {
-        setMode('login');
-        setNotice(t('login.hasAccount'));
+        setMode("login");
+        setNotice(t("login.hasAccount"));
       }
     } catch (e) {
       setError(errorMessage(e));
@@ -118,10 +144,10 @@ export function PhoneLogin({
       if (!res.ticket) return;
       setSocial({ ticket: res.ticket, email: res.email ?? null });
       setNeedCode(false);
-      setMode('register');
+      setMode("register");
       if (res.name) setName(res.name);
       if (res.email) setEmail(res.email);
-      setNotice(t('login.socialMore'));
+      setNotice(t("login.socialMore"));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -149,9 +175,12 @@ export function PhoneLogin({
       await finish(token);
     } catch (e) {
       // Numărul are deja cont (sau e-mailul nu e confirmat): îl confirmăm o dată cu codul, iar contul extern se leagă.
-      if (e instanceof ApiError && (e.code === 'phone_has_account' || e.code === 'code_required')) {
+      if (
+        e instanceof ApiError &&
+        (e.code === "phone_has_account" || e.code === "code_required")
+      ) {
         setNeedCode(true);
-        if (e.code === 'phone_has_account') setMode('login');
+        if (e.code === "phone_has_account") setMode("login");
         setNotice(errorMessage(e));
       } else setError(errorMessage(e));
     } finally {
@@ -176,6 +205,7 @@ export function PhoneLogin({
         ref: register ? ref.trim() || undefined : undefined,
         qr: await pendingQr(),
         socialTicket: social?.ticket,
+        password: register && !social ? password : undefined,
       });
       await finish(token);
     } catch (e) {
@@ -197,9 +227,15 @@ export function PhoneLogin({
 
   return (
     <View>
-      {!social && !sentTo ? <SocialLogin social={business?.social} busy={busy} onToken={(r) => void onSocial(r)} /> : null}
+      {!social && !sentTo && !(asStaff && !register) ? (
+        <SocialLogin
+          social={business?.social}
+          busy={busy}
+          onToken={(r) => void onSocial(r)}
+        />
+      ) : null}
       <View style={local.tabs} accessibilityRole="tablist">
-        {(['login', 'register'] as const).map((m) => (
+        {(["login", "register"] as const).map((m) => (
           <Pressable
             key={m}
             onPress={() => switchMode(m)}
@@ -207,46 +243,84 @@ export function PhoneLogin({
             accessibilityRole="tab"
             accessibilityState={{ selected: mode === m }}
           >
-            <Text style={[local.tabText, mode === m && local.tabTextOn]}>{t(m === 'login' ? 'login.tabLogin' : 'login.tabRegister')}</Text>
+            <Text style={[local.tabText, mode === m && local.tabTextOn]}>
+              {t(m === "login" ? "login.tabLogin" : "login.tabRegister")}
+            </Text>
           </Pressable>
         ))}
       </View>
 
-      {!register && !social ? (
+      {allowStaff && !register && !social ? (
         <View style={{ marginBottom: space.md }}>
           <Segmented
-            options={[t('login.methodCode'), t('login.methodPassword')]}
-            value={method === 'password' ? 1 : 0}
-            onChange={(i) => switchMethod(i === 1 ? 'password' : 'code')}
+            options={[t("login.asClient"), t("login.asBarber")]}
+            value={asStaff ? 1 : 0}
+            onChange={(i) => (
+              setAsStaff(i === 1),
+              setError(null),
+              setNotice(null)
+            )}
           />
         </View>
       ) : null}
 
-      {passwordMode ? (
+      {allowStaff && asStaff && !register && !social ? (
         <>
-          <Text style={local.headline}>{t('login.titleLogin')}</Text>
-          <Text style={local.sub}>{t('login.subPassword')}</Text>
-          <PasswordLogin onDone={finish} />
+          <Text style={local.headline}>{t("login.titleBarber")}</Text>
+          <View style={{ marginTop: space.md }}>
+            <StaffLoginForm onDone={() => router.replace("/staff")} />
+          </View>
+        </>
+      ) : passwordMode ? (
+        <>
+          <Text style={local.headline}>{t("login.titleLogin")}</Text>
+          <Text style={local.sub}>{t("login.subPassword")}</Text>
+          {notice ? (
+            <View style={local.notice}>
+              <Ionicons
+                name="information-circle"
+                size={18}
+                color={colors.gold}
+              />
+              <Text style={[styles.text, { flex: 1, fontSize: 13 }]}>
+                {notice}
+              </Text>
+            </View>
+          ) : null}
+          <PasswordLogin
+            onDone={finish}
+            initialIdentifier={cleanEmail || cleanPhone}
+          />
         </>
       ) : (
         <>
-          <Text style={local.headline}>{t(register ? 'login.titleRegister' : 'login.titleLogin')}</Text>
-          <Text style={local.sub}>{t(register ? 'login.subRegister' : 'login.subLogin')}</Text>
+          <Text style={local.headline}>
+            {t(register ? "login.titleRegister" : "login.titleLogin")}
+          </Text>
+          <Text style={local.sub}>
+            {t(register ? "login.subRegister" : "login.subLogin")}
+          </Text>
 
           {notice ? (
             <View style={local.notice}>
-              <Ionicons name="information-circle" size={18} color={colors.gold} />
-              <Text style={[styles.text, { flex: 1, fontSize: 13 }]}>{notice}</Text>
+              <Ionicons
+                name="information-circle"
+                size={18}
+                color={colors.gold}
+              />
+              <Text style={[styles.text, { flex: 1, fontSize: 13 }]}>
+                {notice}
+              </Text>
             </View>
           ) : null}
 
           {register
             ? field(
-                t('login.name'),
+                t("login.name"),
                 <TextInput
                   value={name}
                   onChangeText={setName}
-                  placeholder={t('login.namePh')}
+                  placeholder={t("login.namePh")}
                   placeholderTextColor={colors.muted}
                   style={styles.input}
                   autoComplete="name"
@@ -254,7 +328,7 @@ export function PhoneLogin({
               )
             : null}
           {field(
-            t('login.phone'),
+            t("login.phone"),
             <TextInput
               value={phone}
               onChangeText={setPhone}
@@ -267,82 +341,115 @@ export function PhoneLogin({
             />,
           )}
           {field(
-            t(register ? 'login.email' : 'login.emailLogin'),
+            t(register ? "login.email" : "login.emailLogin"),
             <TextInput
               value={email}
               onChangeText={setEmail}
               editable={!sentTo && !social?.email}
-              placeholder={t('account.emailPh')}
+              placeholder={t("account.emailPh")}
               placeholderTextColor={colors.muted}
-              style={[styles.input, sentTo || social?.email ? local.locked : null]}
+              style={[
+                styles.input,
+                sentTo || social?.email ? local.locked : null,
+              ]}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="email"
             />,
-            t(register ? 'login.emailHintRegister' : 'login.emailHintLogin'),
+            t(register ? "login.emailHintRegister" : "login.emailHintLogin"),
           )}
           {register ? (
             <>
               {field(
-                t('login.birth'),
+                t("login.birth"),
                 <TextInput
                   value={birth}
                   onChangeText={setBirth}
-                  placeholder={t('login.birthPh')}
+                  placeholder={t("login.birthPh")}
                   placeholderTextColor={colors.muted}
                   style={styles.input}
                   keyboardType="numbers-and-punctuation"
                   maxLength={10}
                 />,
-                t(birth.length >= 8 && !birthOk ? 'login.birthBad' : 'login.birthHint'),
+                t(
+                  birth.length >= 8 && !birthOk
+                    ? "login.birthBad"
+                    : "login.birthHint",
+                ),
               )}
+              {!social
+                ? field(
+                    t("login.password"),
+                    <PasswordInput
+                      value={password}
+                      onChange={setPassword}
+                      placeholder={t("pw.newPasswordPh")}
+                      autoComplete="new-password"
+                    />,
+                    t("pw.rule"),
+                  )
+                : null}
               {field(
-                t('login.ref'),
+                t("login.ref"),
                 <TextInput
                   value={ref}
                   onChangeText={(v) => setRef(v.toUpperCase())}
-                  placeholder={t('login.refPh')}
+                  placeholder={t("login.refPh")}
                   placeholderTextColor={colors.muted}
                   style={styles.input}
                   autoCapitalize="characters"
                   autoCorrect={false}
                   maxLength={12}
                 />,
-                t('login.refHint'),
+                t("login.refHint"),
               )}
             </>
           ) : null}
 
           {sentTo ? (
             <View style={local.codeBox}>
-              <Text style={local.label}>{t(channel === 'email' ? 'login.codeEmail' : 'login.codeSms', { to: sentTo })}</Text>
+              <Text style={local.label}>
+                {t(channel === "email" ? "login.codeEmail" : "login.codeSms", {
+                  to: sentTo,
+                })}
+              </Text>
               <TextInput
                 value={code}
-                onChangeText={(v) => setCode(v.replace(/\D/g, ''))}
+                onChangeText={(v) => setCode(v.replace(/\D/g, ""))}
                 placeholder="• • • • • •"
                 placeholderTextColor={colors.muted}
                 style={[styles.input, local.code]}
                 keyboardType="number-pad"
-                autoComplete={channel === 'sms' ? 'sms-otp' : 'one-time-code'}
+                autoComplete={channel === "sms" ? "sms-otp" : "one-time-code"}
                 textContentType="oneTimeCode"
                 maxLength={6}
                 autoFocus
               />
               {usingMock ? (
-                <Text style={local.hint}>{t('login.mockCode')}</Text>
+                <Text style={local.hint}>{t("login.mockCode")}</Text>
               ) : devCode ? (
-                <Text style={local.hint}>{t('login.devCode', { code: devCode })}</Text>
+                <Text style={local.hint}>
+                  {t("login.devCode", { code: devCode })}
+                </Text>
               ) : null}
               <Pressable
                 onPress={() => {
                   setSentTo(null);
-                  setCode('');
+                  setCode("");
                   setNotice(null);
                 }}
                 style={{ marginTop: space.sm }}
               >
-                <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>{t('login.change')}</Text>
+                <Text
+                  style={{
+                    color: colors.gold,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  {t("login.change")}
+                </Text>
               </Pressable>
             </View>
           ) : null}
@@ -352,52 +459,94 @@ export function PhoneLogin({
               <Check
                 checked={accepted}
                 onPress={() => setAccepted((a) => !a)}
-                label={`${t('login.agree')} ${t('login.terms')} ${t('login.and')} ${t('login.privacy')}`}
+                label={`${t("login.agree")} ${t("login.terms")} ${t("login.and")} ${t("login.privacy")}`}
               >
-                {t('login.agree')}{' '}
-                <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/terms')}>
-                  {t('login.terms')}
-                </Text>{' '}
-                {t('login.and')}{' '}
-                <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/privacy')}>
-                  {t('login.privacy')}
+                {t("login.agree")}{" "}
+                <Text
+                  style={{ color: colors.gold }}
+                  onPress={() => router.push("/legal/terms")}
+                >
+                  {t("login.terms")}
+                </Text>{" "}
+                {t("login.and")}{" "}
+                <Text
+                  style={{ color: colors.gold }}
+                  onPress={() => router.push("/legal/privacy")}
+                >
+                  {t("login.privacy")}
                 </Text>
                 .
               </Check>
-              <Check checked={marketing} onPress={() => setMarketing((m) => !m)} label={t('login.marketing')}>
-                {t('login.marketing')}
+              <Check
+                checked={marketing}
+                onPress={() => setMarketing((m) => !m)}
+                label={t("login.marketing")}
+              >
+                {t("login.marketing")}
               </Check>
             </>
           ) : null}
 
-          {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
+          {error ? (
+            <Text style={{ color: colors.danger, marginTop: space.sm }}>
+              {error}
+            </Text>
+          ) : null}
 
           <View style={{ marginTop: space.lg }}>
             {socialOnly && register ? (
-              <Button title={t('login.socialDone')} disabled={!phoneOk || !nameOk || !birthOk || !accepted} loading={busy} onPress={completeSocial} />
+              <Button
+                title={t("login.socialDone")}
+                disabled={!phoneOk || !nameOk || !birthOk || !accepted}
+                loading={busy}
+                onPress={completeSocial}
+              />
             ) : sentTo ? (
               <Button
-                title={submitTitle ?? t(register ? 'login.submitRegister' : 'login.submitLogin')}
-                disabled={code.length !== 6 || (register && (!accepted || !birthOk || !emailOk || !nameOk))}
+                title={
+                  submitTitle ??
+                  t(register ? "login.submitRegister" : "login.submitLogin")
+                }
+                disabled={
+                  code.length !== 6 ||
+                  (register &&
+                    (!accepted ||
+                      !birthOk ||
+                      !emailOk ||
+                      !nameOk ||
+                      !passwordOk))
+                }
                 loading={busy}
                 onPress={verify}
               />
             ) : (
               <>
                 <Button
-                  title={t(register ? 'login.continue' : 'login.sendCode')}
+                  title={t(register ? "login.continue" : "login.sendCode")}
                   disabled={!canSend || !emailOk}
                   loading={busy}
-                  onPress={() => send('email')}
+                  onPress={() => send("email")}
                 />
                 {business?.otpSms === false ? null : (
                   <Pressable
-                    onPress={() => send('sms')}
+                    onPress={() => send("sms")}
                     disabled={!canSend || busy}
-                    style={{ marginTop: space.md, alignItems: 'center', opacity: !canSend ? 0.4 : 1 }}
+                    style={{
+                      marginTop: space.md,
+                      alignItems: "center",
+                      opacity: !canSend ? 0.4 : 1,
+                    }}
                     accessibilityRole="button"
                   >
-                    <Text style={{ color: colors.gold, fontSize: 14, fontWeight: '600' }}>{t('login.sendSms')}</Text>
+                    <Text
+                      style={{
+                        color: colors.gold,
+                        fontSize: 14,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {t("login.sendSms")}
+                    </Text>
                   </Pressable>
                 )}
               </>
@@ -406,60 +555,118 @@ export function PhoneLogin({
         </>
       )}
 
-      {!register ? (
-        <Text style={[local.hint, { textAlign: 'center', marginTop: space.md }]}>
-          {t('login.implicit')}{' '}
-          <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/terms')}>
-            {t('login.terms')}
-          </Text>{' '}
-          {t('login.and')}{' '}
-          <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/privacy')}>
-            {t('login.privacy')}
+      {!register && !asStaff ? (
+        <Text
+          style={[local.hint, { textAlign: "center", marginTop: space.md }]}
+        >
+          {t("login.implicit")}{" "}
+          <Text
+            style={{ color: colors.gold }}
+            onPress={() => router.push("/legal/terms")}
+          >
+            {t("login.terms")}
+          </Text>{" "}
+          {t("login.and")}{" "}
+          <Text
+            style={{ color: colors.gold }}
+            onPress={() => router.push("/legal/privacy")}
+          >
+            {t("login.privacy")}
           </Text>
           .
         </Text>
       ) : null}
 
-      <Pressable onPress={() => switchMode(register ? 'login' : 'register')} style={{ marginTop: space.lg, alignItems: 'center' }} accessibilityRole="button">
-        <Text style={styles.muted}>
-          {t(register ? 'login.haveAccount' : 'login.noAccountYet')}{' '}
-          <Text style={{ color: colors.gold, fontWeight: '700' }}>{t(register ? 'login.tabLogin' : 'login.tabRegister')}</Text>
-        </Text>
-      </Pressable>
+      {asStaff && !register ? null : (
+        <Pressable
+          onPress={() => switchMode(register ? "login" : "register")}
+          style={{ marginTop: space.lg, alignItems: "center" }}
+          accessibilityRole="button"
+        >
+          <Text style={styles.muted}>
+            {t(register ? "login.haveAccount" : "login.noAccountYet")}{" "}
+            <Text style={{ color: colors.gold, fontWeight: "700" }}>
+              {t(register ? "login.tabLogin" : "login.tabRegister")}
+            </Text>
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
-function Check({ checked, onPress, label, children }: { checked: boolean; onPress: () => void; label: string; children: ReactNode }) {
+function Check({
+  checked,
+  onPress,
+  label,
+  children,
+}: {
+  checked: boolean;
+  onPress: () => void;
+  label: string;
+  children: ReactNode;
+}) {
   return (
     <Pressable
       onPress={onPress}
-      style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', marginTop: space.md }}
+      style={{
+        flexDirection: "row",
+        gap: space.sm,
+        alignItems: "flex-start",
+        marginTop: space.md,
+      }}
       accessibilityRole="checkbox"
       accessibilityState={{ checked }}
       accessibilityLabel={label}
     >
-      <Ionicons name={checked ? 'checkbox' : 'square-outline'} size={22} color={checked ? colors.gold : colors.muted} />
-      <Text style={[styles.muted, { flex: 1, fontSize: 13, lineHeight: 19 }]}>{children}</Text>
+      <Ionicons
+        name={checked ? "checkbox" : "square-outline"}
+        size={22}
+        color={checked ? colors.gold : colors.muted}
+      />
+      <Text style={[styles.muted, { flex: 1, fontSize: 13, lineHeight: 19 }]}>
+        {children}
+      </Text>
     </Pressable>
   );
 }
 
 const local = StyleSheet.create({
-  tabs: { flexDirection: 'row', backgroundColor: colors.cardAlt, borderRadius: radius.pill, padding: 4, marginBottom: space.lg },
-  tab: { flex: 1, paddingVertical: 11, borderRadius: radius.pill, alignItems: 'center' },
+  tabs: {
+    flexDirection: "row",
+    backgroundColor: colors.cardAlt,
+    borderRadius: radius.pill,
+    padding: 4,
+    marginBottom: space.lg,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: radius.pill,
+    alignItems: "center",
+  },
   tabOn: { backgroundColor: colors.gold },
-  tabText: { color: colors.muted, fontWeight: '700', fontSize: 15 },
+  tabText: { color: colors.muted, fontWeight: "700", fontSize: 15 },
   tabTextOn: { color: colors.onGold },
-  headline: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
+  headline: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
   sub: { color: colors.muted, fontSize: 15, lineHeight: 21, marginTop: 6 },
-  label: { color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: 6 },
+  label: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
   hint: { color: colors.muted, fontSize: 12, marginTop: 5 },
   locked: { opacity: 0.6 },
   notice: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: space.sm,
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
     backgroundColor: colors.cardAlt,
     borderRadius: radius.md,
     padding: space.sm,
@@ -467,6 +674,18 @@ const local = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.goldDark,
   },
-  codeBox: { marginTop: space.lg, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.card },
-  code: { fontSize: 26, letterSpacing: 8, textAlign: 'center', fontWeight: '800' },
+  codeBox: {
+    marginTop: space.lg,
+    padding: space.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    backgroundColor: colors.card,
+  },
+  code: {
+    fontSize: 26,
+    letterSpacing: 8,
+    textAlign: "center",
+    fontWeight: "800",
+  },
 });
