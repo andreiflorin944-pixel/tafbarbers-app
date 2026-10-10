@@ -16,7 +16,7 @@ const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const STT = '@cf/openai/whisper-large-v3-turbo';
 const DAILY_LIMIT = 60; // mesaje pe zi pentru un client sau o adresă IP
 const GLOBAL_DAILY_LIMIT = 3000; // mesaje pe zi la tot salonul (multe IP-uri diferite nu pot consuma AI-ul fără margine)
-const ROUNDS = 3;
+const ROUNDS = 4;
 const WEEKDAYS = ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
 
 type Msg = { role: 'user' | 'assistant'; content: string };
@@ -124,7 +124,7 @@ ${locations}Frizeri și program:
 ${program}
 
 Reguli:
-- Nu inventa niciodată ore libere. Pentru ore libere folosești tool "free_slots" cu serviceId, day (AAAA-LL-ZZ) și barberId (sau fără barberId pentru oricine${many ? ', dar atunci cu locationId' : ''}). Dacă nu știi serviciul, presupune cel mai cerut (primul din listă) și spune asta.${many ? '\n- Salonul are mai multe locații: dacă clientul nu a spus frizerul sau locația, întreabă-l întâi la care locație vrea să vină.' : ''}
+- Nu inventa niciodată ore libere și nu spune niciodată că o oră e ocupată fără să fi verificat. Pentru ore libere folosești tool "free_slots" cu serviceId, day (AAAA-LL-ZZ) și barberId (sau fără barberId pentru oricine${many ? ', dar atunci cu locationId' : ''}). Dacă clientul cere ceva ce se potrivește cu mai multe servicii (de ex. „tuns și barbă” cu mai multe variante), întreabă-l scurt care variantă; dacă nu spune nimic de serviciu, presupune cel mai cerut (primul din listă) și spune asta.${many ? '\n- Salonul are mai multe locații: dacă clientul nu a spus frizerul sau locația, întreabă-l întâi la care locație vrea să vină.' : ''}
 - Când clientul alege o oră anume dintre cele libere, folosești tool "propose_booking" cu serviceId, barberId, day și time (HH:MM). Clientul confirmă apoi cu un buton.
 - ${loggedIn ? 'Clientul e conectat în cont.' : 'Clientul nu e conectat; la confirmare aplicația îi cere să intre în cont.'}
 - Nu promite reduceri sau lucruri care nu sunt în listă. Pentru alte întrebări, îndrumă la telefonul salonului.
@@ -147,6 +147,62 @@ function parseStep(raw: unknown): Step | null {
   return { ...s, say: s.say.trim(), tool: s.tool === 'free_slots' || s.tool === 'propose_booking' ? s.tool : 'none' } as Step;
 }
 
+// Ora cerută de model, în orice formă („10”, „10:00:00”, „10.30”, „ora 10”, „10 AM”), ca „HH:MM”; null dacă nu e o oră.
+export function parseHm(raw?: string): string | null {
+  const m = (raw ?? '').trim().toLowerCase().match(/(\d{1,2})(?:\s*[:.h]\s*(\d{2}))?\s*(am|pm)?/);
+  if (!m) return null;
+  let h = Number(m[1]);
+  const min = m[2] ? Number(m[2]) : 0;
+  if (m[3] === 'pm' && h < 12) h += 12;
+  if (m[3] === 'am' && h === 12) h = 0;
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+// Ziua cerută de model: de obicei „AAAA-LL-ZZ”, dar uneori „16.10”, „16 octombrie”, „vineri” sau „mâine”.
+// Ce nu se înțelege întoarce null; atunci NU se presupune „azi” (așa verifica greșit sâmbăta în loc de vineri).
+const MONTHS: Record<string, number> = {
+  ian: 1, jan: 1, janv: 1, feb: 2, fev: 2, févr: 2, mar: 3, mars: 3, apr: 4, avr: 4, mai: 5, may: 5, iun: 6, jun: 6, juin: 6,
+  iul: 7, jul: 7, juil: 7, aug: 8, août: 8, aou: 8, sep: 9, sept: 9, oct: 10, noi: 11, nov: 11, dec: 12, déc: 12,
+};
+const WEEKDAY_WORDS: Array<[RegExp, number]> = [
+  [/duminic|sunday|dimanche/, 0], [/\bluni\b|monday|lundi/, 1], [/mar[țţt]i\b|tuesday|mardi/, 2], [/miercuri|wednesday|mercredi/, 3],
+  [/\bjoi\b|thursday|jeudi/, 4], [/vineri|friday|vendredi/, 5], [/s[âa]mb[ăa]t|saturday|samedi/, 6],
+];
+export function parseDay(raw: string | undefined, today: string): string | null {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (!v) return null;
+  let m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  const ty = Number(today.slice(0, 4));
+  const ymd = (d: number, mo: number, y?: number) => {
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    let day = `${y ?? ty}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    if (!y && day < today) day = `${ty + 1}${day.slice(4)}`;
+    return day;
+  };
+  m = v.match(/^(\d{1,2})[./-](\d{1,2})(?:[./-](\d{4}))?$/);
+  if (m) return ymd(Number(m[1]), Number(m[2]), m[3] ? Number(m[3]) : undefined);
+  m = v.match(/(\d{1,2})\s+([a-zăâîșțéû]+)\.?(?:\s+(\d{4}))?/);
+  if (m) {
+    const key = Object.keys(MONTHS).sort((a, b) => b.length - a.length).find((k) => m![2].startsWith(k));
+    if (key) return ymd(Number(m[1]), MONTHS[key], m[3] ? Number(m[3]) : undefined);
+  }
+  if (/\b(azi|astăzi|astazi|today|aujourd)/.test(v)) return today;
+  if (/poim[âa]ine/.test(v)) return addDays(today, 2);
+  if (/m[âa]ine|tomorrow|demain/.test(v)) return addDays(today, 1);
+  for (const [re, wd] of WEEKDAY_WORDS) {
+    if (re.test(v)) {
+      const diff = (wd - weekdayOf(today) + 7) % 7;
+      return addDays(today, diff);
+    }
+  }
+  return null;
+}
+
+// „Nu e liber” spus fără să fi verificat: modelul nu are voie să decidă singur că o oră e ocupată.
+const SAYS_BUSY = /(nu (mai )?(e|este|sunt|avem)[^.?!]{0,40}(liber|disponibil|valabil|loc))|indisponibil|ocupat|not available|unavailable|fully booked|pas disponible/i;
+
 const fmtTime = (env: Env, iso: string) => new Intl.DateTimeFormat('ro-RO', { timeZone: env.TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 const fmtWhen = (env: Env, iso: string, lang: string) =>
   new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : 'ro-RO', { timeZone: env.TIMEZONE, weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
@@ -161,6 +217,7 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
   const barberOf = (id?: string) => (id ? (ctx.barbers.find((b) => b.id === id || b.name.toLowerCase() === id.toLowerCase()) ?? null) : null);
   const locationOf = (id?: string) => (id ? (ctx.locations.find((l) => l.id === id || l.name.toLowerCase() === id.toLowerCase()) ?? null) : null);
 
+  let checked = false; // a verificat orele măcar o dată în cererea asta
   for (let round = 0; round < ROUNDS; round++) {
     let raw: unknown;
     try {
@@ -172,7 +229,14 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
     const step = parseStep(raw);
     if (!step) throw new HttpError(500, 'assistant_failed');
     messages.push({ role: 'assistant', content: JSON.stringify(step) });
-    if (step.tool === 'none') return { reply: step.say };
+    if (step.tool === 'none') {
+      if (!checked && round < ROUNDS - 1 && SAYS_BUSY.test(step.say)) {
+        messages.push({ role: 'user', content: '[SISTEM] Nu ai verificat orele. Nu spune că o oră e ocupată fără să folosești free_slots sau propose_booking pentru ziua aceea. Verifică acum.' });
+        continue;
+      }
+      return { reply: step.say };
+    }
+    checked = true;
 
     const svc = svcOf(step.serviceId) ?? ctx.services[0];
     const barber = barberOf(step.barberId);
@@ -185,10 +249,15 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
       });
       continue;
     }
-    const day = /^\d{4}-\d{2}-\d{2}$/.test(step.day ?? '') ? step.day! : localDay(env.TIMEZONE, new Date());
+    const today = localDay(env.TIMEZONE, new Date());
+    const day = parseDay(step.day, today);
+    if (!day) {
+      console.log('assistant day miss', JSON.stringify({ day: step.day, tool: step.tool }));
+      messages.push({ role: 'user', content: `[REZULTAT ${step.tool}] Nu știu ce zi e „${step.day ?? ''}”. Ia ziua din conversație și scrie-o ca AAAA-LL-ZZ, din lista de zile (de ex. vineri = ${parseDay('vineri', today)}). Dacă clientul n-a spus ziua, întreabă-l.` });
+      continue;
+    }
     if (!svc) return { reply: step.say };
     // Aceleași limite ca în aplicație: nici zile trecute, nici mai departe decât „cu câte zile înainte” din setări.
-    const today = localDay(env.TIMEZONE, new Date());
     const inRange = day >= today && day <= addDays(today, (await getBusiness(env)).maxDaysAhead ?? 30);
     const slots = inRange ? await availability(env, { serviceId: svc.id, barberId: barber?.id ?? null, locationId: loc?.id ?? null, day, access }) : [];
 
@@ -203,9 +272,10 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
     }
 
     // propose_booking: ora trebuie să fie chiar una dintre cele libere.
-    const want = (step.time ?? '').replace('.', ':').padStart(5, '0');
+    const want = parseHm(step.time) ?? (step.time ?? '');
     const slot = slots.find((s) => fmtTime(env, s.start) === want);
     if (!slot) {
+      console.log('assistant propose miss', JSON.stringify({ day, time: step.time, want, serviceId: step.serviceId, barberId: step.barberId, free: slots.length }));
       messages.push({ role: 'user', content: `[REZULTAT propose_booking] Ora ${want} din ${day} nu e liberă${barber ? ` la ${barber.name}` : ''}. Orele libere: ${slots.map((s) => fmtTime(env, s.start)).slice(0, 12).join(', ') || 'niciuna'}. Spune-i clientului și cere altă oră.` });
       continue;
     }

@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import { router } from 'expo-router';
-import * as Speech from 'expo-speech';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api } from '@/api';
@@ -10,6 +9,7 @@ import { Button } from '@/components/ui';
 import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
 import { lei } from '@/lib/price';
+import { say, stopSpeaking } from '@/lib/voice';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
 
@@ -18,7 +18,6 @@ import { colors, radius, space } from '@/theme';
 
 type Item = AssistantMsg & { proposal?: AssistantProposal; booked?: boolean };
 
-const SPEECH_LANG = { ro: 'ro-RO', en: 'en-GB', fr: 'fr-FR' } as const;
 
 export default function Assistant() {
   const { token, addBooking, locations, business } = useApp();
@@ -43,7 +42,7 @@ export default function Assistant() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const scroll = useRef<ScrollView>(null);
 
-  useEffect(() => () => void Speech.stop(), []);
+  useEffect(() => stopSpeaking, []);
   // Altă limbă înainte de prima întrebare: salutul se schimbă și el.
   useEffect(() => {
     setItems((x) => (x.length === 1 && x[0].role === 'assistant' ? [{ role: 'assistant', content: tx.hello }] : x));
@@ -65,7 +64,7 @@ export default function Assistant() {
       const history = next.slice(1).map(({ role, content: c }) => ({ role, content: c }));
       const r = await api.assistant({ messages: history, lang }, token);
       setItems((x) => [...x, { role: 'assistant', content: r.reply, proposal: r.proposal }]);
-      if (speak || viaVoice) Speech.speak(r.reply, { language: SPEECH_LANG[lang] });
+      if (speak || viaVoice) void say(r.reply, lang);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -99,7 +98,7 @@ export default function Assistant() {
       setError(tx.micDenied);
       return;
     }
-    Speech.stop();
+    stopSpeaking();
     await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
     await recorder.prepareToRecordAsync();
     recorder.record();
@@ -118,7 +117,7 @@ export default function Assistant() {
       const b = await api.createBooking(token, { serviceId: p.serviceId, barberId: p.barberId, start: p.start });
       addBooking(b);
       setItems((x) => [...x.map((it, j) => (j === i ? { ...it, booked: true } : it)), { role: 'assistant', content: tx.booked }]);
-      if (speak) Speech.speak(tx.booked, { language: SPEECH_LANG[lang] });
+      if (speak) void say(tx.booked, lang);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -172,7 +171,7 @@ export default function Assistant() {
         {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
       </ScrollView>
 
-      <Pressable onPress={() => (setSpeak((v) => !v), Speech.stop())} style={s.voiceToggle} accessibilityRole="switch" accessibilityState={{ checked: speak }}>
+      <Pressable onPress={() => (setSpeak((v) => !v), stopSpeaking())} style={s.voiceToggle} accessibilityRole="switch" accessibilityState={{ checked: speak }}>
         <Ionicons name={speak ? 'volume-high' : 'volume-mute'} size={16} color={speak ? colors.gold : colors.muted} />
         <Text style={{ color: speak ? colors.gold : colors.muted, fontSize: 12 }}>{tx.voice}</Text>
       </Pressable>
