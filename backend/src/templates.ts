@@ -41,9 +41,9 @@ export const TEMPLATE_DEFS: Record<TplEvent, Def> = {
     label: 'Codul de intrare în cont',
     vars: ['businessname', 'code'],
     fields: ['sms', 'emailSubject', 'emailBody'],
-    ro: { sms: 'Codul tău ##businessname##: ##code##. Expiră în 10 minute.', emailSubject: 'Codul tău ##businessname##: ##code##', emailBody: 'Codul pentru contul tău ##businessname## este:' },
-    en: { sms: 'Your ##businessname## code: ##code##. It expires in 10 minutes.', emailSubject: 'Your ##businessname## code: ##code##', emailBody: 'The code for your ##businessname## account is:' },
-    fr: { sms: 'Votre code ##businessname## : ##code##. Il expire dans 10 minutes.', emailSubject: 'Votre code ##businessname## : ##code##', emailBody: 'Le code de votre compte ##businessname## est :' },
+    ro: { sms: 'Codul tău ##businessname##: ##code##. Expiră în 10 minute.', emailSubject: 'Codul tău de confirmare ##businessname##', emailBody: 'Codul pentru contul tău ##businessname## este:' },
+    en: { sms: 'Your ##businessname## code: ##code##. It expires in 10 minutes.', emailSubject: 'Your ##businessname## confirmation code', emailBody: 'The code for your ##businessname## account is:' },
+    fr: { sms: 'Votre code ##businessname## : ##code##. Il expire dans 10 minutes.', emailSubject: 'Votre code de confirmation ##businessname##', emailBody: 'Le code de votre compte ##businessname## est :' },
   },
   confirm: {
     label: 'Confirmarea programării',

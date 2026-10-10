@@ -94,6 +94,8 @@ export async function sendEmail(
         to: [l.recipient],
         subject,
         html,
+        // Și varianta text: e-mailurile doar cu HTML ajung mai des în Spam (mai ales la Yahoo).
+        text: htmlToText(html),
         ...(replyTo ? { reply_to: replyTo } : {}),
       }),
     });
@@ -103,6 +105,26 @@ export async function sendEmail(
     await log(env, entry, false, String(e));
     return false;
   }
+}
+
+/** Textul simplu al unui e-mail din HTML-ul lui: rândurile din paragrafe și <br>, fără etichete. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h\d|li|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l, i, a) => l || (i > 0 && a[i - 1]))
+    .join('\n')
+    .trim();
 }
 
 /** Push prin serviciul Expo; acceptă până la 100 de token-uri pe cerere. */

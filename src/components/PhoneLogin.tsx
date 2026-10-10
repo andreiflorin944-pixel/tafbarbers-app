@@ -56,7 +56,8 @@ export function PhoneLogin({
   const [ref, setRef] = useState(initialRef?.toUpperCase() ?? "");
   const [devCode, setDevCode] = useState<string | undefined>();
   const [accepted, setAccepted] = useState(false);
-  const [marketing, setMarketing] = useState(false);
+  // Bifa de oferte vine bifată (alegerea proprietarului); clientul o poate debifa aici sau opri oricând din Cont.
+  const [marketing, setMarketing] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
