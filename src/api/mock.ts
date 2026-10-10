@@ -46,6 +46,16 @@ export const mockApi: BookingApi = {
   getBarbers: () => delay(barbers),
   getLocations: () => delay(locations),
 
+  async getNextFree({ serviceId }) {
+    const id = serviceId ?? services[0]?.id;
+    if (!id) return null;
+    for (let i = 0; i < 14; i++) {
+      const slot = (await mockApi.getAvailability({ serviceId: id, barberId: null, day: dayKey(new Date(Date.now() + i * 86_400_000)) }))[0];
+      if (slot) return { serviceId: id, barberId: slot.barberId, start: slot.start, membersOnly: !!slot.membersOnly };
+    }
+    return null;
+  },
+
   async getAvailability({ serviceId, barberId, locationId, day }) {
     const service = services.find((s) => s.id === serviceId);
     const date = fromDayKey(day);

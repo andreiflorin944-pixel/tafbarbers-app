@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { api } from '@/api';
+import type { NextFree } from '@/api/client';
 import { mediaUrl } from '@/api/staff';
 import { Backdrop } from '@/components/Backdrop';
 import { LangButton } from '@/components/LangButton';
@@ -19,7 +22,7 @@ import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
 export default function Home() {
-  const { business, loading, loadError, reload, user, bookings, services, barbers, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
+  const { business, loading, loadError, reload, user, token, bookings, services, barbers, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
   const { t, lang } = useT();
   const priceText = usePriceLabel();
   const { staff } = useStaff();
@@ -31,6 +34,27 @@ export default function Home() {
   const next = bookings
     .filter((b) => (b.status === 'confirmed' || b.status === 'requested') && new Date(b.start).getTime() > Date.now())
     .sort((a, b) => a.start.localeCompare(b.start))[0];
+
+  // Prima oră liberă (la orice frizer): se reîncarcă de fiecare dată când revii pe prima pagină (ex. după o programare).
+  const [free, setFree] = useState<NextFree | null>(null);
+  const bookingsKey = bookings.map((b) => b.id + b.status).join();
+  useFocusEffect(
+    useCallback(() => {
+      let on = true;
+      api.getNextFree({ token }).then((f) => on && setFree(f), () => on && setFree(null));
+      return () => {
+        on = false;
+      };
+    }, [token, bookingsKey]),
+  );
+  const freeBarber = free ? barberById(free.barberId) : undefined;
+  const bookFree = () => {
+    if (!free) return;
+    // Ora e deja aleasă: direct la confirmare (frizerul și locația vin din oră).
+    resetDraft();
+    setDraft({ serviceId: free.serviceId, presetService: true, locationId: freeBarber?.locationId ?? null, barberId: null, start: free.start, slotBarberId: free.barberId });
+    router.push('/book/confirm');
+  };
 
   const startBooking = (service?: Service) => {
     resetDraft();
@@ -95,6 +119,26 @@ export default function Home() {
 
         {promos.length ? <PromoCarousel promos={promos} onPress={openPromo} /> : null}
 
+        {free ? (
+          <Pressable onPress={bookFree} style={({ pressed }) => [s.freeCard, pressed && { opacity: 0.85 }]} accessibilityRole="button">
+            <Text style={s.freeLabel}>{t('home.firstFree')}</Text>
+            <Text style={s.freeTitle}>{formatTime(new Date(free.start))}</Text>
+            <Text style={ui.text}>{formatDate(new Date(free.start))}</Text>
+            <View style={s.heroRow}>
+              <Ionicons name="cut-outline" size={16} color={colors.gold} />
+              <Text style={[ui.text, { flex: 1 }]} numberOfLines={1}>
+                {serviceById(free.serviceId)?.name} · {freeBarber?.name}
+              </Text>
+            </View>
+            <View style={[s.heroRow, { justifyContent: 'space-between', marginTop: space.sm }]}>
+              <Text style={s.freeCta}>{t('home.bookThis')}</Text>
+              <Text style={s.link} onPress={() => startBooking()}>
+                {t('home.otherTime')}
+              </Text>
+            </View>
+          </Pressable>
+        ) : null}
+
         {next ? (
           <Pressable onPress={() => router.push('/bookings')} style={s.hero}>
             <Text style={s.heroLabel}>{t('home.next')}</Text>
@@ -113,7 +157,7 @@ export default function Home() {
               </View>
             ) : null}
           </Pressable>
-        ) : (
+        ) : free ? null : (
           <Button title={t('home.book')} onPress={() => startBooking()} />
         )}
 
@@ -297,6 +341,10 @@ export default function Home() {
 }
 
 const s = StyleSheet.create({
+  freeCard: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.gold, padding: space.lg, gap: 4 },
+  freeLabel: { color: colors.gold, fontSize: 12, fontWeight: '800', letterSpacing: 2 },
+  freeTitle: { color: colors.text, fontSize: 40, fontWeight: '800', letterSpacing: -1 },
+  freeCta: { color: colors.gold, fontSize: 15, fontWeight: '800' },
   content: { padding: space.md, paddingBottom: 120, gap: space.sm, width: '100%', maxWidth: 720, alignSelf: 'center' },
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm },
   brand: { color: colors.text, fontSize: 26, fontWeight: '800', letterSpacing: 1 },

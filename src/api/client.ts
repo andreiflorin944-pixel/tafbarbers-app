@@ -19,6 +19,8 @@ export interface BookingApi {
     /** Cu contul clientului (membrii TAF Club văd și orele pentru membri) sau al echipei (le vede pe toate). */
     token?: string | null;
   }): Promise<Slot[]>;
+  /** Prima oră liberă la orice frizer (cardul de pe prima pagină); fără serviciu, serverul îl alege. */
+  getNextFree(input: { serviceId?: string | null; token?: string | null }): Promise<NextFree | null>;
 
   /** Trimite codul pe e-mail (principal) sau SMS (alternativă). `devCode` vine doar de la serverul de test. */
   requestCode(
@@ -109,6 +111,8 @@ export class ApiError extends Error {
 }
 
 /** O tunsoare recomandată de consilier (din lista fixă a serverului), cu poza ei de exemplu. */
+export type NextFree = { serviceId: string; barberId: string; start: string; membersOnly: boolean };
+
 export type AdvisorStyle = {
   key: string;
   name: string;

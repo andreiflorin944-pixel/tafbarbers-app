@@ -212,12 +212,20 @@ function freeReply(lang: string, weekday: string, day: string, svcName: string, 
   return `${missed ? `Ora ${missed} nu e liberă. ` : ''}${any ? `Ore libere ${d} (${svcName}):\n${txt}\nSpune-mi ce oră vrei și te programez.` : `Nu mai sunt ore libere ${d}. Vrei altă zi?`}`;
 }
 
+/** „Ai deja o programare...” în limba clientului (folosit când serverul scrie singur răspunsul). */
+function alreadyLine(lang: string, items: string[]) {
+  const list = items.join('; ');
+  if (lang === 'en') return `You already have a booking that day: ${list}. If you want to move it, you can do it from Bookings.`;
+  if (lang === 'fr') return `Vous avez déjà un rendez-vous ce jour-là : ${list}. Pour le déplacer, allez dans Rendez-vous.`;
+  return `Ai deja o programare în ziua asta: ${list}. Dacă vrei s-o muți, o poți face din „Programări”.`;
+}
+
 const fmtTime = (env: Env, iso: string) => new Intl.DateTimeFormat('ro-RO', { timeZone: env.TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 const fmtWhen = (env: Env, iso: string, lang: string) =>
   new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : 'ro-RO', { timeZone: env.TIMEZONE, weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 
 /** O conversație: istoricul vine de la aplicație; întoarce răspunsul și, dacă e cazul, programarea propusă. */
-export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boolean, access: Access = 'public'): Promise<{ reply: string; proposal?: Proposal }> {
+export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boolean, access: Access = 'public', clientId: string | null = null): Promise<{ reply: string; proposal?: Proposal }> {
   const ai = aiOf(env);
   if (!ai) throw new HttpError(409, 'assistant_off');
   const ctx = await loadCtx(env);
@@ -225,6 +233,20 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
   const svcOf = (id?: string) => ctx.services.find((s) => s.id === id) ?? null;
   const barberOf = (id?: string) => (id ? (ctx.barbers.find((b) => b.id === id || b.name.toLowerCase() === id.toLowerCase()) ?? null) : null);
   const locationOf = (id?: string) => (id ? (ctx.locations.find((l) => l.id === id || l.name.toLowerCase() === id.toLowerCase()) ?? null) : null);
+
+  // Programările viitoare ale clientului (dacă e logat): ca asistentul să spună „ai deja o programare la ora aceea”, nu doar „e ocupat”.
+  const mine = clientId
+    ? (
+        await env.DB.prepare(
+          `SELECT b.starts_at, b.ends_at, s.name AS svc, br.name AS barber FROM bookings b JOIN services s ON s.id = b.service_id JOIN barbers br ON br.id = b.barber_id
+           WHERE b.client_id = ? AND b.status IN ('confirmed','requested') AND b.ends_at > ? ORDER BY b.starts_at LIMIT 20`,
+        )
+          .bind(clientId, iso(new Date()))
+          .all<{ starts_at: string; ends_at: string; svc: string; barber: string }>()
+      ).results
+    : [];
+  const mineOn = (day: string) => mine.filter((m) => localDay(env.TIMEZONE, new Date(m.starts_at)) === day);
+  const mineText = (m: { starts_at: string; svc: string; barber: string }) => `${fmtTime(env, m.starts_at)}, ${m.svc}, la ${m.barber}`;
 
   let checked = false; // a verificat orele măcar o dată în cererea asta
   // Ultimele ore libere găsite: dacă modelul se învârte în verificări, răspunsul îl scrie serverul din ele.
@@ -290,9 +312,11 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
       const txt = slots.length
         ? [...byBarber.entries()].map(([id, t]) => `${ctx.barbers.find((b) => b.id === id)?.name ?? id}: ${t.slice(0, 16).join(', ')}${t.length > 16 ? '…' : ''}`).join('\n')
         : 'nicio oră liberă în ziua asta';
-      last = { label: `${WEEKDAYS[weekdayOf(day)]} ${day}`, times: freeReply(lang, WEEKDAYS[weekdayOf(day)], day, svc.name, txt, slots.length > 0) };
+      const own = mineOn(day);
+      last = { label: `${WEEKDAYS[weekdayOf(day)]} ${day}`, times: (own.length ? alreadyLine(lang, own.map(mineText)) + '\n' : '') + freeReply(lang, WEEKDAYS[weekdayOf(day)], day, svc.name, txt, slots.length > 0) };
       allowed = ['none', 'propose_booking'];
-      messages.push({ role: 'user', content: `[REZULTAT free_slots] ${svc.name}${loc && ctx.locations.length > 1 ? `, locația ${loc.name}` : ''}, ${WEEKDAYS[weekdayOf(day)]} ${day}:\n${txt}\nSpune-i clientului pe scurt orele (sau propune altă zi). Nu folosi din nou free_slots pentru aceeași zi.` });
+      const ownNote = own.length ? `\nClientul ARE DEJA în ziua asta: ${own.map(mineText).join('; ')}. Spune-i asta întâi (ex. „Ai deja o programare la ...”), apoi orele libere dacă vrea încă una.` : '';
+      messages.push({ role: 'user', content: `[REZULTAT free_slots] ${svc.name}${loc && ctx.locations.length > 1 ? `, locația ${loc.name}` : ''}, ${WEEKDAYS[weekdayOf(day)]} ${day}:\n${txt}${ownNote}\nSpune-i clientului pe scurt orele (sau propune altă zi). Nu folosi din nou free_slots pentru aceeași zi.` });
       continue;
     }
 
@@ -302,9 +326,20 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
     if (!slot) {
       console.log('assistant propose miss', JSON.stringify({ day, time: step.time, want, serviceId: step.serviceId, barberId: step.barberId, free: slots.length }));
       const free = slots.map((s) => fmtTime(env, s.start)).slice(0, 12).join(', ');
-      last = { label: day, times: freeReply(lang, WEEKDAYS[weekdayOf(day)], day, svc.name, free ? `${barber?.name ?? ''}${barber ? ': ' : ''}${free}` : 'nicio oră liberă în ziua asta', !!free, want) };
+      // Ora cerută e chiar în programarea clientului: îi spunem asta, nu doar „nu e liberă”.
+      const clash = mineOn(day).find((m) => fmtTime(env, m.starts_at) <= want && want < fmtTime(env, m.ends_at));
+      const freeTxt = free ? `${barber?.name ?? ''}${barber ? ': ' : ''}${free}` : 'nicio oră liberă în ziua asta';
+      last = {
+        label: day,
+        times: clash ? `${alreadyLine(lang, [mineText(clash)])}\n${freeReply(lang, WEEKDAYS[weekdayOf(day)], day, svc.name, freeTxt, !!free)}` : freeReply(lang, WEEKDAYS[weekdayOf(day)], day, svc.name, freeTxt, !!free, want),
+      };
       allowed = ['none', 'propose_booking'];
-      messages.push({ role: 'user', content: `[REZULTAT propose_booking] Ora ${want} din ${day} nu e liberă${barber ? ` la ${barber.name}` : ''}. Orele libere: ${slots.map((s) => fmtTime(env, s.start)).slice(0, 12).join(', ') || 'niciuna'}. Spune-i clientului și cere altă oră.` });
+      messages.push({
+        role: 'user',
+        content: clash
+          ? `[REZULTAT propose_booking] Clientul ARE DEJA o programare atunci: ${WEEKDAYS[weekdayOf(day)]} ${day}, ${mineText(clash)}. Spune-i clar „Ai deja o programare ...” (nu „nu e disponibil”) și întreabă-l dacă vrea încă o programare la altă oră (libere: ${free || 'niciuna'}) sau dacă vrea s-o mute pe cea existentă din „Programări”.`
+          : `[REZULTAT propose_booking] Ora ${want} din ${day} nu e liberă${barber ? ` la ${barber.name}` : ''}. Orele libere: ${free || 'niciuna'}. Spune-i clientului și cere altă oră.`,
+      });
       continue;
     }
     const b = ctx.barbers.find((x) => x.id === slot.barberId)!;
@@ -371,7 +406,7 @@ assistantRoutes.post('/assistant', async (c) => {
   const clientId = await whoIs(c.env, tokenFrom(c));
   const key = clientId ?? `ip:${c.req.header('CF-Connecting-IP') ?? 'local'}`;
   await checkLimit(c.env, key);
-  return c.json(await chat(c.env, history, lang, !!clientId, await accessFor(c.env, clientId)));
+  return c.json(await chat(c.env, history, lang, !!clientId, await accessFor(c.env, clientId), clientId));
 });
 
 /** Vocea clientului (fișierul audio, max ~1 minut) transformată în text. */

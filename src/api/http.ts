@@ -54,6 +54,8 @@ export function httpApi(baseUrl: string): BookingApi {
         { token: token ?? undefined },
       ),
 
+    getNextFree: ({ serviceId, token }) => call('GET', `/next-free${serviceId ? `?serviceId=${encodeURIComponent(serviceId)}` : ''}`, { token: token ?? undefined }),
+
     requestCode: (input, lang) => call('POST', `/auth/otp?lang=${lang}`, { body: input }),
     verifyCode: (input) => call('POST', '/auth/verify', { body: input }),
     socialSignIn: (input) => call('POST', '/auth/social', { body: input }),

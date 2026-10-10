@@ -77,6 +77,40 @@ publicRoutes.get('/services', async (c) => {
   return c.json(await localize(c.env, c.req.query('lang'), r.results.map(service), ['name', 'description']));
 });
 
+/**
+ * GET /next-free?serviceId=… — prima oră liberă (la orice frizer, în orice locație), pentru cardul de pe prima pagină.
+ * Fără serviciu: ultimul serviciu programat de client (dacă e logat), altfel primul serviciu din listă.
+ * Caută din azi până la limita „cu câte zile înainte” (cel mult 21 de zile). `null` dacă nu e nimic liber.
+ */
+publicRoutes.get('/next-free', async (c) => {
+  const who = await optionalSession(c);
+  const access = who?.kind === 'admin' ? 'staff' : await accessFor(c.env, who?.id);
+  const asked = c.req.query('serviceId');
+  let serviceId: string | null = null;
+  if (asked) serviceId = (await c.env.DB.prepare('SELECT id FROM services WHERE id = ? AND active = 1').bind(asked).first<{ id: string }>())?.id ?? null;
+  if (!serviceId && who?.kind === 'client') {
+    serviceId =
+      (
+        await c.env.DB.prepare(
+          `SELECT b.service_id AS id FROM bookings b JOIN services s ON s.id = b.service_id AND s.active = 1 WHERE b.client_id = ? ORDER BY b.starts_at DESC LIMIT 1`,
+        )
+          .bind(who.id)
+          .first<{ id: string }>()
+      )?.id ?? null;
+  }
+  if (!serviceId) serviceId = (await c.env.DB.prepare('SELECT id FROM services WHERE active = 1 ORDER BY sort, name LIMIT 1').first<{ id: string }>())?.id ?? null;
+  if (!serviceId) return c.json(null);
+  const biz = await getBusiness(c.env);
+  const today = localDay(c.env.TIMEZONE, new Date());
+  const days = Math.min(biz.maxDaysAhead ?? 30, 21);
+  for (let i = 0; i <= days; i++) {
+    const day = addDays(today, i);
+    const slot = (await availability(c.env, { serviceId, barberId: null, locationId: null, day, access }))[0];
+    if (slot) return c.json({ serviceId, barberId: slot.barberId, start: slot.start, membersOnly: !!slot.membersOnly });
+  }
+  return c.json(null);
+});
+
 // Locațiile active (primul pas la programare). Numele și adresa rămân cum sunt scrise în panou (nume proprii).
 publicRoutes.get('/locations', async (c) => c.json(await activeLocations(c.env)));
 
