@@ -85,20 +85,35 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     api.getPromos(lang).then(setPromos, () => setPromos([]));
   }, [lang, attempt]);
 
-  // Sesiunea salvată de data trecută.
+  // Sesiunea salvată de data trecută (Keychain / Keystore, localStorage pe web): clientul rămâne în cont după repornire.
+  // Doar un 401 de la server (sesiune expirată sau închisă) o șterge; fără internet sau cu serverul căzut reîncercăm.
   useEffect(() => {
+    let stopped = false;
     storage.get(TOKEN_KEY).then(async (t) => {
       if (!t) return setSessionReady(true);
-      try {
-        const me = await api.me(t);
-        if (me.lang === 'ro' || me.lang === 'en' || me.lang === 'fr') setLang(me.lang);
-        setUser(me);
-        setToken(t);
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 401) await storage.set(TOKEN_KEY, null);
+      for (let i = 0; i < 10 && !stopped; i++) {
+        try {
+          const me = await api.me(t);
+          // Între timp clientul a intrat din nou (alt token) sau a ieșit: nu-l suprascriem.
+          if (stopped || (await storage.get(TOKEN_KEY)) !== t) break;
+          if (me.lang === 'ro' || me.lang === 'en' || me.lang === 'fr') setLang(me.lang);
+          setUser(me);
+          setToken(t);
+          break;
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 401) {
+            if ((await storage.get(TOKEN_KEY)) === t) await storage.set(TOKEN_KEY, null);
+            break;
+          }
+          setSessionReady(true);
+          await new Promise((r) => setTimeout(r, Math.min(30_000, 2_000 * 2 ** i)));
+        }
       }
       setSessionReady(true);
     });
+    return () => {
+      stopped = true;
+    };
   }, []);
 
   // SMS-urile și reminder-ele pleacă în limba aleasă în aplicație.

@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { api } from '@/api';
-import type { AdvisorResult, AdvisorSuggestion } from '@/api/client';
+import type { AdvisorResult, AdvisorStyle } from '@/api/client';
 import { mediaUrl } from '@/api/staff';
 import { useLoginGate } from '@/components/LoginGate';
 import { Button, Empty, Screen, styles as ui } from '@/components/ui';
@@ -14,8 +14,8 @@ import { lei, usePriceLabel } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
 
-// Consilierul de tunsori: clientul acceptă folosirea pozei, face un selfie (sau alege o poză), iar AI-ul îi arată
-// 2-3 servicii ale salonului potrivite pentru el, cu poze înainte/după reale și butonul „Programează”.
+// Consilierul de tunsori: clientul acceptă folosirea pozei, face un selfie (sau alege o poză), iar AI-ul îi recomandă
+// 2-4 tunsori concrete, fiecare cu o poză de exemplu, de ce i se potrivește, ce să-i spună frizerului și „Programează”.
 // Poza rămâne doar pe telefon; serverul o folosește pentru analiză și n-o păstrează.
 
 export default function Advisor() {
@@ -52,10 +52,10 @@ export default function Advisor() {
     }
   };
 
-  const book = (s: AdvisorSuggestion) => {
-    // Serviciul e deja ales: urmează locația, frizerul și ora.
+  const book = (x: AdvisorStyle) => {
+    // Cu serviciul ales de consilier urmează locația, frizerul și ora; fără el, clientul alege serviciul.
     resetDraft();
-    setDraft({ serviceId: s.serviceId, presetService: true });
+    if (x.service) setDraft({ serviceId: x.service.id, presetService: true });
     router.push('/book/location');
   };
 
@@ -107,8 +107,8 @@ export default function Advisor() {
             <Text style={[ui.text, { flex: 1, lineHeight: 21 }]}>{result.summary}</Text>
           </View>
           <Text style={ui.section}>{t('advisor.forYou')}</Text>
-          {result.suggestions.map((x) => (
-            <Suggestion key={x.serviceId} x={x} onBook={() => book(x)} price={serviceById(x.serviceId)} />
+          {result.styles.map((x) => (
+            <StyleCard key={x.key} x={x} onBook={() => book(x)} price={x.service ? serviceById(x.service.id) : undefined} />
           ))}
           <Text style={[ui.muted, { textAlign: 'center', marginTop: space.sm }]}>{t('advisor.note')}</Text>
           <Text style={[ui.muted, { textAlign: 'center' }]}>{t('advisor.left', { n: result.left })}</Text>
@@ -119,13 +119,47 @@ export default function Advisor() {
   );
 }
 
-function Suggestion({ x, onBook, price }: { x: AdvisorSuggestion; onBook: () => void; price: ReturnType<ReturnType<typeof useApp>['serviceById']> }) {
+function StyleCard({ x, onBook, price }: { x: AdvisorStyle; onBook: () => void; price: ReturnType<ReturnType<typeof useApp>['serviceById']> }) {
   const { t } = useT();
   const priceText = usePriceLabel();
+  // Prima dată poza de exemplu se generează pe server (câteva secunde), apoi vine imediat.
+  const [img, setImg] = useState<'loading' | 'ok' | 'none'>('loading');
   const ex = x.examples[0];
-  const img = mediaUrl(x.imageUrl);
   return (
     <View style={[ui.card, { gap: space.sm }]}>
+      <View>
+        <View style={s.styleImg}>
+          {img !== 'none' ? (
+            <Image
+              source={{ uri: mediaUrl(x.imageUrl)! }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+              onLoad={() => setImg('ok')}
+              onError={() => setImg('none')}
+              accessibilityLabel={x.name}
+            />
+          ) : null}
+          {img === 'loading' ? <ActivityIndicator color={colors.gold} /> : null}
+          {img === 'none' ? (
+            <View style={{ alignItems: 'center', gap: 4 }}>
+              <Ionicons name="cut-outline" size={32} color={colors.muted} />
+              <Text style={[ui.muted, { fontSize: 12 }]}>{t('advisor.noImage')}</Text>
+            </View>
+          ) : null}
+        </View>
+        {img === 'ok' ? <Text style={[ui.muted, { fontSize: 11, marginTop: 4 }]}>{t('advisor.aiImage')}</Text> : null}
+      </View>
+      <Text style={ui.cardTitle}>{x.name}</Text>
+      {x.reason ? <Text style={[ui.text, { lineHeight: 21 }]}>{x.reason}</Text> : null}
+      {x.ask ? (
+        <View style={s.ask}>
+          <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.gold} />
+          <View style={{ flex: 1 }}>
+            <Text style={[ui.muted, { fontWeight: '700', fontSize: 12 }]}>{t('advisor.ask')}</Text>
+            <Text style={[ui.text, { lineHeight: 20 }]}>{x.ask}</Text>
+          </View>
+        </View>
+      ) : null}
       {ex ? (
         <View>
           <View style={s.pair}>
@@ -141,16 +175,16 @@ function Suggestion({ x, onBook, price }: { x: AdvisorSuggestion; onBook: () => 
           </View>
           <Text style={[ui.muted, { fontSize: 12, marginTop: 4 }]}>{t('advisor.examples')}</Text>
         </View>
-      ) : img ? (
-        <Image source={{ uri: img }} style={s.svcImg} resizeMode="cover" />
       ) : null}
-      <View style={[ui.row, { justifyContent: 'space-between', alignItems: 'flex-start' }]}>
-        <Text style={[ui.cardTitle, { flex: 1 }]}>{x.name}</Text>
-        {/* Prețul ca în lista de servicii (cu „de la” când frizerii au prețuri diferite). */}
-        <Text style={ui.price}>{price ? priceText(price) : lei(x.price)}</Text>
-      </View>
-      <Text style={ui.muted}>{x.durationMin} min</Text>
-      {x.reason ? <Text style={[ui.text, { lineHeight: 21 }]}>{x.reason}</Text> : null}
+      {x.service ? (
+        <View style={[ui.row, { justifyContent: 'space-between' }]}>
+          <Text style={[ui.muted, { flex: 1 }]}>
+            {x.service.name} · {x.service.durationMin} min
+          </Text>
+          {/* Prețul ca în lista de servicii (cu „de la” când frizerii au prețuri diferite). */}
+          <Text style={ui.price}>{price ? priceText(price) : lei(x.service.price)}</Text>
+        </View>
+      ) : null}
       <Button title={t('advisor.book')} onPress={onBook} />
     </View>
   );
@@ -165,5 +199,6 @@ const s = StyleSheet.create({
   consent: { flexDirection: 'row', gap: space.sm, alignItems: 'center', backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: space.md },
   pair: { flexDirection: 'row', gap: 2, aspectRatio: 8 / 5, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: '#000' },
   tag: { position: 'absolute', top: 8, left: 8, color: '#fff', backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, fontWeight: '800', fontSize: 11 },
-  svcImg: { width: '100%', aspectRatio: 16 / 9, borderRadius: radius.sm },
+  styleImg: { width: '100%', aspectRatio: 1, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  ask: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', backgroundColor: colors.bg, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, padding: space.sm },
 });

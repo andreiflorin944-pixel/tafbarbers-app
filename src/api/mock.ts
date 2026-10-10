@@ -9,6 +9,7 @@ const STEP_MIN = 15;
 // Token-ul e chiar numărul de telefon.
 const bookings: Array<Booking & { phone: string }> = [];
 const users = new Map<string, Me>();
+const passwords = new Map<string, string>();
 const waitlist: Array<WaitlistEntry & { phone: string }> = [];
 
 const delay = <T,>(value: T, ms = 250) => new Promise<T>((r) => setTimeout(() => r(value), ms));
@@ -96,6 +97,34 @@ export const mockApi: BookingApi = {
   },
   socialSignIn: () => Promise.reject(new ApiError('social_unavailable', 400)),
   socialComplete: () => Promise.reject(new ApiError('social_unavailable', 400)),
+  // Parola în varianta de test: ținută în memorie, în clar (nu pleacă nicăieri).
+  async passwordLogin({ identifier, password }) {
+    const id = identifier.trim().toLowerCase();
+    const u = [...users.values()].find((x) => x.phone === id.replace(/\s/g, '') || (x.email ?? '').toLowerCase() === id);
+    if (!u || passwords.get(u.id) !== password) throw new ApiError('wrong_credentials', 401);
+    return delay({ token: u.id });
+  },
+  forgotPassword: () => delay({ ok: true as const }),
+  async resetPassword({ identifier, code, password }) {
+    if (!/^\d{6}$/.test(code)) throw new ApiError('wrong_code', 400);
+    if (password.length < 8) throw new ApiError('password_too_short', 400);
+    const id = identifier.trim().toLowerCase();
+    const u = [...users.values()].find((x) => x.phone === id.replace(/\s/g, '') || (x.email ?? '').toLowerCase() === id);
+    if (!u) throw new ApiError('code_expired', 400);
+    passwords.set(u.id, password);
+    users.set(u.id, { ...u, hasPassword: true });
+    return delay({ token: u.id });
+  },
+  async setPassword(token, { password, current, code }) {
+    const u = users.get(token);
+    if (!u) throw new ApiError('unauthorized', 401);
+    if (password.length < 8) throw new ApiError('password_too_short', 400);
+    if (passwords.has(token) && current !== passwords.get(token) && !(code && /^\d{6}$/.test(code))) throw new ApiError(current ? 'wrong_password' : 'current_password_required', 400);
+    passwords.set(token, password);
+    users.set(token, { ...u, hasPassword: true });
+    return delay(undefined);
+  },
+  passwordCode: (token) => delay({ channel: 'email' as const, sentTo: users.get(token)?.email ?? token }),
   logout: () => delay(undefined),
   getLegal: (doc) =>
     delay({

@@ -64,10 +64,12 @@ export function timingSafeEqual(a: string, b: string): boolean {
 }
 
 const DAY = 86_400_000;
+/** Clientul rămâne în cont 180 de zile de la ultima folosire a aplicației (sesiunea se prelungește singură, vezi `touch`). */
+export const CLIENT_SESSION_DAYS = 180;
 
 export async function createSession(db: D1Database, kind: 'client' | 'admin', subjectId: string): Promise<string> {
   const token = randomToken();
-  const ttl = kind === 'client' ? 180 * DAY : 14 * DAY;
+  const ttl = kind === 'client' ? CLIENT_SESSION_DAYS * DAY : 14 * DAY;
   await db
     .prepare('INSERT INTO sessions (token_hash, kind, subject_id, expires_at) VALUES (?, ?, ?, ?)')
     .bind(await sha256(token), kind, subjectId, iso(new Date(Date.now() + ttl)))
@@ -84,12 +86,26 @@ function bearer(c: Context): string | null {
   return h.startsWith('Bearer ') ? h.slice(7) : null;
 }
 
+/**
+ * Sesiunea clientului alunecă: la folosire, expirarea se mută din nou la 180 de zile de acum
+ * (cel mult o scriere pe zi pe sesiune). Sesiunile echipei rămân fixe, de 14 zile.
+ */
+async function touch(db: D1Database, tokenHash: string, kind: string, expiresAt: string) {
+  if (kind !== 'client') return;
+  const now = Date.now();
+  if (Date.parse(expiresAt) > now + (CLIENT_SESSION_DAYS - 1) * DAY) return;
+  await db.prepare('UPDATE sessions SET expires_at = ? WHERE token_hash = ?').bind(iso(new Date(now + CLIENT_SESSION_DAYS * DAY)), tokenHash).run();
+}
+
 async function lookup(c: Context<AppEnv>, kind: 'client' | 'admin') {
   const token = bearer(c);
   if (!token) return null;
-  return c.env.DB.prepare('SELECT subject_id FROM sessions WHERE token_hash = ? AND kind = ? AND expires_at > ?')
-    .bind(await sha256(token), kind, iso(new Date()))
-    .first<{ subject_id: string }>();
+  const hash = await sha256(token);
+  const s = await c.env.DB.prepare('SELECT subject_id, expires_at FROM sessions WHERE token_hash = ? AND kind = ? AND expires_at > ?')
+    .bind(hash, kind, iso(new Date()))
+    .first<{ subject_id: string; expires_at: string }>();
+  if (s) await touch(c.env.DB, hash, kind, s.expires_at);
+  return s;
 }
 
 export async function requireClient(c: Context<AppEnv>, next: Next) {
@@ -118,8 +134,10 @@ export const tokenFrom = bearer;
 export async function optionalSession(c: Context<AppEnv>) {
   const token = bearer(c);
   if (!token) return null;
-  const s = await c.env.DB.prepare('SELECT kind, subject_id FROM sessions WHERE token_hash = ? AND expires_at > ?')
-    .bind(await sha256(token), iso(new Date()))
-    .first<{ kind: 'client' | 'admin'; subject_id: string }>();
+  const hash = await sha256(token);
+  const s = await c.env.DB.prepare('SELECT kind, subject_id, expires_at FROM sessions WHERE token_hash = ? AND expires_at > ?')
+    .bind(hash, iso(new Date()))
+    .first<{ kind: 'client' | 'admin'; subject_id: string; expires_at: string }>();
+  if (s) await touch(c.env.DB, hash, s.kind, s.expires_at);
   return s ? { kind: s.kind, id: s.subject_id } : null;
 }

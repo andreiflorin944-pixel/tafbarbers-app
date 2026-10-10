@@ -29,6 +29,16 @@ export interface BookingApi {
   /** Logare cu Apple / Google: intră direct dacă contul e legat, altfel cere telefonul (tichet pentru completare). */
   socialSignIn(input: { provider: 'apple' | 'google'; idToken: string; nonce?: string; name?: string }): Promise<{ token?: string; needsPhone?: boolean; ticket?: string; email?: string | null; name?: string }>;
   socialComplete(input: { ticket: string; phone: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; ref?: string; qr?: string }): Promise<{ token: string }>;
+  /** Intrarea cu e-mail (sau telefon) și parolă. Date greșite: mereu `wrong_credentials`; prea multe greșeli: `login_locked`. */
+  passwordLogin(input: { identifier: string; password: string }): Promise<{ token: string }>;
+  /** „Am uitat parola”: codul pleacă pe e-mailul contului, dacă există contul (răspunsul e mereu la fel). */
+  forgotPassword(input: { identifier: string }, lang: string): Promise<{ ok: true; devCode?: string }>;
+  /** Codul primit + parola nouă: celelalte dispozitive ies din cont, iar clientul intră. */
+  resetPassword(input: { identifier: string; code: string; password: string; acceptTerms?: boolean; lang?: string }): Promise<{ token: string }>;
+  /** Pune prima parolă sau o schimbă (cu parola de acum sau cu un cod proaspăt de pe e-mail). */
+  setPassword(token: string, input: { password: string; current?: string; code?: string }): Promise<void>;
+  /** Codul pentru schimbarea parolei, pe e-mailul contului. */
+  passwordCode(token: string, lang: string): Promise<{ channel: 'email' | 'sms'; sentTo: string; devCode?: string }>;
   getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null; translated?: boolean }>;
   exportMe(token: string): Promise<unknown>;
   deleteMe(token: string): Promise<void>;
@@ -98,18 +108,21 @@ export class ApiError extends Error {
   }
 }
 
-export type AdvisorSuggestion = {
-  serviceId: string;
+/** O tunsoare recomandată de consilier (din lista fixă a serverului), cu poza ei de exemplu. */
+export type AdvisorStyle = {
+  key: string;
   name: string;
-  description: string;
-  price: number;
-  durationMin: number;
-  imageUrl: string | null;
   reason: string;
+  /** Ce să-i spună clientul frizerului. */
+  ask: string;
+  /** Poza de exemplu, generată cu AI (o dată pentru fiecare tunsoare). */
+  imageUrl: string;
+  /** Serviciul salonului la care se programează pentru tunsoarea asta (null = alege el la programare). */
+  service: { id: string; name: string; price: number; durationMin: number } | null;
   /** Poze înainte/după reale ale serviciului (doar cele arătate ca exemplu, cu acordul clientului). */
   examples: Array<{ before: string; after: string }>;
 };
-export type AdvisorResult = { summary: string; suggestions: AdvisorSuggestion[]; left: number };
+export type AdvisorResult = { summary: string; styles: AdvisorStyle[]; left: number };
 
 export type AssistantMsg = { role: 'user' | 'assistant'; content: string };
 export type AssistantProposal = {

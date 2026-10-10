@@ -37,3 +37,16 @@ export function otpEmail(lang: string, shop: string, code: string, tpl?: { subje
 </div>`,
   };
 }
+
+const EMAIL_RESET: Record<string, { subject: string; intro: string }> = {
+  ro: { subject: 'Parolă nouă {shop}: codul {code}', intro: 'Ai cerut să-ți setezi o parolă nouă pentru contul tău {shop}. Codul de recuperare este:' },
+  en: { subject: 'New {shop} password: code {code}', intro: 'You asked to set a new password for your {shop} account. Your recovery code is:' },
+  fr: { subject: 'Nouveau mot de passe {shop} : code {code}', intro: 'Vous avez demandé un nouveau mot de passe pour votre compte {shop}. Votre code de récupération est :' },
+};
+
+/** E-mailul cu codul pentru „Am uitat parola” / schimbarea parolei. */
+export function resetEmail(lang: string, shop: string, code: string): { subject: string; html: string } {
+  const t = EMAIL_RESET[lang] ?? EMAIL_RESET.ro;
+  const fill = (s: string) => s.replaceAll('{shop}', shop).replaceAll('{code}', code);
+  return otpEmail(lang, shop, code, { subject: fill(t.subject), intro: fill(t.intro) });
+}

@@ -1,14 +1,13 @@
 import { Hono } from 'hono';
 import { getAutomations } from '../growth';
-import { renderTemplate } from '../templates';
 import { attributeQr, ipHash } from '../qr';
 import { accessFor, availability } from '../availability';
-import { createSession, deleteSession, normalizePhone, optionalSession, randomCode, sha256, newId, timingSafeEqual, tokenFrom } from '../auth';
+import { createSession, deleteSession, hashPassword, normalizePhone, optionalSession, newId, tokenFrom, verifyPassword } from '../auth';
+import { clearFailures, DUMMY_HASH, findAccounts, lockedAny, loginKeys, parseIdentifier, recordFailure, validClientPassword } from '../clientPassword';
+import { checkCode, issueCode, useCode } from '../otp';
 import { getPlans } from '../subscriptions';
 import { barber, BARBER_SERVICE_COLS, emailTaken, getBusiness, promo, service, type BarberRow, type PromoRow, type ServiceRow } from '../db';
 import { HttpError, type AppEnv } from '../env';
-import { otpEmail } from '../messages';
-import { sendEmail, sendSms } from '../notify';
 import { addDays, iso, isDay, localDay } from '../time';
 import { DOCS, legalDoc, type Doc } from '../legal';
 import { recordConsent } from '../consents';
@@ -125,15 +124,8 @@ publicRoutes.get('/legal/:doc', async (c) => {
   return c.json(await legalDoc(c.env, doc, c.req.query('lang') ?? 'ro'));
 });
 
-// --- Login cu cod pe e-mail (principal) sau SMS (alternativă) ---
+// --- Login cu cod pe e-mail (principal) sau SMS (alternativă); limitele și trimiterea codului sunt în otp.ts ---
 
-const OTP_TTL = 10 * 60_000;
-/** Câte coduri greșite se acceptă pe un număr într-o oră (și la coduri noi: încercările nu se iau de la capăt la retrimitere). */
-const OTP_MAX_TRIES = 8;
-/** Câte coduri se pot cere pe zi pentru același număr sau aceeași adresă. */
-const OTP_PER_DAY = 10;
-// RO, MD, FR, BE, CH, LU, IT, ES, DE, AT, UK, IE, NL.
-const OTP_PREFIXES = ['+40', '+373', '+33', '+32', '+41', '+352', '+39', '+34', '+49', '+43', '+44', '+353', '+31'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 publicRoutes.post('/auth/otp', async (c) => {
@@ -155,75 +147,14 @@ publicRoutes.post('/auth/otp', async (c) => {
   }
   // Cont nou: o adresă de e-mail ține de un singur cont (altfel se pot face conturi la nesfârșit cu același e-mail, ex. pentru bonusuri).
   if (!client && email && (await emailTaken(c.env, email, phone))) throw new HttpError(400, 'email_in_use');
-  // Protecție contra abuzului: SMS doar spre prefixe europene uzuale și limite zilnice totale pe canal.
-  if (channel === 'sms' && !(await getAutomations(c.env)).otpSms) throw new HttpError(400, 'sms_code_off');
-  if (channel === 'sms' && !OTP_PREFIXES.some((p) => phone.startsWith(p))) throw new HttpError(400, 'country_not_supported');
-  const today = await c.env.DB.prepare(`SELECT count(*) AS n FROM message_log WHERE kind = 'otp' AND channel = ? AND created_at > ?`)
-    .bind(channel, iso(new Date(Date.now() - 86_400_000)))
-    .first<{ n: number }>();
-  if ((today?.n ?? 0) >= (channel === 'sms' ? 500 : 2000)) throw new HttpError(429, 'too_many_requests');
-  // Și pe fiecare număr / adresă: cel mult OTP_PER_DAY coduri pe zi.
-  const mine = await c.env.DB.prepare(`SELECT count(*) AS n FROM message_log WHERE kind = 'otp' AND recipient IN (?, ?) AND created_at > ?`)
-    .bind(phone, email ?? phone, iso(new Date(Date.now() - 86_400_000)))
-    .first<{ n: number }>();
-  if ((mine?.n ?? 0) >= OTP_PER_DAY) throw new HttpError(429, 'too_many_requests');
-  const prev = await c.env.DB.prepare('SELECT expires_at, attempts FROM otp_codes WHERE phone = ?')
-    .bind(phone)
-    .first<{ expires_at: string; attempts: number }>();
-  // Cel mult un cod la 45 de secunde pe număr.
-  if (prev && Date.parse(prev.expires_at) - OTP_TTL + 45_000 > Date.now()) throw new HttpError(429, 'too_many_requests');
-  // Prea multe coduri greșite în ultima oră: nici un cod nou până nu trece ora.
-  const recent = iso(new Date(Date.now() - 3_600_000 + OTP_TTL));
-  if (prev && prev.expires_at > recent && prev.attempts >= OTP_MAX_TRIES) throw new HttpError(429, 'too_many_attempts');
-
-  // Contul demo pentru verificarea Apple / Google: un număr anume primește mereu același cod, fără SMS.
-  const [reviewPhone, reviewCode] = (c.env.REVIEW_LOGIN ?? '').split(':');
-  let review = false;
-  try {
-    review = !!reviewPhone && /^\d{6}$/.test(reviewCode ?? '') && normalizePhone(reviewPhone) === phone;
-  } catch {
-    // REVIEW_LOGIN greșit: contul demo rămâne oprit
-  }
-  const code = review ? reviewCode! : randomCode();
-  // Încercările greșite din ultima oră rămân socotite și la codul nou (altfel retrimiterea ar da mereu încercări noi).
-  await c.env.DB.prepare(
-    `INSERT INTO otp_codes (phone, code_hash, expires_at, attempts, email, channel) VALUES (?, ?, ?, 0, ?, ?)
-     ON CONFLICT(phone) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at,
-       attempts = CASE WHEN otp_codes.expires_at > ? THEN otp_codes.attempts ELSE 0 END, email = excluded.email, channel = excluded.channel`,
-  )
-    .bind(phone, await sha256(`${phone}:${code}`), iso(new Date(Date.now() + OTP_TTL)), email, channel, recent)
-    .run();
-  const biz = await getBusiness(c.env);
-  const lang = c.req.query('lang') ?? 'ro';
-  if (review) {
-    // fără mesaj: echipa care verifică aplicația știe codul
-  } else {
-    const t = await renderTemplate(c.env, 'otp', lang, { businessname: biz.name, code });
-    if (channel === 'email') {
-      const m = otpEmail(lang, biz.name, code, { subject: t.emailSubject, intro: t.emailBody });
-      await sendEmail(c.env, { kind: 'otp', recipient: email! }, m.subject, m.html);
-    } else {
-      await sendSms(c.env, { kind: 'otp', recipient: phone }, t.sms);
-    }
-  }
+  const { code } = await issueCode(c, { phone, email, channel, lang: c.req.query('lang') ?? 'ro' });
   return c.json({ ok: true, phone, channel, newAccount: !client, sentTo: channel === 'email' ? email : phone, ...(c.env.DEV_OTP === '1' && { devCode: code }) });
 });
 
 publicRoutes.post('/auth/verify', async (c) => {
   const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean; qr?: string; socialTicket?: string }>();
   const phone = normalizePhone(body.phone);
-  // Încercarea se numără înainte de verificare, în aceeași instrucțiune cu limita: cereri trimise odată nu trec peste ea.
-  const row = await c.env.DB.prepare(
-    `UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = ? AND attempts < ? AND expires_at > ? RETURNING code_hash, email, channel`,
-  )
-    .bind(phone, OTP_MAX_TRIES, iso(new Date()))
-    .first<{ code_hash: string; email: string | null; channel: string | null }>();
-  if (!row) {
-    const cur = await c.env.DB.prepare('SELECT expires_at FROM otp_codes WHERE phone = ?').bind(phone).first<{ expires_at: string }>();
-    throw cur && Date.parse(cur.expires_at) > Date.now() ? new HttpError(429, 'too_many_attempts') : new HttpError(400, 'code_expired');
-  }
-  const ok = timingSafeEqual(await sha256(`${phone}:${String(body.code ?? '')}`), row.code_hash);
-  if (!ok) throw new HttpError(400, 'wrong_code');
+  const row = await checkCode(c.env, phone, body.code);
   let client = await c.env.DB.prepare('SELECT id, name, email FROM clients WHERE phone = ?')
     .bind(phone)
     .first<{ id: string; name: string; email: string | null }>();
@@ -237,8 +168,7 @@ publicRoutes.post('/auth/verify', async (c) => {
   if (!client && !email) throw new HttpError(400, 'email_required');
   if (!client && email && (await emailTaken(c.env, email, phone))) throw new HttpError(400, 'email_in_use');
   // Codul se folosește o singură dată (două cereri odată cu același cod: doar una intră).
-  const used = await c.env.DB.prepare('DELETE FROM otp_codes WHERE phone = ? AND code_hash = ?').bind(phone, row.code_hash).run();
-  if (!used.meta.changes) throw new HttpError(400, 'code_expired');
+  await useCode(c.env, phone, row);
 
   const isNew = !client;
   if (!client) {
@@ -269,8 +199,9 @@ publicRoutes.post('/auth/verify', async (c) => {
   } else {
     // Contul a fost creat cu cod pe e-mail (numărul nu a fost dovedit), iar acum cineva intră cu cod prin SMS pe acel număr:
     // numărul e al lui. Contul trece la el: celelalte sesiuni se închid, iar e-mailul rămâne doar cel scris acum (dacă l-a scris).
+    // Parola pusă de cel de dinainte se șterge și ea (altfel ar intra în continuare cu telefonul și parola).
     if (row.channel === 'sms') {
-      const taken = await c.env.DB.prepare('UPDATE clients SET phone_unverified = 0, email = ? WHERE id = ? AND phone_unverified = 1')
+      const taken = await c.env.DB.prepare('UPDATE clients SET phone_unverified = 0, email = ?, password_hash = NULL, password_set_at = NULL WHERE id = ? AND phone_unverified = 1')
         .bind(row.email, client.id)
         .run();
       if (taken.meta.changes) {
@@ -398,6 +329,83 @@ publicRoutes.post('/auth/social/complete', async (c) => {
   }
   const token = await createSession(c.env.DB, 'client', clientId);
   return c.json({ token, clientId });
+});
+
+// --- Intrarea cu e-mail (sau telefon) și parolă; „Am uitat parola” cu cod pe e-mail ---
+
+// Un singur răspuns pentru date greșite, oricare ar fi cauza (cont inexistent, fără parolă, parolă greșită).
+publicRoutes.post('/auth/password/login', async (c) => {
+  const body = await c.req.json<{ identifier?: string; password?: string }>().catch(() => ({}) as { identifier?: string; password?: string });
+  const id = parseIdentifier(body.identifier);
+  const password = typeof body.password === 'string' ? body.password : '';
+  const accounts = id ? await findAccounts(c.env, id) : [];
+  const keys = await loginKeys(c, id, accounts.map((a) => a.id));
+  if (await lockedAny(c.env, keys)) throw new HttpError(429, 'login_locked');
+  let match: (typeof accounts)[number] | null = null;
+  const withPassword = password.length <= 200 ? accounts.filter((a) => a.password_hash) : [];
+  // Verificăm o parolă și când nu e niciun cont potrivit, ca timpul de răspuns să nu-l dea de gol.
+  if (!withPassword.length) await verifyPassword(password.slice(0, 200), DUMMY_HASH);
+  for (const a of withPassword) {
+    if (await verifyPassword(password, a.password_hash!)) {
+      match = a;
+      break;
+    }
+  }
+  if (!match) {
+    await recordFailure(c.env, keys);
+    throw new HttpError(401, 'wrong_credentials');
+  }
+  await clearFailures(c.env, [keys.ident, `acct:${match.id}`].filter((x): x is string => !!x));
+  const token = await createSession(c.env.DB, 'client', match.id);
+  return c.json({ token, clientId: match.id });
+});
+
+// Codul de recuperare pleacă pe e-mailul contului (prin SMS doar dacă contul nu are e-mail).
+// Răspunsul e mereu același, fie că există contul, fie că nu (și când o limită oprește trimiterea).
+publicRoutes.post('/auth/password/forgot', async (c) => {
+  const body = await c.req.json<{ identifier?: string }>().catch(() => ({}) as { identifier?: string });
+  const id = parseIdentifier(body.identifier);
+  if (!id) throw new HttpError(400, 'invalid_identifier');
+  const [acct] = await findAccounts(c.env, id);
+  let devCode: string | undefined;
+  if (acct) {
+    try {
+      const r = await issueCode(c, { phone: acct.phone, email: acct.email, channel: acct.email ? 'email' : 'sms', lang: c.req.query('lang') ?? 'ro', purpose: 'reset' });
+      devCode = r.code;
+    } catch (e) {
+      if (!(e instanceof HttpError)) throw e;
+    }
+  }
+  return c.json({ ok: true, ...(c.env.DEV_OTP === '1' && devCode && { devCode }) });
+});
+
+// Codul + parola nouă: parola se pune, toate celelalte sesiuni se închid, iar clientul intră în cont.
+publicRoutes.post('/auth/password/reset', async (c) => {
+  const body = await c.req.json<{ identifier?: string; code?: string; password?: string; acceptTerms?: boolean; lang?: string }>();
+  const password = validClientPassword(body.password);
+  const id = parseIdentifier(body.identifier);
+  const [acct] = id ? await findAccounts(c.env, id) : [];
+  if (!acct) throw new HttpError(400, 'code_expired');
+  const row = await checkCode(c.env, acct.phone, body.code);
+  await useCode(c.env, acct.phone, row);
+  // Cod prin SMS pe un cont făcut cu cod pe e-mail (numărul nedovedit): ca la intrarea cu cod, contul trece la cel cu telefonul.
+  const takeover = row.channel === 'sms' && !!acct.phone_unverified;
+  const now = iso(new Date());
+  await c.env.DB.batch([
+    takeover
+      ? c.env.DB.prepare('UPDATE clients SET password_hash = ?, password_set_at = ?, phone_unverified = 0, email = ? WHERE id = ?').bind(await hashPassword(password), now, row.email, acct.id)
+      : c.env.DB.prepare('UPDATE clients SET password_hash = ?, password_set_at = ? WHERE id = ?').bind(await hashPassword(password), now, acct.id),
+    c.env.DB.prepare(`DELETE FROM sessions WHERE kind = 'client' AND subject_id = ?`).bind(acct.id),
+  ]);
+  const keys = await loginKeys(c, id, [acct.id]);
+  await clearFailures(c.env, [keys.ident, ...keys.accounts].filter((x): x is string => !!x));
+  // Client adăugat din panou care intră prima dată: acordul e cel din textul de pe ecranul de intrare.
+  if (body.acceptTerms === true && !acct.terms_accepted_at) {
+    const r = await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL').bind(now, acct.id).run();
+    if (r.meta.changes) await recordConsent(c.env, c, acct.id, { source: 'first_login', terms: true, marketing: null, lang: body.lang });
+  }
+  const token = await createSession(c.env.DB, 'client', acct.id);
+  return c.json({ token, clientId: acct.id });
 });
 
 publicRoutes.post('/auth/logout', async (c) => {

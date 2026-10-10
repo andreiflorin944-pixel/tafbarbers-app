@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Platform, Pressable, Share, StyleSheet, Text,
 import { api, ApiError } from '@/api';
 import { formatBirth, parseBirth } from '@/lib/dates';
 import { pickImage } from '@/lib/pickImage';
+import { PasswordSettings } from '@/components/PasswordSettings';
 import { Avatar, Button, Card, Icon, Screen, Segmented, Title, styles } from '@/components/ui';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
@@ -307,6 +308,8 @@ function ClientAccount() {
         </View>
       ) : null}
       {msg ? <Text style={{ color: msg.ok ? colors.success : colors.danger, marginTop: space.sm }}>{msg.text}</Text> : null}
+
+      <PasswordSettings />
 
       <View style={{ marginTop: space.md }}>
         <Button title={t('account.myOrders')} variant="ghost" onPress={() => router.push('/shop/orders')} />

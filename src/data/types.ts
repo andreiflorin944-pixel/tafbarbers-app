@@ -96,6 +96,8 @@ export type Me = {
   marketing: { sms: boolean; email: boolean; push: boolean };
   birthDate?: string | null; // AAAA-LL-ZZ
   photoUrl?: string | null;
+  /** Contul are o parolă (pe lângă intrarea cu cod). */
+  hasPassword?: boolean;
 };
 
 /** O poză din TAF Identity. `addedBy` apare doar la pozele urcate de echipă. */

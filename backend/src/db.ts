@@ -245,7 +245,9 @@ export type ClientRow = {
   identity_note?: string;
   referred_by?: string | null;
   club_member?: number;
+  password_hash?: string | null;
 };
+// Hash-ul parolei nu pleacă niciodată din server: în răspunsuri apare doar dacă există o parolă.
 export const client = (r: ClientRow) => ({
   id: r.id,
   phone: r.phone,
@@ -257,6 +259,7 @@ export const client = (r: ClientRow) => ({
   createdAt: r.created_at,
   birthDate: r.birth_date ?? null,
   photoUrl: r.photo_url ?? null,
+  ...(r.password_hash !== undefined && { hasPassword: !!r.password_hash }),
 });
 
 export type PromoRow = {

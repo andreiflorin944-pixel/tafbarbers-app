@@ -80,6 +80,8 @@ export async function scheduled(env: Env) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(iso(new Date(now))),
     env.DB.prepare('DELETE FROM otp_codes WHERE expires_at < ?').bind(iso(new Date(now - 3_600_000))),
+    // Greșelile de parolă vechi (fereastra și blocarea țin 15 minute).
+    env.DB.prepare('DELETE FROM login_failures WHERE first_at < ? AND (locked_until IS NULL OR locked_until < ?)').bind(iso(new Date(now - 3_600_000)), iso(new Date(now))),
   ]);
 }
 

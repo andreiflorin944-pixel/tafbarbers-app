@@ -58,6 +58,13 @@ export function httpApi(baseUrl: string): BookingApi {
     verifyCode: (input) => call('POST', '/auth/verify', { body: input }),
     socialSignIn: (input) => call('POST', '/auth/social', { body: input }),
     socialComplete: (input) => call('POST', '/auth/social/complete', { body: input }),
+    passwordLogin: (input) => call('POST', '/auth/password/login', { body: input }),
+    forgotPassword: (input, lang) => call('POST', `/auth/password/forgot?lang=${lang}`, { body: input }),
+    resetPassword: (input) => call('POST', '/auth/password/reset', { body: input }),
+    setPassword: async (token, input) => {
+      await call('POST', '/me/password', { token, body: input });
+    },
+    passwordCode: (token, lang) => call('POST', `/me/password/code?lang=${lang}`, { token }),
     logout: async (token) => {
       await call('POST', '/auth/logout', { token }).catch(() => undefined);
     },

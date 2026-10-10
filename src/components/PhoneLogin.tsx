@@ -5,7 +5,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, usingMock } from '@/api';
 import { ApiError } from '@/api/client';
 import { SocialLogin, type SocialResult } from '@/components/SocialLogin';
-import { Button, styles } from '@/components/ui';
+import { PasswordLogin } from '@/components/PasswordLogin';
+import { Button, Segmented, styles } from '@/components/ui';
 import { useT } from '@/i18n';
 import { parseBirth } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
@@ -52,7 +53,16 @@ export function PhoneLogin({
   const [social, setSocial] = useState<{ ticket: string; email: string | null } | null>(null);
   const [needCode, setNeedCode] = useState(false);
 
+  // Intrarea: cu cod (e-mail / SMS) sau cu e-mail (ori telefon) și parolă.
+  const [method, setMethod] = useState<'code' | 'password'>('code');
+
   const register = mode === 'register';
+  const passwordMode = !register && !social && method === 'password';
+  const switchMethod = (m: 'code' | 'password') => {
+    setMethod(m);
+    setError(null);
+    setNotice(null);
+  };
   const cleanPhone = phone.replace(/[\s\-().]/g, '');
   const cleanEmail = email.trim().toLowerCase();
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail);
@@ -202,145 +212,199 @@ export function PhoneLogin({
         ))}
       </View>
 
-      <Text style={local.headline}>{t(register ? 'login.titleRegister' : 'login.titleLogin')}</Text>
-      <Text style={local.sub}>
-        {t(register ? 'login.subRegister' : 'login.subLogin')}
-      </Text>
-
-      {notice ? (
-        <View style={local.notice}>
-          <Ionicons name="information-circle" size={18} color={colors.gold} />
-          <Text style={[styles.text, { flex: 1, fontSize: 13 }]}>{notice}</Text>
+      {!register && !social ? (
+        <View style={{ marginBottom: space.md }}>
+          <Segmented
+            options={[t('login.methodCode'), t('login.methodPassword')]}
+            value={method === 'password' ? 1 : 0}
+            onChange={(i) => switchMethod(i === 1 ? 'password' : 'code')}
+          />
         </View>
       ) : null}
 
-      {register
-        ? field(t('login.name'), <TextInput value={name} onChangeText={setName} placeholder={t('login.namePh')} placeholderTextColor={colors.muted} style={styles.input} autoComplete="name" />)
-        : null}
-      {field(
-        t('login.phone'),
-        <TextInput value={phone} onChangeText={setPhone} editable={!sentTo} placeholder="07xx xxx xxx" placeholderTextColor={colors.muted} style={[styles.input, sentTo ? local.locked : null]} keyboardType="phone-pad" autoComplete="tel" />,
-      )}
-      {field(
-        t(register ? 'login.email' : 'login.emailLogin'),
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          editable={!sentTo && !social?.email}
-          placeholder={t('account.emailPh')}
-          placeholderTextColor={colors.muted}
-          style={[styles.input, sentTo || social?.email ? local.locked : null]}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          autoComplete="email"
-        />,
-        t(register ? 'login.emailHintRegister' : 'login.emailHintLogin'),
-      )}
-      {register ? (
+      {passwordMode ? (
         <>
-          {field(
-            t('login.birth'),
-            <TextInput value={birth} onChangeText={setBirth} placeholder={t('login.birthPh')} placeholderTextColor={colors.muted} style={styles.input} keyboardType="numbers-and-punctuation" maxLength={10} />,
-            t(birth.length >= 8 && !birthOk ? 'login.birthBad' : 'login.birthHint'),
-          )}
-          {field(
-            t('login.ref'),
-            <TextInput
-              value={ref}
-              onChangeText={(v) => setRef(v.toUpperCase())}
-              placeholder={t('login.refPh')}
-              placeholderTextColor={colors.muted}
-              style={styles.input}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={12}
-            />,
-            t('login.refHint'),
-          )}
+          <Text style={local.headline}>{t('login.titleLogin')}</Text>
+          <Text style={local.sub}>{t('login.subPassword')}</Text>
+          <PasswordLogin onDone={finish} />
         </>
-      ) : null}
+      ) : (
+        <>
+          <Text style={local.headline}>{t(register ? 'login.titleRegister' : 'login.titleLogin')}</Text>
+          <Text style={local.sub}>{t(register ? 'login.subRegister' : 'login.subLogin')}</Text>
 
-      {sentTo ? (
-        <View style={local.codeBox}>
-          <Text style={local.label}>{t(channel === 'email' ? 'login.codeEmail' : 'login.codeSms', { to: sentTo })}</Text>
-          <TextInput
-            value={code}
-            onChangeText={(v) => setCode(v.replace(/\D/g, ''))}
-            placeholder="• • • • • •"
-            placeholderTextColor={colors.muted}
-            style={[styles.input, local.code]}
-            keyboardType="number-pad"
-            autoComplete={channel === 'sms' ? 'sms-otp' : 'one-time-code'}
-            textContentType="oneTimeCode"
-            maxLength={6}
-            autoFocus
-          />
-          {usingMock ? (
-            <Text style={local.hint}>{t('login.mockCode')}</Text>
-          ) : devCode ? (
-            <Text style={local.hint}>{t('login.devCode', { code: devCode })}</Text>
+          {notice ? (
+            <View style={local.notice}>
+              <Ionicons name="information-circle" size={18} color={colors.gold} />
+              <Text style={[styles.text, { flex: 1, fontSize: 13 }]}>{notice}</Text>
+            </View>
           ) : null}
-          <Pressable
-            onPress={() => {
-              setSentTo(null);
-              setCode('');
-              setNotice(null);
-            }}
-            style={{ marginTop: space.sm }}
-          >
-            <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>{t('login.change')}</Text>
-          </Pressable>
-        </View>
-      ) : null}
 
-      {register ? (
-        <>
-          <Check checked={accepted} onPress={() => setAccepted((a) => !a)} label={`${t('login.agree')} ${t('login.terms')} ${t('login.and')} ${t('login.privacy')}`}>
-            {t('login.agree')}{' '}
-            <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/terms')}>
-              {t('login.terms')}
-            </Text>{' '}
-            {t('login.and')}{' '}
-            <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/privacy')}>
-              {t('login.privacy')}
-            </Text>
-            .
-          </Check>
-          <Check checked={marketing} onPress={() => setMarketing((m) => !m)} label={t('login.marketing')}>
-            {t('login.marketing')}
-          </Check>
-        </>
-      ) : null}
+          {register
+            ? field(
+                t('login.name'),
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder={t('login.namePh')}
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                  autoComplete="name"
+                />,
+              )
+            : null}
+          {field(
+            t('login.phone'),
+            <TextInput
+              value={phone}
+              onChangeText={setPhone}
+              editable={!sentTo}
+              placeholder="07xx xxx xxx"
+              placeholderTextColor={colors.muted}
+              style={[styles.input, sentTo ? local.locked : null]}
+              keyboardType="phone-pad"
+              autoComplete="tel"
+            />,
+          )}
+          {field(
+            t(register ? 'login.email' : 'login.emailLogin'),
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              editable={!sentTo && !social?.email}
+              placeholder={t('account.emailPh')}
+              placeholderTextColor={colors.muted}
+              style={[styles.input, sentTo || social?.email ? local.locked : null]}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+            />,
+            t(register ? 'login.emailHintRegister' : 'login.emailHintLogin'),
+          )}
+          {register ? (
+            <>
+              {field(
+                t('login.birth'),
+                <TextInput
+                  value={birth}
+                  onChangeText={setBirth}
+                  placeholder={t('login.birthPh')}
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={10}
+                />,
+                t(birth.length >= 8 && !birthOk ? 'login.birthBad' : 'login.birthHint'),
+              )}
+              {field(
+                t('login.ref'),
+                <TextInput
+                  value={ref}
+                  onChangeText={(v) => setRef(v.toUpperCase())}
+                  placeholder={t('login.refPh')}
+                  placeholderTextColor={colors.muted}
+                  style={styles.input}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  maxLength={12}
+                />,
+                t('login.refHint'),
+              )}
+            </>
+          ) : null}
 
-      {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
+          {sentTo ? (
+            <View style={local.codeBox}>
+              <Text style={local.label}>{t(channel === 'email' ? 'login.codeEmail' : 'login.codeSms', { to: sentTo })}</Text>
+              <TextInput
+                value={code}
+                onChangeText={(v) => setCode(v.replace(/\D/g, ''))}
+                placeholder="• • • • • •"
+                placeholderTextColor={colors.muted}
+                style={[styles.input, local.code]}
+                keyboardType="number-pad"
+                autoComplete={channel === 'sms' ? 'sms-otp' : 'one-time-code'}
+                textContentType="oneTimeCode"
+                maxLength={6}
+                autoFocus
+              />
+              {usingMock ? (
+                <Text style={local.hint}>{t('login.mockCode')}</Text>
+              ) : devCode ? (
+                <Text style={local.hint}>{t('login.devCode', { code: devCode })}</Text>
+              ) : null}
+              <Pressable
+                onPress={() => {
+                  setSentTo(null);
+                  setCode('');
+                  setNotice(null);
+                }}
+                style={{ marginTop: space.sm }}
+              >
+                <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>{t('login.change')}</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
-      <View style={{ marginTop: space.lg }}>
-        {socialOnly && register ? (
-          <Button title={t('login.socialDone')} disabled={!phoneOk || !nameOk || !birthOk || !accepted} loading={busy} onPress={completeSocial} />
-        ) : sentTo ? (
-          <Button
-            title={submitTitle ?? t(register ? 'login.submitRegister' : 'login.submitLogin')}
-            disabled={code.length !== 6 || (register && (!accepted || !birthOk || !emailOk || !nameOk))}
-            loading={busy}
-            onPress={verify}
-          />
-        ) : (
-          <>
-            <Button title={t(register ? 'login.continue' : 'login.sendCode')} disabled={!canSend || !emailOk} loading={busy} onPress={() => send('email')} />
-            {business?.otpSms === false ? null : (
-            <Pressable
-              onPress={() => send('sms')}
-              disabled={!canSend || busy}
-              style={{ marginTop: space.md, alignItems: 'center', opacity: !canSend ? 0.4 : 1 }}
-              accessibilityRole="button"
-            >
-              <Text style={{ color: colors.gold, fontSize: 14, fontWeight: '600' }}>{t('login.sendSms')}</Text>
-            </Pressable>
+          {register ? (
+            <>
+              <Check
+                checked={accepted}
+                onPress={() => setAccepted((a) => !a)}
+                label={`${t('login.agree')} ${t('login.terms')} ${t('login.and')} ${t('login.privacy')}`}
+              >
+                {t('login.agree')}{' '}
+                <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/terms')}>
+                  {t('login.terms')}
+                </Text>{' '}
+                {t('login.and')}{' '}
+                <Text style={{ color: colors.gold }} onPress={() => router.push('/legal/privacy')}>
+                  {t('login.privacy')}
+                </Text>
+                .
+              </Check>
+              <Check checked={marketing} onPress={() => setMarketing((m) => !m)} label={t('login.marketing')}>
+                {t('login.marketing')}
+              </Check>
+            </>
+          ) : null}
+
+          {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
+
+          <View style={{ marginTop: space.lg }}>
+            {socialOnly && register ? (
+              <Button title={t('login.socialDone')} disabled={!phoneOk || !nameOk || !birthOk || !accepted} loading={busy} onPress={completeSocial} />
+            ) : sentTo ? (
+              <Button
+                title={submitTitle ?? t(register ? 'login.submitRegister' : 'login.submitLogin')}
+                disabled={code.length !== 6 || (register && (!accepted || !birthOk || !emailOk || !nameOk))}
+                loading={busy}
+                onPress={verify}
+              />
+            ) : (
+              <>
+                <Button
+                  title={t(register ? 'login.continue' : 'login.sendCode')}
+                  disabled={!canSend || !emailOk}
+                  loading={busy}
+                  onPress={() => send('email')}
+                />
+                {business?.otpSms === false ? null : (
+                  <Pressable
+                    onPress={() => send('sms')}
+                    disabled={!canSend || busy}
+                    style={{ marginTop: space.md, alignItems: 'center', opacity: !canSend ? 0.4 : 1 }}
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ color: colors.gold, fontSize: 14, fontWeight: '600' }}>{t('login.sendSms')}</Text>
+                  </Pressable>
+                )}
+              </>
             )}
-          </>
-        )}
-      </View>
+          </View>
+        </>
+      )}
 
       {!register ? (
         <Text style={[local.hint, { textAlign: 'center', marginTop: space.md }]}>
@@ -392,7 +456,17 @@ const local = StyleSheet.create({
   label: { color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: 6 },
   hint: { color: colors.muted, fontSize: 12, marginTop: 5 },
   locked: { opacity: 0.6 },
-  notice: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', backgroundColor: colors.cardAlt, borderRadius: radius.md, padding: space.sm, marginTop: space.md, borderWidth: 1, borderColor: colors.goldDark },
+  notice: {
+    flexDirection: 'row',
+    gap: space.sm,
+    alignItems: 'flex-start',
+    backgroundColor: colors.cardAlt,
+    borderRadius: radius.md,
+    padding: space.sm,
+    marginTop: space.md,
+    borderWidth: 1,
+    borderColor: colors.goldDark,
+  },
   codeBox: { marginTop: space.lg, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.card },
   code: { fontSize: 26, letterSpacing: 8, textAlign: 'center', fontWeight: '800' },
 });

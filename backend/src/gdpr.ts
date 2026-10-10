@@ -26,7 +26,13 @@ export async function exportClient(env: Env, id: string) {
   const subscriptions = await getSubscriptions(env, id, false);
   return {
     exportedAt: iso(new Date()),
-    profile: { ...profile, termsAcceptedAt: c.terms_accepted_at, marketingConsentAt: (c as { marketing_consent_at?: string | null }).marketing_consent_at ?? null },
+    // Despre parolă doar dacă există și când a fost pusă; hash-ul nu iese niciodată.
+    profile: {
+      ...profile,
+      termsAcceptedAt: c.terms_accepted_at,
+      marketingConsentAt: (c as { marketing_consent_at?: string | null }).marketing_consent_at ?? null,
+      passwordSetAt: (c as { password_set_at?: string | null }).password_set_at ?? null,
+    },
     bookings: bk.results.map((b) => {
       const { clientName: _n, clientPhone: _p, ...rest } = booking(b);
       return rest;
@@ -86,11 +92,13 @@ export async function deleteClient(env: Env, id: string) {
     env.DB.prepare(`DELETE FROM sessions WHERE kind = 'client' AND subject_id = ?`).bind(id),
     env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(c.phone),
     env.DB.prepare('DELETE FROM client_identities WHERE client_id = ?').bind(id),
+    // Încercările greșite de parolă legate de cont.
+    env.DB.prepare('DELETE FROM login_failures WHERE key = ?').bind(`acct:${id}`),
     // Acordurile rămân doar anonime (fără IP și dispozitiv), ca dovadă că acest cont a existat și a acceptat.
     anonymizeConsents(env, id, now),
     env.DB.prepare(`UPDATE message_log SET recipient = 'sters' WHERE recipient = ? OR recipient = ?`).bind(c.phone, c.email ?? '\u0000'),
     env.DB.prepare(
-      `UPDATE clients SET phone = ?, name = '', email = NULL, notes = '', marketing_sms = 0, marketing_email = 0, marketing_push = 0, marketing_consent_at = NULL, deleted_at = ? WHERE id = ?`,
+      `UPDATE clients SET phone = ?, name = '', email = NULL, notes = '', marketing_sms = 0, marketing_email = 0, marketing_push = 0, marketing_consent_at = NULL, password_hash = NULL, password_set_at = NULL, deleted_at = ? WHERE id = ?`,
     ).bind(`deleted:${id}`, now, id),
   ]);
   for (const b of future.results) {

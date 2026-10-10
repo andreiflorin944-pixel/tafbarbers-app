@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
-import { normalizePhone, requireClient } from '../auth';
+import { hashPassword, normalizePhone, requireClient, sha256, tokenFrom, verifyPassword } from '../auth';
+import { clearFailures, lockedAny, loginKeys, recordFailure, validClientPassword } from '../clientPassword';
+import { checkCode, issueCode, useCode } from '../otp';
 import { createGiftCard, getAutomations, giftCard, type GiftCardRow } from '../growth';
 import { BOOKING_SELECT, cancelBooking, createBooking } from '../bookings';
 import { booking, client, emailTaken, getBusiness, type BookingRow, type ClientRow } from '../db';
@@ -243,6 +245,46 @@ clientRoutes.post('/me/before-after/:id/hide-example', async (c) => {
     if (!own) throw new HttpError(404, 'not_found');
   }
   return c.json({ ok: true });
+});
+
+// --- Parola contului (opțională; intrarea cu cod merge în continuare) ---
+
+// Cod pe e-mailul contului (SMS doar fără e-mail), pentru schimbarea parolei când clientul nu o mai știe pe cea veche.
+clientRoutes.post('/me/password/code', async (c) => {
+  const me = await c.env.DB.prepare('SELECT phone, email FROM clients WHERE id = ?').bind(c.get('client').clientId).first<{ phone: string; email: string | null }>();
+  if (!me) throw new HttpError(401, 'unauthorized');
+  const channel = me.email ? 'email' : 'sms';
+  const { code } = await issueCode(c, { phone: me.phone, email: me.email, channel, lang: c.req.query('lang') ?? 'ro', purpose: 'reset' });
+  return c.json({ ok: true, channel, sentTo: me.email ?? me.phone, ...(c.env.DEV_OTP === '1' && { devCode: code }) });
+});
+
+// Prima parolă: ajunge să fie în cont. Schimbarea: parola de acum sau un cod proaspăt primit pe e-mail.
+// Celelalte dispozitive ies din cont la schimbare (cel de acum rămâne).
+clientRoutes.post('/me/password', async (c) => {
+  const b = await c.req.json<{ password?: string; current?: string; code?: string }>();
+  const id = c.get('client').clientId;
+  const password = validClientPassword(b.password);
+  const me = await c.env.DB.prepare('SELECT phone, password_hash FROM clients WHERE id = ?').bind(id).first<{ phone: string; password_hash: string | null }>();
+  if (!me) throw new HttpError(401, 'unauthorized');
+  const keys = await loginKeys(c, null, [id]);
+  if (me.password_hash) {
+    if (typeof b.current === 'string' && b.current) {
+      if (await lockedAny(c.env, keys)) throw new HttpError(429, 'login_locked');
+      if (b.current.length > 200 || !(await verifyPassword(b.current, me.password_hash))) {
+        await recordFailure(c.env, keys);
+        throw new HttpError(400, 'wrong_password');
+      }
+    } else if (typeof b.code === 'string' && b.code) {
+      await useCode(c.env, me.phone, await checkCode(c.env, me.phone, b.code));
+    } else throw new HttpError(400, 'current_password_required');
+  }
+  const keep = await sha256(tokenFrom(c) ?? '');
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE clients SET password_hash = ?, password_set_at = ? WHERE id = ?').bind(await hashPassword(password), iso(new Date()), id),
+    c.env.DB.prepare(`DELETE FROM sessions WHERE kind = 'client' AND subject_id = ? AND token_hash != ?`).bind(id, keep),
+  ]);
+  await clearFailures(c.env, keys.accounts);
+  return c.json({ ok: true, hasPassword: true });
 });
 
 clientRoutes.get('/me/export', async (c) => c.json(await exportClient(c.env, c.get('client').clientId)));

@@ -373,8 +373,8 @@ function HairAdvisor() {
     <div className="card grid">
       <h2 id="set-consilier" style={{ margin: 0, scrollMarginTop: 16 }}>Consilier AI de tunsori</h2>
       <div className="muted small">
-        În aplicație, clientul face o poză, iar AI-ul îi arată 2-3 servicii ale salonului potrivite pentru el, cu prețul, poze înainte/după și butonul
-        „Programează”. Poza se folosește doar pentru analiză și se șterge imediat. Fiecare client poate face cel mult 5 analize pe zi. Ca exemple apar doar
+        În aplicație, clientul face o poză, iar AI-ul îi recomandă 2-4 tunsori potrivite pentru el, fiecare cu o poză de exemplu (generată cu AI), ce să-i
+        spună frizerului, poze înainte/după de la salon și butonul „Programează”. Poza se folosește doar pentru analiză și se șterge imediat. Fiecare client poate face cel mult 5 analize pe zi. Ca exemple apar doar
         perechile înainte/după bifate în fișa clientului („Arată ca exemplu”).
       </div>
       {!d ? (

@@ -6,9 +6,11 @@ import { HttpError, type AppEnv, type Env } from './env';
 import { mediaUrl } from './identity';
 import { iso } from './time';
 import { aiOf } from './translate';
+import { hairstyle, HAIRSTYLES, stylePrompt } from './hairstyles';
 
 // Consilierul AI de tunsori („Ce tunsoare mi se potrivește?”): clientul face o poză, modelul cu vedere descrie fața și
-// părul, apoi asistentul alege 2-3 servicii DOAR dintre serviciile active ale salonului, cu un motiv scurt în limba clientului.
+// părul, apoi asistentul recomandă 2-4 tunsori concrete (din lista fixă din hairstyles.ts), fiecare cu o poză de exemplu,
+// motivul, ce să ceară la frizer și serviciul salonului la care se poate programa.
 // Poza nu se salvează nicăieri: nici în baza de date, nici în jurnale. Stă doar în memorie cât durează analiza.
 
 const VISION = '@cf/meta/llama-3.2-11b-vision-instruct';
@@ -134,49 +136,100 @@ async function analyse(env: Env, bytes: Uint8Array): Promise<Look | null> {
   return { face: str(o.face), hairType: str(o.hairType), density: str(o.density), length: str(o.length), hairline: str(o.hairline), beard: str(o.beard), notes: str(o.notes, 160) };
 }
 
-const PICK_SCHEMA = {
-  type: 'object',
-  properties: {
-    summary: { type: 'string' },
-    suggestions: { type: 'array', items: { type: 'object', properties: { serviceId: { type: 'string' }, reason: { type: 'string' } }, required: ['serviceId', 'reason'] } },
-  },
-  required: ['summary', 'suggestions'],
+// Termenii din analiza pozei (vin în engleză de la modelul cu vedere), traduși înainte să ajungă în rezumat.
+const TERMS: Record<string, { ro: string; fr: string }> = {
+  oval: { ro: 'ovală', fr: 'ovale' },
+  round: { ro: 'rotundă', fr: 'ronde' },
+  square: { ro: 'pătrată', fr: 'carrée' },
+  oblong: { ro: 'alungită', fr: 'allongée' },
+  heart: { ro: 'în formă de inimă', fr: 'en cœur' },
+  diamond: { ro: 'în formă de romb', fr: 'en losange' },
+  triangle: { ro: 'triunghiulară', fr: 'triangulaire' },
+  straight: { ro: 'drept', fr: 'raides' },
+  wavy: { ro: 'ondulat', fr: 'ondulés' },
+  curly: { ro: 'creț', fr: 'bouclés' },
+  coily: { ro: 'foarte creț (afro)', fr: 'crépus' },
+  thin: { ro: 'rar', fr: 'fins' },
+  medium: { ro: 'mediu', fr: 'moyens' },
+  thick: { ro: 'des', fr: 'épais' },
+  'very short': { ro: 'foarte scurt', fr: 'très courts' },
+  short: { ro: 'scurt', fr: 'courts' },
+  long: { ro: 'lung', fr: 'longs' },
+  normal: { ro: 'normală', fr: 'normale' },
+  receding: { ro: 'retrasă la tâmple', fr: 'dégarnie aux tempes' },
+  'thinning crown': { ro: 'rărit la creștet', fr: 'clairsemés au sommet' },
+  bald: { ro: 'chel', fr: 'chauve' },
+  none: { ro: 'fără barbă', fr: 'sans barbe' },
+  stubble: { ro: 'barbă de câteva zile', fr: 'barbe de quelques jours' },
+  full: { ro: 'barbă plină', fr: 'barbe fournie' },
 };
+const term = (v: string, lang: string) => (lang === 'en' ? v : (TERMS[v.toLowerCase()]?.[lang === 'fr' ? 'fr' : 'ro'] ?? v));
 
-/** Alegerea serviciilor potrivite, doar din lista salonului, cu motivul în limba clientului. */
+const MAX_STYLES = 4;
+
+/** Alegerea tunsorilor potrivite (doar din lista fixă), cu motivul și ce să ceară la frizer, în limba clientului. */
 async function pick(env: Env, look: Look, services: ServiceRow[], lang: string) {
   const biz = await getBusiness(env);
   const language = lang === 'en' ? 'engleză' : lang === 'fr' ? 'franceză' : 'română';
-  const list = services.map((s) => `- ${s.name} (id ${s.id}): ${s.price_bani / 100} lei, ${s.duration_min} min${s.description ? `. ${s.description.slice(0, 140)}` : ''}`).join('\n');
-  const system = `Ești consilierul de tunsori al salonului ${biz.name}. Pe baza analizei unei poze a clientului, alegi 2 sau 3 servicii potrivite DOAR din lista de mai jos.
-Analiza pozei: fața ${look.face || 'necunoscută'}; părul ${[look.hairType, look.density, look.length].filter(Boolean).join(', ') || 'necunoscut'}; linia părului ${look.hairline || 'necunoscută'}; barba ${look.beard || 'necunoscută'}${look.notes ? `; observații: ${look.notes}` : ''}.
-Serviciile salonului:
+  const you = lang === 'en' ? '"you"' : lang === 'fr' ? '"tu"' : '"tu"';
+  const T = (v: string) => (v ? term(v, lang) : '');
+  const styles = HAIRSTYLES.map((h) => `- ${h.key}: ${h.name.en} (${h.about})`).join('\n');
+  const list = services.map((s) => `- ${s.name} (id ${s.id}): ${s.duration_min} min${s.description ? `. ${s.description.slice(0, 120)}` : ''}`).join('\n');
+  const beard = look.beard.toLowerCase();
+  const system = `Ești consilierul de tunsori al salonului ${biz.name}. Pe baza analizei unei poze a clientului, îi recomanzi 3 TUNSORI concrete (minim 2, maxim 4) din lista de tunsori de mai jos. Nu recomanzi pachete sau servicii, ci tunsori.
+Analiza pozei: fața ${T(look.face) || '?'}; părul ${[look.hairType, look.density, look.length].filter(Boolean).map(T).join(', ') || '?'}; linia părului ${T(look.hairline) || '?'}; barba ${T(look.beard) || '?'}${look.notes ? `; observații (scrise în limba engleză, de tradus): ${look.notes}` : ''}.
+Tunsorile posibile (cheie: nume, descriere):
+${styles}
+Serviciile salonului (doar ca să știi la ce serviciu se poate programa pentru tunsoarea aleasă):
 ${list}
 
 Reguli:
-- Folosești doar id-uri din listă. Nu inventa servicii, prețuri sau reduceri.
-- Barba o propui doar dacă clientul are barbă. Serviciile pentru copii doar dacă e copil.
-- "reason": o propoziție scurtă și caldă, de ce i se potrivește, în ${language}.
-- "summary": 1-2 propoziții despre forma feței și păr, pe înțelesul oricui, în ${language}.
-- Răspunzi DOAR cu JSON: {"summary": "...", "suggestions": [{"serviceId": "...", "reason": "..."}]}.`;
+- "key": doar chei din lista de tunsori, fiecare o singură dată. Alege ce se potrivește cu forma feței, tipul și desimea părului și linia părului (ex.: păr creț -> tunsori care păstrează buclele; linie retrasă -> French crop, Caesar, crop texturat, buzz cut, nu slick back; față rotundă -> volum sus și părți scurte).
+- Dacă părul e scurt acum, alege mai ales tunsori care se pot face acum; una care cere păr mai lung o poți propune doar spunând asta în motiv.
+- "reason": 1-2 propoziții calde, de ce i se potrivește lui, vorbind direct cu clientul (${you}), în ${language}.
+- "ask": o propoziție scurtă cu ce să-i spună frizerului (lungimi, fade, textură), în ${language}.
+- "serviceId": id-ul serviciului din listă la care se face tunsoarea (de obicei tunsoarea simplă; cu barbă doar dacă are barbă${beard === 'none' ? ', iar clientul NU are barbă' : ''}; pentru copii doar dacă e copil). "" dacă niciunul nu se potrivește.
+- "summary": 1-2 propoziții despre forma feței și păr, vorbind direct cu clientul (${you}), pe înțelesul oricui, DOAR în ${language}, fără cuvinte în altă limbă.
+- Nu inventa prețuri sau reduceri.
+- Răspunzi DOAR cu JSON: {"summary": "...", "styles": [{"key": "...", "reason": "...", "ask": "...", "serviceId": "..."}]}.`;
+  const schema = {
+    type: 'object',
+    properties: {
+      summary: { type: 'string' },
+      styles: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { key: { type: 'string', enum: HAIRSTYLES.map((h) => h.key) }, reason: { type: 'string' }, ask: { type: 'string' }, serviceId: { type: 'string', enum: ['', ...services.map((s) => s.id)] } },
+          required: ['key', 'reason', 'ask', 'serviceId'],
+        },
+      },
+    },
+    required: ['summary', 'styles'],
+  };
   const raw = await aiOf(env)!.run(TEXT, {
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: 'Ce tunsori mi se potrivesc?' },
     ],
-    response_format: { type: 'json_schema', json_schema: PICK_SCHEMA },
-    max_tokens: 500,
-    temperature: 0.3,
+    response_format: { type: 'json_schema', json_schema: schema },
+    max_tokens: 700,
+    temperature: 0.4,
   });
   const o = jsonOf(raw);
   if (!o) throw new Error('pick_unreadable');
   const seen = new Set<string>();
-  // Doar servicii active ale salonului, fiecare o singură dată, cel mult 3.
-  const chosen = (Array.isArray(o.suggestions) ? o.suggestions : [])
-    .map((x) => x as { serviceId?: unknown; reason?: unknown })
-    .filter((x) => typeof x.serviceId === 'string' && services.some((s) => s.id === x.serviceId) && !seen.has(x.serviceId) && seen.add(x.serviceId))
-    .slice(0, 3)
-    .map((x) => ({ serviceId: x.serviceId as string, reason: str(x.reason, 240) }));
+  // Doar tunsori din listă, fiecare o singură dată, cel mult 4; serviciul doar dacă e unul activ al salonului.
+  const chosen = (Array.isArray(o.styles) ? o.styles : [])
+    .map((x) => x as { key?: unknown; reason?: unknown; ask?: unknown; serviceId?: unknown })
+    .filter((x) => typeof x.key === 'string' && hairstyle(x.key) && !seen.has(x.key) && seen.add(x.key))
+    .slice(0, MAX_STYLES)
+    .map((x) => ({
+      key: x.key as string,
+      reason: str(x.reason, 300),
+      ask: str(x.ask, 240),
+      serviceId: typeof x.serviceId === 'string' && services.some((s) => s.id === x.serviceId) ? x.serviceId : null,
+    }));
   return { summary: str(o.summary, 400), chosen };
 }
 
@@ -264,29 +317,71 @@ advisorRoutes.post('/advisor', requireClient, async (c) => {
     .bind(iso(new Date()).slice(0, 10))
     .run();
 
-  // Numele și descrierea în limba clientului; pozele înainte/după doar din perechile bifate ca exemplu în panou.
-  const rows = services.filter((s) => picked!.chosen.some((x) => x.serviceId === s.id));
-  const shown = await localize(env, lang, rows.map(service), ['name', 'description']);
-  const suggestions = await Promise.all(
-    picked!.chosen.map(async (x) => {
-      const s = shown.find((y) => y.id === x.serviceId)!;
-      const ex = await env.DB.prepare(
-        `SELECT x.before_media, x.after_media FROM before_after x JOIN clients cl ON cl.id = x.client_id
-         WHERE x.service_id = ? AND x.show_example = 1 AND cl.deleted_at IS NULL ORDER BY x.created_at DESC LIMIT 3`,
-      )
-        .bind(s.id)
-        .all<{ before_media: string; after_media: string }>();
-      return {
-        serviceId: s.id,
-        name: s.name,
-        description: s.description,
-        price: s.price,
-        durationMin: s.durationMin,
-        imageUrl: s.imageUrl,
-        reason: x.reason,
-        examples: ex.results.map((p) => ({ before: mediaUrl(p.before_media), after: mediaUrl(p.after_media) })),
-      };
-    }),
-  );
-  return c.json({ summary: picked!.summary, suggestions, left });
+  // Fiecare tunsoare: numele în limba clientului, poza de exemplu (generată o dată, vezi mai jos), serviciul la care se
+  // programează și pozele înainte/după ale salonului la acel serviciu (doar perechile bifate ca exemplu în panou).
+  const ids = [...new Set(picked!.chosen.map((x) => x.serviceId).filter((x): x is string => !!x))];
+  const shown = await localize(env, lang, services.filter((s) => ids.includes(s.id)).map(service), ['name', 'description']);
+  const examples = new Map<string, { before: string; after: string }[]>();
+  for (const id of ids) {
+    const ex = await env.DB.prepare(
+      `SELECT x.before_media, x.after_media FROM before_after x JOIN clients cl ON cl.id = x.client_id
+       WHERE x.service_id = ? AND x.show_example = 1 AND cl.deleted_at IS NULL ORDER BY x.created_at DESC LIMIT 3`,
+    )
+      .bind(id)
+      .all<{ before_media: string; after_media: string }>();
+    examples.set(id, ex.results.map((p) => ({ before: mediaUrl(p.before_media), after: mediaUrl(p.after_media) })));
+  }
+  const name = (key: string) => hairstyle(key)!.name[lang === 'en' ? 'en' : lang === 'fr' ? 'fr' : 'ro'];
+  const styles = picked!.chosen.map((x) => {
+    const s = x.serviceId ? shown.find((y) => y.id === x.serviceId) : undefined;
+    return {
+      key: x.key,
+      name: name(x.key),
+      reason: x.reason,
+      ask: x.ask,
+      imageUrl: `/v1/advisor/style/${x.key}`,
+      service: s ? { id: s.id, name: s.name, price: s.price, durationMin: s.durationMin } : null,
+      examples: (s && examples.get(s.id)) || [],
+    };
+  });
+  return c.json({ summary: picked!.summary, styles, left });
+});
+
+const STYLE_IMAGE = '@cf/black-forest-labs/flux-1-schnell';
+const STYLE_FAILS_PER_DAY = 40;
+
+/**
+ * GET /advisor/style/:key — poza de exemplu a unei tunsori din listă. Se generează cu AI la prima cerere și se păstrează
+ * în media (id fix „style-<cheie>”), deci fiecare tunsoare costă un singur apel. Publică (aplicația o încarcă direct).
+ */
+advisorRoutes.get('/advisor/style/:key', async (c) => {
+  const env = c.env;
+  const h = hairstyle(c.req.param('key'));
+  if (!h) throw new HttpError(404, 'not_found');
+  const id = `style-${h.key}`;
+  const send = (body: ArrayBuffer | Uint8Array, mime: string) =>
+    c.body(body as ArrayBuffer, 200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=604800', 'X-Content-Type-Options': 'nosniff' });
+  const r = await env.DB.prepare('SELECT mime, data FROM media WHERE id = ?').bind(id).first<{ mime: string; data: ArrayBuffer | number[] }>();
+  if (r) return send(r.data instanceof ArrayBuffer ? r.data : new Uint8Array(r.data), r.mime);
+  const ai = aiOf(env);
+  if (!ai) throw new HttpError(404, 'not_found');
+  // Dacă generarea tot cade, nu o mai încercăm la nesfârșit în aceeași zi (fiecare încercare e un apel la AI).
+  const day = iso(new Date()).slice(0, 10);
+  const fails = await env.DB.prepare(`SELECT n FROM assistant_usage WHERE day = ? AND key = 'advisor-style-fail'`).bind(day).first<{ n: number }>();
+  if ((fails?.n ?? 0) >= STYLE_FAILS_PER_DAY) throw new HttpError(404, 'not_found');
+  let bytes: Uint8Array | null = null;
+  try {
+    const out = (await ai.run(STYLE_IMAGE, { prompt: stylePrompt(h), steps: 6 })) as { image?: string };
+    if (typeof out?.image === 'string') bytes = Uint8Array.from(atob(out.image), (ch) => ch.charCodeAt(0));
+  } catch (e) {
+    console.error('advisor style image', e instanceof Error ? e.message.slice(0, 200) : 'error');
+  }
+  const kind = bytes && imageKind(bytes);
+  if (!bytes || !kind) {
+    await env.DB.prepare(`INSERT INTO assistant_usage (day, key, n) VALUES (?, 'advisor-style-fail', 1) ON CONFLICT (day, key) DO UPDATE SET n = n + 1`).bind(day).run();
+    throw new HttpError(404, 'not_found');
+  }
+  const mime = `image/${kind}`;
+  await env.DB.prepare('INSERT OR IGNORE INTO media (id, mime, data, size, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, mime, bytes, bytes.byteLength, iso(new Date())).run();
+  return send(bytes, mime);
 });
