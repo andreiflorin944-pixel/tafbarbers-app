@@ -311,9 +311,10 @@ clientRoutes.post('/bookings', async (c) => {
     .bind(c.get('client').clientId, iso(new Date(Date.now() - 86_400_000)))
     .first<{ n: number }>();
   if ((today?.n ?? 0) >= 10) throw new HttpError(429, 'too_many_bookings_today');
-  // Maxim 3 programări viitoare active pe client (cererile în așteptare se numără și ele), ca să nu se blocheze orele.
+  // Clientul poate face mai multe programări (și pentru altcineva, sau din timp); doar o limită largă ca să nu blocheze tot
+  // programul: cel mult 10 programări viitoare active (cererile în așteptare se numără și ele).
   const created = await createBooking(c.env, {
-    maxActive: 3,
+    maxActive: 10,
     clientId: c.get('client').clientId,
     serviceId: b.serviceId,
     barberId: b.barberId ?? null,

@@ -1,6 +1,6 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Text, View } from 'react-native';
+import { Linking, Text, TextInput, View } from 'react-native';
 import { api, ApiError } from '@/api';
 import { Button, Card, Icon, Screen, Steps, styles } from '@/components/ui';
 import { formatDate, formatTime } from '@/lib/dates';
@@ -22,6 +22,8 @@ export default function Confirm() {
   const [error, setError] = useState<string | null>(null);
   const [slotTaken, setSlotTaken] = useState(false);
   const [payNow, setPayNow] = useState(false);
+  // Programare pentru altcineva (copilul, un prieten): numele ajunge la frizer ca notă a programării.
+  const [forWho, setForWho] = useState('');
 
   if (gate) return gate;
   if (!service || !draft.start || !barber) return <Redirect href="/book/location" />;
@@ -35,7 +37,8 @@ export default function Confirm() {
     setError(null);
     try {
       // Trimitem frizerul ales efectiv la ora respectivă, ca serverul să verifice exact acel loc.
-      const booking = await api.createBooking(tok, { serviceId: service.id, barberId: barber.id, start: draft.start! });
+      const who = forWho.trim();
+      const booking = await api.createBooking(tok, { serviceId: service.id, barberId: barber.id, start: draft.start!, note: who ? t('book.forWhoNote', { name: who }) : undefined });
       addBooking(booking);
       router.replace({ pathname: '/book/success', params: { id: booking.id } });
       // Plata cu cardul: pagina Stripe se deschide peste ecranul de confirmare; dacă renunță, plătește la salon.
@@ -74,6 +77,20 @@ export default function Confirm() {
           <Text style={styles.price}>{lei(barberPrice(service, barber))}</Text>
         </View>
       </Card>
+
+      <View style={{ marginTop: space.md }}>
+        <Text style={styles.label}>{t('book.forWho')}</Text>
+        <TextInput
+          value={forWho}
+          onChangeText={setForWho}
+          placeholder={t('book.forWhoPh')}
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+          maxLength={80}
+          autoComplete="off"
+        />
+        <Text style={[styles.muted, { fontSize: 12, marginTop: 4 }]}>{t('book.forWhoHint')}</Text>
+      </View>
 
       {online ? (
         <View style={{ marginTop: space.md, gap: space.sm }}>
