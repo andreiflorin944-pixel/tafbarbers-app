@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { mediaUrl } from '@/api/staff';
 import type { IdentityPhoto } from '@/data/types';
+import { useT } from '@/i18n';
 import { colors, space } from '@/theme';
 
 /** Poza pe tot ecranul, cu săgeți între poze; așa i-o arăți frizerului. */
@@ -18,23 +19,24 @@ export function PhotoViewer({
   onClose: () => void;
   onDelete?: (p: IdentityPhoto) => void;
 }) {
+  const { t } = useT();
   if (index === null || !photos[index]) return null;
   const p = photos[index];
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={s.wrap}>
-        <Image source={{ uri: mediaUrl(p.url)! }} style={s.img} resizeMode="contain" accessibilityLabel={p.caption || 'Poză'} />
+        <Image source={{ uri: mediaUrl(p.url)! }} style={s.img} resizeMode="contain" accessibilityLabel={p.caption || t('photo.photo')} />
         <View style={s.top}>
           <Text style={s.count}>
             {index + 1} / {photos.length}
           </Text>
           <View style={{ flexDirection: 'row', gap: space.sm }}>
             {onDelete ? (
-              <Pressable onPress={() => onDelete(p)} style={s.btn} accessibilityLabel="Șterge poza">
+              <Pressable onPress={() => onDelete(p)} style={s.btn} accessibilityLabel={t('photo.delete')}>
                 <Ionicons name="trash-outline" size={22} color="#fff" />
               </Pressable>
             ) : null}
-            <Pressable onPress={onClose} style={s.btn} accessibilityLabel="Închide">
+            <Pressable onPress={onClose} style={s.btn} accessibilityLabel={t('common.close')}>
               <Ionicons name="close" size={24} color="#fff" />
             </Pressable>
           </View>
@@ -42,16 +44,16 @@ export function PhotoViewer({
         {p.caption || p.addedBy ? (
           <Text style={s.caption}>
             {p.caption}
-            {p.addedBy ? `${p.caption ? ' · ' : ''}adăugată de ${p.addedBy}` : ''}
+            {p.addedBy ? `${p.caption ? ' · ' : ''}${t('photo.addedBy', { name: p.addedBy })}` : ''}
           </Text>
         ) : null}
         {index > 0 ? (
-          <Pressable onPress={() => onIndex(index - 1)} style={[s.nav, { left: space.sm }]} accessibilityLabel="Poza anterioară">
+          <Pressable onPress={() => onIndex(index - 1)} style={[s.nav, { left: space.sm }]} accessibilityLabel={t('photo.prev')}>
             <Ionicons name="chevron-back" size={30} color="#fff" />
           </Pressable>
         ) : null}
         {index < photos.length - 1 ? (
-          <Pressable onPress={() => onIndex(index + 1)} style={[s.nav, { right: space.sm }]} accessibilityLabel="Poza următoare">
+          <Pressable onPress={() => onIndex(index + 1)} style={[s.nav, { right: space.sm }]} accessibilityLabel={t('photo.next')}>
             <Ionicons name="chevron-forward" size={30} color="#fff" />
           </Pressable>
         ) : null}
@@ -72,17 +74,18 @@ const s = StyleSheet.create({
 
 /** Grila de poze mici (3 pe rând), cu un pătrat „Adaugă” la final când e loc. */
 export function PhotoGrid({ photos, onOpen, onAdd, busy }: { photos: IdentityPhoto[]; onOpen: (i: number) => void; onAdd?: () => void; busy?: boolean }) {
+  const { t } = useT();
   return (
     <View style={g.grid}>
       {photos.map((p, i) => (
-        <Pressable key={p.id} onPress={() => onOpen(i)} style={g.cell} accessibilityLabel={`Poza ${i + 1}`}>
+        <Pressable key={p.id} onPress={() => onOpen(i)} style={g.cell} accessibilityLabel={t('photo.n', { n: i + 1 })}>
           <Image source={{ uri: mediaUrl(p.url)! }} style={g.img} />
         </Pressable>
       ))}
       {onAdd ? (
-        <Pressable onPress={onAdd} disabled={busy} style={[g.cell, g.add]} accessibilityLabel="Adaugă poză">
+        <Pressable onPress={onAdd} disabled={busy} style={[g.cell, g.add]} accessibilityLabel={t('photo.add')}>
           <Ionicons name={busy ? 'hourglass-outline' : 'add'} size={30} color={colors.gold} />
-          <Text style={{ color: colors.gold, fontSize: 12, fontWeight: '700' }}>{busy ? 'Se urcă…' : 'Adaugă'}</Text>
+          <Text style={{ color: colors.gold, fontSize: 12, fontWeight: '700' }}>{busy ? t('photo.uploading') : t('common.add')}</Text>
         </Pressable>
       ) : null}
     </View>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, type Me, type Service } from '../api';
-import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
+import { emptyTr, Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 import { lei } from '../util';
 
 export function ServicesPage(_: { me: Me }) {
@@ -63,6 +63,7 @@ export function ServicesPage(_: { me: Me }) {
 
 function ServiceModal({ s, onClose, onDone }: { s: Partial<Service>; onClose: () => void; onDone: () => void }) {
   const [v, setV] = useState({ ...s });
+  const [tr, setTr] = useState(s.translations ?? emptyTr());
   const { busy, error, run } = useAction();
   const set = (patch: Partial<Service>) => setV((x) => ({ ...x, ...patch }));
   const body = {
@@ -74,6 +75,7 @@ function ServiceModal({ s, onClose, onDone }: { s: Partial<Service>; onClose: ()
     imageUrl: v.imageUrl || null,
     sort: Number(v.sort) || 0,
     active: v.active !== false,
+    translations: tr,
   };
 
   return (
@@ -99,6 +101,16 @@ function ServiceModal({ s, onClose, onDone }: { s: Partial<Service>; onClose: ()
             <input type="number" value={v.sort ?? 0} onChange={(e) => set({ sort: Number(e.target.value) })} />
           </Field>
         </div>
+        <TranslationFields
+          fields={[
+            { key: 'name', label: 'Nume' },
+            { key: 'description', label: 'Descriere', multiline: true },
+          ]}
+          ro={{ name: v.name, description: v.description }}
+          initialRo={{ name: s.name, description: s.description }}
+          value={tr}
+          onChange={setTr}
+        />
         <Field label="Poză (opțional)">
           <ImagePicker value={v.imageUrl ?? null} onChange={(imageUrl) => set({ imageUrl })} />
         </Field>

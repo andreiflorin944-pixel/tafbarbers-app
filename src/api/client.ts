@@ -1,4 +1,4 @@
-import type { BeforeAfter, DayPart, WaitlistEntry, GiftCards, Barber, Booking, Business, Identity, Referrals, IdentityPhoto, Plan, Subscription, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
+import type { BeforeAfter, DayPart, WaitlistEntry, GiftCards, Barber, Location, Booking, Business, Identity, Referrals, IdentityPhoto, Plan, Subscription, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
 
 // Singura legătură dintre interfață și server. `http.ts` vorbește cu serverul nostru
 // (Cloudflare Worker); `mock.ts` e varianta de test, folosită cât timp aplicația nu are
@@ -7,10 +7,14 @@ export interface BookingApi {
   getBusiness(): Promise<Business>;
   getServices(): Promise<Service[]>;
   getBarbers(): Promise<Barber[]>;
+  /** Locațiile active (primul pas la programare). */
+  getLocations(): Promise<Location[]>;
   getPromos(lang: string): Promise<Promo[]>;
   getAvailability(input: {
     serviceId: string;
     barberId: string | null; // null = oricine e liber
+    /** Pentru „orice frizer”: doar frizerii din această locație. */
+    locationId?: string | null;
     day: string; // YYYY-MM-DD
     /** Cu contul clientului (membrii TAF Club văd și orele pentru membri) sau al echipei (le vede pe toate). */
     token?: string | null;
@@ -25,7 +29,7 @@ export interface BookingApi {
   /** Logare cu Apple / Google: intră direct dacă contul e legat, altfel cere telefonul (tichet pentru completare). */
   socialSignIn(input: { provider: 'apple' | 'google'; idToken: string; nonce?: string; name?: string }): Promise<{ token?: string; needsPhone?: boolean; ticket?: string; email?: string | null; name?: string }>;
   socialComplete(input: { ticket: string; phone: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; ref?: string; qr?: string }): Promise<{ token: string }>;
-  getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null }>;
+  getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null; translated?: boolean }>;
   exportMe(token: string): Promise<unknown>;
   deleteMe(token: string): Promise<void>;
   logout(token: string): Promise<void>;
@@ -52,16 +56,18 @@ export interface BookingApi {
   /** Adresa paginii de plată online (Stripe). */
   payGiftCard(token: string, id: string): Promise<{ url: string }>;
   getBeforeAfter(token: string): Promise<BeforeAfter[]>;
+  /** Clientul nu mai vrea ca perechea să fie arătată altor clienți (consilierul AI). */
+  hideBeforeAfterExample(token: string, id: string): Promise<void>;
 
   listBookings(token: string): Promise<Booking[]>;
   createBooking(
     token: string,
-    input: { serviceId: string; barberId: string | null; start: string; note?: string },
+    input: { serviceId: string; barberId: string | null; locationId?: string | null; start: string; note?: string },
   ): Promise<Booking>;
   cancelBooking(token: string, id: string): Promise<Booking>;
   /** Lista de așteptare: înscrierile clientului, înscriere când ziua e plină, scoatere. */
   getWaitlist(token: string): Promise<WaitlistEntry[]>;
-  joinWaitlist(token: string, input: { serviceId: string; barberId: string | null; day: string; part: DayPart }): Promise<WaitlistEntry>;
+  joinWaitlist(token: string, input: { serviceId: string; barberId: string | null; locationId?: string | null; day: string; part: DayPart }): Promise<WaitlistEntry>;
   leaveWaitlist(token: string, id: string): Promise<void>;
   registerPushToken(token: string, pushToken: string, platform: string): Promise<void>;
 
@@ -78,6 +84,8 @@ export interface BookingApi {
   assistant(input: { messages: AssistantMsg[]; lang: string }, token?: string | null): Promise<{ reply: string; proposal?: AssistantProposal }>;
   /** Înregistrarea vocală (fișier local) → text. */
   assistantVoice(uri: string, lang: string, token?: string | null): Promise<{ text: string }>;
+  /** Consilierul de tunsori: poza (fișier local, nu se păstrează pe server) → 2-3 servicii potrivite ale salonului. */
+  advisor(uri: string, lang: string, token: string): Promise<AdvisorResult>;
 }
 
 /** Eroare de la server, cu codul lui (ex. `slot_unavailable`). */
@@ -90,5 +98,28 @@ export class ApiError extends Error {
   }
 }
 
+export type AdvisorSuggestion = {
+  serviceId: string;
+  name: string;
+  description: string;
+  price: number;
+  durationMin: number;
+  imageUrl: string | null;
+  reason: string;
+  /** Poze înainte/după reale ale serviciului (doar cele arătate ca exemplu, cu acordul clientului). */
+  examples: Array<{ before: string; after: string }>;
+};
+export type AdvisorResult = { summary: string; suggestions: AdvisorSuggestion[]; left: number };
+
 export type AssistantMsg = { role: 'user' | 'assistant'; content: string };
-export type AssistantProposal = { serviceId: string; barberId: string; start: string; serviceName: string; barberName: string; price: number; when: string };
+export type AssistantProposal = {
+  serviceId: string;
+  barberId: string;
+  locationId?: string | null;
+  start: string;
+  serviceName: string;
+  barberName: string;
+  locationName?: string | null;
+  price: number;
+  when: string;
+};

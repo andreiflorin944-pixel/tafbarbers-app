@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Platform, Share, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Platform, Pressable, Share, Text, View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import { api } from '@/api';
 import { useLoginGate } from '@/components/LoginGate';
@@ -10,6 +10,7 @@ import type { BeforeAfter } from '@/data/types';
 import { formatDate } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
+import { useT } from '@/i18n';
 import { colors, radius, space } from '@/theme';
 
 /** Numele de Instagram al salonului, din linkul sau din textul din setări (ex. „@tafbarbers”). */
@@ -22,6 +23,7 @@ function handleOf(instagram: string | undefined) {
 export default function BeforeAfterScreen() {
   const { token, business } = useApp();
   const gate = useLoginGate();
+  const { t } = useT();
   const [list, setList] = useState<BeforeAfter[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,13 +38,13 @@ export default function BeforeAfterScreen() {
   return (
     <Screen edges={['bottom']}>
       {list.length === 0 ? (
-        <Empty icon="images-outline" text="Aici apar pozele înainte și după, când frizerul ți le face la salon. Le poți pune apoi pe Instagram." />
+        <Empty icon="images-outline" text={t('ba.empty')} />
       ) : (
         <>
-          <Text style={[styles.muted, { marginBottom: space.sm }]}>Pune-le pe Instagram și etichetează-ne: {tag}</Text>
+          <Text style={[styles.muted, { marginBottom: space.sm }]}>{t('ba.tagUs', { tag })}</Text>
           <View style={{ gap: space.lg }}>
             {list.map((p) => (
-              <Pair key={p.id} p={p} tag={tag} shop={business?.name ?? 'TAF Barbers'} />
+              <Pair key={p.id} p={p} tag={tag} shop={business?.name ?? 'TAF Barbers'} token={token} />
             ))}
           </View>
         </>
@@ -51,23 +53,49 @@ export default function BeforeAfterScreen() {
   );
 }
 
-function Pair({ p, tag, shop }: { p: BeforeAfter; tag: string; shop: string }) {
+function Pair({ p, tag, shop, token }: { p: BeforeAfter; tag: string; shop: string; token: string | null }) {
   const ref = useRef<View>(null);
+  const { t } = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Perechea arătată altor clienți ca exemplu (consilierul AI): clientul vede asta și o poate opri oricând.
+  const [example, setExample] = useState(!!p.showExample);
+  const [exampleMsg, setExampleMsg] = useState<string | null>(null);
+
+  const stopExample = () => {
+    const go = () => {
+      if (!token) return;
+      setError(null);
+      api.hideBeforeAfterExample(token, p.id).then(
+        () => {
+          setExample(false);
+          setExampleMsg(t('ba.exampleStopped'));
+        },
+        (e) => setError(errorMessage(e)),
+      );
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(t('ba.exampleStopAsk'))) go();
+    } else {
+      Alert.alert(t('ba.exampleStop'), t('ba.exampleStopAsk'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.yes'), onPress: go },
+      ]);
+    }
+  };
 
   const share = async () => {
     setBusy(true);
     setError(null);
     try {
       if (Platform.OS === 'web' || !(await Sharing.isAvailableAsync())) {
-        await Share.share({ message: `Înainte și după la ${shop} ${tag}\n${p.after}` });
+        await Share.share({ message: `${t('ba.shareText', { shop, tag })}\n${p.after}` });
       } else {
         const uri = await captureRef(ref, { format: 'jpg', quality: 0.92, width: 1080 });
-        await Sharing.shareAsync(uri, { mimeType: 'image/jpeg', dialogTitle: `Pune pe Instagram și etichetează ${tag}`, UTI: 'public.jpeg' });
+        await Sharing.shareAsync(uri, { mimeType: 'image/jpeg', dialogTitle: t('ba.shareTitle', { tag }), UTI: 'public.jpeg' });
       }
     } catch (e) {
-      setError(errorMessage(e, 'Nu am putut pregăti poza. Încearcă din nou.'));
+      setError(errorMessage(e, t('ba.shareFailed')));
     } finally {
       setBusy(false);
     }
@@ -79,8 +107,8 @@ function Pair({ p, tag, shop }: { p: BeforeAfter; tag: string; shop: string }) {
       <View ref={ref} collapsable={false} style={{ aspectRatio: 4 / 5, backgroundColor: '#000', borderRadius: radius.md, overflow: 'hidden' }}>
         <View style={{ flex: 1, flexDirection: 'row', gap: 2 }}>
           {[
-            { uri: p.before, label: 'ÎNAINTE' },
-            { uri: p.after, label: 'DUPĂ' },
+            { uri: p.before, label: t('ba.before') },
+            { uri: p.after, label: t('ba.after') },
           ].map((x) => (
             <View key={x.label} style={{ flex: 1 }}>
               <Image source={{ uri: x.uri }} style={{ flex: 1 }} resizeMode="cover" />
@@ -116,7 +144,16 @@ function Pair({ p, tag, shop }: { p: BeforeAfter; tag: string; shop: string }) {
         </Text>
         <Ionicons name="logo-instagram" size={18} color={colors.muted} />
       </View>
-      <Button title="Distribuie pe Instagram" onPress={share} loading={busy} />
+      <Button title={t('ba.share')} onPress={share} loading={busy} />
+      {example ? (
+        <View style={{ gap: 4 }}>
+          <Text style={[styles.muted, { fontSize: 13 }]}>{t('ba.example')}</Text>
+          <Pressable onPress={stopExample} accessibilityRole="button">
+            <Text style={[styles.muted, { fontSize: 13, textDecorationLine: 'underline' }]}>{t('ba.exampleStop')}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {exampleMsg ? <Text style={{ color: colors.success, fontSize: 13 }}>{exampleMsg}</Text> : null}
       {error ? <Text style={{ color: colors.danger }}>{error}</Text> : null}
     </View>
   );

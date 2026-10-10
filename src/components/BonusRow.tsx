@@ -2,17 +2,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text, View } from 'react-native';
 import { Card, styles } from '@/components/ui';
 import type { Bonus } from '@/data/types';
+import { useT, type Key } from '@/i18n';
 import { formatDate } from '@/lib/dates';
 import { colors, space } from '@/theme';
 
-const STATUS: Record<Bonus['status'], { label: string; color: string }> = {
-  active: { label: 'Activ', color: '#4CAF7A' },
-  used: { label: 'Folosit', color: colors.muted },
-  expired: { label: 'Expirat', color: colors.muted },
+const STATUS: Record<Bonus['status'], { label: Key; color: string }> = {
+  active: { label: 'bonus.st.active', color: '#4CAF7A' },
+  used: { label: 'bonus.st.used', color: colors.muted },
+  expired: { label: 'bonus.st.expired', color: colors.muted },
 };
 
 /** Un bonus: titlul, de unde vine și până când e valabil. `action` = butonul echipei („Folosit”). */
 export function BonusRow({ b, action }: { b: Bonus; action?: React.ReactNode }) {
+  const { t } = useT();
   const st = STATUS[b.status];
   const dim = b.status !== 'active';
   return (
@@ -21,12 +23,12 @@ export function BonusRow({ b, action }: { b: Bonus; action?: React.ReactNode }) 
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={styles.cardTitle}>{b.title}</Text>
         <Text style={[styles.muted, { fontSize: 13 }]}>
-          {b.source === 'referral' ? `Pentru recomandare${b.referralName ? `: ${b.referralName}` : ''}` : 'Oferit de TAF'}
-          {b.status === 'active' && b.expiresAt ? ` · valabil până pe ${formatDate(new Date(b.expiresAt))}` : ''}
-          {b.status === 'used' && b.usedAt ? ` · folosit pe ${formatDate(new Date(b.usedAt))}` : ''}
+          {b.source === 'referral' ? `${t('bonus.referral')}${b.referralName ? `: ${b.referralName}` : ''}` : t('bonus.fromTaf')}
+          {b.status === 'active' && b.expiresAt ? ` · ${t('common.until', { date: formatDate(new Date(b.expiresAt)) })}` : ''}
+          {b.status === 'used' && b.usedAt ? t('bonus.usedOn', { date: formatDate(new Date(b.usedAt)) }) : ''}
         </Text>
       </View>
-      {action ?? <Text style={{ color: st.color, fontWeight: '700', fontSize: 12 }}>{st.label}</Text>}
+      {action ?? <Text style={{ color: st.color, fontWeight: '700', fontSize: 12 }}>{t(st.label)}</Text>}
     </Card>
   );
 }

@@ -1,13 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, ApiError } from '@/api';
-import type { Barber, Booking, Business, Me, Promo, Service } from '@/data/types';
+import type { Barber, Booking, Business, Location, Me, Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
 import { storage } from '@/lib/storage';
 import { LOOK_KEY, normalizeLook, readSavedLook, type SavedLook } from '@/theme';
 import { Platform } from 'react-native';
 
 type Draft = {
+  locationId: string | null; // locația aleasă la primul pas
   serviceId: string | null;
+  /** Serviciul a venit ales dinainte (pagina serviciului, un banner, un link): pasul „Serviciul” se sare. */
+  presetService: boolean;
   barberId: string | null; // null = oricine
   start: string | null;
   slotBarberId: string | null; // frizerul liber efectiv la ora aleasă
@@ -17,6 +20,8 @@ type AppState = {
   business: Business | null;
   services: Service[];
   barbers: Barber[];
+  /** Locațiile active, în ordinea din panou. */
+  locations: Location[];
   promos: Promo[];
   loading: boolean;
   loadError: boolean;
@@ -38,10 +43,11 @@ type AppState = {
   cancelBooking: (id: string) => Promise<void>;
   serviceById: (id: string | null) => Service | undefined;
   barberById: (id: string | null) => Barber | undefined;
+  locationById: (id: string | null | undefined) => Location | undefined;
 };
 
 const TOKEN_KEY = 'taf.session';
-const emptyDraft: Draft = { serviceId: null, barberId: null, start: null, slotBarberId: null };
+const emptyDraft: Draft = { locationId: null, serviceId: null, presetService: false, barberId: null, start: null, slotBarberId: null };
 const Ctx = createContext<AppState | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
@@ -49,6 +55,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [business, setBusiness] = useState<Business | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -61,16 +68,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setLoadError(false);
-    Promise.all([api.getBusiness(), api.getServices(), api.getBarbers()])
-      .then(([b, s, br]) => {
+    Promise.all([api.getBusiness(), api.getServices(), api.getBarbers(), api.getLocations()])
+      .then(([b, s, br, loc]) => {
         setBusiness(b);
         rememberLook(b.appearance);
         setServices(s);
         setBarbers(br);
+        setLocations(loc);
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, [attempt]);
+    // Altă limbă: serviciile, frizerii și textele salonului se reîncarcă traduse.
+  }, [attempt, lang]);
 
   useEffect(() => {
     api.getPromos(lang).then(setPromos, () => setPromos([]));
@@ -108,13 +117,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshBookings();
-  }, [refreshBookings]);
+  }, [refreshBookings, lang]);
 
   const value = useMemo<AppState>(
     () => ({
       business,
       services,
       barbers,
+      locations,
       promos,
       loading,
       loadError,
@@ -151,8 +161,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       },
       serviceById: (id) => services.find((s) => s.id === id),
       barberById: (id) => barbers.find((b) => b.id === id),
+      locationById: (id) => locations.find((l) => l.id === id),
     }),
-    [business, services, barbers, promos, loading, loadError, draft, user, token, sessionReady, bookings, refreshBookings],
+    [business, services, barbers, locations, promos, loading, loadError, draft, user, token, sessionReady, bookings, refreshBookings],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

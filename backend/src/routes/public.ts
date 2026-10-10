@@ -11,17 +11,21 @@ import { otpEmail } from '../messages';
 import { sendEmail, sendSms } from '../notify';
 import { addDays, iso, isDay, localDay } from '../time';
 import { DOCS, legalDoc, type Doc } from '../legal';
+import { recordConsent } from '../consents';
+import { localize } from '../contentI18n';
+import { activeLocationId, activeLocations } from '../locations';
 import { getAppearance } from '../appearance';
 import { product, type ProductRow } from '../shop';
 import { parseBirthDate } from '../identity';
 import { applyReferral } from '../referrals';
 import { handleStripeEvent, onlinePaymentsOn, verifyStripeSignature } from '../payments';
+import { advisorAvailable } from '../advisor';
 import { linkTicket, readTicket, socialConfig, socialSignIn, verifyIdToken, type Provider } from '../socialLogin';
 
 export const publicRoutes = new Hono<AppEnv>();
 
 publicRoutes.get('/business', async (c) => {
-  const [biz, appearance, auto] = await Promise.all([getBusiness(c.env), getAppearance(c.env), getAutomations(c.env)]);
+  const [biz, appearance, auto, advisor] = await Promise.all([getBusiness(c.env), getAppearance(c.env), getAutomations(c.env), advisorAvailable(c.env)]);
   // Programul salonului = reuniunea programului frizerilor, pe zile (0 = duminică).
   const rows = await c.env.DB.prepare(
     `SELECT h.weekday, MIN(h.start_min) AS s, MAX(h.end_min) AS e
@@ -32,7 +36,9 @@ publicRoutes.get('/business', async (c) => {
     const r = rows.results.find((x) => x.weekday === wd);
     return r ? { open: hm(r.s), close: hm(r.e) } : null;
   });
-  return c.json({ ...biz, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env) });
+  // Textele despre salon în limba aplicației (`?lang=en`), unde au fost traduse.
+  const [texts] = await localize(c.env, c.req.query('lang'), [biz], ['tagline', 'description', 'cancellationPolicy']);
+  return c.json({ ...texts, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env), advisor });
 });
 
 // Stripe ne anunță aici plățile. Semnătura se verifică pe corpul exact, cu secretul webhook-ului.
@@ -64,23 +70,28 @@ publicRoutes.get('/media/:id', async (c) => {
 
 publicRoutes.get('/products', async (c) => {
   const r = await c.env.DB.prepare('SELECT * FROM products WHERE active = 1 AND for_sale = 1 ORDER BY sort, name').all<ProductRow>();
-  return c.json(r.results.map(product));
+  return c.json(await localize(c.env, c.req.query('lang'), r.results.map(product), ['name', 'description']));
 });
 
 publicRoutes.get('/services', async (c) => {
   const r = await c.env.DB.prepare('SELECT * FROM services WHERE active = 1 ORDER BY sort, name').all<ServiceRow>();
-  return c.json(r.results.map(service));
+  return c.json(await localize(c.env, c.req.query('lang'), r.results.map(service), ['name', 'description']));
 });
 
+// Locațiile active (primul pas la programare). Numele și adresa rămân cum sunt scrise în panou (nume proprii).
+publicRoutes.get('/locations', async (c) => c.json(await activeLocations(c.env)));
+
+// Fiecare frizer cu locația lui (`locationId`); frizerii dintr-o locație dezactivată nu mai apar.
 publicRoutes.get('/barbers', async (c) => {
   const r = await c.env.DB.prepare(
     `SELECT b.*, ${BARBER_SERVICE_COLS}
-     FROM barbers b WHERE b.active = 1 ORDER BY b.sort, b.name`,
+     FROM barbers b LEFT JOIN locations l ON l.id = b.location_id
+     WHERE b.active = 1 AND (b.location_id IS NULL OR l.active = 1) ORDER BY b.sort, b.name`,
   ).all<BarberRow>();
-  return c.json(r.results.map(barber));
+  return c.json(await localize(c.env, c.req.query('lang'), r.results.map(barber), ['role', 'bio']));
 });
 
-publicRoutes.get('/plans', async (c) => c.json(await getPlans(c.env, false)));
+publicRoutes.get('/plans', async (c) => c.json(await localize(c.env, c.req.query('lang'), await getPlans(c.env, false), ['name', 'description'])));
 
 publicRoutes.get('/promos', async (c) => {
   const now = iso(new Date());
@@ -94,9 +105,10 @@ publicRoutes.get('/promos', async (c) => {
   return c.json(r.results.map((p) => promo(p, lang)));
 });
 
-/** GET /availability?serviceId=…&barberId=…&day=YYYY-MM-DD */
+/** GET /availability?serviceId=…&barberId=…&locationId=…&day=YYYY-MM-DD (fără frizer: orice frizer din locație) */
 publicRoutes.get('/availability', async (c) => {
   const { serviceId, barberId, day } = c.req.query();
+  const locationId = await activeLocationId(c.env, c.req.query('locationId'));
   if (!serviceId || !isDay(day)) throw new HttpError(400, 'invalid_query');
   const biz = await getBusiness(c.env);
   const today = localDay(c.env.TIMEZONE, new Date());
@@ -104,7 +116,7 @@ publicRoutes.get('/availability', async (c) => {
   // Cu cont: membrii TAF Club văd și orele „doar membri” (marcate); panoul le vede pe toate.
   const who = await optionalSession(c);
   const access = who?.kind === 'admin' ? 'staff' : await accessFor(c.env, who?.id);
-  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, day, access }));
+  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, locationId, day, access }));
 });
 
 publicRoutes.get('/legal/:doc', async (c) => {
@@ -252,6 +264,7 @@ publicRoutes.post('/auth/verify', async (c) => {
         row.channel === 'email' ? 1 : 0,
       )
       .run();
+    await recordConsent(c.env, c, client.id, { source: 'register', terms: true, marketing: { push: !!mk, email: !!mk, sms: !!mk }, lang: body.lang });
     await applyReferral(c.env, client.id, body.ref);
   } else {
     // Contul a fost creat cu cod pe e-mail (numărul nu a fost dovedit), iar acum cineva intră cu cod prin SMS pe acel număr:
@@ -275,12 +288,30 @@ publicRoutes.post('/auth/verify', async (c) => {
     if (birthDate) {
       await c.env.DB.prepare('UPDATE clients SET birth_date = coalesce(birth_date, ?) WHERE id = ?').bind(birthDate, client.id).run();
     }
+    // Acordul pentru oferte dat acum (bifa de la „Creează cont” pe un număr care avea deja cont): îl păstrăm ca dovadă doar dacă s-a schimbat ceva.
+    let mkChanged = false;
     if (body.marketing === true) {
-      await c.env.DB.prepare('UPDATE clients SET marketing_push = 1, marketing_email = 1, marketing_sms = 1, marketing_consent_at = ? WHERE id = ?').bind(iso(new Date()), client.id).run();
+      const r = await c.env.DB.prepare(
+        `UPDATE clients SET marketing_push = 1, marketing_email = 1, marketing_sms = 1, marketing_consent_at = ?
+         WHERE id = ? AND NOT (marketing_push = 1 AND marketing_email = 1 AND marketing_sms = 1)`,
+      )
+        .bind(iso(new Date()), client.id)
+        .run();
+      mkChanged = !!r.meta.changes;
     }
     // Clienții adăugați din panou își dau acordul la prima intrare în aplicație.
+    let firstAccept = false;
     if (body.acceptTerms === true) {
-      await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = coalesce(terms_accepted_at, ?) WHERE id = ?').bind(iso(new Date()), client.id).run();
+      const r = await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL').bind(iso(new Date()), client.id).run();
+      firstAccept = !!r.meta.changes;
+    }
+    if (firstAccept || mkChanged) {
+      await recordConsent(c.env, c, client.id, {
+        source: firstAccept ? 'first_login' : 'login',
+        terms: firstAccept,
+        marketing: mkChanged ? { push: true, email: true, sms: true } : null,
+        lang: body.lang,
+      });
     }
   }
   // Campaniile QR: codul scanat (îl trimite aplicația) sau o scanare recentă din aceeași rețea.
@@ -324,6 +355,11 @@ publicRoutes.post('/auth/social/complete', async (c) => {
     // Numărul are deja cont: îl legăm doar dacă e același e-mail confirmat; altfel trebuie codul pe acest număr.
     if (!(t.email_verified && t.email && existing.email?.toLowerCase() === t.email)) throw new HttpError(409, 'phone_has_account');
     clientId = existing.id;
+    // Client adăugat din panou care intră prima dată, cu Apple / Google: acordul îl dă acum.
+    if (body.acceptTerms === true) {
+      const r = await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL').bind(iso(new Date()), clientId).run();
+      if (r.meta.changes) await recordConsent(c.env, c, clientId, { source: 'first_login', terms: true, marketing: null, lang: body.lang });
+    }
   } else {
     if (!t.email_verified || !t.email) throw new HttpError(400, 'code_required');
     if (body.acceptTerms !== true) throw new HttpError(400, 'terms_required');
@@ -351,6 +387,7 @@ publicRoutes.post('/auth/social/complete', async (c) => {
         mk ? iso(new Date()) : null,
       )
       .run();
+    await recordConsent(c.env, c, clientId, { source: 'social', terms: true, marketing: { push: !!mk, email: !!mk, sms: !!mk }, lang: body.lang });
     await applyReferral(c.env, clientId, body.ref);
   }
   await linkTicket(c.env, t, clientId);

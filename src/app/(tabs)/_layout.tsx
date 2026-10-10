@@ -46,10 +46,11 @@ export default function TabsLayout() {
           tabBarButton: () => (
             <View style={{ flex: 1, alignItems: 'center' }}>
               <Pressable
-                accessibilityLabel="Programare nouă"
+                accessibilityLabel={t('nav.newBooking')}
                 onPress={() => {
+                  // Programarea începe mereu cu locația, apoi frizerul, serviciul și ora.
                   resetDraft();
-                  router.push('/book/service');
+                  router.push('/book/location');
                 }}
                 style={({ pressed }) => ({
                   width: 56,

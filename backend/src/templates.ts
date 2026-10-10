@@ -25,9 +25,12 @@ export const WILDCARDS: Record<string, string> = {
   reason: 'motivul refuzului',
   times: 'orele eliberate (ex. 14:30, 15:00)',
   booklink: 'linkul care deschide programarea în aplicație',
+  locationname: 'numele locației',
+  locationaddress: 'adresa locației',
+  location: 'locația și adresa (doar când salonul are mai multe locații; altfel nu apare nimic)',
 };
 
-const BOOKING = ['businessname', 'customerfullname', 'customerfirstname', 'servicename', 'barbername', 'datetime'];
+const BOOKING = ['businessname', 'customerfullname', 'customerfirstname', 'servicename', 'barbername', 'datetime', 'locationname', 'locationaddress', 'location'];
 const ORDER = ['businessname', 'customerfullname', 'customerfirstname', 'ordernumber'];
 
 type Def = { label: string; vars: string[]; fields: TplField[]; ro: Partial<Record<TplField, string>>; en?: Partial<Record<TplField, string>>; fr?: Partial<Record<TplField, string>> };
@@ -47,14 +50,14 @@ export const TEMPLATE_DEFS: Record<TplEvent, Def> = {
     vars: BOOKING,
     fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
     ro: {
-      sms: 'Programare confirmată la ##businessname##: ##servicename##, ##datetime##, cu ##barbername##. Te așteptăm!',
+      sms: 'Programare confirmată la ##businessname##: ##servicename##, ##datetime##, cu ##barbername##. ##location## Te așteptăm!',
       pushTitle: 'Programare confirmată',
       pushBody: '##servicename## cu ##barbername##, ##datetime##',
       emailSubject: 'Programare confirmată · ##businessname##',
-      emailBody: 'Salut ##customerfirstname##, programarea ta e confirmată: ##servicename## cu ##barbername##, ##datetime##. Te așteptăm!',
+      emailBody: 'Salut ##customerfirstname##, programarea ta e confirmată: ##servicename## cu ##barbername##, ##datetime##. ##location## Te așteptăm!',
     },
-    en: { sms: 'Booking confirmed at ##businessname##: ##servicename##, ##datetime##, with ##barbername##. See you!' },
-    fr: { sms: 'Rendez-vous confirmé chez ##businessname## : ##servicename##, ##datetime##, avec ##barbername##. À bientôt !' },
+    en: { sms: 'Booking confirmed at ##businessname##: ##servicename##, ##datetime##, with ##barbername##. ##location## See you!' },
+    fr: { sms: 'Rendez-vous confirmé chez ##businessname## : ##servicename##, ##datetime##, avec ##barbername##. ##location## À bientôt !' },
   },
   cancel: {
     label: 'Programare anulată de salon',
@@ -75,14 +78,14 @@ export const TEMPLATE_DEFS: Record<TplEvent, Def> = {
     vars: BOOKING,
     fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
     ro: {
-      sms: 'Am primit cererea ta la ##businessname##: ##servicename##, ##datetime##, cu ##barbername##. Îți scriem imediat ce o confirmăm.',
+      sms: 'Am primit cererea ta la ##businessname##: ##servicename##, ##datetime##, cu ##barbername##. ##location## Îți scriem imediat ce o confirmăm.',
       pushTitle: 'Am primit cererea ta',
       pushBody: '##servicename## cu ##barbername##, ##datetime##. Îți scriem imediat ce o confirmăm.',
       emailSubject: 'Am primit cererea ta · ##businessname##',
-      emailBody: 'Salut ##customerfirstname##, am primit cererea ta de programare: ##servicename## cu ##barbername##, ##datetime##. Ora e rezervată pentru tine; îți scriem imediat ce o confirmăm.',
+      emailBody: 'Salut ##customerfirstname##, am primit cererea ta de programare: ##servicename## cu ##barbername##, ##datetime##. ##location## Ora e rezervată pentru tine; îți scriem imediat ce o confirmăm.',
     },
-    en: { sms: 'We got your request at ##businessname##: ##servicename##, ##datetime##, with ##barbername##. We will text you once it is confirmed.' },
-    fr: { sms: 'Demande reçue chez ##businessname## : ##servicename##, ##datetime##, avec ##barbername##. Nous vous écrivons dès la confirmation.' },
+    en: { sms: 'We got your request at ##businessname##: ##servicename##, ##datetime##, with ##barbername##. ##location## We will text you once it is confirmed.' },
+    fr: { sms: 'Demande reçue chez ##businessname## : ##servicename##, ##datetime##, avec ##barbername##. ##location## Nous vous écrivons dès la confirmation.' },
   },
   booking_request_refused: {
     label: 'Cerere de programare refuzată',
@@ -117,42 +120,42 @@ export const TEMPLATE_DEFS: Record<TplEvent, Def> = {
     vars: [...BOOKING, 'times', 'booklink'],
     fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
     ro: {
-      sms: 'S-a eliberat un loc la ##businessname##: ##servicename##, ##datetime##, cu ##barbername## (ore libere: ##times##). Rezervă repede: ##booklink##',
+      sms: 'S-a eliberat un loc la ##businessname##: ##servicename##, ##datetime##, cu ##barbername## (ore libere: ##times##). ##location## Rezervă repede: ##booklink##',
       pushTitle: 'S-a eliberat un loc',
       pushBody: '##servicename##, ##datetime## (ore libere: ##times##). Rezervă până nu-l ia altcineva.',
       emailSubject: 'S-a eliberat un loc · ##businessname##',
-      emailBody: 'Salut ##customerfirstname##, s-a eliberat un loc în ziua pentru care ai cerut să te anunțăm: ##servicename## cu ##barbername##, ##datetime## (ore libere: ##times##). Locul nu e rezervat pentru tine, așa că programează-te repede din aplicație: ##booklink##',
+      emailBody: 'Salut ##customerfirstname##, s-a eliberat un loc în ziua pentru care ai cerut să te anunțăm: ##servicename## cu ##barbername##, ##datetime## (ore libere: ##times##). ##location## Locul nu e rezervat pentru tine, așa că programează-te repede din aplicație: ##booklink##',
     },
-    en: { sms: 'A spot opened up at ##businessname##: ##servicename##, ##datetime##, with ##barbername## (free times: ##times##). Book fast: ##booklink##' },
-    fr: { sms: 'Une place s’est libérée chez ##businessname## : ##servicename##, ##datetime##, avec ##barbername## (horaires libres : ##times##). Réservez vite : ##booklink##' },
+    en: { sms: 'A spot opened up at ##businessname##: ##servicename##, ##datetime##, with ##barbername## (free times: ##times##). ##location## Book fast: ##booklink##' },
+    fr: { sms: 'Une place s’est libérée chez ##businessname## : ##servicename##, ##datetime##, avec ##barbername## (horaires libres : ##times##). ##location## Réservez vite : ##booklink##' },
   },
   reminder_24h: {
     label: 'Memento cu o zi înainte',
     vars: BOOKING,
     fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
     ro: {
-      sms: 'Memento ##businessname##: mâine, ##datetime##, ai programare la ##barbername##. Dacă nu poți ajunge, anuleaz-o din aplicație.',
+      sms: 'Memento ##businessname##: mâine, ##datetime##, ai programare la ##barbername##. ##location## Dacă nu poți ajunge, anuleaz-o din aplicație.',
       pushTitle: 'Programare mâine',
       pushBody: '##servicename## cu ##barbername##, ##datetime##',
       emailSubject: 'Memento programare · ##businessname##',
-      emailBody: 'Salut ##customerfirstname##, mâine, ##datetime##, ai programare la ##barbername## pentru ##servicename##. Dacă nu poți ajunge, anuleaz-o din aplicație.',
+      emailBody: 'Salut ##customerfirstname##, mâine, ##datetime##, ai programare la ##barbername## pentru ##servicename##. ##location## Dacă nu poți ajunge, anuleaz-o din aplicație.',
     },
-    en: { sms: 'Reminder from ##businessname##: tomorrow, ##datetime##, with ##barbername##. Cannot make it? Cancel in the app.' },
-    fr: { sms: 'Rappel ##businessname## : demain, ##datetime##, avec ##barbername##. Empêché ? Annulez dans l’app.' },
+    en: { sms: 'Reminder from ##businessname##: tomorrow, ##datetime##, with ##barbername##. ##location## Cannot make it? Cancel in the app.' },
+    fr: { sms: 'Rappel ##businessname## : demain, ##datetime##, avec ##barbername##. ##location## Empêché ? Annulez dans l’app.' },
   },
   reminder_2h: {
     label: 'Memento cu 2 ore înainte',
     vars: BOOKING,
     fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
     ro: {
-      sms: 'Te așteptăm la ##businessname## în curând: ##datetime##, cu ##barbername##.',
+      sms: 'Te așteptăm la ##businessname## în curând: ##datetime##, cu ##barbername##. ##location##',
       pushTitle: 'Programare în curând',
       pushBody: '##servicename## cu ##barbername##, ##datetime##',
       emailSubject: 'Te așteptăm în curând · ##businessname##',
-      emailBody: 'Salut ##customerfirstname##, te așteptăm în curând: ##datetime##, cu ##barbername##.',
+      emailBody: 'Salut ##customerfirstname##, te așteptăm în curând: ##datetime##, cu ##barbername##. ##location##',
     },
-    en: { sms: 'See you soon at ##businessname##: ##datetime##, with ##barbername##.' },
-    fr: { sms: 'À tout à l’heure chez ##businessname## : ##datetime##, avec ##barbername##.' },
+    en: { sms: 'See you soon at ##businessname##: ##datetime##, with ##barbername##. ##location##' },
+    fr: { sms: 'À tout à l’heure chez ##businessname## : ##datetime##, avec ##barbername##. ##location##' },
   },
   review: {
     label: 'Cerere de recenzie după tunsoare',

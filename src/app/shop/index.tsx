@@ -3,11 +3,14 @@ import { Backdrop } from '@/components/Backdrop';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CartBar, ProductImage, QtyControl } from '@/components/Shop';
 import { styles } from '@/components/ui';
+import { useT } from '@/i18n';
+import { lei } from '@/lib/price';
 import { useCart } from '@/state/Cart';
 import { colors, radius, space } from '@/theme';
 
 export default function Shop() {
   const { products, reloadProducts } = useCart();
+  const { t } = useT();
   // Stocul se schimbă: la fiecare intrare în magazin luăm lista din nou.
   useEffect(reloadProducts, []);
 
@@ -15,8 +18,8 @@ export default function Shop() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Backdrop />
       <ScrollView contentContainerStyle={s.content}>
-        <Text style={[styles.muted, { marginBottom: space.sm }]}>Comanzi din aplicație, ridici din salon și plătești acolo.</Text>
-        {products.length === 0 ? <Text style={styles.muted}>Momentan nu sunt produse în magazin.</Text> : null}
+        <Text style={[styles.muted, { marginBottom: space.sm }]}>{t('shop.intro')}</Text>
+        {products.length === 0 ? <Text style={styles.muted}>{t('shop.empty')}</Text> : null}
         <View style={s.grid}>
           {products.map((p) => (
             <View key={p.id} style={s.card}>
@@ -30,8 +33,8 @@ export default function Shop() {
                 </Text>
               ) : null}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <Text style={styles.price}>{p.price} lei</Text>
-                {p.stock !== null && p.stock > 0 && p.stock <= 3 ? <Text style={s.low}>Ultimele {p.stock}</Text> : null}
+                <Text style={styles.price}>{lei(p.price)}</Text>
+                {p.stock !== null && p.stock > 0 && p.stock <= 3 ? <Text style={s.low}>{t('shop.last', { n: p.stock })}</Text> : null}
               </View>
               <QtyControl product={p} />
             </View>

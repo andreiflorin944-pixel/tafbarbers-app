@@ -1,8 +1,10 @@
 import type { Env } from './env';
 import { getBusiness, getSetting, setSetting } from './db';
+import { langOf, localizeText, lookup } from './contentI18n';
 
-// Regulamentele afișate în aplicație și pe web. Se editează din panou (Regulamente);
-// până atunci se folosesc modelele de mai jos. Limbile lipsă cad pe română.
+// Regulamentele afișate în aplicație și pe web. Se editează din panou (Regulamente), doar în română;
+// până atunci se folosesc modelele de mai jos. În engleză și franceză se arată traducerea automată (cu mențiunea că
+// varianta oficială e cea în română), iar până e gata, româna.
 
 export const DOCS = ['terms', 'privacy'] as const;
 export type Doc = (typeof DOCS)[number];
@@ -82,31 +84,34 @@ Această politică explică ce date personale prelucrăm când folosești aplica
 2. Ce date prelucrăm
 • Date de cont: nume, număr de telefon, adresă de e-mail, data nașterii, limba aleasă.
 • Programări: serviciul, frizerul, data și ora, starea (încheiată, neprezentare, anulată), plata la salon (sumă, metodă, bacșiș) și notițele interne ale echipei despre serviciu.
-• TAF Identity (opțional): poza de profil și preferințele pe care le completezi tu; pozele făcute de echipă la salon pentru fișa ta și, doar cu acordul tău, poze „înainte și după”.
+• TAF Identity (opțional): poza de profil și preferințele pe care le completezi tu; pozele făcute de echipă la salon pentru fișa ta și, doar cu acordul tău, poze „înainte și după”. Tot doar cu acordul tău (păstrăm data și cine din echipă l-a înregistrat), o pereche „înainte și după” poate fi arătată altor clienți, ca exemplu, în consilierul AI de tunsori; vezi asta în Aplicație (Cont → Tunsorile mele) și o poți opri oricând de acolo.
+• Consilierul AI de tunsori (opțional): poza pe care o faci pentru analiză e trimisă serviciului Workers AI (Cloudflare), care descrie fața și părul ca să îți propună servicii ale salonului. Poza nu se salvează nicăieri și nu e văzută de echipă; păstrăm doar numărul de analize pe zi.
 • Cumpărături: comenzi din magazin, carduri cadou, abonamente, bonusuri și recomandări (cine te-a recomandat și pe cine ai recomandat).
 • Plăți online: identificatorul tranzacției și suma. Datele cardului sunt prelucrate direct de Stripe; noi nu le vedem.
 • Comunicări: acordul pentru oferte (cu data), identificatorul dispozitivului pentru notificări push, jurnalul mesajelor trimise (tip, dată, stare).
-• Date tehnice: date necesare funcționării (de exemplu sesiunea de conectare, adresa IP în jurnalele serverului, pentru securitate). Nu folosim cookie-uri de urmărire sau publicitate și nu folosim instrumente de analiză care te urmăresc între aplicații.
+• Date tehnice: date necesare funcționării (de exemplu sesiunea de conectare, adresa IP în jurnalele serverului, pentru securitate). Când accepți termenii și politica de confidențialitate sau îți dai ori îți retragi acordul pentru oferte, păstrăm dovada: data și ora, versiunea documentelor, adresa IP, tipul dispozitivului (browser sau aplicație) și limba. Nu folosim cookie-uri de urmărire sau publicitate și nu folosim instrumente de analiză care te urmăresc între aplicații.
 
 3. De ce și pe ce temei
 • Crearea contului, programările, comenzile, cardurile cadou și abonamentele: executarea contractului cu tine (art. 6 alin. 1 lit. b GDPR).
 • Mesajele de serviciu (cod de intrare, confirmare, reamintire, anulare, comandă gata): executarea contractului și interesul nostru legitim de a reduce neprezentările.
 • Oferte, noutăți, „Ne e dor de tine”, anunțuri cu ore libere: doar cu acordul tău (art. 6 alin. 1 lit. a GDPR și Legea 506/2004), pe care îl retragi oricând din Cont, fără să afecteze ce s-a trimis înainte.
 • Urarea și bonusul de ziua ta: executarea contractului (programul de bonusuri din Aplicație); poți renunța scriindu-ne.
-• Pozele „înainte și după”: acordul tău.
+• Pozele „înainte și după” și arătarea lor ca exemplu altor clienți: acordul tău, pe care îl retragi oricând.
+• Analiza pozei în consilierul AI de tunsori: acordul tău, dat în Aplicație înainte de fiecare analiză.
 • Evidența financiar-contabilă (încasări, bonuri, NIR): obligație legală (art. 6 alin. 1 lit. c GDPR).
 • Securitatea Aplicației și prevenirea fraudelor (de exemplu limitarea codurilor trimise): interesul nostru legitim.
+• Dovada acordurilor tale (termeni, confidențialitate, oferte): obligația legală de a putea demonstra acordul (art. 7 alin. 1 și art. 6 alin. 1 lit. c GDPR).
 Nu luăm decizii automate cu efecte juridice asupra ta și nu facem profilare în acest sens.
 
 4. Cât timp păstrăm datele
 • Datele de cont și istoricul: cât timp ai cont.
-• La ștergerea contului: numele, telefonul, e-mailul, data nașterii, pozele, notițele și acordurile se șterg imediat. Programările și încasările rămân anonimizate (fără date despre tine), pentru evidența contabilă.
+• La ștergerea contului: numele, telefonul, e-mailul, data nașterii, pozele, notițele și preferințele se șterg imediat. Din dovada acordurilor rămâne doar data și ce ai acceptat, fără adresa IP și fără dispozitiv, ca să putem arăta că acordul a existat. Programările și încasările rămân anonimizate (fără date despre tine), pentru evidența contabilă.
 • Documentele financiar-contabile: pe durata cerută de legislația contabilă și fiscală.
 • Codurile de intrare: câteva minute, până expiră.
 
 5. Cui transmitem datele
 Nu vindem datele tale. Le transmitem doar furnizorilor care ne ajută să livrăm serviciul, cu contracte care îi obligă să le protejeze:
-• Cloudflare, Inc. (găzduire, bază de date, securitate);
+• Cloudflare, Inc. (găzduire, bază de date, securitate, traducerea automată și analiza pozelor din consilierul AI de tunsori);
 • SMSAdvert (trimiterea SMS-urilor, România);
 • Resend (trimiterea e-mailurilor);
 • Expo (650 Industries) și serviciile de notificări Apple și Google (notificări push);
@@ -130,8 +135,8 @@ Putem actualiza această politică; versiunea curentă e mereu în Aplicație, c
 
 Contact pentru date personale: {company} · {email} · {phone}`;
 
-/** Data ultimei schimbări a modelelor de mai sus (apare ca „Ultima actualizare” cât timp nu le editezi în panou). */
-const LEGAL_TEMPLATE_DATE = '2026-10-06';
+/** Data ultimei schimbări a fiecărui model de mai sus (apare ca „Ultima actualizare” cât timp nu e editat în panou). */
+const TEMPLATE_DATE: Record<Doc, string> = { terms: '2026-10-09', privacy: '2026-10-10' };
 
 const DEFAULTS: Record<Doc, Version> = {
   terms: { title: 'Termeni și condiții', body: TERMS_RO },
@@ -147,31 +152,80 @@ export async function saveLegal(env: Env, store: LegalStore) {
   await setSetting(env, 'legal', store);
 }
 
-/** Textul gata de afișat: din panou sau modelul implicit, cu datele salonului completate. */
+// Bucățile scrise de server în text, în limba cititorului.
+const FILL: Record<'ro' | 'en' | 'fr', { todo: string; policy: (h: number) => string; what: Record<string, string> }> = {
+  ro: {
+    todo: 'de completat',
+    policy: (h) => `Poți anula din aplicație cu cel puțin ${h} ore înainte.`,
+    what: { company: 'denumirea firmei', cui: 'CUI', regcom: 'nr. Registrul Comerțului', seat: 'sediul social', email: 'e-mail de contact', phone: 'telefon', address: 'adresa salonului' },
+  },
+  en: {
+    todo: 'to be completed',
+    policy: (h) => `You can cancel in the app at least ${h} hours in advance.`,
+    what: { company: 'company name', cui: 'tax ID', regcom: 'trade register no.', seat: 'registered office', email: 'contact e-mail', phone: 'phone', address: 'salon address' },
+  },
+  fr: {
+    todo: 'à compléter',
+    policy: (h) => `Vous pouvez annuler dans l’application au moins ${h} heures à l’avance.`,
+    what: { company: 'nom de la société', cui: 'code fiscal', regcom: 'n° registre du commerce', seat: 'siège social', email: 'e-mail de contact', phone: 'téléphone', address: 'adresse du salon' },
+  },
+};
+
+/** Textul românesc de bază al unui regulament (cel salvat în panou sau modelul), înainte de completarea datelor firmei. */
+export async function legalBase(env: Env, doc: Doc, store?: LegalStore): Promise<Version> {
+  const s = store ?? (await getLegal(env));
+  return s[doc]?.versions?.ro ?? DEFAULTS[doc];
+}
+
+/** Textul gata de afișat: din panou sau modelul implicit, tradus dacă se poate, cu datele salonului completate. */
 export async function legalDoc(env: Env, doc: Doc, lang: string) {
   const [store, biz] = await Promise.all([getLegal(env), getBusiness(env)]);
   const v = store[doc]?.versions ?? {};
-  const chosen = v[lang as 'ro'] ?? v.ro ?? DEFAULTS[doc];
+  const base = await legalBase(env, doc, store);
+  const want = langOf(lang);
+  let chosen = base;
+  let shown: 'ro' | 'en' | 'fr' = 'ro';
+  if (want !== 'ro') {
+    const m = await lookup(env, want, [base.title, base.body]);
+    const body = m.get(base.body);
+    if (body) {
+      chosen = { title: m.get(base.title) ?? base.title, body };
+      shown = want;
+    }
+  }
+  const f = FILL[shown];
   const contact = [biz.phone, biz.address, biz.website].filter(Boolean).join(' · ') || biz.name;
   const b = biz as typeof biz & Partial<Record<'legalName' | 'cui' | 'regCom' | 'legalAddress' | 'legalEmail', string>>;
-  const todo = (v: string | undefined, what: string) => (v?.trim() ? v.trim() : `[de completat: ${what}]`);
-  const updated = store[doc]?.updatedAt ?? LEGAL_TEMPLATE_DATE;
-  const base = (env.PUBLIC_URL ?? '').replace(/\/$/, '');
+  const todo = (v: string | undefined, what: string) => (v?.trim() ? v.trim() : `[${f.todo}: ${f.what[what]}]`);
+  const updated = store[doc]?.updatedAt ?? TEMPLATE_DATE[doc];
+  const publicBase = (env.PUBLIC_URL ?? '').replace(/\/$/, '');
+  const policy = biz.cancellationPolicy ? await localizeText(env, shown, biz.cancellationPolicy) : f.policy(biz.cancelHours);
   const fill = (s: string) =>
     s
       .replaceAll('{name}', biz.name)
       .replaceAll('{contact}', contact)
-      .replaceAll('{company}', todo(b.legalName, 'denumirea firmei'))
-      .replaceAll('{cui}', todo(b.cui, 'CUI'))
-      .replaceAll('{regcom}', todo(b.regCom, 'nr. Registrul Comerțului'))
-      .replaceAll('{seat}', todo(b.legalAddress, 'sediul social'))
-      .replaceAll('{email}', todo(b.legalEmail, 'e-mail de contact'))
-      .replaceAll('{phone}', todo(biz.phone, 'telefon'))
-      .replaceAll('{address}', todo(biz.address, 'adresa salonului'))
-      .replaceAll('{deleteUrl}', `${base || 'https://app.tafbarbers.ro'}/sterge-cont`)
+      .replaceAll('{company}', todo(b.legalName, 'company'))
+      .replaceAll('{cui}', todo(b.cui, 'cui'))
+      .replaceAll('{regcom}', todo(b.regCom, 'regcom'))
+      .replaceAll('{seat}', todo(b.legalAddress, 'seat'))
+      .replaceAll('{email}', todo(b.legalEmail, 'email'))
+      .replaceAll('{phone}', todo(biz.phone, 'phone'))
+      .replaceAll('{address}', todo(biz.address, 'address'))
+      .replaceAll('{deleteUrl}', `${publicBase || 'https://app.tafbarbers.ro'}/sterge-cont`)
       .replaceAll('{updated}', updated.slice(0, 10).split('-').reverse().join('.'))
-      .replaceAll('{policy}', biz.cancellationPolicy || `Poți anula din aplicație cu cel puțin ${biz.cancelHours} ore înainte.`);
-  return { doc, title: fill(chosen.title), body: fill(chosen.body), updatedAt: store[doc]?.updatedAt ?? null, isDefault: !v.ro };
+      .replaceAll('{policy}', policy);
+  // `lang` = limba în care e textul; `translated` = traducere automată (aplicația arată că varianta oficială e în română).
+  return { doc, title: fill(chosen.title), body: fill(chosen.body), updatedAt: store[doc]?.updatedAt ?? null, isDefault: !v.ro, lang: shown, translated: shown !== 'ro' };
 }
 
 export const defaultLegal = DEFAULTS;
+
+/**
+ * Versiunea termenilor și a politicii de confidențialitate în acest moment, pentru dovada acordului: data și ora exactă a
+ * ultimei salvări din panou (două corecturi în aceeași zi sunt versiuni diferite), sau data modelului implicit.
+ */
+export async function legalVersions(env: Env): Promise<Record<Doc, string>> {
+  const store = await getLegal(env);
+  const v = (d: Doc) => store[d]?.updatedAt ?? TEMPLATE_DATE[d];
+  return { terms: v('terms'), privacy: v('privacy') };
+}

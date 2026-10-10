@@ -5,20 +5,23 @@ import { api } from '@/api';
 import { Button, Card, Icon, Screen, styles } from '@/components/ui';
 import type { Order, OrderStatus } from '@/data/types';
 import { formatDate } from '@/lib/dates';
+import { useT, type Key } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
+import { lei } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { useCart } from '@/state/Cart';
 import { colors, radius, space } from '@/theme';
 
-const STATUS: Record<OrderStatus, { label: string; color: string }> = {
-  new: { label: 'Se pregătește', color: colors.gold },
-  ready: { label: 'Gata de ridicare', color: '#7FB6E6' },
-  picked_up: { label: 'Ridicată', color: colors.success },
-  cancelled: { label: 'Anulată', color: colors.danger },
+const STATUS: Record<OrderStatus, { label: Key; color: string }> = {
+  new: { label: 'orders.st.new', color: colors.gold },
+  ready: { label: 'orders.st.ready', color: '#7FB6E6' },
+  picked_up: { label: 'orders.st.pickedUp', color: colors.success },
+  cancelled: { label: 'orders.st.cancelled', color: colors.danger },
 };
 
 export default function Orders() {
   const { token, business } = useApp();
+  const { t } = useT();
   const { reloadProducts } = useCart();
   const { placed } = useLocalSearchParams<{ placed?: string }>();
   const [orders, setOrders] = useState<Order[] | null>(null);
@@ -54,13 +57,13 @@ export default function Orders() {
         setError(errorMessage(e));
       }
     };
-    const text = `Anulezi comanda ${o.code}?`;
+    const text = t('orders.cancelAsk', { code: o.code });
     if (Platform.OS === 'web') {
       if (window.confirm(text)) go();
     } else {
       Alert.alert(text, undefined, [
-        { text: 'Nu', style: 'cancel' },
-        { text: 'Anulează comanda', style: 'destructive', onPress: go },
+        { text: t('common.no'), style: 'cancel' },
+        { text: t('orders.cancelOrder'), style: 'destructive', onPress: go },
       ]);
     }
   };
@@ -68,8 +71,8 @@ export default function Orders() {
   if (!token) {
     return (
       <Screen edges={['bottom']}>
-        <Text style={[styles.muted, { marginBottom: space.md }]}>Intră în cont ca să-ți vezi comenzile.</Text>
-        <Button title="Intră în cont cu telefonul" onPress={() => router.push('/login')} />
+        <Text style={[styles.muted, { marginBottom: space.md }]}>{t('orders.loginHint')}</Text>
+        <Button title={t('orders.loginPhone')} onPress={() => router.push('/login')} />
       </Screen>
     );
   }
@@ -80,12 +83,12 @@ export default function Orders() {
         <Card style={{ borderColor: colors.gold, gap: space.xs, marginBottom: space.sm }}>
           <View style={styles.row}>
             <Icon name="checkmark-circle" color={colors.gold} />
-            <Text style={styles.cardTitle}>Comanda {placed} a fost trimisă</Text>
+            <Text style={styles.cardTitle}>{t('orders.placed', { code: placed })}</Text>
           </View>
           <Text style={styles.muted}>
             {business?.onlinePayments
-              ? 'Îți trimitem SMS când e gata. O poți plăti acum online sau la salon, la ridicare.'
-              : 'Îți trimitem SMS când e gata. O ridici din salon și plătești acolo.'}
+              ? t('orders.placedOnline')
+              : t('orders.placedSalon')}
           </Text>
         </Card>
       ) : null}
@@ -94,16 +97,16 @@ export default function Orders() {
         <ActivityIndicator color={colors.gold} style={{ marginTop: space.lg }} />
       ) : orders.length === 0 ? (
         <>
-          <Text style={[styles.muted, { marginBottom: space.md }]}>Nu ai comenzi încă.</Text>
-          <Button title="Mergi la magazin" onPress={() => router.replace('/shop')} />
+          <Text style={[styles.muted, { marginBottom: space.md }]}>{t('orders.none')}</Text>
+          <Button title={t('orders.goShop')} onPress={() => router.replace('/shop')} />
         </>
       ) : (
         <View style={{ gap: space.sm }}>
           {orders.map((o) => (
             <Card key={o.id} style={{ gap: space.xs }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={styles.cardTitle}>Comanda {o.code}</Text>
-                <Text style={{ color: STATUS[o.status].color, fontWeight: '700', fontSize: 13, borderRadius: radius.pill }}>{STATUS[o.status].label}</Text>
+                <Text style={styles.cardTitle}>{t('orders.order', { code: o.code })}</Text>
+                <Text style={{ color: STATUS[o.status].color, fontWeight: '700', fontSize: 13, borderRadius: radius.pill }}>{t(STATUS[o.status].label)}</Text>
               </View>
               <Text style={styles.muted}>{formatDate(new Date(o.createdAt))}</Text>
               {o.items.map((i) => (
@@ -112,15 +115,15 @@ export default function Orders() {
                 </Text>
               ))}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.xs }}>
-                <Text style={styles.price}>{o.total} lei</Text>
-                {o.paidAt && o.payMethod === 'online' ? <Text style={{ color: colors.success, fontWeight: '700' }}>Plătită online</Text> : null}
+                <Text style={styles.price}>{lei(o.total)}</Text>
+                {o.paidAt && o.payMethod === 'online' ? <Text style={{ color: colors.success, fontWeight: '700' }}>{t('orders.paidOnline')}</Text> : null}
                 {o.status === 'new' && !o.paidAt ? (
                   <Text style={{ color: colors.danger, fontWeight: '700' }} onPress={() => cancel(o)}>
-                    Anulează
+                    {t('bookings.cancel')}
                   </Text>
                 ) : null}
               </View>
-              {business?.onlinePayments && !o.paidAt && (o.status === 'new' || o.status === 'ready') ? <Button title="Plătește online" onPress={() => pay(o)} /> : null}
+              {business?.onlinePayments && !o.paidAt && (o.status === 'new' || o.status === 'ready') ? <Button title={t('common.payOnline')} onPress={() => pay(o)} /> : null}
             </Card>
           ))}
         </View>

@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { panelUrl, staffApi, type Report, type ReportCol, type ReportMeta } from '@/api/staff';
 import { Button, Card, Screen, styles as ui } from '@/components/ui';
+import { locale, tr, useT } from '@/i18n';
 import { addDays, dayKey } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
-const lei = (n: number) => `${n.toLocaleString('ro-RO')} lei`;
+const lei = (n: number) => tr('common.lei', { n: n.toLocaleString(locale()) });
 const cell = (c: ReportCol, v: unknown) => (v === null || v === undefined || v === '' ? '' : c.type === 'money' ? lei(Number(v)) : c.type === 'pct' ? `${v}%` : String(v));
 const numeric = (c: ReportCol) => c.type === 'int' || c.type === 'money' || c.type === 'pct';
 const width = (c: ReportCol) => (c.type === 'datetime' ? 130 : c.type === 'text' ? 150 : 100);
@@ -15,20 +16,20 @@ const width = (c: ReportCol) => (c.type === 'datetime' ? 130 : c.type === 'text'
 function periods(range: ReportMeta['range']) {
   const t = new Date();
   const k = dayKey(t);
-  if (range === 'day') return [{ label: 'Azi', from: k, to: k }, { label: 'Ieri', from: dayKey(addDays(t, -1)), to: dayKey(addDays(t, -1)) }];
+  if (range === 'day') return [{ label: tr('rep.today'), from: k, to: k }, { label: tr('rep.yesterday'), from: dayKey(addDays(t, -1)), to: dayKey(addDays(t, -1)) }];
   if (range === 'future')
     return [
-      { label: 'Azi', from: k, to: k },
-      { label: '7 zile', from: k, to: dayKey(addDays(t, 6)) },
-      { label: '30 de zile', from: k, to: dayKey(addDays(t, 29)) },
+      { label: tr('rep.today'), from: k, to: k },
+      { label: tr('rep.7days'), from: k, to: dayKey(addDays(t, 6)) },
+      { label: tr('rep.30days'), from: k, to: dayKey(addDays(t, 29)) },
     ];
-  if (range === 'months') return [{ label: 'Ultimele 12 luni', from: dayKey(addDays(t, -364)).slice(0, 8) + '01', to: k }];
+  if (range === 'months') return [{ label: tr('rep.last12m'), from: dayKey(addDays(t, -364)).slice(0, 8) + '01', to: k }];
   return [
-    { label: 'Azi', from: k, to: k },
-    { label: '7 zile', from: dayKey(addDays(t, -6)), to: k },
-    { label: '30 de zile', from: dayKey(addDays(t, -29)), to: k },
-    { label: 'Luna aceasta', from: k.slice(0, 8) + '01', to: k },
-    { label: '12 luni', from: dayKey(addDays(t, -364)), to: k },
+    { label: tr('rep.today'), from: k, to: k },
+    { label: tr('rep.7days'), from: dayKey(addDays(t, -6)), to: k },
+    { label: tr('rep.30days'), from: dayKey(addDays(t, -29)), to: k },
+    { label: tr('rep.thisMonth'), from: k.slice(0, 8) + '01', to: k },
+    { label: tr('rep.12m'), from: dayKey(addDays(t, -364)), to: k },
   ];
 }
 
@@ -39,6 +40,7 @@ export default function StaffReports() {
 
 export function ReportsScreen({ initialKind }: { initialKind: string }) {
   const { staff, staffToken } = useStaff();
+  const { t, lang } = useT();
   const [list, setList] = useState<ReportMeta[] | null>(null);
   const [kind, setKind] = useState(initialKind);
   const [period, setPeriod] = useState(0);
@@ -55,7 +57,7 @@ export function ReportsScreen({ initialKind }: { initialKind: string }) {
         },
         (e) => setError(errorMessage(e)),
       );
-  }, [staffToken, initialKind]);
+  }, [staffToken, initialKind, lang]);
 
   const meta = list?.find((r) => r.kind === kind);
   const options = periods(meta?.range ?? 'day');
@@ -74,7 +76,7 @@ export function ReportsScreen({ initialKind }: { initialKind: string }) {
     return () => {
       stale = true;
     };
-  }, [staffToken, list, kind, p.from, p.to]);
+  }, [staffToken, list, kind, p.from, p.to, lang]);
 
   if (!staff) return null;
   if (!list) return <Screen edges={['bottom']}>{error ? <Text style={{ color: colors.danger }}>{error}</Text> : <ActivityIndicator color={colors.gold} />}</Screen>;
@@ -92,18 +94,18 @@ export function ReportsScreen({ initialKind }: { initialKind: string }) {
         ))}
       </View>
       {kind === 'register' ? (
-        <Text style={[ui.muted, { fontSize: 12 }]}>Fiecare programare trebuie închisă: încheiată (cu plata), nu a venit sau anulată.</Text>
+        <Text style={[ui.muted, { fontSize: 12 }]}>{t('rep.registerHint')}</Text>
       ) : !staff.permissions.stats ? (
-        <Text style={[ui.muted, { fontSize: 12 }]}>Sumele de bani nu apar pentru contul tău.</Text>
+        <Text style={[ui.muted, { fontSize: 12 }]}>{t('rep.noMoney')}</Text>
       ) : null}
       {error ? <Text style={{ color: colors.danger }}>{error}</Text> : null}
       {!data && !error ? <ActivityIndicator color={colors.gold} style={{ marginTop: space.lg }} /> : null}
       {data ? (
         data.rows.length === 0 ? (
-          <Text style={[ui.muted, { marginTop: space.md }]}>Nu sunt date în perioada aleasă.</Text>
+          <Text style={[ui.muted, { marginTop: space.md }]}>{t('rep.noData')}</Text>
         ) : (
           <>
-          {data.columns.length > 3 ? <Text style={[ui.muted, { fontSize: 12 }]}>Trage tabelul spre stânga pentru celelalte coloane.</Text> : null}
+          {data.columns.length > 3 ? <Text style={[ui.muted, { fontSize: 12 }]}>{t('rep.scroll')}</Text> : null}
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <ScrollView horizontal>
               <View>
@@ -118,11 +120,11 @@ export function ReportsScreen({ initialKind }: { initialKind: string }) {
           </>
         )
       ) : null}
-      {data && data.rows.length > limit ? <Button title={`Arată mai multe (${data.rows.length - limit})`} variant="ghost" onPress={() => setLimit(limit + 100)} /> : null}
+      {data && data.rows.length > limit ? <Button title={t('rep.more', { n: data.rows.length - limit })} variant="ghost" onPress={() => setLimit(limit + 100)} /> : null}
       {panelUrl('reports') ? (
         <Pressable onPress={() => Linking.openURL(panelUrl('reports'))} style={{ marginTop: space.md }}>
           <Text style={[ui.muted, { textAlign: 'center' }]}>
-            Pentru Excel, deschide <Text style={{ color: colors.gold }}>Rapoarte în panoul web</Text>
+            {t('rep.excel')} <Text style={{ color: colors.gold }}>{t('rep.excelLink')}</Text>
           </Text>
         </Pressable>
       ) : null}

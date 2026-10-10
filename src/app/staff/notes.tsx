@@ -3,15 +3,16 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, Text, View } from 'react-native';
 import { panelUrl, staffApi, type StaffNote } from '@/api/staff';
 import { Button, Card, Screen, styles as ui } from '@/components/ui';
+import { useT, type Key } from '@/i18n';
 import { formatDate } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
-const KIND: Record<StaffNote['kind'], string> = { task: 'Sarcină', script: 'Script de filmat', note: 'Notiță' };
-const TABS = [
-  { key: 'open', label: 'De făcut' },
-  { key: 'done', label: 'Făcute' },
+const KIND: Record<StaffNote['kind'], Key> = { task: 'notes.task', script: 'notes.script', note: 'notes.note' };
+const TABS: Array<{ key: string; label: Key }> = [
+  { key: 'open', label: 'notes.open' },
+  { key: 'done', label: 'notes.done' },
 ];
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
@@ -19,6 +20,7 @@ const todayKey = () => new Date().toISOString().slice(0, 10);
 // și le bifează când le-a făcut; adminul le scrie din panou.
 export default function StaffNotes() {
   const { staff, staffToken } = useStaff();
+  const { t } = useT();
   const [tab, setTab] = useState('open');
   const [list, setList] = useState<StaffNote[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -50,22 +52,22 @@ export default function StaffNotes() {
   return (
     <Screen edges={['bottom']}>
       <View style={{ flexDirection: 'row', gap: space.xs, marginBottom: space.md }}>
-        {TABS.map((t) => (
+        {TABS.map((x) => (
           <Pressable
-            key={t.key}
-            onPress={() => setTab(t.key)}
+            key={x.key}
+            onPress={() => setTab(x.key)}
             accessibilityRole="button"
-            accessibilityState={{ selected: tab === t.key }}
+            accessibilityState={{ selected: tab === x.key }}
             style={{
               paddingVertical: 8,
               paddingHorizontal: 16,
               borderRadius: radius.pill,
               borderWidth: 1,
-              borderColor: tab === t.key ? colors.gold : colors.border,
-              backgroundColor: tab === t.key ? colors.gold : 'transparent',
+              borderColor: tab === x.key ? colors.gold : colors.border,
+              backgroundColor: tab === x.key ? colors.gold : 'transparent',
             }}
           >
-            <Text style={{ color: tab === t.key ? '#000' : colors.text, fontWeight: '700' }}>{t.label}</Text>
+            <Text style={{ color: tab === x.key ? '#000' : colors.text, fontWeight: '700' }}>{t(x.label)}</Text>
           </Pressable>
         ))}
       </View>
@@ -73,7 +75,7 @@ export default function StaffNotes() {
       {!list ? (
         <ActivityIndicator color={colors.gold} style={{ marginTop: space.lg }} />
       ) : list.length === 0 ? (
-        <Text style={ui.muted}>{tab === 'open' ? 'Nimic de făcut acum.' : 'Nicio notiță bifată încă.'}</Text>
+        <Text style={ui.muted}>{tab === 'open' ? t('notes.noneOpen') : t('notes.noneDone')}</Text>
       ) : (
         <View style={{ gap: space.sm }}>
           {list.map((n) => {
@@ -82,17 +84,17 @@ export default function StaffNotes() {
             return (
               <Card key={n.id} style={{ gap: 6, borderColor: late ? colors.danger : n.kind === 'script' ? colors.gold : colors.border }}>
                 <View style={{ flexDirection: 'row', gap: space.sm, alignItems: 'flex-start' }}>
-                  <Pressable onPress={() => toggle(n)} accessibilityRole="checkbox" accessibilityState={{ checked: !!n.doneAt }} accessibilityLabel="Făcut" hitSlop={10}>
+                  <Pressable onPress={() => toggle(n)} accessibilityRole="checkbox" accessibilityState={{ checked: !!n.doneAt }} accessibilityLabel={t('notes.doneLabel')} hitSlop={10}>
                     <Ionicons name={n.doneAt ? 'checkbox' : 'square-outline'} size={26} color={n.doneAt ? colors.success : colors.gold} />
                   </Pressable>
                   <View style={{ flex: 1 }}>
                     <Text style={[ui.cardTitle, n.doneAt ? { textDecorationLine: 'line-through', color: colors.muted } : null]}>{n.title}</Text>
                     <Text style={[ui.muted, { fontSize: 12 }]}>
-                      {KIND[n.kind]}
-                      {manager ? ` · ${n.barberName ?? 'toată echipa'}` : !n.barberId ? ' · pentru toată echipa' : ''}
-                      {n.dueDay ? ` · până pe ${formatDate(new Date(n.dueDay + 'T12:00:00Z'))}` : ''}
-                      {late ? ' · întârziată' : ''}
-                      {n.authorName ? ` · de la ${n.authorName}` : ''}
+                      {t(KIND[n.kind])}
+                      {manager ? ` · ${n.barberName ?? t('notes.wholeTeam')}` : !n.barberId ? t('notes.forTeam') : ''}
+                      {n.dueDay ? t('notes.due', { date: formatDate(new Date(n.dueDay + 'T12:00:00Z')) }) : ''}
+                      {late ? t('notes.late') : ''}
+                      {n.authorName ? t('notes.from', { name: n.authorName }) : ''}
                     </Text>
                   </View>
                 </View>
@@ -103,14 +105,14 @@ export default function StaffNotes() {
                     </Text>
                   ) : (
                     <Text style={{ color: colors.gold, fontWeight: '700' }} onPress={() => setOpen(n.id)}>
-                      Citește tot
+                      {t('notes.readAll')}
                     </Text>
                   )
                 ) : null}
                 {n.doneAt ? (
                   <Text style={[ui.muted, { fontSize: 12 }]}>
-                    Făcută pe {formatDate(new Date(n.doneAt))}
-                    {n.doneByName ? ` de ${n.doneByName}` : ''}
+                    {t('notes.doneOn', { date: formatDate(new Date(n.doneAt)) })}
+                    {n.doneByName ? t('notes.doneBy', { name: n.doneByName }) : ''}
                   </Text>
                 ) : null}
               </Card>
@@ -121,7 +123,7 @@ export default function StaffNotes() {
       {manager ? (
         <View style={{ marginTop: space.lg }}>
           <Button
-            title="Scrie o notiță nouă (în panou)"
+            title={t('notes.write')}
             variant="ghost"
             onPress={() => {
               const url = panelUrl('notes');

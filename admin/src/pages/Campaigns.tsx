@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { api, type Campaign, type Me } from '../api';
-import { Field, Loading, useAction, useLoad } from '../ui';
+import { api, type Campaign, type Me, type Translations } from '../api';
+import { emptyTr, Field, Loading, TranslationFields, useAction, useLoad } from '../ui';
 import { date, time } from '../util';
 
 const CHANNELS = {
@@ -17,6 +17,7 @@ export function CampaignsPage(_: { me: Me }) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [when, setWhen] = useState('');
+  const [tr, setTr] = useState<Translations>(emptyTr());
   const { busy, error, run } = useAction();
   const n = audience.data?.[channel] ?? 0;
 
@@ -29,9 +30,12 @@ export function CampaignsPage(_: { me: Me }) {
         body,
         sendNow,
         scheduledAt: !sendNow && when ? new Date(when).toISOString() : null,
+        // Goale = se traduc singure; completate = traducerea ta.
+        translations: tr,
       });
       setTitle('');
       setBody('');
+      setTr(emptyTr());
       setWhen('');
       setTimeout(list.reload, 1200);
       list.reload();
@@ -66,6 +70,16 @@ export function CampaignsPage(_: { me: Me }) {
         <Field label={`Mesaj${channel === 'sms' ? ` (${body.length}/160)` : ''}`}>
           <textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={channel === 'sms' ? 320 : 5000} />
         </Field>
+        <div className="muted small">Fiecare client o primește în limba aplicației lui: se traduce singură în engleză și franceză.</div>
+        <TranslationFields
+          fields={[
+            ...(channel === 'sms' ? [] : [{ key: 'title', label: channel === 'email' ? 'Subiect' : 'Titlu notificare' }]),
+            { key: 'body', label: 'Mesaj', multiline: true },
+          ]}
+          ro={{ title, body }}
+          value={tr}
+          onChange={setTr}
+        />
         <Field label="Programează pentru (opțional)">
           <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ maxWidth: 260 }} />
         </Field>

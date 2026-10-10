@@ -3,24 +3,24 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { staffApi, type StaffDashboard } from '@/api/staff';
 import { Button, Card, Screen, Segmented, styles as ui } from '@/components/ui';
-import { formatTime } from '@/lib/dates';
+import { locale, tr, useT, type Key } from '@/i18n';
+import { formatTime, shortDate } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
-const MONTHS = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-const shortDay = (d: string) => `${Number(d.slice(8))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
-const lei = (n: number) => `${n.toLocaleString('ro-RO')} lei`;
-const TAGS: Record<string, { label: string; color: string }> = {
-  new: { label: 'Client nou', color: '#7FB6E6' },
-  top: { label: 'Client de top', color: colors.gold },
-  back: { label: 'Revine după mult timp', color: '#8FC79A' },
-  risk: { label: 'În situație de risc', color: colors.danger },
+const lei = (n: number) => tr('common.lei', { n: n.toLocaleString(locale()) });
+const TAGS: Record<string, { label: Key; color: string }> = {
+  new: { label: 'stats.tag.new', color: '#7FB6E6' },
+  top: { label: 'stats.tag.top', color: colors.gold },
+  back: { label: 'stats.tag.back', color: '#8FC79A' },
+  risk: { label: 'stats.tag.risk', color: colors.danger },
 };
 
 // Tabloul de bord în aplicația echipei: aceleași cifre ca în panou, limitate de drepturile contului.
 export default function StaffStats() {
   const { staff, staffToken } = useStaff();
+  const { t } = useT();
   const [d, setD] = useState<StaffDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [metric, setMetric] = useState(0);
@@ -38,31 +38,31 @@ export default function StaffStats() {
 
   return (
     <Screen edges={['bottom']}>
-      {!staff.permissions.bookings_all ? <Text style={ui.muted}>Vezi doar cifrele tale.</Text> : null}
-      <Text style={ui.section}>Ultimele 7 zile față de cele 7 dinainte</Text>
+      {!staff.permissions.bookings_all ? <Text style={ui.muted}>{t('stats.onlyYours')}</Text> : null}
+      <Text style={ui.section}>{t('stats.week')}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
-        <Kpi l="programări" v={cur.bookings} p={prev.bookings} />
-        {cur.revenue !== null ? <Kpi l="încasări" v={cur.revenue} p={prev.revenue ?? 0} money /> : null}
-        <Kpi l="clienți serviți" v={cur.clients} p={prev.clients} />
-        <Kpi l="clienți noi" v={cur.newClients} p={prev.newClients} />
-        <Kpi l="anulări și neprezentări" v={cur.cancelled + cur.noShow} p={prev.cancelled + prev.noShow} inverse />
-        <Kpi l="programări viitoare" v={d.upcoming} />
+        <Kpi l={t('stats.bookings')} v={cur.bookings} p={prev.bookings} />
+        {cur.revenue !== null ? <Kpi l={t('stats.revenue')} v={cur.revenue} p={prev.revenue ?? 0} money /> : null}
+        <Kpi l={t('stats.served')} v={cur.clients} p={prev.clients} />
+        <Kpi l={t('stats.newClients')} v={cur.newClients} p={prev.newClients} />
+        <Kpi l={t('stats.cancelled')} v={cur.cancelled + cur.noShow} p={prev.cancelled + prev.noShow} inverse />
+        <Kpi l={t('stats.upcoming')} v={d.upcoming} />
       </View>
 
-      <Text style={ui.section}>Ultimele 30 de zile</Text>
+      <Text style={ui.section}>{t('stats.last30')}</Text>
       <Card>
-        {d.canSeeMoney ? <Segmented options={['Încasări', 'Programări']} value={metric} onChange={setMetric} /> : null}
-        <Bars values={d.daily.map((x) => (money ? x.revenue : x.bookings) ?? 0)} labels={d.daily.map((x) => shortDay(x.day))} money={money} />
+        {d.canSeeMoney ? <Segmented options={[t('stats.revenueTab'), t('stats.bookingsTab')]} value={metric} onChange={setMetric} /> : null}
+        <Bars values={d.daily.map((x) => (money ? x.revenue : x.bookings) ?? 0)} labels={d.daily.map((x) => shortDate(x.day))} money={money} />
       </Card>
 
-      <Text style={ui.section}>Clienți</Text>
+      <Text style={ui.section}>{t('stats.clients')}</Text>
       <View style={{ flexDirection: 'row', gap: space.sm }}>
-        <Kpi l={`noi în 30 de zile, din ${d.last30.clients}`} v={d.last30.newClients} />
-        <Kpi l={`păstrare: ${d.retention.returned} din ${d.retention.base} au revenit`} v={d.retention.rate} pct />
+        <Kpi l={t('stats.new30', { n: d.last30.clients })} v={d.last30.newClients} />
+        <Kpi l={t('stats.retention', { returned: d.retention.returned, base: d.retention.base })} v={d.retention.rate} pct />
       </View>
 
-      <Text style={ui.section}>Clienții de azi ({d.todayClients.length})</Text>
-      {d.todayClients.length === 0 ? <Text style={ui.muted}>Nicio programare azi.</Text> : null}
+      <Text style={ui.section}>{t('stats.today', { n: d.todayClients.length })}</Text>
+      {d.todayClients.length === 0 ? <Text style={ui.muted}>{t('stats.noneToday')}</Text> : null}
       <View style={{ gap: space.sm }}>
         {d.todayClients.map((c) => (
           <Card key={c.bookingId} onPress={staff.permissions.clients ? () => router.push(`/staff/client/${c.clientId}`) : undefined}>
@@ -70,21 +70,21 @@ export default function StaffStats() {
               <Text style={[ui.cardTitle, { flex: 1 }]}>
                 {formatTime(new Date(c.start))} · {c.name}
               </Text>
-              <Text style={ui.muted}>{c.tags.includes('new') ? 'prima vizită' : c.visits === 1 ? 'o vizită' : `${c.visits} vizite`}</Text>
+              <Text style={ui.muted}>{c.tags.includes('new') ? t('stats.firstVisit') : c.visits === 1 ? t('stats.oneVisit') : t('stats.visits', { n: c.visits })}</Text>
             </View>
             <Text style={ui.muted}>
               {c.serviceName} · {c.barberName}
             </Text>
             {c.noShows || c.cancellations ? (
               <Text style={[ui.muted, { fontSize: 12 }]}>
-                {c.noShows} neprezentări · {c.cancellations} anulări în ultimul an
+                {t('stats.noShows', { noShows: c.noShows, cancellations: c.cancellations })}
               </Text>
             ) : null}
             {c.tags.length ? (
               <View style={[ui.row, { flexWrap: 'wrap', gap: 6, marginTop: 6 }]}>
-                {c.tags.map((t) => (
-                  <Text key={t} style={{ color: TAGS[t].color, borderColor: TAGS[t].color, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2, fontSize: 12, fontWeight: '700' }}>
-                    {TAGS[t].label}
+                {c.tags.map((tag) => (
+                  <Text key={tag} style={{ color: TAGS[tag].color, borderColor: TAGS[tag].color, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2, fontSize: 12, fontWeight: '700' }}>
+                    {t(TAGS[tag].label)}
                   </Text>
                 ))}
               </View>
@@ -95,17 +95,17 @@ export default function StaffStats() {
 
       {staff.permissions.clients && d.atRisk.length ? (
         <>
-          <Text style={ui.section}>Clienți care nu mai vin</Text>
-          <Text style={ui.muted}>Veneau regulat, dar nu au mai venit de mult și nu au nicio programare.</Text>
+          <Text style={ui.section}>{t('stats.atRisk')}</Text>
+          <Text style={ui.muted}>{t('stats.atRiskHint')}</Text>
           <View style={{ gap: space.sm }}>
             {d.atRisk.map((c) => (
               <Card key={c.clientId} onPress={() => router.push(`/staff/client/${c.clientId}`)}>
                 <View style={[ui.row, { justifyContent: 'space-between' }]}>
                   <Text style={[ui.cardTitle, { flex: 1 }]}>{c.name}</Text>
-                  <Text style={{ color: colors.danger, fontWeight: '700' }}>{c.daysSince} zile</Text>
+                  <Text style={{ color: colors.danger, fontWeight: '700' }}>{t('stats.days', { n: c.daysSince })}</Text>
                 </View>
                 <Text style={ui.muted}>
-                  {c.visits} vizite, de obicei la {c.avgGapDays} zile
+                  {t('stats.usualGap', { visits: c.visits, gap: c.avgGapDays })}
                 </Text>
               </Card>
             ))}
@@ -115,13 +115,13 @@ export default function StaffStats() {
 
       {staff.permissions.clients && d.topClients.length ? (
         <>
-          <Text style={ui.section}>Top clienți, ultimul an</Text>
+          <Text style={ui.section}>{t('stats.top')}</Text>
           <Card style={{ paddingVertical: space.xs }}>
             {d.topClients.map((c, i) => (
               <Pressable key={c.clientId} onPress={() => router.push(`/staff/client/${c.clientId}`)} style={[ui.row, { paddingVertical: 8, borderBottomWidth: i < d.topClients.length - 1 ? 1 : 0, borderBottomColor: colors.border }]}>
                 <Text style={[ui.muted, { width: 22 }]}>{i + 1}</Text>
                 <Text style={[ui.text, { flex: 1, fontWeight: '600' }]}>{c.name}</Text>
-                <Text style={ui.muted}>{c.visits} viz.</Text>
+                <Text style={ui.muted}>{t('stats.visitsShort', { n: c.visits })}</Text>
                 {c.spent !== null ? <Text style={[ui.text, { width: 90, textAlign: 'right' }]}>{lei(c.spent)}</Text> : null}
               </Pressable>
             ))}
@@ -130,13 +130,14 @@ export default function StaffStats() {
       ) : null}
 
       <View style={{ marginTop: space.md }}>
-        <Button title="Rapoarte" variant="ghost" onPress={() => router.push('/staff/reports')} />
+        <Button title={t('stats.reports')} variant="ghost" onPress={() => router.push('/staff/reports')} />
       </View>
     </Screen>
   );
 }
 
 function Kpi({ l, v, p, money, inverse, pct }: { l: string; v: number; p?: number; money?: boolean; inverse?: boolean; pct?: boolean }) {
+  const { t } = useT();
   const diff = p === undefined ? null : p ? Math.round(((v - p) / p) * 100) : v ? 100 : 0;
   const good = diff !== null && (inverse ? diff < 0 : diff > 0);
   return (
@@ -145,7 +146,8 @@ function Kpi({ l, v, p, money, inverse, pct }: { l: string; v: number; p?: numbe
       <Text style={[ui.muted, { fontSize: 12 }]}>{l}</Text>
       {diff !== null ? (
         <Text style={{ fontSize: 12, fontWeight: '700', color: diff === 0 ? colors.muted : good ? '#8FC79A' : colors.danger }}>
-          {diff === 0 ? '= la fel' : `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)}%`} <Text style={[ui.muted, { fontSize: 12, fontWeight: '400' }]}>înainte: {money ? lei(p!) : p}</Text>
+          {diff === 0 ? t('stats.same') : `${diff > 0 ? '▲' : '▼'} ${Math.abs(diff)}%`}{' '}
+          <Text style={[ui.muted, { fontSize: 12, fontWeight: '400' }]}>{t('stats.before', { v: money ? lei(p!) : (p ?? 0) })}</Text>
         </Text>
       ) : null}
     </View>

@@ -8,6 +8,7 @@ import { getOrders, setOrderStatus } from './shop';
 import { getIdentity, wipeIdentity } from './identity';
 import { getBonuses } from './referrals';
 import { getSubscriptions } from './subscriptions';
+import { anonymizeConsents, listConsents } from './consents';
 
 /** Toate datele unui client, pentru „Descarcă datele mele” (portabilitate, art. 20 GDPR). */
 export async function exportClient(env: Env, id: string) {
@@ -41,7 +42,12 @@ export async function exportClient(env: Env, id: string) {
         .bind(id, c.phone)
         .all()
     ).results,
-    beforeAfter: (await env.DB.prepare('SELECT id, created_at FROM before_after WHERE client_id = ?').bind(id).all()).results,
+    // Și dacă perechea apare ca exemplu altor clienți (consilierul AI), cu data acordului și a retragerii.
+    beforeAfter: (
+      await env.DB.prepare('SELECT id, created_at, show_example, example_consent_at, example_withdrawn_at FROM before_after WHERE client_id = ?').bind(id).all()
+    ).results,
+    // Dovada acordurilor (termeni, confidențialitate, oferte), cu adresa IP și dispozitivul din acel moment.
+    consents: await listConsents(env, id),
     waitlist: (await env.DB.prepare('SELECT service_id, barber_id, day, part, status, notify_count, created_at FROM waitlist WHERE client_id = ? ORDER BY created_at').bind(id).all()).results,
   };
 }
@@ -72,12 +78,16 @@ export async function deleteClient(env: Env, id: string) {
     // Pozele înainte/după arată fața clientului: se șterg cu tot cu fișiere.
     env.DB.prepare('DELETE FROM media WHERE id IN (SELECT before_media FROM before_after WHERE client_id = ?1 UNION SELECT after_media FROM before_after WHERE client_id = ?1)').bind(id),
     env.DB.prepare('DELETE FROM before_after WHERE client_id = ?').bind(id),
+    // Contoarele zilnice ale asistentului și ale consilierului de tunsori (cheia conține id-ul clientului).
+    env.DB.prepare(`DELETE FROM assistant_usage WHERE key IN (?1, 'advisor:' || ?1, 'advisor-try:' || ?1)`).bind(id),
     // Cardurile cadou rămân valabile (sunt plătite), dar fără datele lui.
     env.DB.prepare(`UPDATE gift_cards SET recipient_phone = NULL WHERE recipient_phone = ?`).bind(c.phone),
     env.DB.prepare(`UPDATE gift_cards SET message = '' WHERE buyer_client_id = ?`).bind(id),
     env.DB.prepare(`DELETE FROM sessions WHERE kind = 'client' AND subject_id = ?`).bind(id),
     env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(c.phone),
     env.DB.prepare('DELETE FROM client_identities WHERE client_id = ?').bind(id),
+    // Acordurile rămân doar anonime (fără IP și dispozitiv), ca dovadă că acest cont a existat și a acceptat.
+    anonymizeConsents(env, id, now),
     env.DB.prepare(`UPDATE message_log SET recipient = 'sters' WHERE recipient = ? OR recipient = ?`).bind(c.phone, c.email ?? '\u0000'),
     env.DB.prepare(
       `UPDATE clients SET phone = ?, name = '', email = NULL, notes = '', marketing_sms = 0, marketing_email = 0, marketing_push = 0, marketing_consent_at = NULL, deleted_at = ? WHERE id = ?`,

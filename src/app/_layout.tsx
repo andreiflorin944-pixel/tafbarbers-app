@@ -2,7 +2,7 @@ import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QrLink } from '@/components/QrLink';
-import { I18nProvider } from '@/i18n';
+import { I18nProvider, useT } from '@/i18n';
 import { AppStateProvider } from '@/state/AppState';
 import { CartProvider } from '@/state/Cart';
 import { StaffProvider } from '@/state/Staff';
@@ -23,55 +23,65 @@ export default function RootLayout() {
         <ThemeProvider value={theme}>
           <StatusBar style="light" />
           <QrLink />
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: colors.bg },
-              headerTintColor: colors.gold,
-              headerTitleAlign: 'center',
-              headerTitleStyle: { fontWeight: '700', color: colors.text },
-              headerShadowVisible: false,
-              headerBackTitle: 'Înapoi',
-              contentStyle: { backgroundColor: colors.bg },
-            }}
-          >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="book/service" options={{ title: 'Alege serviciul' }} />
-            <Stack.Screen name="book/barber" options={{ title: 'Alege frizerul' }} />
-            <Stack.Screen name="book/time" options={{ title: 'Alege ora' }} />
-            <Stack.Screen name="book/confirm" options={{ title: 'Confirmare' }} />
-            <Stack.Screen name="book/success" options={{ headerShown: false, gestureEnabled: false }} />
-            <Stack.Screen name="login" options={{ title: 'TAF Barber’s', presentation: 'modal' }} />
-            <Stack.Screen name="identity" options={{ title: 'Stilul meu' }} />
-            <Stack.Screen name="assistant" options={{ title: 'Asistent TAF' }} />
-            <Stack.Screen name="rewards" options={{ title: 'Bonusuri și recomandări' }} />
-            <Stack.Screen name="subscriptions" options={{ title: 'Abonamente' }} />
-            <Stack.Screen name="gift-cards" options={{ title: 'Carduri cadou' }} />
-            <Stack.Screen name="before-after" options={{ title: 'Tunsorile mele' }} />
-            <Stack.Screen name="book/index" options={{ headerShown: false }} />
-            <Stack.Screen name="barbers" options={{ title: 'Frizeri' }} />
-            <Stack.Screen name="service/[id]" options={{ title: '', headerTransparent: true }} />
-            <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
-            <Stack.Screen name="staff/login" options={{ title: 'Acces echipă', presentation: 'modal' }} />
-            <Stack.Screen name="staff/(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="staff/client/[id]" options={{ title: 'Fișa clientului' }} />
-            <Stack.Screen name="staff/orders" options={{ title: 'Comenzi magazin' }} />
-            <Stack.Screen name="staff/stats" options={{ title: 'Tablou de bord' }} />
-            <Stack.Screen name="staff/reports" options={{ title: 'Rapoarte' }} />
-            <Stack.Screen name="staff/register" options={{ title: 'Registrul de încasări' }} />
-            <Stack.Screen name="staff/notes" options={{ title: 'Notițele mele' }} />
-            <Stack.Screen name="staff/hours" options={{ title: 'Ore de lucru și concedii' }} />
-            <Stack.Screen name="staff/services" options={{ title: 'Servicii' }} />
-            <Stack.Screen name="staff/new" options={{ title: 'Programare nouă' }} />
-            <Stack.Screen name="shop/index" options={{ title: 'Magazin' }} />
-            <Stack.Screen name="shop/cart" options={{ title: 'Coșul meu' }} />
-            <Stack.Screen name="shop/orders" options={{ title: 'Comenzile mele' }} />
-          </Stack>
+          <RootStack />
         </ThemeProvider>
       </CartProvider>
       </StaffProvider>
       </AppStateProvider>
       </I18nProvider>
     </SafeAreaProvider>
+  );
+}
+
+/** Ecranele aplicației; titlurile lor în limba aleasă. */
+function RootStack() {
+  const { t } = useT();
+  return (
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.bg },
+        headerTintColor: colors.gold,
+        headerTitleAlign: 'center',
+        headerTitleStyle: { fontWeight: '700', color: colors.text },
+        headerShadowVisible: false,
+        headerBackTitle: t('nav.back'),
+        contentStyle: { backgroundColor: colors.bg },
+      }}
+    >
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="book/location" options={{ title: t('nav.pickLocation') }} />
+      <Stack.Screen name="book/service" options={{ title: t('nav.pickService') }} />
+      <Stack.Screen name="book/barber" options={{ title: t('nav.pickBarber') }} />
+      <Stack.Screen name="book/time" options={{ title: t('nav.pickTime') }} />
+      <Stack.Screen name="book/confirm" options={{ title: t('nav.confirm') }} />
+      <Stack.Screen name="book/success" options={{ headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="login" options={{ title: 'TAF Barber’s', presentation: 'modal' }} />
+      <Stack.Screen name="identity" options={{ title: t('account.identity') }} />
+      <Stack.Screen name="assistant" options={{ title: t('nav.assistant') }} />
+      <Stack.Screen name="advisor" options={{ title: t('nav.advisor') }} />
+      <Stack.Screen name="rewards" options={{ title: t('nav.rewards') }} />
+      <Stack.Screen name="subscriptions" options={{ title: t('nav.subscriptions') }} />
+      <Stack.Screen name="gift-cards" options={{ title: t('nav.giftCards') }} />
+      <Stack.Screen name="before-after" options={{ title: t('nav.beforeAfter') }} />
+      <Stack.Screen name="book/index" options={{ headerShown: false }} />
+      <Stack.Screen name="barbers" options={{ title: t('nav.barbers') }} />
+      <Stack.Screen name="service/[id]" options={{ title: '', headerTransparent: true }} />
+      <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
+      <Stack.Screen name="staff/login" options={{ title: t('nav.staffLogin'), presentation: 'modal' }} />
+      <Stack.Screen name="staff/(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="staff/client/[id]" options={{ title: t('nav.clientFile') }} />
+      <Stack.Screen name="staff/orders" options={{ title: t('nav.shopOrders') }} />
+      <Stack.Screen name="staff/stats" options={{ title: t('nav.dashboard') }} />
+      <Stack.Screen name="staff/reports" options={{ title: t('nav.reports') }} />
+      <Stack.Screen name="staff/register" options={{ title: t('nav.register') }} />
+      <Stack.Screen name="staff/notes" options={{ title: t('nav.myNotes') }} />
+      <Stack.Screen name="staff/hours" options={{ title: t('nav.hours') }} />
+      <Stack.Screen name="staff/services" options={{ title: t('nav.services') }} />
+      <Stack.Screen name="staff/new" options={{ title: t('nav.newBooking') }} />
+      <Stack.Screen name="shop/index" options={{ title: t('nav.shop') }} />
+      <Stack.Screen name="shop/cart" options={{ title: t('nav.cart') }} />
+      <Stack.Screen name="shop/orders" options={{ title: t('nav.myOrders') }} />
+    </Stack>
   );
 }
 

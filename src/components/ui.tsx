@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Barber, Service } from '@/data/types';
 import { mediaUrl } from '@/api/staff';
 import { usePriceLabel } from '@/lib/price';
+import { useT } from '@/i18n';
 import { Backdrop } from '@/components/Backdrop';
 import { colors, radius, space } from '@/theme';
 
@@ -82,7 +83,20 @@ export function Avatar({ barber, size = 56 }: { barber?: Barber; size?: number }
   );
 }
 
-export function ServiceRow({ service, onPress, selected }: { service: Service; onPress?: () => void; selected?: boolean }) {
+/** Un serviciu în listă. `price` / `duration`: ale frizerului ales (altfel prețul „de la” și durata standard). */
+export function ServiceRow({
+  service,
+  onPress,
+  selected,
+  price,
+  duration,
+}: {
+  service: Service;
+  onPress?: () => void;
+  selected?: boolean;
+  price?: string;
+  duration?: number;
+}) {
   const priceText = usePriceLabel();
   return (
     <Card onPress={onPress} selected={selected} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
@@ -100,21 +114,23 @@ export function ServiceRow({ service, onPress, selected }: { service: Service; o
         </Text>
       </View>
       <View style={{ alignItems: 'flex-end' }}>
-        <Text style={styles.price}>{priceText(service)}</Text>
-        <Text style={styles.muted}>{service.durationMin} min</Text>
+        <Text style={styles.price}>{price ?? priceText(service)}</Text>
+        <Text style={styles.muted}>{duration ?? service.durationMin} min</Text>
       </View>
     </Card>
   );
 }
 
-export function Steps({ current }: { current: 1 | 2 | 3 | 4 }) {
-  const labels = ['Serviciu', 'Frizer', 'Ora', 'Confirmare'];
+/** Pașii programării: locația, frizerul, serviciul, ora, confirmarea. */
+export function Steps({ current }: { current: 1 | 2 | 3 | 4 | 5 }) {
+  const { t } = useT();
+  const labels = [t('steps.location'), t('steps.barber'), t('steps.service'), t('steps.time'), t('steps.confirm')];
   return (
     <View style={styles.steps}>
       {labels.map((l, i) => (
         <View key={l} style={{ flex: 1, gap: 6 }}>
           <View style={[styles.stepBar, i < current && { backgroundColor: colors.gold }]} />
-          <Text style={[styles.stepLabel, i + 1 === current && { color: colors.text }]}>{l}</Text>
+          <Text numberOfLines={1} style={[styles.stepLabel, i + 1 === current && { color: colors.text }]}>{l}</Text>
         </View>
       ))}
     </View>

@@ -5,14 +5,17 @@ import { Button, styles } from '@/components/ui';
 import { mediaUrl } from '@/api/staff';
 import { usePriceLabel } from '@/lib/price';
 import { useApp } from '@/state/AppState';
+import { useT } from '@/i18n';
 import { colors, radius, space } from '@/theme';
 
 export default function ServiceDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { serviceById, business, resetDraft, setDraft } = useApp();
+  const { serviceById, business, resetDraft, setDraft, loading } = useApp();
   const priceText = usePriceLabel();
+  const { t } = useT();
   const service = serviceById(id ?? null);
-  if (!service) return <Redirect href="/services" />;
+  // Deschisă direct dintr-un link: așteptăm întâi serviciile de la server.
+  if (!service) return loading ? <View style={{ flex: 1, backgroundColor: colors.bg }} /> : <Redirect href="/services" />;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: space.xl }}>
@@ -36,17 +39,18 @@ export default function ServiceDetail() {
         <Text style={[styles.text, { marginTop: space.lg, lineHeight: 22 }]}>{service.description}</Text>
         {business ? (
           <Text style={[styles.muted, { marginTop: space.md, lineHeight: 20 }]}>
-            <Text style={{ color: colors.gold, fontWeight: '700' }}>Atenție! </Text>
+            <Text style={{ color: colors.gold, fontWeight: '700' }}>{t('book.attention')}</Text>
             {business.cancellationPolicy}
           </Text>
         ) : null}
         <View style={{ marginTop: space.lg }}>
           <Button
-            title="Rezervă o programare"
+            title={t('service.book')}
             onPress={() => {
+              // Serviciul e ales: locația, frizerul, apoi direct ora.
               resetDraft();
-              setDraft({ serviceId: service.id });
-              router.push('/book/barber');
+              setDraft({ serviceId: service.id, presetService: true });
+              router.push('/book/location');
             }}
           />
         </View>

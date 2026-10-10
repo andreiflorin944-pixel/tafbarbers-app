@@ -7,6 +7,7 @@ import { publicRoutes } from './routes/public';
 import { scheduled } from './cron';
 import { socialPublic } from './social';
 import { assistantRoutes } from './assistant';
+import { advisorRoutes } from './advisor';
 import { openAppPage, qrPublic } from './qr';
 import { waitlistPublic } from './waitlist';
 import { DOCS, legalDoc, type Doc } from './legal';
@@ -28,6 +29,7 @@ app.get('/v1', (c) => c.json({ name: 'tafbarbers-api', ok: true }));
 app.route('/v1', publicRoutes);
 app.route('/v1', socialPublic);
 app.route('/v1', assistantRoutes);
+app.route('/v1', advisorRoutes);
 app.route('/v1/admin', adminRoutes);
 app.route('/v1', clientRoutes);
 app.route('/', qrPublic);
@@ -40,10 +42,12 @@ app.get('/legal/:doc', async (c) => {
   const lang = ['ro', 'en', 'fr'].includes(c.req.query('lang') ?? '') ? c.req.query('lang')! : 'ro';
   const d = await legalDoc(c.env, doc, lang);
   const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-  const updated = d.updatedAt ? `<p class="m">Actualizat: ${d.updatedAt.slice(0, 10)}</p>` : '';
-  return c.html(`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(d.title)}</title>
+  const updated = d.updatedAt ? `<p class="m">${{ ro: 'Actualizat', en: 'Updated', fr: 'Mis à jour' }[d.lang]}: ${d.updatedAt.slice(0, 10)}</p>` : '';
+  // Traducerea automată: varianta oficială rămâne cea în română.
+  const note = d.translated ? `<p class="m">${d.lang === 'fr' ? 'Traduction automatique. La version officielle est celle en roumain.' : 'Automatic translation. The official version is the Romanian one.'}</p>` : '';
+  return c.html(`<!doctype html><html lang="${d.lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(d.title)}</title>
 <style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:720px;margin:0 auto;padding:32px 20px}h1{color:#F9A11B;font-size:26px}.m{color:#999;font-size:14px}p{white-space:pre-wrap}</style></head>
-<body><main><h1>${esc(d.title)}</h1>${updated}<p>${esc(d.body)}</p></main></body></html>`);
+<body><main><h1>${esc(d.title)}</h1>${updated}${note}<p>${esc(d.body)}</p></main></body></html>`);
 });
 
 // Linkul de recomandare: pagină simplă care deschide aplicația cu codul completat.

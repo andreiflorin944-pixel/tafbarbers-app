@@ -1,4 +1,8 @@
-import { ApiError, type BookingApi } from './client';
+import { ApiError, type AdvisorResult, type BookingApi } from './client';
+import { currentLang } from '@/i18n';
+
+// Fiecare cerere spune limba aplicației (`lang`): serverul trimite textele din panou traduse (servicii, frizeri, produse…).
+export const withLang = (path: string) => (/[?&]lang=/.test(path) ? path : `${path}${path.includes('?') ? '&' : '?'}lang=${currentLang()}`);
 
 export function httpApi(baseUrl: string): BookingApi {
   const base = baseUrl.replace(/\/+$/, '') + '/v1';
@@ -6,7 +10,7 @@ export function httpApi(baseUrl: string): BookingApi {
   async function call<T>(method: string, path: string, opts: { token?: string; body?: unknown } = {}): Promise<T> {
     let res: Response;
     try {
-      res = await fetch(base + path, {
+      res = await fetch(base + withLang(path), {
         method,
         headers: {
           Accept: 'application/json',
@@ -41,9 +45,14 @@ export function httpApi(baseUrl: string): BookingApi {
     getBusiness: () => call('GET', '/business'),
     getServices: () => call('GET', '/services'),
     getBarbers: () => call('GET', '/barbers'),
+    getLocations: () => call('GET', '/locations'),
     getPromos: (lang) => call('GET', `/promos?lang=${encodeURIComponent(lang)}`),
-    getAvailability: ({ serviceId, barberId, day, token }) =>
-      call('GET', `/availability?serviceId=${encodeURIComponent(serviceId)}&barberId=${encodeURIComponent(barberId ?? '')}&day=${day}`, { token: token ?? undefined }),
+    getAvailability: ({ serviceId, barberId, locationId, day, token }) =>
+      call(
+        'GET',
+        `/availability?serviceId=${encodeURIComponent(serviceId)}&barberId=${encodeURIComponent(barberId ?? '')}&locationId=${encodeURIComponent(locationId ?? '')}&day=${day}`,
+        { token: token ?? undefined },
+      ),
 
     requestCode: (input, lang) => call('POST', `/auth/otp?lang=${lang}`, { body: input }),
     verifyCode: (input) => call('POST', '/auth/verify', { body: input }),
@@ -73,11 +82,14 @@ export function httpApi(baseUrl: string): BookingApi {
     },
     payGiftCard: (token, id) => call('POST', `/me/gift-cards/${encodeURIComponent(id)}/pay`, { token }),
     getBeforeAfter: async (token) =>
-      (await call<Array<{ id: string; before: string; after: string; barberName: string | null; createdAt: string }>>('GET', '/me/before-after', { token })).map((x) => ({
+      (await call<Array<{ id: string; before: string; after: string; barberName: string | null; createdAt: string; showExample?: boolean }>>('GET', '/me/before-after', { token })).map((x) => ({
         ...x,
         before: x.before.startsWith('/') ? baseUrl.replace(/\/+$/, '') + x.before : x.before,
         after: x.after.startsWith('/') ? baseUrl.replace(/\/+$/, '') + x.after : x.after,
       })),
+    hideBeforeAfterExample: async (token, id) => {
+      await call('POST', `/me/before-after/${encodeURIComponent(id)}/hide-example`, { token });
+    },
     saveIdentityNote: (token, note) => call('PUT', '/me/identity', { token, body: { note } }),
     addIdentityPhoto: (token, uri) => upload('POST', '/me/identity/photos', token, uri),
     removeIdentityPhoto: async (token, id) => {
@@ -119,6 +131,23 @@ export function httpApi(baseUrl: string): BookingApi {
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
       return json as { text: string };
+    },
+    advisor: async (uri, lang, token) => {
+      let res: Response;
+      try {
+        const blob = await (await fetch(uri)).blob();
+        // consent=1: clientul a acceptat că poza e folosită doar pentru analiză și se șterge imediat.
+        res = await fetch(`${base}/advisor?lang=${lang}&consent=1`, {
+          method: 'POST',
+          headers: { 'Content-Type': blob.type || 'image/jpeg', Authorization: `Bearer ${token}` },
+          body: blob,
+        });
+      } catch {
+        throw new ApiError('network', 0);
+      }
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+      return json as AdvisorResult;
     },
   };
 }

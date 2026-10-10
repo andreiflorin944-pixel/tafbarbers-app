@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { mediaUrl } from '@/api/staff';
 import type { Product } from '@/data/types';
+import { useT } from '@/i18n';
+import { lei } from '@/lib/price';
 import { useCart } from '@/state/Cart';
 import { colors, radius, space } from '@/theme';
 
@@ -21,24 +23,25 @@ export function ProductImage({ product, size }: { product: Product; size: number
 /** „Adaugă” sau − cantitate +. */
 export function QtyControl({ product }: { product: Product }) {
   const { qty, setQty } = useCart();
+  const { t } = useT();
   const q = qty(product.id);
   const soldOut = product.stock === 0;
   const atMax = q >= Math.min(10, product.stock ?? 10);
-  if (soldOut) return <Text style={s.soldOut}>Epuizat</Text>;
+  if (soldOut) return <Text style={s.soldOut}>{t('shop.soldOut')}</Text>;
   if (!q)
     return (
-      <Pressable onPress={() => setQty(product.id, 1)} style={s.add} accessibilityLabel={`Adaugă ${product.name} în coș`}>
+      <Pressable onPress={() => setQty(product.id, 1)} style={s.add} accessibilityLabel={t('shop.addLabel', { name: product.name })}>
         <Ionicons name="add" size={18} color={colors.onGold} />
-        <Text style={s.addText}>Adaugă</Text>
+        <Text style={s.addText}>{t('common.add')}</Text>
       </Pressable>
     );
   return (
     <View style={s.qty}>
-      <Pressable onPress={() => setQty(product.id, q - 1)} hitSlop={8} style={s.qtyBtn} accessibilityLabel="Scade cantitatea">
+      <Pressable onPress={() => setQty(product.id, q - 1)} hitSlop={8} style={s.qtyBtn} accessibilityLabel={t('shop.less')}>
         <Ionicons name={q === 1 ? 'trash-outline' : 'remove'} size={18} color={colors.text} />
       </Pressable>
       <Text style={s.qtyText}>{q}</Text>
-      <Pressable onPress={() => setQty(product.id, q + 1)} hitSlop={8} style={[s.qtyBtn, atMax && { opacity: 0.35 }]} disabled={atMax} accessibilityLabel="Crește cantitatea">
+      <Pressable onPress={() => setQty(product.id, q + 1)} hitSlop={8} style={[s.qtyBtn, atMax && { opacity: 0.35 }]} disabled={atMax} accessibilityLabel={t('shop.more')}>
         <Ionicons name="add" size={18} color={colors.text} />
       </Pressable>
     </View>
@@ -48,14 +51,15 @@ export function QtyControl({ product }: { product: Product }) {
 /** Bara de jos cu coșul, când are ceva în el. */
 export function CartBar() {
   const { count, total } = useCart();
+  const { t } = useT();
   if (!count) return null;
   return (
-    <Pressable onPress={() => router.push('/shop/cart')} style={s.bar} accessibilityLabel="Vezi coșul">
+    <Pressable onPress={() => router.push('/shop/cart')} style={s.bar} accessibilityLabel={t('shop.viewCart')}>
       <View style={s.barCount}>
         <Text style={s.barCountText}>{count}</Text>
       </View>
-      <Text style={s.barText}>Vezi coșul</Text>
-      <Text style={s.barTotal} numberOfLines={1}>{total} lei</Text>
+      <Text style={s.barText}>{t('shop.viewCart')}</Text>
+      <Text style={s.barTotal} numberOfLines={1}>{lei(total)}</Text>
     </Pressable>
   );
 }

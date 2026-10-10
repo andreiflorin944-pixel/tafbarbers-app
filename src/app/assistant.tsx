@@ -9,6 +9,7 @@ import type { AssistantMsg, AssistantProposal } from '@/api/client';
 import { Button } from '@/components/ui';
 import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
+import { lei } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
 
@@ -17,47 +18,22 @@ import { colors, radius, space } from '@/theme';
 
 type Item = AssistantMsg & { proposal?: AssistantProposal; booked?: boolean };
 
-const TEXT = {
-  ro: {
-    hello: 'Salut! Sunt asistentul TAF. Întreabă-mă de prețuri, program sau când e liber un frizer. Pot să te și programez.',
-    examples: ['Când are Florin loc liber vineri?', 'Cât costă tunsul cu barba?', 'Ce program aveți sâmbătă?'],
-    placeholder: 'Scrie sau apasă pe microfon',
-    listening: 'Te ascult… apasă din nou când termini',
-    confirm: 'Confirmă programarea',
-    booked: 'Gata, te-am programat! O găsești la Programări.',
-    login: 'Intră în cont ca să confirm programarea.',
-    voice: 'Citesc răspunsurile cu voce',
-    micDenied: 'Ai nevoie de acces la microfon. Îl poți porni din Setările telefonului.',
-  },
-  en: {
-    hello: "Hi! I'm the TAF assistant. Ask me about prices, opening hours or when a barber is free. I can book you too.",
-    examples: ['When is Florin free on Friday?', 'How much is a haircut and beard?', 'What are your Saturday hours?'],
-    placeholder: 'Type or tap the microphone',
-    listening: 'Listening… tap again when you are done',
-    confirm: 'Confirm booking',
-    booked: "Done, you're booked! You'll find it under Bookings.",
-    login: 'Sign in so I can confirm your booking.',
-    voice: 'Read answers aloud',
-    micDenied: 'Microphone access is needed. You can turn it on in your phone settings.',
-  },
-  fr: {
-    hello: "Bonjour ! Je suis l'assistant TAF. Demandez-moi les prix, les horaires ou quand un barbier est libre. Je peux aussi vous réserver.",
-    examples: ['Quand Florin est-il libre vendredi ?', 'Combien coûte coupe et barbe ?', 'Quels sont vos horaires samedi ?'],
-    placeholder: 'Écrivez ou touchez le micro',
-    listening: 'Je vous écoute… touchez à nouveau pour terminer',
-    confirm: 'Confirmer le rendez-vous',
-    booked: 'C’est fait, vous êtes réservé ! Retrouvez-le dans Rendez-vous.',
-    login: 'Connectez-vous pour que je confirme le rendez-vous.',
-    voice: 'Lire les réponses à voix haute',
-    micDenied: "L'accès au micro est nécessaire. Activez-le dans les réglages du téléphone.",
-  },
-};
 const SPEECH_LANG = { ro: 'ro-RO', en: 'en-GB', fr: 'fr-FR' } as const;
 
 export default function Assistant() {
-  const { token, addBooking } = useApp();
-  const { lang } = useT();
-  const tx = TEXT[lang];
+  const { token, addBooking, locations, business } = useApp();
+  const { lang, t } = useT();
+  const tx = {
+    hello: t('assist.hello'),
+    examples: [t('assist.ex1'), t('assist.ex2'), t('assist.ex3')],
+    placeholder: t('assist.placeholder'),
+    listening: t('assist.listening'),
+    confirm: t('assist.confirm'),
+    booked: t('assist.booked'),
+    login: t('assist.login'),
+    voice: t('assist.voice'),
+    micDenied: t('assist.micDenied'),
+  };
   const [items, setItems] = useState<Item[]>([{ role: 'assistant', content: tx.hello }]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -68,6 +44,10 @@ export default function Assistant() {
   const scroll = useRef<ScrollView>(null);
 
   useEffect(() => () => void Speech.stop(), []);
+  // Altă limbă înainte de prima întrebare: salutul se schimbă și el.
+  useEffect(() => {
+    setItems((x) => (x.length === 1 && x[0].role === 'assistant' ? [{ role: 'assistant', content: tx.hello }] : x));
+  }, [tx.hello]);
   useEffect(() => {
     setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 50);
   }, [items, busy]);
@@ -158,7 +138,9 @@ export default function Assistant() {
                 <Text style={s.propLine}>
                   {m.proposal.barberName} · {m.proposal.when}
                 </Text>
-                <Text style={s.propLine}>{m.proposal.price} lei</Text>
+                {/* Locația apare doar când salonul are mai multe. */}
+                {m.proposal.locationName && locations.length > 1 ? <Text style={s.propLine}>{m.proposal.locationName}</Text> : null}
+                <Text style={s.propLine}>{lei(m.proposal.price)}</Text>
                 {m.booked ? (
                   <Text style={[s.propLine, { color: colors.gold, fontWeight: '700' }]}>✓</Text>
                 ) : (
@@ -177,6 +159,13 @@ export default function Assistant() {
                 <Text style={{ color: colors.text }}>{e}</Text>
               </Pressable>
             ))}
+            {/* Consilierul de tunsori (cu o poză), când e pornit în panou. */}
+            {business?.advisor ? (
+              <Pressable onPress={() => router.push('/advisor')} style={[s.example, { flexDirection: 'row', alignItems: 'center', gap: 6, borderColor: colors.goldDark }]} accessibilityRole="button">
+                <Ionicons name="camera-outline" size={16} color={colors.gold} />
+                <Text style={{ color: colors.text }}>{t('advisor.assistChip')}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
         {busy ? <ActivityIndicator color={colors.gold} style={{ alignSelf: 'flex-start', marginTop: space.sm }} /> : null}
@@ -188,6 +177,11 @@ export default function Assistant() {
         <Text style={{ color: speak ? colors.gold : colors.muted, fontSize: 12 }}>{tx.voice}</Text>
       </Pressable>
       <View style={s.bar}>
+        {business?.advisor && !recording ? (
+          <Pressable onPress={() => router.push('/advisor')} style={s.camera} accessibilityRole="button" accessibilityLabel={t('advisor.title')} disabled={busy}>
+            <Ionicons name="camera-outline" size={22} color={colors.gold} />
+          </Pressable>
+        ) : null}
         {recording ? (
           <Text style={[s.input, { color: colors.gold, paddingTop: 12 }]}>{tx.listening}</Text>
         ) : (
@@ -203,11 +197,11 @@ export default function Assistant() {
           />
         )}
         {input.trim() && !recording ? (
-          <Pressable onPress={() => send(input)} style={s.round} accessibilityRole="button" accessibilityLabel="Trimite">
+          <Pressable onPress={() => send(input)} style={s.round} accessibilityRole="button" accessibilityLabel={t('assist.send')}>
             <Ionicons name="send" size={20} color={colors.onGold} />
           </Pressable>
         ) : (
-          <Pressable onPress={toggleMic} style={[s.round, recording && { backgroundColor: colors.danger }]} accessibilityRole="button" accessibilityLabel="Microfon" disabled={busy && !recording}>
+          <Pressable onPress={toggleMic} style={[s.round, recording && { backgroundColor: colors.danger }]} accessibilityRole="button" accessibilityLabel={t('assist.mic')} disabled={busy && !recording}>
             <Ionicons name={recording ? 'stop' : 'mic'} size={22} color={colors.onGold} />
           </Pressable>
         )}
@@ -231,4 +225,5 @@ const s = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm, paddingBottom: space.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg },
   input: { flex: 1, minHeight: 46, borderRadius: 23, backgroundColor: colors.card, color: colors.text, paddingHorizontal: 16, fontSize: 15 },
   round: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
+  camera: { width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
 });

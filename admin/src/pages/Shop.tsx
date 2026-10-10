@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, type Me, type Order, type OrderStatus, type Product } from '../api';
-import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
+import { emptyTr, Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 import { date, lei, time } from '../util';
 
 const ORDER_STATUS: Record<OrderStatus, string> = { new: 'Nouă', ready: 'Gata de ridicare', picked_up: 'Ridicată', cancelled: 'Anulată' };
@@ -199,6 +199,7 @@ function Products() {
 
 function ProductModal({ p, onClose, onDone }: { p: Partial<Product>; onClose: () => void; onDone: () => void }) {
   const [v, setV] = useState(p);
+  const [tr, setTr] = useState(p.translations ?? emptyTr());
   const [stock, setStock] = useState(p.stock === null || p.stock === undefined ? '' : String(p.stock));
   const { busy, error, run } = useAction();
   const set = (patch: Partial<Product>) => setV((x) => ({ ...x, ...patch }));
@@ -213,6 +214,7 @@ function ProductModal({ p, onClose, onDone }: { p: Partial<Product>; onClose: ()
     forSale: v.forSale !== false,
     unit: v.unit || 'buc',
     cost: v.cost === undefined || v.cost === null || (v.cost as unknown) === '' ? null : Number(v.cost),
+    translations: tr,
   };
 
   return (
@@ -224,6 +226,16 @@ function ProductModal({ p, onClose, onDone }: { p: Partial<Product>; onClose: ()
         <Field label="Descriere (opțional)">
           <textarea value={v.description ?? ''} onChange={(e) => set({ description: e.target.value })} style={{ minHeight: 60 }} />
         </Field>
+        <TranslationFields
+          fields={[
+            { key: 'name', label: 'Nume' },
+            { key: 'description', label: 'Descriere', multiline: true },
+          ]}
+          ro={{ name: v.name, description: v.description }}
+          initialRo={{ name: p.name, description: p.description }}
+          value={tr}
+          onChange={setTr}
+        />
         <div className="grid two">
           <Field label="Preț (lei)">
             <input type="number" min={0} step="0.5" value={v.price ?? ''} onChange={(e) => set({ price: Number(e.target.value) })} />

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, type Me, type Promo, type Service } from '../api';
-import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
+import { Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 
 const ICONS: Record<string, string> = { pricetag: 'Etichetă (ofertă)', flame: 'Flacără (popular)', 'bag-handle': 'Sacoșă (produs)', school: 'Academie' };
 type Texts = { kicker: string; title: string; text: string; cta: string };
@@ -107,7 +107,7 @@ function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; servi
   return (
     <Modal title={p.id ? 'Editează bannerul' : 'Banner nou'} onClose={onClose}>
       <div className="grid">
-        <div className="muted small">Scrii doar în română. Se traduce singur în engleză și franceză când salvezi.</div>
+        <div className="muted small">Scrii doar în română. Se traduce singur în engleză și franceză când salvezi (poți corecta traducerea mai jos).</div>
         <Field label="Etichetă mică (ex. OFERTA SĂPTĂMÂNII)">
           <input value={t.kicker} onChange={(e) => setT({ kicker: e.target.value })} />
         </Field>
@@ -120,6 +120,18 @@ function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; servi
         <Field label="Text buton">
           <input value={t.cta} onChange={(e) => setT({ cta: e.target.value })} />
         </Field>
+        <TranslationFields
+          fields={[
+            { key: 'kicker', label: 'Etichetă mică' },
+            { key: 'title', label: 'Titlu' },
+            { key: 'text', label: 'Text', multiline: true },
+            { key: 'cta', label: 'Text buton' },
+          ]}
+          ro={texts.ro}
+          initialRo={{ kicker: p.kicker, title: p.title, text: p.text, cta: p.cta }}
+          value={{ en: texts.en, fr: texts.fr }}
+          onChange={(x) => setTexts((cur) => ({ ...cur, en: { ...cur.en, ...x.en }, fr: { ...cur.fr, ...x.fr } }))}
+        />
         <Field label="Poză de fundal (opțional; textul apare alb peste poză)">
           <ImagePicker value={imageUrl} onChange={setImageUrl} maxPx={1200} />
         </Field>

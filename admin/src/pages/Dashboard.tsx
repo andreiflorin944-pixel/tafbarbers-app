@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, type Me } from '../api';
 import { Loading, useLoad } from '../ui';
 import { lei, longDate, time } from '../util';
+import { AutoMessagesCard } from './AutoMessages';
 
 type Week = { bookings: number; revenue: number | null; clients: number; newClients: number; cancelled: number; noShow: number };
 export type Dashboard = {
@@ -40,6 +41,8 @@ export function DashboardPage({ me }: { me: Me }) {
         </a>
       </div>
       {!me.permissions.bookings_all ? <p className="muted small" style={{ marginTop: -8 }}>Vezi doar cifrele tale.</p> : null}
+      {/* Comutatoarele mesajelor automate: doar proprietarul (el alege ce primesc clienții). */}
+      {me.owner ? <AutoMessagesCard /> : null}
 
       <h2>Ultimele 7 zile, față de cele 7 dinainte</h2>
       <div className="grid stats">

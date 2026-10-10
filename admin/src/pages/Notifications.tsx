@@ -257,6 +257,10 @@ function ChannelsTab({
         Alegi ce mesaje pleacă singure și pe ce canal. Push e gratuit (ajunge doar la cine are aplicația), SMS-ul se plătește la fiecare mesaj, e-mailul
         ajunge doar la cine și-a trecut adresa. Pentru „Ne e dor de tine”, orele libere și ziua de naștere, canalele se aleg în tabul fiecăruia.
       </p>
+      <p className="muted small" style={{ margin: 0 }}>
+        Mesajele principale (confirmare, reminder-e, anulare, recenzie, cod prin SMS) se pornesc și se opresc și din <a href="#/dashboard">Tablou de bord → Mesaje automate</a>. Un mesaj oprit
+        își păstrează canalele bifate pentru când îl pornești din nou.
+      </p>
       <table>
         <thead>
           <tr>

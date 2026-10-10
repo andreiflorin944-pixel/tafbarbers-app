@@ -1,4 +1,5 @@
 import { autoTranslate } from './translate';
+import { localizeText } from './contentI18n';
 import { emailHtml } from './campaigns';
 import { getBusiness, getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
@@ -109,14 +110,15 @@ export async function greetBirthdays(env: Env, now = new Date()) {
     let body = fill(s.message[lang] || s.message.ro);
     if (s.bonus) {
       await giveBonus(env, c.id, s.reward, 'manual');
-      body += lang === 'ro' ? ` Cadou de la noi: ${s.reward.title}.` : lang === 'fr' ? ` Notre cadeau : ${s.reward.title}.` : ` Our gift: ${s.reward.title}.`;
+      const gift = await localizeText(env, lang, s.reward.title);
+      body += lang === 'ro' ? ` Cadou de la noi: ${gift}.` : lang === 'fr' ? ` Notre cadeau : ${gift}.` : ` Our gift: ${gift}.`;
     }
     // Push: oricui are aplicația cu notificările pornite. E-mail și SMS: doar cu acordul pentru oferte.
     if (s.push) {
       const t = await env.DB.prepare('SELECT token FROM push_tokens WHERE client_id = ?').bind(c.id).all<{ token: string }>();
       if (t.results.length) await sendPush(env, { kind: 'birthday' }, t.results.map((x) => x.token), title, body, { screen: s.bonus ? 'rewards' : 'home' });
     }
-    if (s.email && c.marketing_email && c.email) await sendEmail(env, { kind: 'birthday', recipient: c.email }, title, emailHtml(shop, title, body));
+    if (s.email && c.marketing_email && c.email) await sendEmail(env, { kind: 'birthday', recipient: c.email }, title, emailHtml(shop, title, body, false, lang));
     if (s.sms && c.marketing_sms) await sendSms(env, { kind: 'birthday', recipient: c.phone }, `${title} ${body}`);
   }
   return n;

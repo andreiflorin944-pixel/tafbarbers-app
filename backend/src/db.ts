@@ -114,6 +114,7 @@ export type BarberRow = {
   color?: string | null;
   sort: number;
   active: number;
+  location_id?: string | null;
   service_ids?: string | null;
   service_prices?: string | null;
   service_durations?: string | null;
@@ -133,6 +134,8 @@ export const barber = (r: BarberRow) => ({
     .toUpperCase(),
   sort: r.sort,
   active: !!r.active,
+  // Locația în care lucrează (un frizer lucrează într-o singură locație).
+  locationId: r.location_id ?? null,
   serviceIds: r.service_ids ? r.service_ids.split(',') : [],
   // Prețurile proprii ale frizerului, doar unde diferă de prețul standard: { serviceId: lei }.
   prices: Object.fromEntries(
@@ -185,6 +188,8 @@ export type BookingRow = {
   client_birth_date?: string | null;
   service_name?: string;
   barber_name?: string;
+  location_id?: string | null;
+  location_name?: string | null;
 };
 export const booking = (r: BookingRow) => ({
   id: r.id,
@@ -219,6 +224,9 @@ export const booking = (r: BookingRow) => ({
   // Programare în ziua de naștere a clientului (frizerul vede o lumânare); data nașterii nu se trimite.
   ...(r.client_birth_date !== undefined && { clientBirthday: isBirthdayOn(r.client_birth_date, roLocal(r.starts_at).day) }),
   ...(r.service_name !== undefined && { serviceName: r.service_name, barberName: r.barber_name }),
+  // Locația programării (a frizerului când s-a făcut programarea).
+  locationId: r.location_id ?? null,
+  ...(r.location_name !== undefined && { locationName: r.location_name }),
 });
 
 export type ClientRow = {

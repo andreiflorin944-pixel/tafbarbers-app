@@ -22,24 +22,28 @@ function overlaps(a: Interval, b: Interval) {
   return a.s < b.e && b.s < a.e;
 }
 
-/** Frizerii activi care fac serviciul (opțional doar unul anume). */
-export async function eligibleBarbers(env: Env, serviceId: string, barberId: string | null): Promise<string[]> {
+/**
+ * Frizerii activi care fac serviciul (opțional doar unul anume, sau doar cei dintr-o locație).
+ * Frizerii dintr-o locație dezactivată nu mai primesc programări.
+ */
+export async function eligibleBarbers(env: Env, serviceId: string, barberId: string | null, locationId: string | null = null): Promise<string[]> {
   const rows = await env.DB.prepare(
-    `SELECT b.id FROM barbers b JOIN barber_services bs ON bs.barber_id = b.id
-     WHERE b.active = 1 AND bs.service_id = ? ${barberId ? 'AND b.id = ?' : ''} ORDER BY b.sort`,
+    `SELECT b.id FROM barbers b JOIN barber_services bs ON bs.barber_id = b.id LEFT JOIN locations l ON l.id = b.location_id
+     WHERE b.active = 1 AND bs.service_id = ? AND (b.location_id IS NULL OR l.active = 1)
+     ${barberId ? 'AND b.id = ?' : ''} ${locationId ? 'AND b.location_id = ?' : ''} ORDER BY b.sort`,
   )
-    .bind(...(barberId ? [serviceId, barberId] : [serviceId]))
+    .bind(serviceId, ...(barberId ? [barberId] : []), ...(locationId ? [locationId] : []))
     .all<{ id: string }>();
   return rows.results.map((r) => r.id);
 }
 
 /**
  * Orele libere dintr-o zi locală. Pentru „orice frizer”, fiecare oră apare o singură dată,
- * atribuită primului frizer liber (în ordinea din panou).
+ * atribuită primului frizer liber (în ordinea din panou). Cu `locationId`, „orice frizer” înseamnă orice frizer din acea locație.
  */
 export async function availability(
   env: Env,
-  opts: { serviceId: string; barberId: string | null; day: string; excludeBookingId?: string; access?: Access },
+  opts: { serviceId: string; barberId: string | null; locationId?: string | null; day: string; excludeBookingId?: string; access?: Access },
 ): Promise<Slot[]> {
   const access = opts.access ?? 'public';
   const biz = await getBusiness(env);
@@ -49,7 +53,7 @@ export async function availability(
     .first<{ duration_min: number }>();
   if (!service) throw new HttpError(404, 'service_not_found');
 
-  const barbers = await eligibleBarbers(env, opts.serviceId, opts.barberId);
+  const barbers = await eligibleBarbers(env, opts.serviceId, opts.barberId, opts.locationId ?? null);
   if (!barbers.length) return [];
 
   const dayStart = localToUtc(tz, opts.day, 0);

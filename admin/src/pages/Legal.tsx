@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, type Me } from '../api';
-import { Field, Loading, useAction, useLoad } from '../ui';
+import { api, type Me, type Translations } from '../api';
+import { emptyTr, Field, Loading, TranslationFields, useAction, useLoad } from '../ui';
 import { date } from '../util';
 
 type V = { title: string; body: string } | null;
@@ -15,7 +15,8 @@ export function LegalPage({ me }: { me: Me }) {
   const [doc, setDoc] = useState<'terms' | 'privacy'>('terms');
   const lang = 'ro';
   const [versions, setVersions] = useState<Record<string, { title: string; body: string }>>({});
-  const [saved, setSaved] = useState(false);
+  const [tr, setTr] = useState<Translations>(emptyTr());
+  const [saved, setSaved] = useState<'' | 'done' | 'pending'>('');
   const { busy, error, run } = useAction();
 
   useEffect(() => {
@@ -23,17 +24,17 @@ export function LegalPage({ me }: { me: Me }) {
     if (!d) return;
     setVersions({
       ro: d.versions.ro ?? { title: '', body: '' },
-      en: d.versions.en ?? { title: '', body: '' },
-      fr: d.versions.fr ?? { title: '', body: '' },
     });
-    setSaved(false);
+    // Engleza și franceza = traducerea automată a textului românesc salvat (corectabilă de mână).
+    setTr({ en: { title: d.versions.en?.title ?? '', body: d.versions.en?.body ?? '' }, fr: { title: d.versions.fr?.title ?? '', body: d.versions.fr?.body ?? '' } });
+    setSaved('');
   }, [data.data, doc]);
 
   if (!data.data) return <Loading error={data.error} />;
   const d = data.data[doc];
   const v = versions[lang] ?? { title: '', body: '' };
   const set = (patch: Partial<{ title: string; body: string }>) => {
-    setSaved(false);
+    setSaved('');
     setVersions((x) => ({ ...x, [lang]: { ...v, ...patch } }));
   };
   const publicUrl = `${location.origin}/legal/${doc}`;
@@ -61,7 +62,10 @@ export function LegalPage({ me }: { me: Me }) {
       </div>
       <div className="card grid" style={{ maxWidth: 820 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <span className="muted small">Scrii doar în română. Regulamentele rămân în română, varianta oficială, și în aplicația în engleză sau franceză.</span>
+          <span className="muted small">
+            Scrii doar în română (varianta oficială). Clienții cu aplicația în engleză sau franceză văd traducerea automată, cu mențiunea că varianta oficială e
+            cea în română.
+          </span>
           <span className="muted small">
             {d.isDefault ? 'Model standard, încă nesalvat de tine' : d.updatedAt ? `Actualizat ${date(d.updatedAt)}` : ''}
           </span>
@@ -72,6 +76,21 @@ export function LegalPage({ me }: { me: Me }) {
         <Field label="Text">
           <textarea value={v.body} onChange={(e) => set({ body: e.target.value })} style={{ minHeight: 420, lineHeight: 1.5 }} disabled={!me.owner} />
         </Field>
+        {me.owner ? (
+          <TranslationFields
+            fields={[
+              { key: 'title', label: 'Titlu' },
+              { key: 'body', label: 'Text', multiline: true, tall: true },
+            ]}
+            ro={versions.ro ?? {}}
+            initialRo={d.versions.ro ?? {}}
+            value={tr}
+            onChange={(x) => {
+              setSaved('');
+              setTr(x);
+            }}
+          />
+        ) : null}
         {error ? <div className="err">{error}</div> : null}
         {me.owner ? (
           <div className="row">
@@ -79,15 +98,19 @@ export function LegalPage({ me }: { me: Me }) {
               disabled={busy || !versions.ro?.title || !versions.ro?.body}
               onClick={() =>
                 run(async () => {
-                  await api('PUT', `/admin/legal/${doc}`, { versions });
-                  setSaved(true);
+                  const r = await api<{ translationPending?: boolean }>('PUT', `/admin/legal/${doc}`, { versions: { ro: versions.ro, en: tr.en, fr: tr.fr } });
+                  setSaved(r.translationPending ? 'pending' : 'done');
                   data.reload();
                 })
               }
             >
               Salvează
             </button>
-            {saved ? <span className="success small">Salvat. Apare imediat în aplicație.</span> : null}
+            {saved ? (
+              <span className="success small">
+                {saved === 'pending' ? 'Salvat. Apare imediat în aplicație; traducerea în engleză și franceză e gata în câteva minute.' : 'Salvat. Apare imediat în aplicație.'}
+              </span>
+            ) : null}
             {!d.isDefault ? (
               <button
                 className="ghost"

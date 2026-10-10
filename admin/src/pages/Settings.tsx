@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, setToken, PERM_LABELS, ROLE_HELP, ROLE_LABELS, type Barber, type Business, type Me, type Perm, type Role } from '../api';
-import { Field, Loading, useAction, useLoad, useSub } from '../ui';
+import { api, setToken, PERM_LABELS, ROLE_HELP, ROLE_LABELS, type Barber, type Business, type Location, type Me, type Perm, type Role } from '../api';
+import { emptyTr, Field, ImagePicker, Loading, TranslationFields, useAction, useLoad, useSub } from '../ui';
 import { date, time } from '../util';
 
 export function SettingsPage({ me }: { me: Me }) {
@@ -34,12 +34,114 @@ export function SettingsPage({ me }: { me: Me }) {
           </a>
         ) : null}
         {me.owner ? <BusinessForm /> : null}
+        {me.owner ? <Locations /> : null}
+        {me.owner ? <TranslateAll /> : null}
+        {me.owner ? <HairAdvisor /> : null}
         {me.owner ? <Team me={me} /> : null}
         <Password />
         <Sessions />
         {me.owner ? <MessageLog /> : null}
       </div>
     </>
+  );
+}
+
+/**
+ * Locațiile salonului. Clientul alege întâi locația, apoi frizerul din ea; fiecare frizer lucrează într-o singură locație
+ * (se alege în fișa frizerului). O locație dezactivată nu mai apare în aplicație.
+ */
+function Locations() {
+  const list = useLoad(() => api<Location[]>('GET', '/admin/locations'));
+  const [edit, setEdit] = useState<Partial<Location> | null>(null);
+  const { busy, error, run } = useAction();
+  const save = () =>
+    run(async () => {
+      if (!edit) return;
+      const body = { name: edit.name ?? '', address: edit.address ?? '', phone: edit.phone ?? '', photoUrl: edit.photoUrl ?? null, sort: edit.sort ?? 0 };
+      if (edit.id) await api('PATCH', `/admin/locations/${edit.id}`, body);
+      else await api('POST', '/admin/locations', body);
+      setEdit(null);
+      list.reload();
+    });
+  const toggle = (l: Location) =>
+    run(async () => {
+      const future = l.futureBookings
+        ? `\n\nAtenție: locația are ${l.futureBookings === 1 ? 'o programare viitoare' : `${l.futureBookings} programări viitoare`}. Ele rămân valabile și clienții primesc în continuare memento-urile; dacă nu mai lucrați acolo, anulează-le din Calendar (filtrul de locație) sau mută frizerii în altă locație.`
+        : '';
+      if (l.active && !confirm(`Dezactivezi „${l.name}”? Nu mai apare în aplicație, iar frizerii de acolo nu mai primesc programări noi. Programările deja făcute rămân.${future}`)) return;
+      await api('PATCH', `/admin/locations/${l.id}`, { active: !l.active });
+      list.reload();
+    });
+  const set = (patch: Partial<Location>) => setEdit((e) => ({ ...e, ...patch }));
+  return (
+    <div className="card grid">
+      <h2 id="set-locatii" style={{ margin: 0, scrollMarginTop: 16 }}>Locații</h2>
+      <div className="muted small">
+        La o programare nouă, clientul alege întâi locația, apoi frizerul, serviciul și ora. Fiecare frizer lucrează într-o singură locație: o alegi în
+        Afaceri → Frizeri, în fișa frizerului. Cât timp ai o singură locație, ea e deja aleasă pentru client.
+      </div>
+      {!list.data ? (
+        <Loading error={list.error} />
+      ) : (
+        list.data.map((l) => (
+          <div key={l.id} className="row" style={{ justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: 10, flexWrap: 'wrap' }}>
+            <span>
+              <b>{l.name}</b> {l.active ? null : <span className="pill off">dezactivată</span>}
+              <div className="muted small">
+                {[l.address || 'fără adresă', l.phone, `${l.barbers ?? 0} ${l.barbers === 1 ? 'frizer' : 'frizeri'}`].filter(Boolean).join(' · ')}
+              </div>
+              {l.active && !l.barbers ? <div className="muted small">Nu apare încă în aplicație: adaugă cel puțin un frizer în ea (Afaceri → Frizeri).</div> : null}
+            </span>
+            <span className="row" style={{ gap: 6 }}>
+              <button className="ghost sm" disabled={busy} onClick={() => setEdit(l)}>
+                Editează
+              </button>
+              <button className="ghost sm" disabled={busy} onClick={() => toggle(l)}>
+                {l.active ? 'Dezactivează' : 'Activează'}
+              </button>
+            </span>
+          </div>
+        ))
+      )}
+      {edit ? (
+        <div className="grid" style={{ background: 'var(--card-alt)', borderRadius: 12, padding: 12 }}>
+          <b>{edit.id ? `Editează: ${edit.name}` : 'Locație nouă'}</b>
+          <div className="grid two">
+            <Field label="Nume (ex. TAFBarbers Rediu)">
+              <input value={edit.name ?? ''} onChange={(e) => set({ name: e.target.value })} />
+            </Field>
+            <Field label="Adresă">
+              <input value={edit.address ?? ''} onChange={(e) => set({ address: e.target.value })} placeholder="Strada, numărul, orașul" />
+            </Field>
+            <Field label="Telefon (opțional; gol = telefonul salonului)">
+              <input value={edit.phone ?? ''} onChange={(e) => set({ phone: e.target.value })} placeholder="07xx xxx xxx" />
+            </Field>
+            <Field label="Ordine în aplicație">
+              <input type="number" value={edit.sort ?? 0} onChange={(e) => set({ sort: Number(e.target.value) })} />
+            </Field>
+          </div>
+          <Field label="Poză (opțional)">
+            <ImagePicker value={edit.photoUrl ?? null} onChange={(u) => set({ photoUrl: u })} maxPx={1200} />
+          </Field>
+          <div className="row">
+            <button disabled={busy || !(edit.name ?? '').trim()} onClick={save}>
+              Salvează
+            </button>
+            <button className="ghost" disabled={busy} onClick={() => setEdit(null)}>
+              Renunță
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {error ? <div className="err">{error}</div> : null}
+      {!edit ? (
+        <div className="row">
+          <button className="ghost" onClick={() => setEdit({ name: '', address: '', phone: '', photoUrl: null, sort: (list.data?.length ?? 0) + 1 })}>
+            + Locație nouă
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -165,13 +267,26 @@ function BusinessForm() {
       <Field label="Politica de anulare (apare la confirmarea programării)">
         <textarea value={v.cancellationPolicy ?? ''} onChange={(e) => set({ cancellationPolicy: e.target.value })} />
       </Field>
+      <TranslationFields
+        fields={[
+          { key: 'tagline', label: 'Slogan scurt' },
+          { key: 'description', label: 'Descriere', multiline: true },
+          { key: 'cancellationPolicy', label: 'Politica de anulare', multiline: true },
+        ]}
+        ro={{ tagline: v.tagline, description: v.description, cancellationPolicy: v.cancellationPolicy }}
+        initialRo={{ tagline: biz.data?.tagline, description: biz.data?.description, cancellationPolicy: biz.data?.cancellationPolicy }}
+        value={v.translations ?? emptyTr()}
+        onChange={(translations) => set({ translations })}
+      />
       {error ? <div className="err">{error}</div> : null}
       <div className="row">
         <button
           disabled={busy}
           onClick={() =>
             run(async () => {
-              setV(await api<Business>('PUT', '/admin/settings', v));
+              const next = await api<Business>('PUT', '/admin/settings', v);
+              setV(next);
+              biz.setData(next);
               setSaved(true);
             })
           }
@@ -180,6 +295,115 @@ function BusinessForm() {
         </button>
         {saved ? <span className="success small">Salvat.</span> : null}
       </div>
+    </div>
+  );
+}
+
+type TrStats = { translated: number; failed: number; remaining: number; aiDown: boolean };
+
+/**
+ * „Tradu tot conținutul acum”: traduce în engleză și franceză ce s-a scris în panou înainte de traducerea automată
+ * (servicii, frizeri, produse, abonamente, bannere, despre salon, regulamente, mesaje). Merge pe bucăți, până termină.
+ */
+function TranslateAll() {
+  const status = useLoad(() => api<TrStats>('GET', '/admin/translations/status'));
+  const [progress, setProgress] = useState<{ done: number; left: number } | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const { busy, error, run } = useAction();
+  const start = () =>
+    run(async () => {
+      setResult(null);
+      let done = 0;
+      let failed = 0;
+      let r = await api<TrStats>('POST', '/admin/translations/run', { fresh: true });
+      done += r.translated;
+      failed = r.failed;
+      setProgress({ done, left: r.remaining });
+      // Câte o bucată, cât timp mai rămâne ceva și se avansează.
+      for (let i = 0; i < 60 && r.remaining > 0 && !r.aiDown && r.translated + r.failed > 0; i++) {
+        r = await api<TrStats>('POST', '/admin/translations/run', {});
+        done += r.translated;
+        failed += r.failed;
+        setProgress({ done, left: r.remaining });
+      }
+      setProgress(null);
+      if (r.aiDown)
+        setResult({ ok: false, text: `Traducerea automată nu merge acum (serviciul de traducere nu răspunde). Am tradus ${done} texte; restul se traduc singure mai târziu.` });
+      else
+        setResult({
+          ok: true,
+          text: `Gata. Am tradus ${done} texte.${failed ? ` ${failed} nu s-au putut traduce automat și apar în română; le poți traduce de mână, la „Engleză și franceză”, în fiecare formular.` : ''}`,
+        });
+      status.reload();
+    });
+  const left = status.data?.remaining ?? 0;
+  return (
+    <div className="card grid">
+      <h2 id="set-traduceri" style={{ margin: 0, scrollMarginTop: 16 }}>Traduceri</h2>
+      <div className="muted small">
+        Tot ce scrii în panou (servicii, frizeri, produse, abonamente, bannere, despre salon, regulamente, mesaje) se traduce singur în engleză și franceză
+        când salvezi. Clienții cu aplicația în engleză sau franceză văd traducerea. Cu butonul de mai jos se traduce acum și ce era scris de dinainte.
+      </div>
+      <div className="small">
+        {!status.data ? <Loading error={status.error} /> : left ? `Mai sunt ${left} texte netraduse.` : 'Tot conținutul e tradus.'}
+      </div>
+      {error ? <div className="err">{error}</div> : null}
+      {result ? <div className={result.ok ? 'success small' : 'err'}>{result.text}</div> : null}
+      <div className="row">
+        <button disabled={busy} onClick={start}>
+          {busy ? (progress ? `Se traduce… (${progress.done} gata, mai sunt ${progress.left})` : 'Se traduce…') : 'Tradu tot conținutul acum'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type AdvisorInfo = { on: boolean; aiReady: boolean; today: number; last30: number; total: number };
+
+/**
+ * Consilierul AI de tunsori din aplicație („Ce tunsoare mi se potrivește?”): pornit sau oprit, și câte analize s-au făcut.
+ * Pozele clienților nu se păstrează, deci aici apare doar numărul.
+ */
+function HairAdvisor() {
+  const info = useLoad(() => api<AdvisorInfo>('GET', '/admin/advisor'));
+  const { busy, error, run } = useAction();
+  const [saved, setSaved] = useState(false);
+  const d = info.data;
+  return (
+    <div className="card grid">
+      <h2 id="set-consilier" style={{ margin: 0, scrollMarginTop: 16 }}>Consilier AI de tunsori</h2>
+      <div className="muted small">
+        În aplicație, clientul face o poză, iar AI-ul îi arată 2-3 servicii ale salonului potrivite pentru el, cu prețul, poze înainte/după și butonul
+        „Programează”. Poza se folosește doar pentru analiză și se șterge imediat. Fiecare client poate face cel mult 5 analize pe zi. Ca exemple apar doar
+        perechile înainte/după bifate în fișa clientului („Arată ca exemplu”).
+      </div>
+      {!d ? (
+        <Loading error={info.error} />
+      ) : (
+        <>
+          <label className="row" style={{ gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={d.on}
+              disabled={busy}
+              onChange={(e) =>
+                run(async () => {
+                  setSaved(false);
+                  info.setData(await api<AdvisorInfo>('PUT', '/admin/advisor', { on: e.target.checked }));
+                  setSaved(true);
+                })
+              }
+            />
+            <b>{d.on ? 'Pornit: clienții văd „Ce tunsoare mi se potrivește?”' : 'Oprit: clienții nu văd consilierul'}</b>
+          </label>
+          {saved ? <span className="success small">Salvat.</span> : null}
+          {!d.aiReady ? <div className="err">AI-ul nu e legat la server, deci consilierul nu apare în aplicație chiar dacă e pornit.</div> : null}
+          <div className="small">
+            Analize făcute: <b>{d.today}</b> azi · <b>{d.last30}</b> în ultimele 30 de zile · <b>{d.total}</b> în total
+          </div>
+        </>
+      )}
+      {error ? <div className="err">{error}</div> : null}
     </div>
   );
 }

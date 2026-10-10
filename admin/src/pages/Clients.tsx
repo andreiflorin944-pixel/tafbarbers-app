@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, getToken, uploadImageTo, type Client, type ClientPhoto, type Me } from '../api';
+import { api, getToken, uploadImageTo, type Client, type ClientPhoto, type Me, type Service } from '../api';
 import { Field, Loading, Modal, useAction, useLoad, useSub } from '../ui';
 import { excelDate, readTable } from '../sheet';
 import { date, lei, STATUS, time } from '../util';
@@ -100,6 +100,7 @@ export function ClientsPage({ me }: { me: Me }) {
         <ClientModal
           id={open}
           canDelete={me.owner}
+          canConsents={me.owner || me.permissions.contacts}
           onClose={() => {
             setOpen(null);
             if (sub) location.hash = '#/clients';
@@ -266,7 +267,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   );
 }
 
-function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDelete: boolean; onClose: () => void; onChange: () => void }) {
+function ClientModal({ id, canDelete, canConsents, onClose, onChange }: { id: string; canDelete: boolean; canConsents: boolean; onClose: () => void; onChange: () => void }) {
   const c = useLoad(() => api<Client>('GET', `/admin/clients/${id}`), [id]);
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
@@ -352,7 +353,7 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
             />
           </label>
           <h2 style={{ margin: '6px 0 0' }}>Înainte și după</h2>
-          <BeforeAfter clientId={id} list={c.data.beforeAfter ?? []} onChange={c.reload} />
+          <BeforeAfter clientId={id} list={c.data.beforeAfter ?? []} owner={canDelete} onChange={c.reload} />
           <Field label="Nume">
             <input value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
@@ -376,6 +377,7 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
               </button>
             </div>
           ) : null}
+          {canConsents ? <Consents clientId={id} /> : null}
           {canDelete ? (
             <div>
               <button
@@ -414,6 +416,82 @@ function ClientModal({ id, canDelete, onClose, onChange }: { id: string; canDele
   );
 }
 
+type Consent = {
+  id: number;
+  at: string;
+  source: string;
+  terms: boolean;
+  privacy: boolean;
+  marketing: boolean | null;
+  channels: string[];
+  termsVersion: string | null;
+  privacyVersion: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  lang: string | null;
+  channel: string | null;
+  anonymized: boolean;
+};
+const SOURCE: Record<string, string> = {
+  register: 'cont nou (cu cod)',
+  social: 'cont nou (Apple / Google)',
+  first_login: 'prima intrare (client adăugat din panou)',
+  login: 'la intrarea în cont',
+  profile: 'din profilul lui',
+};
+const CHANNEL: Record<string, string> = { push: 'notificări', email: 'e-mail', sms: 'SMS' };
+// Versiunea documentului: data modelului implicit (2026-10-09) sau data și ora salvării din panou (cu oră, ca două corecturi în aceeași zi să se deosebească).
+const ver = (d: string | null) =>
+  !d
+    ? '–'
+    : d.includes('T')
+      ? new Date(d).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : d.split('-').reverse().join('.');
+
+/** Dovada acordurilor (GDPR): ce a acceptat clientul, când, versiunea documentelor, de pe ce adresă IP și dispozitiv. */
+function Consents({ clientId }: { clientId: string }) {
+  const list = useLoad(() => api<Consent[]>('GET', `/admin/clients/${clientId}/consents`), [clientId]);
+  return (
+    <>
+      <h2 style={{ margin: '6px 0 0' }}>Acorduri (GDPR)</h2>
+      {!list.data ? (
+        <Loading error={list.error} />
+      ) : !list.data.length ? (
+        <div className="muted small">Niciun acord salvat. Clienții adăugați din panou îl dau la prima intrare în aplicație.</div>
+      ) : (
+        <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+          {list.data.map((x) => (
+            <div key={x.id} className="small" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <b>
+                  {date(x.at)}, {time(x.at)}
+                </b>{' '}
+                · {SOURCE[x.source] ?? x.source}
+              </div>
+              <div>
+                {[
+                  x.terms && `a acceptat termenii (versiunea din ${ver(x.termsVersion)})`,
+                  x.privacy && `politica de confidențialitate (versiunea din ${ver(x.privacyVersion)})`,
+                  x.marketing === true && `vrea oferte prin ${x.channels.map((ch) => CHANNEL[ch] ?? ch).join(', ')}`,
+                  x.marketing === false && 'nu vrea oferte',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+              <div className="muted">
+                {x.anonymized
+                  ? 'Cont șters: au rămas doar data și ce a acceptat.'
+                  : `IP ${x.ip ?? '–'} · ${x.channel === 'web' ? 'site' : 'aplicație'} · limba ${(x.lang ?? '–').toUpperCase()}`}
+                {x.userAgent ? <div style={{ wordBreak: 'break-all' }}>{x.userAgent}</div> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 /** Poze mici; clic = poza mare într-un tab nou. */
 function Photos({ list, onDelete }: { list: ClientPhoto[]; onDelete?: (id: string) => void }) {
   if (!list.length) return null;
@@ -435,21 +513,58 @@ function Photos({ list, onDelete }: { list: ClientPhoto[]; onDelete?: (id: strin
   );
 }
 
-/** Perechi de poze înainte/după; clientul le vede în aplicație și le poate distribui pe Instagram. */
-function BeforeAfter({ clientId, list, onChange }: { clientId: string; list: NonNullable<Client['beforeAfter']>; onChange: () => void }) {
+/**
+ * Perechi de poze înainte/după; clientul le vede în aplicație și le poate distribui pe Instagram.
+ * Cu acordul clientului, o pereche poate apărea ca exemplu în consilierul AI de tunsori, la serviciul ei.
+ */
+function BeforeAfter({ clientId, list, owner, onChange }: { clientId: string; list: NonNullable<Client['beforeAfter']>; owner: boolean; onChange: () => void }) {
   const [before, setBefore] = useState<File | null>(null);
   const { busy, error, run } = useAction();
+  const services = useLoad(() => api<Service[]>('GET', '/admin/services'));
   const up = (f: File) => uploadImageTo(`/v1/admin/clients/${clientId}/before-after/upload`, f, { maxPx: 1400 }) as Promise<{ mediaId: string }>;
+  const patch = (pid: string, body: { serviceId?: string | null; showExample?: boolean }) => run(async () => { await api('PATCH', `/admin/before-after/${pid}`, body); onChange(); });
   return (
     <div className="grid" style={{ gap: 8 }}>
       {list.map((p) => (
-        <div key={p.id} className="row" style={{ gap: 6, alignItems: 'center' }}>
+        <div key={p.id} className="row" style={{ gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <img src={p.before} alt="înainte" style={{ width: 90, height: 110, objectFit: 'cover', borderRadius: 8 }} />
           <img src={p.after} alt="după" style={{ width: 90, height: 110, objectFit: 'cover', borderRadius: 8 }} />
-          <span className="muted small">
-            {date(p.createdAt)}
-            {p.barberName ? ` · ${p.barberName}` : ''}
-          </span>
+          <div className="grid" style={{ gap: 4, minWidth: 200, flex: 1 }}>
+            <span className="muted small">
+              {date(p.createdAt)}
+              {p.barberName ? ` · ${p.barberName}` : ''}
+            </span>
+            <select value={p.serviceId ?? ''} disabled={busy} onChange={(e) => patch(p.id, { serviceId: e.target.value || null })} aria-label="Serviciul">
+              <option value="">Serviciul: nu știu</option>
+              {(services.data ?? []).map((sv) => (
+                <option key={sv.id} value={sv.id}>
+                  {sv.name}
+                </option>
+              ))}
+            </select>
+            <label className="small" style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }} title="Alți clienți văd perechea la sugestiile consilierului AI pentru acest serviciu.">
+              <input
+                type="checkbox"
+                style={{ flex: 'none', marginTop: 2 }}
+                checked={!!p.showExample}
+                disabled={busy || !p.serviceId || !owner}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  if (on && !confirm('Clientul a fost de acord ca pozele lui să fie arătate altor clienți, ca exemplu? Se păstrează data și cine a bifat. Clientul poate opri asta oricând din aplicație.')) return;
+                  patch(p.id, { showExample: on });
+                }}
+              />
+              <span>Arată ca exemplu în consilierul AI (clientul e de acord){owner ? '' : ' · doar proprietarul poate schimba'}</span>
+            </label>
+            {p.showExample && p.exampleConsentAt ? (
+              <span className="muted small">
+                Acord bifat pe {date(p.exampleConsentAt)}
+                {p.exampleConsentBy ? ` de ${p.exampleConsentBy}` : ''}
+              </span>
+            ) : !p.showExample && p.exampleWithdrawnAt ? (
+              <span className="muted small">Acord retras pe {date(p.exampleWithdrawnAt)}</span>
+            ) : null}
+          </div>
           <button className="ghost sm" disabled={busy} onClick={() => confirm('Ștergi perechea de poze?') && run(async () => { await api('DELETE', `/admin/before-after/${p.id}`); onChange(); })}>
             Șterge
           </button>

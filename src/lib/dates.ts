@@ -1,6 +1,9 @@
-const DAYS = ['Dum', 'Lun', 'Mar', 'Mie', 'Joi', 'Vin', 'Sâm'];
-const DAYS_LONG = ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
-const MONTHS = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+import { tr } from '@/i18n';
+
+// Numele zilelor și lunilor, în limba aleasă în aplicație (din src/i18n.tsx).
+const DAYS = () => tr('date.daysShort').split(',');
+const DAYS_LONG = () => tr('date.daysLong').split(',');
+const MONTHS = () => tr('date.months').split(',');
 
 export const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -70,9 +73,13 @@ export const dayOfMonth = (d: Date) => wall(d).d;
 /** Ora (0–23) la salon. */
 export const hourOf = (d: Date) => wall(d).h;
 
-export const shortDay = (d: Date) => DAYS[wd(d)];
-export const longDay = (d: Date) => DAYS_LONG[wd(d)];
-export const shortMonth = (d: Date) => MONTHS[wall(d).mo - 1];
+export const shortDay = (d: Date) => DAYS()[wd(d)];
+export const longDay = (d: Date) => DAYS_LONG()[wd(d)];
+export const shortMonth = (d: Date) => MONTHS()[wall(d).mo - 1];
+/** Numele zilei după numărul ei (0 = duminică), scurt sau lung. */
+export const dayName = (weekday: number, long = false) => (long ? DAYS_LONG() : DAYS())[weekday];
+/** O zi AAAA-LL-ZZ scurt: „5 oct”. */
+export const shortDate = (day: string) => `${Number(day.slice(8, 10))} ${MONTHS()[Number(day.slice(5, 7)) - 1]}`;
 
 export const formatTime = (d: Date) => {
   const w = wall(d);
@@ -81,7 +88,7 @@ export const formatTime = (d: Date) => {
 
 export const formatDate = (d: Date) => {
   const w = wall(d);
-  return `${longDay(d)}, ${w.d} ${shortMonth(d)} ${w.y}`;
+  return tr('date.full', { weekday: longDay(d), day: w.d, month: shortMonth(d), year: w.y });
 };
 
 export function parseHM(base: Date, hm: string) {

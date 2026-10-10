@@ -1,5 +1,6 @@
-import { barbers, business, promos, services } from '@/data/mock';
+import { barbers, business, locations, promos, services } from '@/data/mock';
 import type { Booking, Identity, Me, Slot, WaitlistEntry } from '@/data/types';
+import { tr } from '@/i18n';
 import { dayKey, formatTime, fromDayKey, parseHM } from '@/lib/dates';
 import { ApiError, type BookingApi } from './client';
 
@@ -42,8 +43,9 @@ export const mockApi: BookingApi = {
   getBusiness: () => delay(business),
   getServices: () => delay(services),
   getBarbers: () => delay(barbers),
+  getLocations: () => delay(locations),
 
-  async getAvailability({ serviceId, barberId, day }) {
+  async getAvailability({ serviceId, barberId, locationId, day }) {
     const service = services.find((s) => s.id === serviceId);
     const date = fromDayKey(day);
     const hours = business.hours[date.getDay()];
@@ -52,7 +54,7 @@ export const mockApi: BookingApi = {
     const open = parseHM(date, hours.open);
     const close = parseHM(date, hours.close);
     const now = Date.now();
-    const candidates = barberId ? barbers.filter((b) => b.id === barberId) : barbers;
+    const candidates = barberId ? barbers.filter((b) => b.id === barberId) : barbers.filter((b) => !locationId || b.locationId === locationId);
     const byTime = new Map<string, Slot>();
 
     for (const barber of candidates) {
@@ -97,8 +99,8 @@ export const mockApi: BookingApi = {
   logout: () => delay(undefined),
   getLegal: (doc) =>
     delay({
-      title: doc === 'terms' ? 'Termeni și condiții' : 'Politica de confidențialitate',
-      body: 'Versiune de test. Textul real se editează din panou, la Regulamente, după ce aplicația e legată de server.',
+      title: tr(doc === 'terms' ? 'mock.terms' : 'mock.privacy'),
+      body: tr('mock.legalBody'),
       updatedAt: null,
     }),
   async exportMe(token) {
@@ -129,15 +131,19 @@ export const mockApi: BookingApi = {
       enabled: true,
       code: 'DEMO42',
       referred: 1,
+      // Conținut de probă, ca cel scris de proprietar în panou (pe server se traduce singur). i18n-ok
       reward: '10% reducere la următoarea tunsoare',
       bonuses: [
+        // i18n-ok: conținut de probă
         { id: 'bn-demo', title: '10% reducere la următoarea tunsoare', kind: 'percent', value: 10, source: 'referral', status: 'active', expiresAt: null, createdAt: new Date().toISOString(), usedAt: null },
       ],
     }),
   getSubscriptions: () =>
     delay({
       plans: [
+        // Abonamente de probă, ca cele din panou (pe server se traduc singure). i18n-ok
         { id: 'pl-4', name: 'Lunar 4 tunsori', description: 'Patru tunsori clasice într-o lună.', price: 150, periodDays: 30, cuts: 4, serviceIds: ['svc-classic'] },
+        // i18n-ok: abonament de probă
         { id: 'pl-u', name: 'Nelimitat', description: 'Tunsori și barbă oricât de des într-o lună.', price: 250, periodDays: 30, cuts: null, serviceIds: [] },
       ],
       subscriptions: [],
@@ -147,6 +153,7 @@ export const mockApi: BookingApi = {
   cancelGiftCard: () => delay(undefined),
   payGiftCard: () => Promise.reject(new ApiError('payments_off', 409)),
   getBeforeAfter: () => delay([]),
+  hideBeforeAfterExample: () => delay(undefined),
   async saveIdentityNote(token, note) {
     identityOf(token).note = note;
     return delay(identityOf(token));
@@ -173,7 +180,7 @@ export const mockApi: BookingApi = {
 
   async createBooking(token, input) {
     const service = services.find((s) => s.id === input.serviceId);
-    const slots = await mockApi.getAvailability({ serviceId: input.serviceId, barberId: input.barberId, day: dayKey(new Date(input.start)) });
+    const slots = await mockApi.getAvailability({ serviceId: input.serviceId, barberId: input.barberId, locationId: input.locationId, day: dayKey(new Date(input.start)) });
     const slot = slots.find((s) => s.start === input.start);
     if (!slot || !service) throw new ApiError('slot_unavailable', 409);
     const booking = {
@@ -210,6 +217,7 @@ export const mockApi: BookingApi = {
       serviceName: service.name,
       barberId: input.barberId,
       barberName: barbers.find((b) => b.id === input.barberId)?.name ?? null,
+      locationId: input.barberId ? null : (input.locationId ?? null),
       day: input.day,
       part: input.part,
       status: 'waiting' as const,
@@ -239,6 +247,7 @@ export const mockApi: BookingApi = {
   payOrder: () => Promise.reject(new ApiError('payments_off', 409)),
   qrOpen: async () => ({ ok: true as const }),
   payBooking: () => Promise.reject(new ApiError('payments_off', 409)),
-  assistant: () => Promise.resolve({ reply: 'Asistentul merge când aplicația e legată de server.' }),
+  assistant: () => Promise.resolve({ reply: tr('mock.assistant') }),
   assistantVoice: () => Promise.reject(new ApiError('assistant_off', 409)),
+  advisor: () => Promise.reject(new ApiError('advisor_off', 409)),
 };

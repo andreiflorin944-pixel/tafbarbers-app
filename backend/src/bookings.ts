@@ -7,6 +7,7 @@ import { addDays, formatLocal, iso, localDay } from './time';
 import { refundBooking } from './payments';
 import type { TplEvent } from './templates';
 import { checkWaitlist, closeOnBooking } from './waitlist';
+import { locationVars } from './locations';
 
 /** Stările care țin ora ocupată: programările confirmate și cererile încă fără răspuns. */
 export const HOLDS_SLOT = `('confirmed','requested')`;
@@ -19,11 +20,12 @@ export function needsApproval(biz: { requireApproval?: boolean; approvalBarberId
 }
 
 export const BOOKING_SELECT = `
-  SELECT b.*, c.name AS client_name, c.phone AS client_phone, c.birth_date AS client_birth_date, s.name AS service_name, br.name AS barber_name
+  SELECT b.*, c.name AS client_name, c.phone AS client_phone, c.birth_date AS client_birth_date, s.name AS service_name, br.name AS barber_name, loc.name AS location_name
   FROM bookings b
   JOIN clients c ON c.id = b.client_id
   JOIN services s ON s.id = b.service_id
-  JOIN barbers br ON br.id = b.barber_id`;
+  JOIN barbers br ON br.id = b.barber_id
+  LEFT JOIN locations loc ON loc.id = b.location_id`;
 
 export async function getBooking(env: Env, id: string) {
   const r = await env.DB.prepare(`${BOOKING_SELECT} WHERE b.id = ?`).bind(id).first<BookingRow>();
@@ -41,6 +43,8 @@ export async function createBooking(
     clientId: string;
     serviceId: string;
     barberId: string | null;
+    /** „Orice frizer” dintr-o locație anume (aplicația trimite locația aleasă la primul pas). */
+    locationId?: string | null;
     start: string;
     note?: string;
     source: 'app' | 'admin' | 'web';
@@ -66,6 +70,7 @@ export async function createBooking(
     const slots = await availability(env, {
       serviceId: input.serviceId,
       barberId: input.barberId,
+      locationId: input.locationId ?? null,
       day: localDay(env.TIMEZONE, start),
       access: input.source === 'admin' ? 'staff' : await accessFor(env, input.clientId),
     });
@@ -89,8 +94,8 @@ export async function createBooking(
   // Limita de programări viitoare se verifică în aceeași instrucțiune, ca două rezervări trimise odată să n-o depășească.
   const limit = input.maxActive ? `AND (SELECT count(*) FROM bookings WHERE client_id = ? AND status IN ${HOLDS_SLOT} AND starts_at > ?) < ?` : '';
   const res = await env.DB.prepare(
-    `INSERT INTO bookings (id, client_id, barber_id, service_id, starts_at, ends_at, price_bani, source, note, status)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    `INSERT INTO bookings (id, client_id, barber_id, service_id, starts_at, ends_at, price_bani, source, note, status, location_id)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT location_id FROM barbers WHERE id = ?)
      WHERE NOT EXISTS (
        SELECT 1 FROM bookings WHERE barber_id = ? AND status IN ${HOLDS_SLOT} AND starts_at < ? AND ends_at > ?
      ) ${limit}`,
@@ -106,6 +111,7 @@ export async function createBooking(
       input.source,
       (input.note ?? '').slice(0, 500),
       requested ? 'requested' : 'confirmed',
+      barberId,
       barberId,
       iso(end),
       iso(start),
@@ -170,7 +176,13 @@ export async function notifyBooking(
     env,
     kind,
     b.clientId,
-    { servicename: b.serviceName ?? '', barbername: b.barberName ?? '', datetime: formatLocal(env.TIMEZONE, b.start, c.lang), ...extra },
+    {
+      servicename: b.serviceName ?? '',
+      barbername: b.barberName ?? '',
+      datetime: formatLocal(env.TIMEZONE, b.start, c.lang),
+      ...(await locationVars(env, b.locationId, c.lang)),
+      ...extra,
+    },
     { bookingId: b.id, data: { bookingId: b.id } },
   );
 }

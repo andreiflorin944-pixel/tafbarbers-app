@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, blockKind, errorText, type Barber, type BlockOccurrence, type Booking, type Checkout, type Client, type Me, type Service, type Slot, type TimeOff } from '../api';
+import { api, blockKind, errorText, type Barber, type BlockOccurrence, type Booking, type Checkout, type Client, type Location, type Me, type Service, type Slot, type TimeOff } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
 import { BOOKINGS_CHANGED, bookingsChanged, RequestActions } from '../Requests';
 import { addDays, date, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
@@ -20,6 +20,10 @@ export function CalendarPage({ me }: { me: Me }) {
   const [create, setCreate] = useState<{ barberId?: string; time?: string } | null>(null);
 
   const meta = useLoad(() => Promise.all([api<Barber[]>('GET', '/admin/barbers'), api<Service[]>('GET', '/admin/services')]));
+  // Filtrul pe locație apare doar când salonul are mai multe locații active ('' = toate).
+  const locs = useLoad(() => api<Location[]>('GET', '/admin/locations'));
+  const [loc, setLoc] = useState('');
+  const activeLocs = (locs.data ?? []).filter((l) => l.active);
   const stats = useLoad(() => api<Stats>('GET', '/admin/stats'));
   const from = localToIso(day, '00:00');
   const to = localToIso(addDays(day, 1), '00:00');
@@ -34,7 +38,7 @@ export function CalendarPage({ me }: { me: Me }) {
   const [barbers, services] = meta.data ?? [[], []];
   const own = me.permissions.bookings_all ? null : me.barberId;
   const [hidden, setHidden] = useState<string[]>([]);
-  const activeBarbers = barbers.filter((b) => b.active && (!own || b.id === own));
+  const activeBarbers = barbers.filter((b) => b.active && (!own || b.id === own) && (!loc || b.locationId === loc));
   const cols = activeBarbers.filter((b) => !hidden.includes(b.id));
   const colorOf = (id: string) => {
     const i = barbers.findIndex((b) => b.id === id);
@@ -121,7 +125,19 @@ export function CalendarPage({ me }: { me: Me }) {
         </button>
         <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} style={{ width: 170 }} />
         <strong style={{ textTransform: 'capitalize' }}>{longDate(day + 'T12:00:00Z')}</strong>
-        <span className="muted small">{(bookings.data ?? []).filter((b) => b.status !== 'cancelled').length} programări</span>
+        {activeLocs.length > 1 && !own ? (
+          <select value={loc} onChange={(e) => setLoc(e.target.value)} style={{ width: 200 }} aria-label="Locația">
+            <option value="">Toate locațiile</option>
+            {activeLocs.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <span className="muted small">
+          {(bookings.data ?? []).filter((b) => b.status !== 'cancelled' && (!loc || activeBarbers.some((x) => x.id === b.barberId))).length} programări
+        </span>
         {waiting.data?.some((w) => w.active) ? (
           <a className="small" href="#/waitlist">
             {waiting.data.filter((w) => w.active).length} pe lista de așteptare

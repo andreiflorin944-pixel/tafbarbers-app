@@ -1,0 +1,217 @@
+import type { Lang } from './contentI18n';
+import type { Report } from './reports';
+
+// Rapoartele și tabloul de bord din aplicația echipei, în limba aleasă în aplicație (`?lang=en|fr`).
+// Titlurile, coloanele și cuvintele fixe din celule (stări, tipuri de plată, mișcări de stoc) au traducerea aici;
+// numele (clienți, frizeri, servicii) rămân cum sunt. Excelul din panou rămâne în română.
+
+type T2 = [en: string, fr: string];
+const D: Record<string, T2> = {
+  // Titlurile rapoartelor
+  'Raportul zilei': ['Daily report', 'Rapport du jour'],
+  'Lista programărilor': ['Booking list', 'Liste des rendez-vous'],
+  'Vânzări pe membru de echipă': ['Sales by team member', 'Ventes par membre de l’équipe'],
+  'Vânzări pe servicii': ['Sales by service', 'Ventes par service'],
+  'Rezervări pe membru de echipă': ['Bookings by team member', 'Réservations par membre de l’équipe'],
+  'Rezervări viitoare': ['Upcoming bookings', 'Réservations à venir'],
+  'Anulări din partea echipei': ['Cancellations by the team', 'Annulations par l’équipe'],
+  'Anulări de către client': ['Cancellations by the client', 'Annulations par le client'],
+  'Plăți': ['Payments', 'Paiements'],
+  'Plăți în funcție de membrul echipei': ['Payments by team member', 'Paiements par membre de l’équipe'],
+  'Bacșișuri pe membru de echipă': ['Tips by team member', 'Pourboires par membre de l’équipe'],
+  'Clienți TOP-100': ['TOP-100 clients', 'TOP-100 clients'],
+  'Păstrarea clienților': ['Client retention', 'Fidélisation des clients'],
+  'Clienți noi vs. clienți care revin': ['New vs. returning clients', 'Nouveaux clients vs. clients fidèles'],
+  'Registrul de încasări': ['Cash register', 'Registre des recettes'],
+  'Situația stocului': ['Stock status', 'État du stock'],
+  'Intrări și ieșiri de produse': ['Product ins and outs', 'Entrées et sorties de produits'],
+  // Coloane
+  '% cu bacșiș': ['% with tip', '% avec pourboire'],
+  '% din încasări': ['% of revenue', '% des recettes'],
+  '% noi': ['% new', '% nouveaux'],
+  'Abonamente și carduri cadou': ['Subscriptions and gift cards', 'Abonnements et cartes cadeaux'],
+  'Adăugate de echipă': ['Added by the team', 'Ajoutées par l’équipe'],
+  Anulate: ['Cancelled', 'Annulées'],
+  'Anulată de': ['Cancelled by', 'Annulée par'],
+  'Anulată la': ['Cancelled at', 'Annulée le'],
+  Anulări: ['Cancellations', 'Annulations'],
+  'Au revenit în 60 de zile': ['Came back within 60 days', 'Revenus sous 60 jours'],
+  'Bacșiș (lei)': ['Tip (lei)', 'Pourboire (lei)'],
+  'Bacșiș mediu (lei)': ['Average tip (lei)', 'Pourboire moyen (lei)'],
+  'Bacșiș total (lei)': ['Total tips (lei)', 'Total des pourboires (lei)'],
+  'Card POS (lei)': ['Card POS (lei)', 'Carte TPE (lei)'],
+  'Cheltuit (lei)': ['Spent (lei)', 'Dépensé (lei)'],
+  Client: ['Client', 'Client'],
+  'Clienți care revin': ['Returning clients', 'Clients fidèles'],
+  'Clienți noi': ['New clients', 'Nouveaux clients'],
+  Clienți: ['Clients', 'Clients'],
+  'Confirmate (de făcut)': ['Confirmed (to do)', 'Confirmées (à faire)'],
+  'Cont echipă': ['Team account', 'Compte d’équipe'],
+  'Cu bacșiș': ['With tip', 'Avec pourboire'],
+  'Cu câte ore înainte': ['Hours before', 'Heures avant'],
+  'Cum s-a închis': ['How it was closed', 'Clôture'],
+  Cum: ['How', 'Comment'],
+  'Data și ora': ['Date and time', 'Date et heure'],
+  Data: ['Date', 'Date'],
+  'Din aplicație / site': ['From app / website', 'Depuis l’appli / le site'],
+  'Din card cadou (lei)': ['From gift card (lei)', 'Par carte cadeau (lei)'],
+  'Din care pe abonament': ['Of which on subscription', 'Dont sur abonnement'],
+  Document: ['Document', 'Document'],
+  'E-mail': ['E-mail', 'E-mail'],
+  Finalizate: ['Completed', 'Terminées'],
+  Frizer: ['Barber', 'Barbier'],
+  'Făcută din': ['Made from', 'Faite depuis'],
+  Ieșire: ['Out', 'Sortie'],
+  Indicator: ['Indicator', 'Indicateur'],
+  Intrare: ['In', 'Entrée'],
+  Loc: ['Rank', 'Rang'],
+  Luna: ['Month', 'Mois'],
+  Ziua: ['Day', 'Jour'],
+  'Medie pe plată (lei)': ['Average per payment (lei)', 'Moyenne par paiement (lei)'],
+  'Medie pe vizită (lei)': ['Average per visit (lei)', 'Moyenne par visite (lei)'],
+  'Membru echipă': ['Team member', 'Membre de l’équipe'],
+  Neprezentări: ['No-shows', 'Absences'],
+  Noi: ['New', 'Nouveaux'],
+  'Numerar (lei)': ['Cash (lei)', 'Espèces (lei)'],
+  Observații: ['Notes', 'Remarques'],
+  'Operat de': ['Recorded by', 'Saisi par'],
+  'Pe abonament': ['On subscription', 'Sur abonnement'],
+  Pentru: ['For', 'Pour'],
+  Plată: ['Payment', 'Paiement'],
+  'Plăți servicii': ['Service payments', 'Paiements de services'],
+  'Preț (lei)': ['Price (lei)', 'Prix (lei)'],
+  'Preț achiziție (lei)': ['Purchase price (lei)', 'Prix d’achat (lei)'],
+  'Preț vânzare (lei)': ['Sale price (lei)', 'Prix de vente (lei)'],
+  Produs: ['Product', 'Produit'],
+  'Rata de revenire': ['Return rate', 'Taux de retour'],
+  Reveniți: ['Returning', 'Revenus'],
+  Rezervări: ['Bookings', 'Réservations'],
+  'Servicii finalizate': ['Completed services', 'Services terminés'],
+  'Serviciu / vânzare': ['Service / sale', 'Service / vente'],
+  Serviciu: ['Service', 'Service'],
+  Stare: ['Status', 'Statut'],
+  Stoc: ['Stock', 'Stock'],
+  'Sumă (lei)': ['Amount (lei)', 'Montant (lei)'],
+  'Sumă abonamente și carduri (lei)': ['Subscriptions and cards amount (lei)', 'Montant abonnements et cartes (lei)'],
+  'Sumă servicii (lei)': ['Services amount (lei)', 'Montant services (lei)'],
+  Telefon: ['Phone', 'Téléphone'],
+  'Tip mișcare': ['Movement type', 'Type de mouvement'],
+  Tip: ['Type', 'Type'],
+  'Total clienți': ['Total clients', 'Total clients'],
+  'Total încasat (lei)': ['Total collected (lei)', 'Total encaissé (lei)'],
+  'Transfer / online (lei)': ['Transfer / online (lei)', 'Virement / en ligne (lei)'],
+  'U.M.': ['Unit', 'Unité'],
+  'Ultima vizită': ['Last visit', 'Dernière visite'],
+  'Valoare (lei)': ['Value (lei)', 'Valeur (lei)'],
+  'Valoare la achiziție (lei)': ['Purchase value (lei)', 'Valeur d’achat (lei)'],
+  'Valoare la preț de listă (lei)': ['Value at list price (lei)', 'Valeur au prix catalogue (lei)'],
+  'Valoare la vânzare (lei)': ['Sale value (lei)', 'Valeur de vente (lei)'],
+  Valoare: ['Value', 'Valeur'],
+  Vizite: ['Visits', 'Visites'],
+  'Încasat (lei)': ['Collected (lei)', 'Encaissé (lei)'],
+  'Încasat abonamente și carduri (lei)': ['Collected subscriptions and cards (lei)', 'Encaissé abonnements et cartes (lei)'],
+  'Încasat de': ['Collected by', 'Encaissé par'],
+  'Încasat servicii (lei)': ['Collected services (lei)', 'Encaissé services (lei)'],
+  // Raportul zilei
+  'Programări în ziua aleasă': ['Bookings on the chosen day', 'Rendez-vous du jour choisi'],
+  'Încă de confirmat': ['Still to confirm', 'Encore à confirmer'],
+  'Anulate de client': ['Cancelled by the client', 'Annulés par le client'],
+  'Anulate de echipă': ['Cancelled by the team', 'Annulés par l’équipe'],
+  'Cereri expirate (fără răspuns)': ['Expired requests (no answer)', 'Demandes expirées (sans réponse)'],
+  'Clienți serviți': ['Clients served', 'Clients servis'],
+  'din care clienți noi': ['of which new clients', 'dont nouveaux clients'],
+  'Tunsori pe abonament': ['Haircuts on subscription', 'Coupes sur abonnement'],
+  'Abonamente vândute': ['Subscriptions sold', 'Abonnements vendus'],
+  'Carduri cadou vândute': ['Gift cards sold', 'Cartes cadeaux vendues'],
+  'Plătit cu carduri cadou (lei)': ['Paid with gift cards (lei)', 'Payé par cartes cadeaux (lei)'],
+  'Încasat din servicii (lei)': ['Collected from services (lei)', 'Encaissé des services (lei)'],
+  'Încasat din abonamente și carduri cadou (lei)': ['Collected from subscriptions and gift cards (lei)', 'Encaissé des abonnements et cartes cadeaux (lei)'],
+  'Total încasat, fără bacșiș (lei)': ['Total collected, without tips (lei)', 'Total encaissé, hors pourboires (lei)'],
+  // Cuvinte din celule
+  'Cerere în așteptare': ['Pending request', 'Demande en attente'],
+  Confirmată: ['Confirmed', 'Confirmé'],
+  Finalizată: ['Completed', 'Terminé'],
+  Anulată: ['Cancelled', 'Annulé'],
+  Neprezentare: ['No-show', 'Absence'],
+  Aplicație: ['App', 'Application'],
+  Echipă: ['Team', 'Équipe'],
+  Site: ['Website', 'Site'],
+  Plătită: ['Paid', 'Payé'],
+  Abonament: ['Subscription', 'Abonnement'],
+  Numerar: ['Cash', 'Espèces'],
+  'Card (POS)': ['Card (POS)', 'Carte (TPE)'],
+  Transfer: ['Transfer', 'Virement'],
+  Online: ['Online', 'En ligne'],
+  'Fără nume': ['No name', 'Sans nom'],
+  Necunoscut: ['Unknown', 'Inconnu'],
+  'Plată serviciu': ['Service payment', 'Paiement de service'],
+  'Plată serviciu (și card cadou)': ['Service payment (and gift card)', 'Paiement de service (et carte cadeau)'],
+  'Tunsoare din abonament': ['Haircut from subscription', 'Coupe sur abonnement'],
+  'Card cadou vândut': ['Gift card sold', 'Carte cadeau vendue'],
+  'Abonament vândut': ['Subscription sold', 'Abonnement vendu'],
+  'Încheiată · din abonament': ['Completed · from subscription', 'Terminé · sur abonnement'],
+  'Încheiată · plătită': ['Completed · paid', 'Terminé · payé'],
+  'Nu a venit': ['Did not come', 'Pas venu'],
+  'Anulată de client': ['Cancelled by the client', 'Annulé par le client'],
+  'Cerere expirată': ['Request expired', 'Demande expirée'],
+  'Anulată de salon': ['Cancelled by the salon', 'Annulé par le salon'],
+  NEÎNCHISĂ: ['NOT CLOSED', 'NON CLÔTURÉ'],
+  Urmează: ['Upcoming', 'À venir'],
+  Vândut: ['Sold', 'Vendu'],
+  'De vânzare': ['For sale', 'À vendre'],
+  'Pentru salon': ['For the salon', 'Pour le salon'],
+  'Intrare (NIR)': ['Goods received (NIR)', 'Entrée (NIR)'],
+  'NIR anulat': ['NIR cancelled', 'NIR annulé'],
+  'Vânzare magazin': ['Shop sale', 'Vente boutique'],
+  'Comandă anulată': ['Order cancelled', 'Commande annulée'],
+  'Consum în salon': ['Used in the salon', 'Consommation au salon'],
+  'Casare (deteriorat, expirat)': ['Write-off (damaged, expired)', 'Mise au rebut (abîmé, périmé)'],
+  'Corecție stoc (inventar)': ['Stock correction (inventory)', 'Correction de stock (inventaire)'],
+  Total: ['Total', 'Total'],
+};
+
+// Textele cu numere sau nume în ele.
+const UNITS: Record<string, T2> = {
+  programări: ['bookings', 'rendez-vous'],
+  anulări: ['cancellations', 'annulations'],
+  plăți: ['payments', 'paiements'],
+  produse: ['products', 'produits'],
+  mișcări: ['movements', 'mouvements'],
+};
+const P: Array<[RegExp, (m: RegExpMatchArray, i: 0 | 1) => string]> = [
+  [/^Total: (\d+) (programări|anulări|plăți|produse|mișcări)$/, (m, i) => `Total: ${m[1]} ${UNITS[m[2]][i]}`],
+  [/^Total · (\d+) neînchise$/, (m, i) => `Total · ${m[1]} ${['not closed', 'non clôturés'][i]}`],
+  [/^(.+): programări \/ finalizate$/, (m, i) => `${m[1]}: ${['bookings / completed', 'rendez-vous / terminés'][i]}`],
+  [/^Abonament: (.+)$/, (m, i) => `${D.Abonament[i]}: ${m[1]}`],
+  [/^Card cadou (\S+)$/, (m, i) => `${['Gift card', 'Carte cadeau'][i]} ${m[1]}`],
+  [/^Comanda (\S+)$/, (m, i) => `${['Order', 'Commande'][i]} ${m[1]}`],
+  [/^(.+) \(ascuns\)$/, (m, i) => `${m[1]} (${['hidden', 'masqué'][i]})`],
+  [/^(.+) \(cont fără frizer\)$/, (m, i) => `${m[1]} (${['account without barber', 'compte sans barbier'][i]})`],
+];
+
+/** Un text fix din rapoarte, în engleză sau franceză (sau neschimbat, dacă nu e unul cunoscut). */
+export function reportText(s: string, lang: Lang): string {
+  if (lang === 'ro' || !s) return s;
+  const i = lang === 'en' ? 0 : 1;
+  const d = D[s];
+  if (d) return d[i];
+  for (const [re, fn] of P) {
+    const m = s.match(re);
+    if (m) return fn(m, i);
+  }
+  return s;
+}
+
+/** Raportul pentru aplicație: titlul, coloanele și cuvintele fixe din celule, în limba cerută. */
+export function localizeReport(r: Report, lang: Lang): Report {
+  if (lang === 'ro') return r;
+  const cell = (v: string | number | null) => (typeof v === 'string' ? reportText(v, lang) : v);
+  const row = (x: Record<string, string | number | null>) => Object.fromEntries(Object.entries(x).map(([k, v]) => [k, cell(v)]));
+  return {
+    ...r,
+    title: reportText(r.title, lang),
+    columns: r.columns.map((c) => ({ ...c, label: reportText(c.label, lang) })),
+    rows: r.rows.map(row),
+    totals: r.totals ? row(r.totals) : null,
+  };
+}

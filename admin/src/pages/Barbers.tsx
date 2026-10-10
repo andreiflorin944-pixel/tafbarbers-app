@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { api, ApiError, type Barber, type Hours, type Me, type Service } from '../api';
-import { Field, ImagePicker, Loading, Modal, useAction, useLoad } from '../ui';
+import { api, ApiError, type Barber, type Hours, type Location, type Me, type Service } from '../api';
+import { emptyTr, Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 import { hm, parseHm, WEEKDAYS } from '../util';
 import { BARBER_PALETTE, barberColor } from './Calendar';
 
@@ -8,9 +8,13 @@ import { BARBER_PALETTE, barberColor } from './Calendar';
 const ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 export function BarbersPage(_: { me: Me }) {
-  const data = useLoad(() => Promise.all([api<Barber[]>('GET', '/admin/barbers'), api<Service[]>('GET', '/admin/services')]));
+  const data = useLoad(() =>
+    Promise.all([api<Barber[]>('GET', '/admin/barbers'), api<Service[]>('GET', '/admin/services'), api<Location[]>('GET', '/admin/locations')]),
+  );
   const [edit, setEdit] = useState<Partial<Barber> | null>(null);
-  const [barbers, services] = data.data ?? [[], []];
+  const [barbers, services, locations] = data.data ?? [[], [], []];
+  // Locația se arată pe fișe doar când salonul are mai multe.
+  const locName = (id: string | null) => (locations.length > 1 ? (locations.find((l) => l.id === id)?.name ?? '') : '');
 
   return (
     <>
@@ -22,6 +26,7 @@ export function BarbersPage(_: { me: Me }) {
               role: 'Barber',
               active: true,
               sort: barbers.length + 1,
+              locationId: locations.find((l) => l.active)?.id ?? null,
               color: BARBER_PALETTE.find((c) => !barbers.some((x, i) => barberColor(x, i) === c)) ?? BARBER_PALETTE[0],
               serviceIds: services.map((s) => s.id),
               hours: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, start: 600, end: 1200 })),
@@ -56,6 +61,7 @@ export function BarbersPage(_: { me: Me }) {
               </div>
               <div className="muted small" style={{ marginTop: 8 }}>
                 {b.serviceIds.length} din {services.length} servicii
+                {locName(b.locationId) ? ` · ${locName(b.locationId)}` : ''}
               </div>
             </div>
           ))}
@@ -65,6 +71,7 @@ export function BarbersPage(_: { me: Me }) {
         <BarberModal
           b={edit}
           services={services}
+          locations={locations}
           onClose={() => setEdit(null)}
           onDone={() => {
             setEdit(null);
@@ -76,10 +83,24 @@ export function BarbersPage(_: { me: Me }) {
   );
 }
 
-function BarberModal({ b, services, onClose, onDone }: { b: Partial<Barber>; services: Service[]; onClose: () => void; onDone: () => void }) {
+function BarberModal({
+  b,
+  services,
+  locations,
+  onClose,
+  onDone,
+}: {
+  b: Partial<Barber>;
+  services: Service[];
+  locations: Location[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [locationId, setLocationId] = useState(b.locationId ?? locations.find((l) => l.active)?.id ?? '');
   const [name, setName] = useState(b.name ?? '');
   const [role, setRole] = useState(b.role ?? 'Barber');
   const [bio, setBio] = useState(b.bio ?? '');
+  const [tr, setTr] = useState(b.translations ?? emptyTr());
   const [photoUrl, setPhotoUrl] = useState(b.photoUrl ?? '');
   const [active, setActive] = useState(b.active !== false);
   const [sort, setSort] = useState(b.sort ?? 0);
@@ -110,7 +131,21 @@ function BarberModal({ b, services, onClose, onDone }: { b: Partial<Barber>; ser
         }),
       );
       if (Object.values(ownDur).some((v) => v !== null && !(v >= 5 && v <= 480))) throw new ApiError('invalid_duration', 400);
-      const body = { name, role, bio, photoUrl: photoUrl || null, color, active, sort, serviceIds: svc, prices: own, durations: ownDur, hours };
+      const body = {
+        name,
+        role,
+        bio,
+        translations: tr,
+        photoUrl: photoUrl || null,
+        color,
+        active,
+        sort,
+        serviceIds: svc,
+        prices: own,
+        durations: ownDur,
+        hours,
+        ...(locationId && { locationId }),
+      };
       if (b.id) await api('PATCH', `/admin/barbers/${b.id}`, body);
       else await api('POST', '/admin/barbers', body);
       onDone();
@@ -130,6 +165,16 @@ function BarberModal({ b, services, onClose, onDone }: { b: Partial<Barber>; ser
         <Field label="Despre (opțional)">
           <textarea value={bio} onChange={(e) => setBio(e.target.value)} style={{ minHeight: 60 }} />
         </Field>
+        <TranslationFields
+          fields={[
+            { key: 'role', label: 'Rol' },
+            { key: 'bio', label: 'Despre', multiline: true },
+          ]}
+          ro={{ role, bio }}
+          initialRo={{ role: b.role, bio: b.bio }}
+          value={tr}
+          onChange={setTr}
+        />
         <div className="grid two">
           <Field label="Poză (opțional)">
             <ImagePicker value={photoUrl || null} onChange={(u) => setPhotoUrl(u ?? '')} round maxPx={600} />
@@ -138,6 +183,22 @@ function BarberModal({ b, services, onClose, onDone }: { b: Partial<Barber>; ser
             <input type="number" value={sort} onChange={(e) => setSort(Number(e.target.value))} />
           </Field>
         </div>
+
+        <Field label="Locația în care lucrează">
+          <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+                {l.active ? '' : ' (dezactivată)'}
+              </option>
+            ))}
+          </select>
+          {b.id && b.locationId && locationId !== b.locationId && (
+            <div className="muted small" style={{ marginTop: 4 }}>
+              Programările lui viitoare se mută și ele în locația nouă (clienții văd adresa nouă în aplicație). Cele trecute rămân la locația veche.
+            </div>
+          )}
+        </Field>
 
         <Field label="Culoarea în calendar">
           <div className="row" style={{ gap: 8 }}>

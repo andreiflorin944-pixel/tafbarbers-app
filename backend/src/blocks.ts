@@ -89,7 +89,7 @@ export async function blocksForDay(env: Env, day: string, barberIds: string[]) {
 /** Fiecare apariție a blocurilor între două zile (inclusiv), pentru calendar. */
 export async function blockOccurrences(env: Env, fromDay: string, toDay: string, barberId?: string | null) {
   const rows = await blockRows(env, fromDay, toDay, barberId ? [barberId] : null);
-  const out: Array<{ blockId: string; barberId: string | null; kind: BlockKind; label: string; repeat: boolean; day: string; start: string; end: string }> = [];
+  const out: Array<{ blockId: string; barberId: string | null; kind: BlockKind; label: string; customLabel: string; repeat: boolean; day: string; start: string; end: string }> = [];
   for (let d = fromDay, n = 0; d <= toDay && n < 62; d = addDays(d, 1), n++) {
     for (const r of rows) {
       if (!blockOnDay(r, d)) continue;
@@ -98,6 +98,7 @@ export async function blockOccurrences(env: Env, fromDay: string, toDay: string,
         barberId: r.barber_id,
         kind: r.kind,
         label: r.label || BLOCK_LABELS[r.kind],
+        customLabel: r.label, // aplicația arată numele tipului în limba ei când e gol
         repeat: !!r.weekdays,
         day: d,
         start: iso(localToUtc(env.TIMEZONE, d, r.start_min)),

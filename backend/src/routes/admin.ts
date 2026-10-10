@@ -36,7 +36,7 @@ import { HttpError, PERMS, isRole, parsePerms, type AppEnv, type Env, type Perm,
 import { runCampaign } from '../campaigns';
 import { iso, isBirthdayOn, isDay, localDay, localToUtc } from '../time';
 import { clientsCells, clientsCsv, deleteClient } from '../gdpr';
-import { DOCS, getLegal, legalDoc, saveLegal } from '../legal';
+import { DOCS, getLegal, legalBase, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, notifyOrder, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
 import { sendTemplate } from '../sendTemplate';
 import { listTemplates, saveTemplate, TEMPLATE_EVENTS, WILDCARDS, type TplEvent, type TplField } from '../templates';
@@ -56,11 +56,18 @@ import {
 } from '../subscriptions';
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
 import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } from '../reports';
+import { localizeReport, reportText } from '../reportsI18n';
 import { xlsx } from '../xlsx';
 import { adjustMove, cancelNir, createNir, getNir, listNir, stockOut, type NirInput } from '../stock';
-import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCard, saveAutomations, type GiftCardRow } from '../growth';
+import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCard, saveAutomations, switchMessage, type GiftCardRow } from '../growth';
 import { sendPush, sendSms } from '../notify';
 import { autoTranslate } from '../translate';
+import { ensureTranslated, langOf, localize, lookup, saveTranslations, withTranslations, type ManualTr } from '../contentI18n';
+import { translateAll } from '../translateAll';
+import { listConsents } from '../consents';
+import { advisorStats, getAdvisor, setAdvisor } from '../advisor';
+import { aiOf } from '../translate';
+import { allLocations, checkLocationId, createLocation, defaultLocationId, updateLocation } from '../locations';
 import { adminWaitlist, checkWaitlist, removeWaitlist } from '../waitlist';
 import { blockOccurrences, createBlock, deleteBlock, listBlocks, type BlockInput } from '../blocks';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
@@ -263,7 +270,8 @@ adminRoutes.delete('/admins/:id', ownerOnly, async (c) => {
 
 // --- Setări salon ---
 
-adminRoutes.get('/settings', async (c) => c.json(await getBusiness(c.env)));
+const BIZ_TEXTS = ['tagline', 'description', 'cancellationPolicy'] as const;
+adminRoutes.get('/settings', async (c) => c.json((await withTranslations(c.env, [await getBusiness(c.env)], [...BIZ_TEXTS]))[0]));
 adminRoutes.put('/settings', ownerOnly, async (c) => {
   const cur = await getBusiness(c.env);
   const b = await c.req.json<Record<string, unknown>>();
@@ -284,7 +292,24 @@ adminRoutes.put('/settings', ownerOnly, async (c) => {
     next.approvalBarberIds = ids.filter((id, i) => known.includes(id) && ids.indexOf(id) === i);
   }
   await setSetting(c.env, 'business', next);
-  return c.json(next);
+  // Textele despre salon se arată clienților și în engleză și franceză.
+  const cb = cur as Record<string, unknown>;
+  await saveTranslations(c.env, Object.fromEntries(BIZ_TEXTS.map((k) => [k, { ro: next[k] as string, prev: cb[k] as string }])), b.translations as ManualTr);
+  return c.json((await withTranslations(c.env, [next], [...BIZ_TEXTS]))[0]);
+});
+
+// --- Traducerea conținutului în engleză și franceză ---
+
+/** Câte texte din panou nu sunt încă traduse (fără să traducă nimic). */
+adminRoutes.get('/translations/status', ownerOnly, async (c) => c.json(await translateAll(c.env, { dry: true })));
+
+/**
+ * „Tradu tot conținutul acum”: o bucată de traduceri (un buget de apeluri la AI). Panoul o cheamă din nou cât timp
+ * `remaining` > 0; `fresh` (la primul apel) încearcă din nou și textele care n-au mers data trecută.
+ */
+adminRoutes.post('/translations/run', ownerOnly, async (c) => {
+  const b = await c.req.json<{ fresh?: boolean }>().catch(() => ({}) as { fresh?: boolean });
+  return c.json(await translateAll(c.env, { fresh: b.fresh === true }));
 });
 
 // --- Aspectul aplicației și poze ---
@@ -354,11 +379,12 @@ function productValues(b: ProductInput, create: boolean) {
 
 adminRoutes.get('/products', async (c) => {
   const r = await c.env.DB.prepare('SELECT * FROM products ORDER BY sort, name').all<ProductRow>();
-  return c.json(r.results.map(product));
+  return c.json(await withTranslations(c.env, r.results.map(product), ['name', 'description']));
 });
 
 adminRoutes.post('/products', ownerOnly, async (c) => {
-  const v = productValues(await c.req.json<ProductInput>(), true);
+  const body = await c.req.json<ProductInput & { translations?: ManualTr }>();
+  const v = productValues(body, true);
   const id = newId('p');
   await c.env.DB.prepare(
     'INSERT INTO products (id, name, description, price_bani, image_url, stock, sort, active, created_at, for_sale, unit, cost_bani) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -366,13 +392,15 @@ adminRoutes.post('/products', ownerOnly, async (c) => {
     .bind(id, v.name, v.description ?? '', v.price_bani, v.image_url ?? null, v.stock ?? null, v.sort ?? 0, v.active ?? 1, iso(new Date()), v.for_sale ?? 1, v.unit ?? 'buc', v.cost_bani ?? null)
     .run();
   if (typeof v.stock === 'number' && v.stock > 0) await adjustMove(c.env, c.get('admin').adminId, id, v.stock, 'Stoc inițial').run();
+  await saveTranslations(c.env, { name: { ro: v.name as string }, description: { ro: v.description as string | undefined } }, body.translations);
   return c.json(product((await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>())!), 201);
 });
 
 adminRoutes.patch('/products/:id', ownerOnly, async (c) => {
   const id = c.req.param('id')!;
-  const v = productValues(await c.req.json<ProductInput>(), false);
-  const before = await c.env.DB.prepare('SELECT stock FROM products WHERE id = ?').bind(id).first<{ stock: number | null }>();
+  const body = await c.req.json<ProductInput & { translations?: ManualTr }>();
+  const v = productValues(body, false);
+  const before = await c.env.DB.prepare('SELECT stock, name, description FROM products WHERE id = ?').bind(id).first<{ stock: number | null; name: string; description: string }>();
   await update(c.env.DB, 'products', id, v);
   // Stocul schimbat de mână apare în fișa de magazie ca o corecție.
   if (before && typeof v.stock === 'number' && v.stock !== (before.stock ?? 0)) {
@@ -380,6 +408,7 @@ adminRoutes.patch('/products/:id', ownerOnly, async (c) => {
   }
   const r = await c.env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first<ProductRow>();
   if (!r) throw new HttpError(404, 'not_found');
+  await saveTranslations(c.env, { name: { ro: r.name, prev: before?.name }, description: { ro: r.description, prev: before?.description } }, body.translations);
   return c.json(product(r));
 });
 
@@ -441,7 +470,7 @@ adminRoutes.patch('/orders/:id', async (c) => {
 
 adminRoutes.get('/services', async (c) => {
   const r = await c.env.DB.prepare('SELECT * FROM services ORDER BY sort, name').all<ServiceRow>();
-  return c.json(r.results.map(service));
+  return c.json(await withTranslations(c.env, r.results.map(service), ['name', 'description']));
 });
 
 adminRoutes.post('/services', ownerOnly, async (c) => {
@@ -455,14 +484,18 @@ adminRoutes.post('/services', ownerOnly, async (c) => {
     .run();
   // Serviciu nou: implicit îl fac toți frizerii.
   await c.env.DB.prepare('INSERT INTO barber_services (barber_id, service_id) SELECT id, ? FROM barbers').bind(id).run();
+  await saveTranslations(c.env, { name: { ro: v.name }, description: { ro: v.description } }, b.translations);
   return c.json(service((await c.env.DB.prepare('SELECT * FROM services WHERE id = ?').bind(id).first<ServiceRow>())!), 201);
 });
 
 adminRoutes.patch('/services/:id', ownerOnly, async (c) => {
-  const v = serviceValues(await c.req.json<ServiceInput>(), false);
+  const b = await c.req.json<ServiceInput>();
+  const v = serviceValues(b, false);
+  const prev = await c.env.DB.prepare('SELECT name, description FROM services WHERE id = ?').bind(c.req.param('id')!).first<{ name: string; description: string }>();
   await update(c.env.DB, 'services', c.req.param('id')!, v);
   const r = await c.env.DB.prepare('SELECT * FROM services WHERE id = ?').bind(c.req.param('id')!).first<ServiceRow>();
   if (!r) throw new HttpError(404, 'not_found');
+  await saveTranslations(c.env, { name: { ro: r.name, prev: prev?.name }, description: { ro: r.description, prev: prev?.description } }, b.translations);
   return c.json(service(r));
 });
 
@@ -475,6 +508,8 @@ adminRoutes.delete('/services/:id', ownerOnly, async (c) => {
 });
 
 type ServiceInput = {
+  /** Corecturile de mână ale traducerilor (engleză, franceză). */
+  translations?: ManualTr;
   name?: string;
   description?: string;
   durationMin?: number;
@@ -524,14 +559,19 @@ adminRoutes.get('/barbers', async (c) => {
     }>(),
   ]);
   return c.json(
-    r.results.map((b) => ({
-      ...barber(b),
-      hours: h.results.filter((x) => x.barber_id === b.id).map((x) => ({ weekday: x.weekday, start: x.start_min, end: x.end_min })),
-    })),
+    await withTranslations(
+      c.env,
+      r.results.map((b) => ({
+        ...barber(b),
+        hours: h.results.filter((x) => x.barber_id === b.id).map((x) => ({ weekday: x.weekday, start: x.start_min, end: x.end_min })),
+      })),
+      ['role', 'bio'],
+    ),
   );
 });
 
 type BarberInput = {
+  translations?: ManualTr;
   name?: string;
   role?: string;
   bio?: string;
@@ -539,6 +579,8 @@ type BarberInput = {
   color?: string | null;
   sort?: number;
   active?: boolean;
+  /** Locația în care lucrează. */
+  locationId?: string;
   serviceIds?: string[];
   /** Prețuri proprii în lei pe serviciu; null = prețul standard. */
   prices?: Record<string, number | null>;
@@ -558,8 +600,10 @@ adminRoutes.post('/barbers', ownerOnly, async (c) => {
   if (!b.name?.trim()) throw new HttpError(400, 'name_required');
   if (b.photoUrl && !isImageUrl(b.photoUrl)) throw new HttpError(400, 'invalid_url');
   const id = newId('br');
-  await c.env.DB.prepare('INSERT INTO barbers (id, name, role, bio, photo_url, color, sort) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, b.name.trim().slice(0, 80), (b.role ?? 'Barber').slice(0, 60), (b.bio ?? '').slice(0, 1000), b.photoUrl ?? null, barberColor(b.color), b.sort ?? 0)
+  // Fără locație aleasă: prima locație activă (cât timp salonul are o singură locație, nu trebuie aleasă).
+  const locationId = b.locationId ? await checkLocationId(c.env, b.locationId) : await defaultLocationId(c.env);
+  await c.env.DB.prepare('INSERT INTO barbers (id, name, role, bio, photo_url, color, sort, location_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, b.name.trim().slice(0, 80), (b.role ?? 'Barber').slice(0, 60), (b.bio ?? '').slice(0, 1000), b.photoUrl ?? null, barberColor(b.color), b.sort ?? 0, locationId)
     .run();
   await saveBarberRelations(c.env.DB, id, {
     prices: b.prices,
@@ -567,6 +611,7 @@ adminRoutes.post('/barbers', ownerOnly, async (c) => {
     serviceIds: b.serviceIds ?? (await c.env.DB.prepare('SELECT id FROM services').all<{ id: string }>()).results.map((s) => s.id),
     hours: b.hours,
   });
+  await saveTranslations(c.env, { role: { ro: (b.role ?? 'Barber').slice(0, 60) }, bio: { ro: (b.bio ?? '').slice(0, 1000) } }, b.translations);
   return c.json({ id }, 201);
 });
 
@@ -584,10 +629,35 @@ adminRoutes.patch('/barbers/:id', ownerOnly, async (c) => {
   if (b.color !== undefined) v.color = barberColor(b.color);
   if (b.sort !== undefined) v.sort = Number(b.sort) || 0;
   if (b.active !== undefined) v.active = b.active ? 1 : 0;
+  if (b.locationId !== undefined) v.location_id = await checkLocationId(c.env, b.locationId);
+  const prev = await c.env.DB.prepare('SELECT role, bio, location_id FROM barbers WHERE id = ?').bind(id).first<{ role: string; bio: string; location_id: string | null }>();
   await update(c.env.DB, 'barbers', id, v);
+  // Frizerul s-a mutat în altă locație: programările lui viitoare (confirmate sau cereri) se mută cu el, ca clientul să vadă
+  // adresa unde îl găsește și calendarul filtrat pe locație să le arate. Cele trecute rămân la locația de atunci.
+  let movedBookings = 0;
+  if (prev && v.location_id && v.location_id !== prev.location_id) {
+    const r = await c.env.DB.prepare(`UPDATE bookings SET location_id = ? WHERE barber_id = ? AND starts_at > ? AND status IN ('confirmed','requested')`)
+      .bind(v.location_id, id, iso(new Date()))
+      .run();
+    movedBookings = r.meta.changes ?? 0;
+  }
   await saveBarberRelations(c.env.DB, id, b);
+  if (prev)
+    await saveTranslations(c.env, { role: { ro: (v.role as string) ?? prev.role, prev: prev.role }, bio: { ro: (v.bio as string) ?? prev.bio, prev: prev.bio } }, b.translations);
   // Programul s-a schimbat: poate s-au eliberat ore pentru lista de așteptare.
-  if (b.hours || b.serviceIds || b.durations || b.active) await waitlistNow(c.env);
+  if (b.hours || b.serviceIds || b.durations || b.active || b.locationId) await waitlistNow(c.env);
+  return c.json({ ok: true, movedBookings });
+});
+
+// --- Locații (Setări → Locații): doar proprietarul le schimbă; lista o vede toată echipa (filtrul din calendar) ---
+
+adminRoutes.get('/locations', async (c) => c.json(await allLocations(c.env)));
+adminRoutes.post('/locations', ownerOnly, async (c) => c.json({ id: await createLocation(c.env, await c.req.json()) }, 201));
+adminRoutes.patch('/locations/:id', ownerOnly, async (c) => {
+  const b = await c.req.json<Record<string, unknown>>();
+  await updateLocation(c.env, c.req.param('id')!, b);
+  // Locație repornită: frizerii ei primesc din nou programări, deci pot fi ore libere pentru lista de așteptare.
+  if (b.active === true) await waitlistNow(c.env);
   return c.json({ ok: true });
 });
 
@@ -744,18 +814,20 @@ adminRoutes.delete('/blocks/:id', async (c) => {
 
 // --- Programări ---
 
-/** GET /bookings?from=ISO&to=ISO&barberId=…&status=… */
+/** GET /bookings?from=ISO&to=ISO&barberId=…&locationId=…&status=… */
 adminRoutes.get('/bookings', async (c) => {
   const q = c.req.query();
   const where = ['b.starts_at >= ?', 'b.starts_at < ?'];
   const vals: unknown[] = [q.from ?? iso(new Date(Date.now() - 86_400_000)), q.to ?? iso(new Date(Date.now() + 30 * 86_400_000))];
   const barberId = ownBarber(c) ?? q.barberId;
   if (barberId) where.push('b.barber_id = ?'), vals.push(barberId);
+  if (q.locationId) where.push('b.location_id = ?'), vals.push(q.locationId);
   if (q.status) where.push('b.status = ?'), vals.push(q.status);
   const r = await c.env.DB.prepare(`${BOOKING_SELECT} WHERE ${where.join(' AND ')} ORDER BY b.starts_at LIMIT 1000`)
     .bind(...vals)
     .all<BookingRow>();
-  return c.json(r.results.map(booking));
+  // Aplicația echipei cere limba ei: numele serviciilor vin traduse (panoul nu trimite limba, rămâne în română).
+  return c.json(await localize(c.env, q.lang, r.results.map(booking), ['serviceName']));
 });
 
 /** Programare făcută din panou (telefon/walk-in). Clientul se creează după număr dacă nu există. */
@@ -851,7 +923,7 @@ adminRoutes.get('/bookings/:id/checkout', async (c) => {
 /** Cererile de programare care așteaptă răspuns (clopoțelul din panou). Frizerul le vede doar pe ale lui. */
 adminRoutes.get('/bookings/requests', async (c) => {
   need(c, 'bookings_manage');
-  const items = await pendingRequests(c.env, ownBarber(c));
+  const items = await localize(c.env, c.req.query('lang'), await pendingRequests(c.env, ownBarber(c)), ['serviceName']);
   return c.json({ count: items.length, items });
 });
 
@@ -890,7 +962,7 @@ adminRoutes.get('/bookings/unclosed', async (c) => {
   )
     .bind(...(scoped ? [iso(new Date()), iso(new Date(Date.now() - 90 * 86_400_000)), scoped] : [iso(new Date()), iso(new Date(Date.now() - 90 * 86_400_000))]))
     .all<BookingRow>();
-  return c.json(r.results.map(booking));
+  return c.json(await localize(c.env, c.req.query('lang'), r.results.map(booking), ['serviceName']));
 });
 
 /** Frizerul confirmă tunsoarea: `{ payment: 'paid', amount }` sau `{ payment: 'subscription' }`, opțional `bonusId`. */
@@ -944,20 +1016,26 @@ async function bookingForStaff(c: Context<AppEnv>) {
 
 // --- Abonamente ---
 
-adminRoutes.get('/plans', async (c) => c.json(await getPlans(c.env, true)));
+adminRoutes.get('/plans', async (c) => c.json(await withTranslations(c.env, await getPlans(c.env, true), ['name', 'description'])));
 
 adminRoutes.post('/plans', ownerOnly, async (c) => {
-  const v = planValues(await c.req.json<PlanInput>(), false);
+  const body = await c.req.json<PlanInput & { translations?: ManualTr }>();
+  const v = planValues(body, false);
   const id = newId('pl');
   const keys = Object.keys(v);
   await c.env.DB.prepare(`INSERT INTO plans (id, ${keys.join(', ')}) VALUES (?, ${keys.map(() => '?').join(', ')})`)
     .bind(id, ...Object.values(v))
     .run();
+  await saveTranslations(c.env, { name: { ro: v.name as string }, description: { ro: v.description as string } }, body.translations);
   return c.json({ id }, 201);
 });
 
 adminRoutes.patch('/plans/:id', ownerOnly, async (c) => {
-  await update(c.env.DB, 'plans', c.req.param('id')!, planValues(await c.req.json<PlanInput>(), true));
+  const body = await c.req.json<PlanInput & { translations?: ManualTr }>();
+  const prev = await c.env.DB.prepare('SELECT name, description FROM plans WHERE id = ?').bind(c.req.param('id')!).first<{ name: string; description: string }>();
+  await update(c.env.DB, 'plans', c.req.param('id')!, planValues(body, true));
+  const cur = await c.env.DB.prepare('SELECT name, description FROM plans WHERE id = ?').bind(c.req.param('id')!).first<{ name: string; description: string }>();
+  if (cur) await saveTranslations(c.env, { name: { ro: cur.name, prev: prev?.name }, description: { ro: cur.description, prev: prev?.description } }, body.translations);
   return c.json({ ok: true });
 });
 
@@ -1188,16 +1266,53 @@ adminRoutes.get('/clients/:id', async (c) => {
   });
 });
 
+/**
+ * Dovada acordurilor clientului (termeni, confidențialitate, oferte), cu adresa IP și dispozitivul:
+ * o vede proprietarul și conturile cu dreptul „contacts” (datele de contact ale clienților).
+ */
+adminRoutes.get('/clients/:id/consents', async (c) => {
+  need(c, 'contacts');
+  const id = c.req.param('id')!;
+  await needClient(c, id);
+  const r = await c.env.DB.prepare('SELECT id FROM clients WHERE id = ?').bind(id).first();
+  if (!r) throw new HttpError(404, 'not_found');
+  return c.json(await listConsents(c.env, id));
+});
+
 // --- Poze înainte / după ---
 
 async function beforeAfterOf(env: AppEnv['Bindings'], clientId: string) {
   const r = await env.DB.prepare(
-    `SELECT x.id, x.before_media, x.after_media, x.created_at, br.name AS barber_name FROM before_after x LEFT JOIN barbers br ON br.id = x.barber_id
+    `SELECT x.id, x.before_media, x.after_media, x.created_at, x.service_id, x.show_example, x.example_consent_at, x.example_withdrawn_at, br.name AS barber_name, a.name AS consent_by_name
+     FROM before_after x LEFT JOIN barbers br ON br.id = x.barber_id LEFT JOIN admins a ON a.id = x.example_consent_by
      WHERE x.client_id = ? ORDER BY x.created_at DESC LIMIT 50`,
   )
     .bind(clientId)
-    .all<{ id: string; before_media: string; after_media: string; created_at: string; barber_name: string | null }>();
-  return r.results.map((x) => ({ id: x.id, before: mediaUrl(x.before_media), after: mediaUrl(x.after_media), barberName: x.barber_name, createdAt: x.created_at }));
+    .all<{
+      id: string;
+      before_media: string;
+      after_media: string;
+      created_at: string;
+      service_id: string | null;
+      show_example: number;
+      example_consent_at: string | null;
+      example_withdrawn_at: string | null;
+      barber_name: string | null;
+      consent_by_name: string | null;
+    }>();
+  return r.results.map((x) => ({
+    id: x.id,
+    before: mediaUrl(x.before_media),
+    after: mediaUrl(x.after_media),
+    barberName: x.barber_name,
+    createdAt: x.created_at,
+    serviceId: x.service_id,
+    showExample: !!x.show_example,
+    // Dovada acordului: când și cine a bifat; dacă clientul l-a retras din aplicație, când.
+    exampleConsentAt: x.example_consent_at,
+    exampleConsentBy: x.consent_by_name,
+    exampleWithdrawnAt: x.example_withdrawn_at,
+  }));
 }
 
 /** Urcă o poză (înainte sau după); întoarce id-ul ei, folosit apoi la salvarea perechii. */
@@ -1211,14 +1326,63 @@ adminRoutes.post('/clients/:id/before-after/upload', async (c) => {
 adminRoutes.post('/clients/:id/before-after', async (c) => {
   const id = c.req.param('id')!;
   await needClient(c, id);
-  const b = await c.req.json<{ before?: string; after?: string }>();
+  const b = await c.req.json<{ before?: string; after?: string; serviceId?: string | null }>();
   const ok = await c.env.DB.prepare(`SELECT count(*) AS n FROM media WHERE id IN (?, ?) AND client_id IS NULL`).bind(b.before ?? '', b.after ?? '').first<{ n: number }>();
   if (!b.before || !b.after || b.before === b.after || ok?.n !== 2) throw new HttpError(400, 'invalid_body');
+  // Serviciul perechii (pentru exemplele din consilierul AI): cel ales sau al ultimei programări a clientului de până acum.
+  const barberId = c.get('admin').barberId;
+  const svc = b.serviceId
+    ? await c.env.DB.prepare('SELECT id FROM services WHERE id = ?').bind(b.serviceId).first<{ id: string }>()
+    : await c.env.DB.prepare(
+        `SELECT service_id AS id FROM bookings WHERE client_id = ? AND status IN ('confirmed', 'completed') AND starts_at <= ?
+         ORDER BY (barber_id = ?) DESC, starts_at DESC LIMIT 1`,
+      )
+        .bind(id, iso(new Date()), barberId ?? '')
+        .first<{ id: string }>();
+  if (b.serviceId && !svc) throw new HttpError(400, 'invalid_service');
   const pid = newId('ba');
-  await c.env.DB.prepare('INSERT INTO before_after (id, client_id, before_media, after_media, barber_id, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(pid, id, b.before, b.after, c.get('admin').barberId, c.get('admin').adminId)
+  await c.env.DB.prepare('INSERT INTO before_after (id, client_id, before_media, after_media, barber_id, created_by, service_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(pid, id, b.before, b.after, barberId, c.get('admin').adminId, svc?.id ?? null)
     .run();
-  return c.json({ id: pid }, 201);
+  return c.json({ id: pid, serviceId: svc?.id ?? null }, 201);
+});
+
+/**
+ * Serviciul perechii și bifa „arată ca exemplu în consilierul AI”. Bifa se pune doar cu acordul clientului:
+ * atunci și alți clienți văd perechea la sugestiile pentru acel serviciu.
+ */
+adminRoutes.patch('/before-after/:id', async (c) => {
+  const x = await c.env.DB.prepare('SELECT client_id FROM before_after WHERE id = ?').bind(c.req.param('id')!).first<{ client_id: string }>();
+  if (!x) throw new HttpError(404, 'not_found');
+  await needClient(c, x.client_id);
+  const b = await c.req.json<{ serviceId?: string | null; showExample?: boolean }>().catch(() => ({}) as { serviceId?: string | null; showExample?: boolean });
+  if (b.serviceId !== undefined && b.serviceId !== null && !(await c.env.DB.prepare('SELECT 1 FROM services WHERE id = ?').bind(b.serviceId).first()))
+    throw new HttpError(400, 'invalid_service');
+  if (b.serviceId !== undefined) await c.env.DB.prepare('UPDATE before_after SET service_id = ? WHERE id = ?').bind(b.serviceId, c.req.param('id')!).run();
+  if (b.showExample !== undefined) {
+    // Pozele (fața clientului) ajung la toți clienții: bifează doar proprietarul, după ce clientul a fost de acord.
+    // Se păstrează dovada: când și cine a bifat (la scoaterea bifei, când s-a retras).
+    if (!c.get('admin').owner) throw new HttpError(403, 'owner_only');
+    const now = iso(new Date());
+    if (b.showExample)
+      await c.env.DB.prepare('UPDATE before_after SET show_example = 1, example_consent_at = ?, example_consent_by = ?, example_withdrawn_at = NULL WHERE id = ? AND show_example = 0')
+        .bind(now, c.get('admin').adminId, c.req.param('id')!)
+        .run();
+    else await c.env.DB.prepare('UPDATE before_after SET show_example = 0, example_withdrawn_at = ? WHERE id = ? AND show_example = 1').bind(now, c.req.param('id')!).run();
+  }
+  return c.json({ ok: true });
+});
+
+// --- Consilierul AI de tunsori (Setări) ---
+
+/** Pornit sau oprit, plus câte analize s-au făcut (doar numărul). */
+adminRoutes.get('/advisor', ownerOnly, async (c) => c.json({ ...(await getAdvisor(c.env)), aiReady: !!aiOf(c.env), ...(await advisorStats(c.env)) }));
+
+adminRoutes.put('/advisor', ownerOnly, async (c) => {
+  const b = await c.req.json<{ on?: unknown }>().catch(() => ({}) as { on?: unknown });
+  if (typeof b.on !== 'boolean') throw new HttpError(400, 'invalid_body');
+  await setAdvisor(c.env, { on: b.on });
+  return c.json({ ...(await getAdvisor(c.env)), aiReady: !!aiOf(c.env), ...(await advisorStats(c.env)) });
 });
 
 adminRoutes.delete('/before-after/:id', async (c) => {
@@ -1247,6 +1411,11 @@ adminRoutes.put('/templates/:event', ownerOnly, async (c) => {
 });
 adminRoutes.get('/automations', async (c) => c.json(await getAutomations(c.env)));
 adminRoutes.put('/automations', ownerOnly, async (c) => c.json(await saveAutomations(c.env, await c.req.json())));
+// Comutatoarele „Mesaje automate” de pe tabloul de bord: un singur mesaj, salvat pe loc.
+adminRoutes.put('/automations/switch', ownerOnly, async (c) => {
+  const b = await c.req.json<{ key?: unknown; enabled?: unknown }>();
+  return c.json(await switchMessage(c.env, b.key, b.enabled));
+});
 /** Ce ore libere ar anunța acum mesajul de ultim moment. */
 adminRoutes.get('/automations/free-slots', ownerOnly, async (c) => {
   const s = (await getAutomations(c.env)).lastMinute;
@@ -1316,7 +1485,12 @@ adminRoutes.get('/gift-cards/check', async (c) => {
 // --- Ziua de naștere ---
 
 adminRoutes.get('/birthday-settings', async (c) => c.json(await getBirthdaySettings(c.env)));
-adminRoutes.put('/birthday-settings', ownerOnly, async (c) => c.json(await saveBirthdaySettings(c.env, await c.req.json())));
+adminRoutes.put('/birthday-settings', ownerOnly, async (c) => {
+  const s = await saveBirthdaySettings(c.env, await c.req.json());
+  // Titlul bonusului de ziua clientului apare în aplicație, la Bonusuri.
+  await ensureTranslated(c.env, [s.reward.title]);
+  return c.json(s);
+});
 
 /** Clienții care își serbează ziua în următoarele `days` zile (implicit 7), pentru panou. */
 adminRoutes.get('/birthdays', async (c) => {
@@ -1336,7 +1510,11 @@ adminRoutes.get('/birthdays', async (c) => {
 // --- Bonusuri și recomandări ---
 
 adminRoutes.get('/referral-settings', async (c) => c.json(await getReferralSettings(c.env)));
-adminRoutes.put('/referral-settings', ownerOnly, async (c) => c.json(await saveReferralSettings(c.env, await c.req.json())));
+adminRoutes.put('/referral-settings', ownerOnly, async (c) => {
+  const s = await saveReferralSettings(c.env, await c.req.json());
+  await ensureTranslated(c.env, [s.standard.title]);
+  return c.json(s);
+});
 
 /** Conturile create prin recomandare, cu cine i-a adus și dacă s-a dat deja beneficiul. */
 adminRoutes.get('/referrals', async (c) => {
@@ -1407,6 +1585,7 @@ adminRoutes.post('/clients/:id/bonuses', ownerOnly, async (c) => {
     ? ((await c.env.DB.prepare('SELECT id FROM clients WHERE id = ? AND referred_by = ?').bind(b.referralOf, id).first<{ id: string }>())?.id ?? null)
     : null;
   const bid = await giveBonus(c.env, id, reward, referralOf ? 'referral' : 'manual', referralOf);
+  await ensureTranslated(c.env, [reward.title]);
   return c.json({ id: bid }, 201);
 });
 
@@ -1469,7 +1648,11 @@ adminRoutes.get('/legal', async (c) => {
   const out: Record<string, unknown> = {};
   for (const d of DOCS) {
     const ro = await legalDoc(c.env, d, 'ro');
-    out[d] = { updatedAt: store[d]?.updatedAt ?? null, isDefault: ro.isDefault, versions: { ro: store[d]?.versions?.ro ?? { title: ro.title, body: ro.body }, en: store[d]?.versions?.en ?? null, fr: store[d]?.versions?.fr ?? null } };
+    // Engleza și franceza: traducerea automată (sau corectura de mână) a textului românesc salvat.
+    const base = await legalBase(c.env, d, store);
+    const [en, fr] = await Promise.all([lookup(c.env, 'en', [base.title, base.body]), lookup(c.env, 'fr', [base.title, base.body])]);
+    const tr = (m: Map<string, string>) => (m.get(base.body) ? { title: m.get(base.title) ?? '', body: m.get(base.body)! } : null);
+    out[d] = { updatedAt: store[d]?.updatedAt ?? null, isDefault: ro.isDefault, versions: { ro: store[d]?.versions?.ro ?? { title: ro.title, body: ro.body }, en: tr(en), fr: tr(fr) } };
   }
   return c.json(out);
 });
@@ -1479,15 +1662,21 @@ adminRoutes.put('/legal/:doc', ownerOnly, async (c) => {
   if (!DOCS.includes(doc)) throw new HttpError(404, 'not_found');
   const b = await c.req.json<{ versions?: Record<string, { title?: string; body?: string } | null> }>();
   const store = await getLegal(c.env);
-  const versions: Record<string, { title: string; body: string }> = {};
-  for (const l of ['ro', 'en', 'fr']) {
-    const v = b.versions?.[l];
-    if (v?.title?.trim() && v.body?.trim()) versions[l] = { title: v.title.trim().slice(0, 120), body: v.body.slice(0, 50_000) };
-  }
-  if (!versions.ro) throw new HttpError(400, 'ro_required');
-  store[doc] = { updatedAt: iso(new Date()), versions };
+  const prev = await legalBase(c.env, doc, store);
+  // Se salvează doar româna; engleza și franceza trimise din panou sunt corecturi ale traducerii automate.
+  const v = b.versions?.ro;
+  if (!v?.title?.trim() || !v.body?.trim()) throw new HttpError(400, 'ro_required');
+  const ro = { title: v.title.trim().slice(0, 120), body: v.body.slice(0, 50_000) };
+  store[doc] = { updatedAt: iso(new Date()), versions: { ro } };
   await saveLegal(c.env, store);
-  return c.json({ ok: true, updatedAt: store[doc].updatedAt });
+  const manual: ManualTr = {};
+  for (const l of ['en', 'fr'] as const) {
+    const t = b.versions?.[l];
+    if (t && typeof t === 'object') manual[l] = { title: t.title ?? '', body: t.body ?? '' };
+  }
+  // Textul lung se traduce pe bucăți: ce nu încape acum termină cron-ul (sau butonul „Tradu tot conținutul acum”).
+  const tr = await saveTranslations(c.env, { title: { ro: ro.title, prev: prev.title }, body: { ro: ro.body, prev: prev.body } }, manual);
+  return c.json({ ok: true, updatedAt: store[doc].updatedAt, translationPending: tr.remaining > 0 });
 });
 
 /** Renunță la textul editat și revine la modelul standard (cu datele firmei completate automat). */
@@ -1599,8 +1788,8 @@ adminRoutes.delete('/promos/:id', ownerOnly, async (c) => {
 // --- Campanii (push / e-mail / SMS) ---
 
 adminRoutes.get('/campaigns', ownerOnly, async (c) => {
-  const r = await c.env.DB.prepare('SELECT * FROM campaigns ORDER BY created_at DESC LIMIT 100').all();
-  return c.json(r.results);
+  const r = await c.env.DB.prepare('SELECT * FROM campaigns ORDER BY created_at DESC LIMIT 100').all<{ title: string; body: string }>();
+  return c.json(await withTranslations(c.env, r.results, ['title', 'body']));
 });
 
 /** Numărul de clienți care ar primi campania (au acceptat canalul și au contact). */
@@ -1615,7 +1804,7 @@ adminRoutes.get('/campaigns/audience', ownerOnly, async (c) => {
 });
 
 adminRoutes.post('/campaigns', ownerOnly, async (c) => {
-  const b = await c.req.json<{ channel?: string; title?: string; body?: string; scheduledAt?: string | null; sendNow?: boolean }>();
+  const b = await c.req.json<{ channel?: string; title?: string; body?: string; scheduledAt?: string | null; sendNow?: boolean; translations?: ManualTr }>();
   if (!['push', 'email', 'sms'].includes(b.channel ?? '')) throw new HttpError(400, 'invalid_channel');
   if (!b.title?.trim() || !b.body?.trim()) throw new HttpError(400, 'title_and_body_required');
   // SMS: cel mult 320 de caractere (2 mesaje), ca în panou.
@@ -1625,6 +1814,8 @@ adminRoutes.post('/campaigns', ownerOnly, async (c) => {
   await c.env.DB.prepare('INSERT INTO campaigns (id, channel, title, body, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, b.channel, b.title.trim().slice(0, 120), b.body.trim().slice(0, 5000), status, b.scheduledAt ?? null)
     .run();
+  // Fiecare client primește campania în limba aplicației lui: se traduce înainte de trimitere.
+  await saveTranslations(c.env, { title: { ro: b.title.trim().slice(0, 120) }, body: { ro: b.body.trim().slice(0, 5000) } }, b.translations);
   if (b.sendNow) c.executionCtx.waitUntil(runCampaign(c.env, id));
   return c.json({ id, status }, 201);
 });
@@ -1701,23 +1892,31 @@ const reportScope = (c: Context<AppEnv>, kind?: string) => {
   return { session: c.get('admin'), barberId: ownBarber(c) };
 };
 
-adminRoutes.get('/dashboard', async (c) => c.json(await buildDashboard(c.env, reportScope(c))));
+adminRoutes.get('/dashboard', async (c) => {
+  const d = await buildDashboard(c.env, reportScope(c));
+  // Aplicația echipei cere limba ei: „Fără nume” se traduce (numele rămân cum sunt).
+  const lang = langOf(c.req.query('lang'));
+  const nm = <T extends { name: string }>(x: T) => ({ ...x, name: reportText(x.name, lang) });
+  return c.json({ ...d, todayClients: d.todayClients.map(nm), atRisk: d.atRisk.map(nm), topClients: d.topClients.map(nm) });
+});
 
 adminRoutes.get('/reports', async (c) => {
+  const lang = langOf(c.req.query('lang'));
+  const tr = (r: (typeof REPORTS)[number]) => ({ ...r, title: reportText(r.title, lang) });
   const a = c.get('admin');
   const p = a.perms;
   if (!p.reports) {
     if (!a.barberId) throw new HttpError(403, 'no_permission');
-    return c.json(REPORTS.filter((r) => r.kind === 'register'));
+    return c.json(REPORTS.filter((r) => r.kind === 'register').map(tr));
   }
-  return c.json(REPORTS.filter((r) => (!('clients' in r && r.clients) || p.clients) && (!('shop' in r && r.shop) || p.shop)));
+  return c.json(REPORTS.filter((r) => (!('clients' in r && r.clients) || p.clients) && (!('shop' in r && r.shop) || p.shop)).map(tr));
 });
 
 /** GET /reports/:kind?from=YYYY-MM-DD&to=…&barberId=…&serviceId=…&status=…&format=xlsx */
 adminRoutes.get('/reports/:kind', async (c) => {
   const q = c.req.query();
   const r = await buildReport(c.env, reportScope(c, c.req.param('kind')), c.req.param('kind') as ReportKind, q);
-  if (q.format !== 'xlsx') return c.json(r);
+  if (q.format !== 'xlsx') return c.json(localizeReport(r, langOf(q.lang)));
   const name = `${r.title} ${r.from === r.to ? r.from : `${r.from} - ${r.to}`}`;
   const ascii = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 ._-]/g, '').replace(/\s+/g, '-');
   return new Response(xlsx(r.title, reportCells(r)), {

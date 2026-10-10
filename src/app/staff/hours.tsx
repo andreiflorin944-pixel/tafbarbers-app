@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
-import { BLOCK_KINDS, panelUrl, staffApi, type BlockKind, type StaffBarber, type StaffBlock, type StaffTimeOff } from '@/api/staff';
+import { BLOCK_KINDS, blockLabel, panelUrl, staffApi, type BlockKind, type StaffBarber, type StaffBlock, type StaffTimeOff } from '@/api/staff';
 import { Button, Card, Screen, styles as ui } from '@/components/ui';
-import { addDays, dayKey, formatDate, formatTime, pad } from '@/lib/dates';
+import { useT } from '@/i18n';
+import { addDays, dayKey, dayName, formatDate, formatTime, pad } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useStaff } from '@/state/Staff';
 import { colors, space } from '@/theme';
 
-const DAYS = ['Duminică', 'Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă'];
-const SHORT = ['Du', 'Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ'];
 const WEEK = [1, 2, 3, 4, 5, 6, 0];
 const isHm = (v: string) => /^\d{1,2}:\d{2}$/.test(v.trim());
 const hm = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
@@ -16,6 +15,7 @@ const hm = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 // Programul de lucru (din panou) și concediile / zilele libere, care se pot pune direct de aici.
 export default function StaffHours() {
   const { staff, staffToken } = useStaff();
+  const { t } = useT();
   const [barbers, setBarbers] = useState<StaffBarber[]>([]);
   const [off, setOff] = useState<StaffTimeOff[]>([]);
   const [from, setFrom] = useState(dayKey(addDays(new Date(), 1)));
@@ -35,15 +35,15 @@ export default function StaffHours() {
 
   if (!staff || !staffToken) return null;
   const mine = staff.barberId ? barbers.filter((b) => b.id === staff.barberId) : barbers;
-  const visibleOff = off.filter((t) => staff.owner || !t.barberId || t.barberId === staff.barberId);
-  const nameOf = (id: string | null) => (id ? (barbers.find((b) => b.id === id)?.name ?? '') : 'Tot salonul');
+  const visibleOff = off.filter((o) => staff.owner || !o.barberId || o.barberId === staff.barberId);
+  const nameOf = (id: string | null) => (id ? (barbers.find((b) => b.id === id)?.name ?? '') : t('hours.wholeSalon'));
 
   const add = async () => {
     setBusy(true);
     setMsg(null);
     try {
       await staffApi.timeOff(staffToken, { fromDay: from, toDay: to, reason: reason.trim(), barberId: staff.barberId });
-      setMsg({ ok: true, text: 'Adăugat. În zilele astea clienții nu mai văd ore libere.' });
+      setMsg({ ok: true, text: t('hours.offAdded') });
       setReason('');
       load();
     } catch (e) {
@@ -52,18 +52,18 @@ export default function StaffHours() {
       setBusy(false);
     }
   };
-  const remove = (t: StaffTimeOff) => {
-    const yes = () => staffApi.deleteTimeOff(staffToken, t.id).then(load, (e) => setMsg({ ok: false, text: errorMessage(e) }));
-    if (Platform.OS === 'web') return window.confirm('Ștergi perioada?') && yes();
-    Alert.alert('Ștergi perioada?', undefined, [
-      { text: 'Nu', style: 'cancel' },
-      { text: 'Șterge', style: 'destructive', onPress: yes },
+  const remove = (o: StaffTimeOff) => {
+    const yes = () => staffApi.deleteTimeOff(staffToken, o.id).then(load, (e) => setMsg({ ok: false, text: errorMessage(e) }));
+    if (Platform.OS === 'web') return window.confirm(t('hours.offDeleteAsk')) && yes();
+    Alert.alert(t('hours.offDeleteAsk'), undefined, [
+      { text: t('common.no'), style: 'cancel' },
+      { text: t('common.delete'), style: 'destructive', onPress: yes },
     ]);
   };
 
   return (
     <Screen edges={['bottom']}>
-      <Text style={ui.label}>Program de lucru</Text>
+      <Text style={ui.label}>{t('hours.schedule')}</Text>
       {mine.map((b) => (
         <Card key={b.id} style={{ gap: 4, marginBottom: space.sm }}>
           <Text style={ui.cardTitle}>{b.name}</Text>
@@ -71,32 +71,32 @@ export default function StaffHours() {
             const h = b.hours.filter((x) => x.weekday === wd);
             return (
               <View key={wd} style={[ui.row, { justifyContent: 'space-between' }]}>
-                <Text style={ui.text}>{DAYS[wd]}</Text>
-                <Text style={h.length ? ui.text : ui.muted}>{h.length ? h.map((x) => `${hm(x.start)}–${hm(x.end)}`).join(', ') : 'Liber'}</Text>
+                <Text style={[ui.text, { textTransform: 'capitalize' }]}>{dayName(wd, true)}</Text>
+                <Text style={h.length ? ui.text : ui.muted}>{h.length ? h.map((x) => `${hm(x.start)}–${hm(x.end)}`).join(', ') : t('hours.free')}</Text>
               </View>
             );
           })}
         </Card>
       ))}
-      {staff.owner && panelUrl() ? <Button title="Modifică programul în panou" variant="ghost" onPress={() => Linking.openURL(panelUrl('barbers'))} /> : null}
+      {staff.owner && panelUrl() ? <Button title={t('hours.editInPanel')} variant="ghost" onPress={() => Linking.openURL(panelUrl('barbers'))} /> : null}
 
-      <Text style={[ui.label, { marginTop: space.lg }]}>Concedii și zile libere</Text>
-      {visibleOff.length === 0 ? <Text style={ui.muted}>Nimic programat.</Text> : null}
-      {visibleOff.map((t) => (
-        <Card key={t.id} style={[ui.row, { justifyContent: 'space-between', marginBottom: space.sm }]}>
+      <Text style={[ui.label, { marginTop: space.lg }]}>{t('hours.timeOff')}</Text>
+      {visibleOff.length === 0 ? <Text style={ui.muted}>{t('hours.nothing')}</Text> : null}
+      {visibleOff.map((o) => (
+        <Card key={o.id} style={[ui.row, { justifyContent: 'space-between', marginBottom: space.sm }]}>
           <View style={{ flex: 1 }}>
             <Text style={ui.cardTitle}>
-              {formatDate(new Date(t.start))}
-              {dayKey(new Date(t.start)) !== dayKey(addDays(new Date(t.end), -0.0001)) ? ` – ${formatDate(addDays(new Date(t.end), -0.0001))}` : ` · ${formatTime(new Date(t.start))}–${formatTime(new Date(t.end))}`}
+              {formatDate(new Date(o.start))}
+              {dayKey(new Date(o.start)) !== dayKey(addDays(new Date(o.end), -0.0001)) ? ` – ${formatDate(addDays(new Date(o.end), -0.0001))}` : ` · ${formatTime(new Date(o.start))}–${formatTime(new Date(o.end))}`}
             </Text>
             <Text style={ui.muted}>
-              {nameOf(t.barberId)}
-              {t.reason ? ` · ${t.reason}` : ''}
+              {nameOf(o.barberId)}
+              {o.reason ? ` · ${o.reason}` : ''}
             </Text>
           </View>
-          {staff.permissions.timeoff && (staff.owner || t.barberId === staff.barberId) ? (
-            <Pressable onPress={() => remove(t)} hitSlop={10}>
-              <Text style={{ color: colors.danger, fontWeight: '700' }}>Șterge</Text>
+          {staff.permissions.timeoff && (staff.owner || o.barberId === staff.barberId) ? (
+            <Pressable onPress={() => remove(o)} hitSlop={10}>
+              <Text style={{ color: colors.danger, fontWeight: '700' }}>{t('common.delete')}</Text>
             </Pressable>
           ) : null}
         </Card>
@@ -104,26 +104,28 @@ export default function StaffHours() {
 
       {staff.permissions.timeoff ? (
         <>
-          <Text style={[ui.label, { marginTop: space.md }]}>Adaugă zile libere {staff.barberId ? '' : '(tot salonul)'}</Text>
+          <Text style={[ui.label, { marginTop: space.md }]}>
+            {t('hours.addOff')} {staff.barberId ? '' : t('hours.wholeSalonParen')}
+          </Text>
           <View style={{ flexDirection: 'row', gap: space.sm }}>
             <View style={{ flex: 1 }}>
-              <Text style={[ui.muted, { fontSize: 12 }]}>De la (AAAA-LL-ZZ)</Text>
+              <Text style={[ui.muted, { fontSize: 12 }]}>{t('hours.fromDate')}</Text>
               <TextInput value={from} onChangeText={setFrom} style={ui.input} placeholderTextColor={colors.muted} autoCorrect={false} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[ui.muted, { fontSize: 12 }]}>Până la</Text>
+              <Text style={[ui.muted, { fontSize: 12 }]}>{t('hours.to')}</Text>
               <TextInput value={to} onChangeText={setTo} style={ui.input} placeholderTextColor={colors.muted} autoCorrect={false} />
             </View>
           </View>
-          <TextInput value={reason} onChangeText={setReason} style={[ui.input, { marginTop: space.sm }]} placeholder="Motiv (opțional), ex.: concediu" placeholderTextColor={colors.muted} />
+          <TextInput value={reason} onChangeText={setReason} style={[ui.input, { marginTop: space.sm }]} placeholder={t('hours.reasonPh')} placeholderTextColor={colors.muted} />
           <View style={{ marginTop: space.sm }}>
-            <Button title="Adaugă" onPress={add} loading={busy} disabled={!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from} />
+            <Button title={t('common.add')} onPress={add} loading={busy} disabled={!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from} />
           </View>
         </>
       ) : null}
       {msg ? <Text style={{ color: msg.ok ? colors.success : colors.danger, marginTop: space.sm }}>{msg.text}</Text> : null}
 
-      <BlocksSection blocks={blocks} nameOf={(id) => (id ? nameOf(id) : 'Toți frizerii')} onChange={load} />
+      <BlocksSection blocks={blocks} nameOf={(id) => (id ? nameOf(id) : t('hours.allBarbers'))} onChange={load} />
     </Screen>
   );
 }
@@ -131,6 +133,8 @@ export default function StaffHours() {
 /** Pauze și ore speciale (pauză de masă, liber, curs, altceva, doar membri), o dată sau în fiecare săptămână. */
 function BlocksSection({ blocks, nameOf, onChange }: { blocks: StaffBlock[]; nameOf: (id: string | null) => string; onChange: () => void }) {
   const { staff, staffToken } = useStaff();
+  const { t } = useT();
+  const SHORT = t('hours.daysShort').split(',');
   const [kind, setKind] = useState<BlockKind>('lunch');
   const [label, setLabel] = useState('');
   const [repeat, setRepeat] = useState(false);
@@ -156,7 +160,7 @@ function BlocksSection({ blocks, nameOf, onChange }: { blocks: StaffBlock[]; nam
         end: end.trim(),
       });
       setLabel('');
-      setMsg({ ok: true, text: r.conflicts ? `Adăugat. Atenție: ${r.conflicts} ${r.conflicts === 1 ? 'programare deja făcută se suprapune' : 'programări deja făcute se suprapun'}; verifică-le în calendar.` : 'Adăugat.' });
+      setMsg({ ok: true, text: !r.conflicts ? t('hours.blockAdded') : r.conflicts === 1 ? t('hours.blockConflictOne') : t('hours.blockConflictMany', { n: r.conflicts }) });
       onChange();
     } catch (e) {
       setMsg({ ok: false, text: errorMessage(e) });
@@ -166,10 +170,10 @@ function BlocksSection({ blocks, nameOf, onChange }: { blocks: StaffBlock[]; nam
   };
   const remove = (b: StaffBlock) => {
     const yes = () => staffApi.deleteBlock(staffToken, b.id).then(onChange, (e) => setMsg({ ok: false, text: errorMessage(e) }));
-    if (Platform.OS === 'web') return window.confirm('Ștergi blocul?') && yes();
-    Alert.alert('Ștergi blocul?', 'Orele redevin libere.', [
-      { text: 'Nu', style: 'cancel' },
-      { text: 'Șterge', style: 'destructive', onPress: yes },
+    if (Platform.OS === 'web') return window.confirm(t('hours.blockDeleteAsk')) && yes();
+    Alert.alert(t('hours.blockDeleteAsk'), t('hours.blockFreed'), [
+      { text: t('common.no'), style: 'cancel' },
+      { text: t('common.delete'), style: 'destructive', onPress: yes },
     ]);
   };
   const colorOf = (k: BlockKind) => BLOCK_KINDS.find((x) => x.kind === k)?.color ?? colors.muted;
@@ -177,48 +181,50 @@ function BlocksSection({ blocks, nameOf, onChange }: { blocks: StaffBlock[]; nam
 
   return (
     <>
-      <Text style={[ui.label, { marginTop: space.lg }]}>Pauze și ore speciale</Text>
-      {blocks.length === 0 ? <Text style={ui.muted}>Niciun bloc în program.</Text> : null}
+      <Text style={[ui.label, { marginTop: space.lg }]}>{t('hours.blocks')}</Text>
+      {blocks.length === 0 ? <Text style={ui.muted}>{t('hours.noBlocks')}</Text> : null}
       {blocks.map((b) => (
         <Card key={b.id} style={[ui.row, { justifyContent: 'space-between', marginBottom: space.sm }]}>
           <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: colorOf(b.kind), marginRight: space.sm }} />
           <View style={{ flex: 1 }}>
             <Text style={ui.cardTitle}>
-              {b.label} · {b.start}–{b.end}
+              {blockLabel(b)} · {b.start}–{b.end}
             </Text>
             <Text style={ui.muted}>
-              {b.repeat ? WEEK.filter((d) => b.weekdays.includes(d)).map((d) => SHORT[d]).join(', ') + (b.untilDay ? `, până pe ${formatDate(new Date(b.untilDay + 'T12:00:00'))}` : '') : formatDate(new Date(b.day + 'T12:00:00'))}
+              {b.repeat ? WEEK.filter((d) => b.weekdays.includes(d)).map((d) => SHORT[d]).join(', ') + (b.untilDay ? t('hours.untilDate', { date: formatDate(new Date(b.untilDay + 'T12:00:00')) }) : '') : formatDate(new Date(b.day + 'T12:00:00'))}
               {' · '}
               {nameOf(b.barberId)}
             </Text>
           </View>
           {staff.permissions.timeoff && (staff.owner || b.barberId === staff.barberId) ? (
             <Pressable onPress={() => remove(b)} hitSlop={10}>
-              <Text style={{ color: colors.danger, fontWeight: '700' }}>Șterge</Text>
+              <Text style={{ color: colors.danger, fontWeight: '700' }}>{t('common.delete')}</Text>
             </Pressable>
           ) : null}
         </Card>
       ))}
       {staff.permissions.timeoff ? (
         <>
-          <Text style={[ui.label, { marginTop: space.md }]}>Adaugă un bloc {staff.barberId ? '' : '(toți frizerii)'}</Text>
+          <Text style={[ui.label, { marginTop: space.md }]}>
+            {t('hours.addBlock')} {staff.barberId ? '' : t('hours.allBarbersParen')}
+          </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
             {BLOCK_KINDS.map((k) => (
               <Pressable key={k.kind} onPress={() => setKind(k.kind)} style={[chip, kind === k.kind && { borderColor: k.color, backgroundColor: k.color + '33' }]}>
-                <Text style={ui.text}>{k.label}</Text>
+                <Text style={ui.text}>{t(k.label)}</Text>
               </Pressable>
             ))}
           </View>
-          {kind === 'members' ? <Text style={[ui.muted, { fontSize: 12, marginTop: 4 }]}>Orele rămân libere doar pentru clienții cu abonament activ sau marcați ca membri.</Text> : null}
+          {kind === 'members' ? <Text style={[ui.muted, { fontSize: 12, marginTop: 4 }]}>{t('hours.membersHint')}</Text> : null}
           {kind === 'other' ? (
-            <TextInput value={label} onChangeText={setLabel} style={[ui.input, { marginTop: space.sm }]} placeholder="Nume, ex.: ședință foto" placeholderTextColor={colors.muted} maxLength={60} />
+            <TextInput value={label} onChangeText={setLabel} style={[ui.input, { marginTop: space.sm }]} placeholder={t('hours.otherPh')} placeholderTextColor={colors.muted} maxLength={60} />
           ) : null}
           <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
             <Pressable onPress={() => setRepeat(false)} style={[chip, !repeat && chipOn]}>
-              <Text style={ui.text}>O singură dată</Text>
+              <Text style={ui.text}>{t('hours.once')}</Text>
             </Pressable>
             <Pressable onPress={() => setRepeat(true)} style={[chip, repeat && chipOn]}>
-              <Text style={ui.text}>În fiecare săptămână</Text>
+              <Text style={ui.text}>{t('hours.weekly')}</Text>
             </Pressable>
           </View>
           {repeat ? (
@@ -231,22 +237,22 @@ function BlocksSection({ blocks, nameOf, onChange }: { blocks: StaffBlock[]; nam
             </View>
           ) : (
             <View style={{ marginTop: space.sm }}>
-              <Text style={[ui.muted, { fontSize: 12 }]}>Ziua (AAAA-LL-ZZ)</Text>
+              <Text style={[ui.muted, { fontSize: 12 }]}>{t('hours.day')}</Text>
               <TextInput value={day} onChangeText={setDay} style={ui.input} placeholderTextColor={colors.muted} autoCorrect={false} />
             </View>
           )}
           <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
             <View style={{ flex: 1 }}>
-              <Text style={[ui.muted, { fontSize: 12 }]}>De la (ex. 13:00)</Text>
+              <Text style={[ui.muted, { fontSize: 12 }]}>{t('hours.fromTime')}</Text>
               <TextInput value={start} onChangeText={setStart} style={ui.input} placeholderTextColor={colors.muted} autoCorrect={false} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[ui.muted, { fontSize: 12 }]}>Până la</Text>
+              <Text style={[ui.muted, { fontSize: 12 }]}>{t('hours.to')}</Text>
               <TextInput value={end} onChangeText={setEnd} style={ui.input} placeholderTextColor={colors.muted} autoCorrect={false} />
             </View>
           </View>
           <View style={{ marginTop: space.sm }}>
-            <Button title="Adaugă blocul" onPress={add} loading={busy} disabled={!ok} />
+            <Button title={t('hours.addBlockBtn')} onPress={add} loading={busy} disabled={!ok} />
           </View>
         </>
       ) : null}

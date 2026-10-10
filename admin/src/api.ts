@@ -63,6 +63,9 @@ const MESSAGES: Record<string, string> = {
   invalid_phone: 'Numărul de telefon nu e corect.',
   owner_only: 'Doar proprietarul poate face asta.',
   name_required: 'Completează numele.',
+  last_location: 'Trebuie să rămână cel puțin o locație activă, ca clienții să se poată programa.',
+  location_not_found: 'Locația nu mai există. Reîncarcă pagina.',
+  location_required: 'Alege locația.',
   invalid_duration: 'Durata trebuie să fie între 5 și 480 de minute.',
   invalid_price: 'Prețul nu e corect.',
   invalid_hours: 'Verifică intervalele de program (sfârșitul după început).',
@@ -92,6 +95,7 @@ const MESSAGES: Record<string, string> = {
   booking_requested: 'E o cerere încă neconfirmată: întâi o accepți sau o refuzi.',
   waitlist_closed: 'Înscrierea nu mai e pe listă (s-a programat, a expirat sau a fost scoasă). Reîncarcă pagina.',
   barber_required: 'Alege frizerul.',
+  invalid_service: 'Serviciul nu mai există.',
   unsupported_image: 'Poza trebuie să fie JPG, PNG sau WebP.',
   image_too_large: 'Poza e prea mare.',
   invalid_url: 'Linkul nu e corect (trebuie să înceapă cu https://).',
@@ -125,7 +129,8 @@ const MESSAGES: Record<string, string> = {
   import_empty: 'Fișierul nu are niciun rând cu clienți.',
   import_too_big: 'Fișierul are prea multe rânduri (maxim 3000 o dată). Împarte-l în mai multe.',
   review_not_completed: 'Cererea de recenzie se trimite după ce tunsoarea e încheiată.',
-  review_off: 'Cererea de recenzie e oprită la Notificări → Ce se trimite și pe unde.',
+  review_off: 'Cererea de recenzie e oprită (Tablou de bord → Mesaje automate) sau nu are niciun canal bifat la Notificări → Ce se trimite și pe unde.',
+  invalid_message: 'Mesaj necunoscut.',
   unknown_wildcard: 'Textul are o variabilă pe care mesajul ăsta nu o cunoaște. Folosește doar butoanele de sub text.',
   text_too_long: 'Textul e prea lung.',
   review_link_missing: 'Pune întâi linkul de recenzie Google în Aplicații → Linkuri.',
@@ -189,7 +194,11 @@ export async function uploadImageTo(path: string, file: File, opts: { maxPx?: nu
   return json;
 }
 
+/** Engleza și franceza textelor (traduse automat la salvare; corectabile de mână): { en: { câmp: text }, fr: {…} }. */
+export type Translations = { en: Record<string, string>; fr: Record<string, string> };
+
 export type Product = {
+  translations?: Translations;
   id: string;
   name: string;
   description: string;
@@ -234,6 +243,7 @@ export type Appearance = {
 // --- Tipuri (la fel ca răspunsurile serverului) ---
 
 export type Service = {
+  translations?: Translations;
   id: string;
   name: string;
   description: string;
@@ -246,6 +256,7 @@ export type Service = {
 };
 export type Hours = { weekday: number; start: number; end: number };
 export type Barber = {
+  translations?: Translations;
   id: string;
   name: string;
   role: string;
@@ -261,6 +272,22 @@ export type Barber = {
   prices: Record<string, number>;
   durations?: Record<string, number>;
   hours: Hours[];
+  /** Locația în care lucrează. */
+  locationId: string | null;
+};
+/** O locație a salonului (Setări → Locații). */
+export type Location = {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  photoUrl: string | null;
+  active: boolean;
+  sort: number;
+  /** Câți frizeri activi lucrează aici. */
+  barbers?: number;
+  /** Câte programări viitoare (confirmate sau cereri) are (pentru avertismentul la dezactivare). */
+  futureBookings?: number;
 };
 export type Booking = {
   id: string;
@@ -288,7 +315,7 @@ export type Booking = {
   bonusId?: string | null;
   clientBirthday?: boolean;
 };
-export type Plan = { id: string; name: string; description: string; price: number; periodDays: number; cuts: number | null; serviceIds: string[]; sort: number; active: boolean };
+export type Plan = { translations?: Translations; id: string; name: string; description: string; price: number; periodDays: number; cuts: number | null; serviceIds: string[]; sort: number; active: boolean };
 export type Subscription = {
   id: string;
   planId: string | null;
@@ -342,7 +369,7 @@ export type Client = {
   birthDate?: string | null;
   photoUrl?: string | null;
   identity?: { note: string; photos: ClientPhoto[]; staffPhotos?: ClientPhoto[] };
-  beforeAfter?: Array<{ id: string; before: string; after: string; barberName: string | null; createdAt: string }>;
+  beforeAfter?: Array<{ id: string; before: string; after: string; barberName: string | null; createdAt: string; serviceId?: string | null; showExample?: boolean; exampleConsentAt?: string | null; exampleConsentBy?: string | null; exampleWithdrawnAt?: string | null }>;
   bonuses?: Bonus[];
   subscriptions?: Subscription[];
   referredBy?: { id: string; name: string } | null;
@@ -371,6 +398,7 @@ export type Promo = {
   active: boolean;
 };
 export type Business = {
+  translations?: Translations;
   name: string;
   /** Datele firmei, pentru regulamente: denumire, CUI, Registrul Comerțului, sediu, e-mail. */
   legalName?: string;
@@ -421,6 +449,7 @@ export const PERM_LABELS: Record<Perm, string> = {
 };
 export type TimeOff = { id: number; barberId: string | null; start: string; end: string; reason: string };
 export type Campaign = {
+  translations?: Translations;
   id: string;
   channel: 'push' | 'email' | 'sms';
   title: string;

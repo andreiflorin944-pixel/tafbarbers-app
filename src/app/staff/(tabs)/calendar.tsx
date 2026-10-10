@@ -2,11 +2,12 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { staffApi, type StaffBarber, type StaffBooking, type StaffTimeOff } from '@/api/staff';
+import { blockLabel, staffApi, type StaffBarber, type StaffBooking, type StaffTimeOff } from '@/api/staff';
 import { BOOKING_STATUS, BookingSheet } from '@/components/BookingSheet';
 import { BirthdayGlow, Candle } from '@/components/Birthday';
 import { styles as ui } from '@/components/ui';
 import { addDays, dayKey, dayOfMonth, fromDayKey, formatDate, pad, salonMidnight, shortDay, startOfDay, weekdayOf } from '@/lib/dates';
+import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
@@ -21,6 +22,7 @@ type Range = { start: number; end: number };
 export default function StaffCalendar() {
   const params = useLocalSearchParams<{ day?: string }>();
   const { staff, staffToken } = useStaff();
+  const { t } = useT();
   const { business } = useApp();
   const step = (business as { slotStepMin?: number } | null)?.slotStepMin || 15;
   const today = dayKey(new Date());
@@ -62,7 +64,7 @@ export default function StaffCalendar() {
       // Pauzele și celelalte blocuri care scot ore din program se hașurează ca timpul liber (cele „doar membri” rămân de lucru).
       const blocks = await staffApi.blockOccurrences(staffToken, day, day).catch(() => []);
       setBookings(b);
-      setTimeOff([...t, ...blocks.filter((o) => o.kind !== 'members').map((o) => ({ id: 0, barberId: o.barberId, start: o.start, end: o.end, reason: o.label }))]);
+      setTimeOff([...t, ...blocks.filter((o) => o.kind !== 'members').map((o) => ({ id: 0, barberId: o.barberId, start: o.start, end: o.end, reason: blockLabel(o) }))]);
     } catch (e) {
       setError(errorMessage(e));
       setBookings([]);
@@ -118,11 +120,11 @@ export default function StaffCalendar() {
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={s.header}>
         <Text style={s.headerSide} numberOfLines={1}>
-          {canAll ? (sel === 'all' ? 'Echipa' : barbers.find((b) => b.id === sel)?.name) : ownName}
+          {canAll ? (sel === 'all' ? t('cal.team') : barbers.find((b) => b.id === sel)?.name) : ownName}
         </Text>
         <Text style={s.headerTitle}>{formatDate(fromDayKey(day))}</Text>
-        <Pressable onPress={() => setDay(today)} hitSlop={8} style={[s.headerSide, { alignItems: 'flex-end' }]} accessibilityLabel="Azi">
-          <Text style={{ color: day === today ? colors.muted : colors.gold, fontWeight: '700' }}>Azi</Text>
+        <Pressable onPress={() => setDay(today)} hitSlop={8} style={[s.headerSide, { alignItems: 'flex-end' }]} accessibilityLabel={t('sh.today')}>
+          <Text style={{ color: day === today ? colors.muted : colors.gold, fontWeight: '700' }}>{t('sh.today')}</Text>
         </Pressable>
       </View>
 
@@ -138,7 +140,7 @@ export default function StaffCalendar() {
           const key = dayKey(d);
           const on = key === day;
           return (
-            <Pressable key={key} onPress={() => setDay(key)} style={[s.day, on && s.dayOn]} accessibilityLabel={`Ziua ${dayOfMonth(d)}`}>
+            <Pressable key={key} onPress={() => setDay(key)} style={[s.day, on && s.dayOn]} accessibilityLabel={t('cal.dayN', { n: dayOfMonth(d) })}>
               <Text style={[s.dayName, on && { color: colors.onGold }]}>{shortDay(d)}</Text>
               <Text style={[s.dayNum, on && { color: colors.onGold }]}>{pad(dayOfMonth(d))}</Text>
             </Pressable>
@@ -150,7 +152,7 @@ export default function StaffCalendar() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0, height: 54 }} contentContainerStyle={{ gap: space.xs, padding: space.sm, alignItems: 'center' }}>
           {['all', ...barbers.map((b) => b.id)].map((id) => (
             <Pressable key={id} onPress={() => setSel(id)} style={[s.chip, sel === id && s.chipOn]}>
-              <Text style={[s.chipText, sel === id && { color: colors.onGold }]}>{id === 'all' ? 'Toți' : barbers.find((b) => b.id === id)?.name}</Text>
+              <Text style={[s.chipText, sel === id && { color: colors.onGold }]}>{id === 'all' ? t('cal.all') : barbers.find((b) => b.id === id)?.name}</Text>
             </Pressable>
           ))}
         </ScrollView>
@@ -183,7 +185,7 @@ export default function StaffCalendar() {
                 {rows.map((m) => (
                   <Pressable
                     key={m}
-                    accessibilityLabel={`Slot ${hm(m)} ${b.name}`}
+                    accessibilityLabel={t('cal.slot', { time: hm(m), name: b.name })}
                     disabled={!p.bookings_create}
                     onPress={() => router.push({ pathname: '/staff/new', params: { day, time: hm(m), barberId: b.id } })}
                     style={({ pressed }) => [s.slot, { top: y(m) }, pressed && { backgroundColor: colors.cardAlt }]}
@@ -200,7 +202,7 @@ export default function StaffCalendar() {
                     const st = BOOKING_STATUS[x.status];
                     const h = Math.max(ROW, y(e0) - y(s0)) - 3;
                     return (
-                      <Pressable key={x.id} onPress={() => setOpen(x)} style={[s.booking, { top: y(s0) + 1.5, height: h, borderLeftColor: st.color }]} accessibilityLabel={`Programare ${x.clientName}`}>
+                      <Pressable key={x.id} onPress={() => setOpen(x)} style={[s.booking, { top: y(s0) + 1.5, height: h, borderLeftColor: st.color }]} accessibilityLabel={t('cal.booking', { name: x.clientName ?? '' })}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                           {x.clientBirthday ? <Candle size={14} /> : null}
                           <Text style={[s.bName, { flexShrink: 1 }]} numberOfLines={1}>
@@ -209,7 +211,7 @@ export default function StaffCalendar() {
                         </View>
                         {h > 40 ? (
                           <Text style={s.bLine} numberOfLines={1}>
-                            {hm(s0)} – {hm(e0)}, {e0 - s0} min
+                            {hm(s0)} – {hm(e0)}, {t('common.min', { n: e0 - s0 })}
                           </Text>
                         ) : null}
                         {h > 60 ? (
@@ -217,7 +219,7 @@ export default function StaffCalendar() {
                             {x.serviceName}
                           </Text>
                         ) : null}
-                        {x.status !== 'confirmed' ? <Text style={[s.bLine, { color: st.color, fontWeight: '700' }]}>{st.label}</Text> : null}
+                        {x.status !== 'confirmed' ? <Text style={[s.bLine, { color: st.color, fontWeight: '700' }]}>{t(st.label)}</Text> : null}
                         {x.clientBirthday && x.status !== 'cancelled' ? <BirthdayGlow radius={6} /> : null}
                       </Pressable>
                     );
@@ -226,7 +228,7 @@ export default function StaffCalendar() {
               </View>
             ))}
           </View>
-          {!work.length ? <Text style={[ui.muted, { textAlign: 'center', marginTop: space.md }]}>Zi liberă (închis).</Text> : null}
+          {!work.length ? <Text style={[ui.muted, { textAlign: 'center', marginTop: space.md }]}>{t('cal.closed')}</Text> : null}
         </ScrollView>
       )}
 

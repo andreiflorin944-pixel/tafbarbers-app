@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, type Me, type Plan, type Service, type Subscription } from '../api';
-import { Field, Loading, Modal, useAction, useLoad } from '../ui';
+import { emptyTr, Field, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 import { date, lei } from '../util';
 
 const STATE: Record<Subscription['state'], string> = {
@@ -242,6 +242,7 @@ export function SubscriptionsPage(_: { me: Me }) {
 
 function PlanModal({ p, services, onClose, onDone }: { p: Partial<Plan>; services: Service[]; onClose: () => void; onDone: () => void }) {
   const [v, setV] = useState({ ...p });
+  const [tr, setTr] = useState(p.translations ?? emptyTr());
   const { busy, error, run } = useAction();
   const set = (patch: Partial<Plan>) => setV((x) => ({ ...x, ...patch }));
   const ids = v.serviceIds ?? [];
@@ -254,6 +255,7 @@ function PlanModal({ p, services, onClose, onDone }: { p: Partial<Plan>; service
     serviceIds: ids,
     sort: Number(v.sort) || 0,
     active: v.active !== false,
+    translations: tr,
   };
 
   return (
@@ -265,6 +267,16 @@ function PlanModal({ p, services, onClose, onDone }: { p: Partial<Plan>; service
         <Field label="Descriere pentru client">
           <textarea value={v.description ?? ''} onChange={(e) => set({ description: e.target.value })} maxLength={500} />
         </Field>
+        <TranslationFields
+          fields={[
+            { key: 'name', label: 'Nume' },
+            { key: 'description', label: 'Descriere pentru client', multiline: true },
+          ]}
+          ro={{ name: v.name, description: v.description }}
+          initialRo={{ name: p.name, description: p.description }}
+          value={tr}
+          onChange={setTr}
+        />
         <div className="grid two">
           <Field label="Preț (lei)">
             <input type="number" min={1} value={v.price ?? ''} onChange={(e) => set({ price: Number(e.target.value) })} />

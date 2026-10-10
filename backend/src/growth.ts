@@ -1,6 +1,7 @@
 // Mesajele automate care aduc clienții înapoi și umplu programul: „Ne e dor de tine”, ore libere de ultim moment,
 // textul cardului cadou și linkurile „Programează” (Google Maps, Instagram). Textele se editează din panou, Setări → Notificări.
 import { autoTranslate } from './translate';
+import { localizeText } from './contentI18n';
 import { availability } from './availability';
 import { emailHtml } from './campaigns';
 import { getBusiness, getSetting, setSetting } from './db';
@@ -140,10 +141,31 @@ export async function getAutomations(env: Env): Promise<Automations> {
   };
 }
 
-/** Pe ce canale pleacă o notificare (null = oprită din Setări → Notificări). */
+/**
+ * Pe ce canale pleacă o notificare. null = nu pleacă nimic: oprită (din Tablou de bord → Mesaje automate sau din Notificări),
+ * ori pornită dar fără niciun canal bifat. Canalele rămân salvate cât e oprită, ca la repornire să plece pe aceleași.
+ */
 export async function channelsFor(env: Env, kind: ChannelEvent): Promise<Channel | null> {
   const ch = (await getAutomations(env)).channels[kind];
-  return ch.enabled ? ch : null;
+  return ch.enabled && (ch.sms || ch.push || ch.email) ? ch : null;
+}
+
+/** Mesajele care se pornesc și se opresc din Tablou de bord → Mesaje automate („otpSms” = codul de intrare prin SMS). */
+export const MESSAGE_SWITCHES = ['confirm', 'reminder_24h', 'reminder_2h', 'cancel', 'review', 'otpSms'] as const;
+export type MessageSwitch = (typeof MESSAGE_SWITCHES)[number];
+
+/**
+ * Pornește sau oprește un singur mesaj automat, fără să atingă restul setărilor (canalele bifate rămân cum erau).
+ * Se salvează pe loc, din comutatorul de pe tabloul de bord.
+ */
+export async function switchMessage(env: Env, key: unknown, enabled: unknown) {
+  if (!MESSAGE_SWITCHES.includes(key as MessageSwitch)) throw new HttpError(400, 'invalid_message');
+  if (typeof enabled !== 'boolean') throw new HttpError(400, 'invalid_enabled');
+  const next = await getAutomations(env);
+  if (key === 'otpSms') next.otpSms = enabled;
+  else next.channels[key as ChannelEvent] = { ...next.channels[key as ChannelEvent], enabled };
+  await setSetting(env, 'automations', next);
+  return next;
 }
 
 export async function saveAutomations(env: Env, b: Partial<Automations>) {
@@ -284,13 +306,14 @@ export async function sendWinback(env: Env, now = new Date()) {
     let body = fillText(s.message[lang] || s.message.ro, vars);
     if (s.bonus) {
       await giveBonus(env, c.id, s.reward, 'manual');
-      body += lang === 'ro' ? ` Cadou: ${s.reward.title}.` : lang === 'fr' ? ` Cadeau : ${s.reward.title}.` : ` Gift: ${s.reward.title}.`;
+      const gift = await localizeText(env, lang, s.reward.title);
+      body += lang === 'ro' ? ` Cadou: ${gift}.` : lang === 'fr' ? ` Cadeau : ${gift}.` : ` Gift: ${gift}.`;
     }
     if (s.push) {
       const tokens = await pushTokens(env, c.id);
       if (tokens.length) await sendPush(env, { kind: 'winback' }, tokens, title, body, { screen: s.bonus ? 'rewards' : 'book' });
     }
-    if (s.email && c.marketing_email && c.email) await sendEmail(env, { kind: 'winback', recipient: c.email }, title, emailHtml(shop, title, body));
+    if (s.email && c.marketing_email && c.email) await sendEmail(env, { kind: 'winback', recipient: c.email }, title, emailHtml(shop, title, body, false, lang));
     if (s.sms && c.marketing_sms) await sendSms(env, { kind: 'winback', recipient: c.phone }, `${title} ${body}`);
   }
   return n;
@@ -311,12 +334,15 @@ export async function freeSlotsSoon(env: Env, now: Date, windowHours: number) {
   if (!svc) return [];
   const until = now.getTime() + windowHours * 3_600_000;
   const slots = await availability(env, { serviceId: svc.id, barberId: null, day });
-  const names = new Map(
-    (await env.DB.prepare('SELECT id, name FROM barbers').all<{ id: string; name: string }>()).results.map((b) => [b.id, b.name]),
-  );
+  const rows = (
+    await env.DB.prepare('SELECT b.id, b.name, l.name AS location FROM barbers b LEFT JOIN locations l ON l.id = b.location_id').all<{ id: string; name: string; location: string | null }>()
+  ).results;
+  const names = new Map(rows.map((b) => [b.id, b]));
+  // Cu mai multe locații, fiecare oră spune și locația (altfel clientul nu știe unde e golul).
+  const many = ((await env.DB.prepare('SELECT count(*) AS n FROM locations WHERE active = 1').first<{ n: number }>())?.n ?? 0) > 1;
   return slots
     .filter((s) => Date.parse(s.start) > now.getTime() + 30 * 60_000 && Date.parse(s.start) <= until)
-    .map((s) => ({ ...s, barberName: names.get(s.barberId) ?? '' }));
+    .map((s) => ({ ...s, barberName: names.get(s.barberId)?.name ?? '', locationName: many ? (names.get(s.barberId)?.location ?? '') : '' }));
 }
 
 /** Câți clienți primesc anunțul la o oră aleasă: fiecare înseamnă câteva cereri, iar un Worker are o limită de cereri pe rulare. */
@@ -343,7 +369,10 @@ export async function sendLastMinute(env: Env, now = new Date()) {
   if (!free.length) return 0;
   const ore = free
     .slice(0, 4)
-    .map((x) => `${roLocal(x.start).hm}${x.barberName ? ` (${x.barberName})` : ''}`)
+    .map((x) => {
+      const who = [x.barberName, x.locationName].filter(Boolean).join(', ');
+      return `${roLocal(x.start).hm}${who ? ` (${who})` : ''}`;
+    })
     .join(', ');
   const nowIso = iso(now);
   const dayStart = iso(localToUtc(tz, day, 0));
@@ -375,7 +404,7 @@ export async function sendLastMinute(env: Env, now = new Date()) {
     const title = fillText(s.title[lang] || s.title.ro, vars);
     const body = fillText(s.message[lang] || s.message.ro, vars);
     if (s.push && c.marketing_push) await sendPush(env, { kind: 'last_minute' }, await pushTokens(env, c.id), title, body, { screen: 'book' });
-    if (s.email && c.marketing_email && c.email) await sendEmail(env, { kind: 'last_minute', recipient: c.email }, title, emailHtml(shop, title, body));
+    if (s.email && c.marketing_email && c.email) await sendEmail(env, { kind: 'last_minute', recipient: c.email }, title, emailHtml(shop, title, body, false, lang));
     if (s.sms && c.marketing_sms) await sendSms(env, { kind: 'last_minute', recipient: c.phone }, `${title}: ${body}`);
     n++;
   }
@@ -492,7 +521,7 @@ export async function activateGiftCard(env: Env, id: string, adminId: string | n
     }
     if (rc && ch?.email) {
       const em = await env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(rc.id).first<{ email: string | null }>();
-      if (em?.email) await sendEmail(env, { kind: 'gift_card', recipient: em.email }, title, emailHtml(shop, title, body));
+      if (em?.email) await sendEmail(env, { kind: 'gift_card', recipient: em.email }, title, emailHtml(shop, title, body, false, lang));
     }
     // Cardul cadou e o tranzacție, nu o reclamă: SMS-ul pleacă și fără acord pentru oferte.
     if (ch?.sms) await sendSms(env, { kind: 'gift_card', recipient: g.recipient_phone }, `${title}. ${body}`);

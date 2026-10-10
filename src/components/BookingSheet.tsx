@@ -17,6 +17,7 @@ import { staffApi, type StaffBooking, type StaffCheckout } from "@/api/staff";
 import { cutsText } from "@/components/SubscriptionRow";
 import { Candle } from "@/components/Birthday";
 import { Button, styles as ui } from "@/components/ui";
+import { tr, useT, type Key } from "@/i18n";
 import { formatDate, formatTime } from "@/lib/dates";
 import { errorMessage } from "@/lib/errors";
 import { useStaff } from "@/state/Staff";
@@ -24,20 +25,20 @@ import { colors, radius, space } from "@/theme";
 
 export const BOOKING_STATUS: Record<
   StaffBooking["status"],
-  { label: string; color: string }
+  { label: Key; color: string }
 > = {
-  requested: { label: "Cerere în așteptare", color: "#7FB6E6" },
-  confirmed: { label: "Confirmată", color: colors.gold },
-  completed: { label: "Finalizată", color: "#4CAF7A" },
-  no_show: { label: "Neprezentare", color: colors.danger },
-  cancelled: { label: "Anulată", color: colors.muted },
+  requested: { label: "bst.requested", color: "#7FB6E6" },
+  confirmed: { label: "bst.confirmed", color: colors.gold },
+  completed: { label: "status.completed", color: "#4CAF7A" },
+  no_show: { label: "status.noShow", color: colors.danger },
+  cancelled: { label: "status.cancelled", color: colors.muted },
 };
 
 const ask = (msg: string, yes: () => void) => {
   if (Platform.OS === "web") return window.confirm(msg) && yes();
-  Alert.alert("Confirmare", msg, [
-    { text: "Nu", style: "cancel" },
-    { text: "Da", style: "destructive", onPress: yes },
+  Alert.alert(tr("common.confirmTitle"), msg, [
+    { text: tr("common.no"), style: "cancel" },
+    { text: tr("common.yes"), style: "destructive", onPress: yes },
   ]);
 };
 
@@ -52,6 +53,7 @@ export function BookingSheet({
   onChange: (b: StaffBooking) => void;
 }) {
   const { staff, staffToken } = useStaff();
+  const { t } = useT();
   const [checkout, setCheckout] = useState(false);
   useEffect(() => setCheckout(false), [b?.id]);
   if (!b || !staff || !staffToken) return null;
@@ -86,44 +88,41 @@ export function BookingSheet({
         <Pressable
           style={[StyleSheet.absoluteFill, s.backdrop]}
           onPress={onClose}
-          accessibilityLabel="Închide"
+          accessibilityLabel={t("common.close")}
         />
         <View style={s.sheet}>
           <View style={s.handle} />
           <ScrollView keyboardShouldPersistTaps="handled">
           <View style={[ui.row, { justifyContent: "space-between" }]}>
             <Text style={s.title} numberOfLines={1}>
-              {b.clientName || b.clientPhone || "Client"}
+              {b.clientName || b.clientPhone || t("common.client")}
             </Text>
-            <Text style={[s.status, { color: st.color }]}>{st.label}</Text>
+            <Text style={[s.status, { color: st.color }]}>{t(st.label)}</Text>
           </View>
           {b.clientBirthday ? (
             <View style={s.birthday}>
               <Candle size={22} />
-              <Text style={[ui.text, { flex: 1 }]}>
-                E ziua lui de naștere! Urează-i „La mulți ani” și, dacă vrei,
-                fă-i o reducere.
-              </Text>
+              <Text style={[ui.text, { flex: 1 }]}>{t("sheet.birthday")}</Text>
             </View>
           ) : null}
           <Line
             icon="time-outline"
-            text={`${formatDate(new Date(b.start))}, ${formatTime(new Date(b.start))} – ${formatTime(new Date(b.end))} · ${minutes} min`}
+            text={`${formatDate(new Date(b.start))}, ${formatTime(new Date(b.start))} – ${formatTime(new Date(b.end))} · ${t("common.min", { n: minutes })}`}
           />
           <Line
             icon="cut-outline"
             text={`${b.serviceName} · ${b.barberName}`}
           />
           {p.stats ? (
-            <Line icon="cash-outline" text={`${b.price} lei`} />
+            <Line icon="cash-outline" text={t("common.lei", { n: b.price })} />
           ) : null}
           {b.payment ? (
             <Line
               icon="checkmark-circle-outline"
               text={
                 b.payment === "subscription"
-                  ? "Pe abonament"
-                  : `A plătit ${b.paidAmount ?? b.price} lei`
+                  ? t("sheet.onSub")
+                  : t("sheet.paid", { amount: t("common.lei", { n: b.paidAmount ?? b.price }) })
               }
             />
           ) : null}
@@ -136,7 +135,7 @@ export function BookingSheet({
                 {b.clientPhone ? (
                   <View style={{ flex: 1 }}>
                     <Button
-                      title="Sună"
+                      title={t("common.call")}
                       variant="ghost"
                       onPress={() => Linking.openURL(`tel:${b.clientPhone}`)}
                     />
@@ -145,7 +144,7 @@ export function BookingSheet({
                 {b.clientId ? (
                   <View style={{ flex: 1 }}>
                     <Button
-                      title="Fișa clientului"
+                      title={t("sheet.clientFile")}
                       variant="ghost"
                       onPress={() => {
                         onClose();
@@ -183,14 +182,14 @@ export function BookingSheet({
               <View style={{ flexDirection: "row", gap: space.sm }}>
                 <View style={{ flex: 1 }}>
                   <Button
-                    title="Finalizată"
+                    title={t("sheet.complete")}
                     onPress={() => setCheckout(true)}
                   />
                 </View>
                 {b.status === "confirmed" ? (
                   <View style={{ flex: 1 }}>
                     <Button
-                      title="Nu a venit"
+                      title={t("sheet.noShow")}
                       variant="ghost"
                       onPress={() => setStatus("no_show")}
                     />
@@ -200,10 +199,10 @@ export function BookingSheet({
             ) : null}
             {p.bookings_manage && b.status === "confirmed" && !checkout ? (
               <Button
-                title="Anulează (clientul primește SMS)"
+                title={t("sheet.cancelSms")}
                 variant="danger"
                 onPress={() =>
-                  ask("Anulezi programarea?", () => setStatus("cancelled"))
+                  ask(t("sheet.cancelAsk"), () => setStatus("cancelled"))
                 }
               />
             ) : null}
@@ -230,6 +229,7 @@ function Checkout({
   onCancel: () => void;
   onDone: (b: StaffBooking) => void;
 }) {
+  const { t } = useT();
   const [data, setData] = useState<StaffCheckout | null>(null);
   const [mode, setMode] = useState<"paid" | "subscription">("paid");
   const [amount, setAmount] = useState(String(b.price));
@@ -245,7 +245,7 @@ function Checkout({
     setErr("");
     try {
       const g = await staffApi.checkGiftCard(token, giftCode);
-      if (g.status !== "active") return setErr(g.status === "expired" ? "Cardul cadou a expirat." : "Pe cardul cadou nu mai sunt bani.");
+      if (g.status !== "active") return setErr(g.status === "expired" ? t("sheet.giftExpired") : t("sheet.giftEmpty"));
       const take = Math.min(g.balance, b.price);
       setGift({ code: g.code, take, balance: g.balance });
       setAmount(String(Math.max(0, b.price - take)));
@@ -267,9 +267,9 @@ function Checkout({
 
   const confirm = async () => {
     const value = Number(amount.replace(",", "."));
-    if (mode === "paid" && !(value >= 0)) return setErr("Scrie suma plătită.");
+    if (mode === "paid" && !(value >= 0)) return setErr(t("sheet.enterAmount"));
     const tipValue = tip.trim() ? Number(tip.replace(",", ".")) : 0;
-    if (!(tipValue >= 0)) return setErr("Bacșișul nu e valid.");
+    if (!(tipValue >= 0)) return setErr(t("sheet.tipInvalid"));
     setBusy(true);
     setErr("");
     try {
@@ -292,17 +292,17 @@ function Checkout({
     return err ? (
       <Text style={{ color: colors.danger }}>{err}</Text>
     ) : (
-      <Text style={ui.muted}>Se încarcă…</Text>
+      <Text style={ui.muted}>{t("common.loading")}</Text>
     );
   const sub = data.subscription;
 
   return (
     <View style={{ gap: space.sm }}>
-      <Text style={[ui.label, { marginTop: 0 }]}>Cum a plătit?</Text>
+      <Text style={[ui.label, { marginTop: 0 }]}>{t("sheet.howPaid")}</Text>
       <Choice
         selected={mode === "paid"}
         onPress={() => setMode("paid")}
-        title="A plătit"
+        title={t("sheet.paidTitle")}
       >
         {mode === "paid" ? (
           <View style={[ui.row, { marginTop: space.sm }]}>
@@ -311,10 +311,10 @@ function Checkout({
               onChangeText={setAmount}
               keyboardType="decimal-pad"
               style={[ui.input, { flex: 1, marginTop: 0 }]}
-              accessibilityLabel="Suma plătită"
+              accessibilityLabel={t("sheet.amountPaid")}
               selectTextOnFocus
             />
-            <Text style={ui.text}>lei</Text>
+            <Text style={ui.text}>{t("sheet.currency")}</Text>
           </View>
         ) : null}
         {mode === "paid" ? (
@@ -335,7 +335,7 @@ function Checkout({
                   backgroundColor: payMethod === m ? colors.gold : "transparent",
                 }}
               >
-                <Text style={{ color: payMethod === m ? colors.onGold : colors.text, fontWeight: "700" }}>{m === "cash" ? "Numerar" : m === "card" ? "Card (POS)" : "Online"}</Text>
+                <Text style={{ color: payMethod === m ? colors.onGold : colors.text, fontWeight: "700" }}>{t(m === "cash" ? "sheet.cash" : m === "card" ? "sheet.card" : "sheet.online")}</Text>
               </Pressable>
             ))}
           </View>
@@ -349,21 +349,21 @@ function Checkout({
                   setGiftCode(v);
                   setGift(null);
                 }}
-                placeholder="Cod card cadou (opțional)"
+                placeholder={t("sheet.giftPh")}
                 placeholderTextColor={colors.muted}
                 autoCapitalize="characters"
                 style={[ui.input, { flex: 1, marginTop: 0 }]}
-                accessibilityLabel="Cod card cadou"
+                accessibilityLabel={t("sheet.giftLabel")}
               />
               {giftCode.trim() && !gift ? (
                 <View style={{ width: 110 }}>
-                  <Button title="Folosește" variant="ghost" onPress={applyGift} />
+                  <Button title={t("sheet.use")} variant="ghost" onPress={applyGift} />
                 </View>
               ) : null}
             </View>
             {gift ? (
               <Text style={{ color: colors.success, fontSize: 13 }}>
-                Se scad {gift.take} lei de pe card (are {gift.balance} lei). Restul, {amount || 0} lei, se plătește acum.
+                {t("sheet.giftTake", { take: gift.take, balance: gift.balance, rest: amount || 0 })}
               </Text>
             ) : null}
           </View>
@@ -373,16 +373,16 @@ function Checkout({
         selected={mode === "subscription"}
         onPress={() => sub && setMode("subscription")}
         disabled={!sub}
-        title="Pe abonament"
+        title={t("sheet.onSub")}
         sub={
           sub
-            ? `${sub.name} · ${cutsText(sub)} · până pe ${formatDate(new Date(sub.endsAt))}`
-            : "Clientul nu are un abonament activ pentru acest serviciu."
+            ? t("sheet.subLine", { name: sub.name, cuts: cutsText(sub), date: formatDate(new Date(sub.endsAt)) })
+            : t("sheet.noSub")
         }
       />
       {data.bonuses.length ? (
         <>
-          <Text style={ui.label}>Folosește un bonus (opțional)</Text>
+          <Text style={ui.label}>{t("sheet.useBonus")}</Text>
           {data.bonuses.map((x) => (
             <Choice
               key={x.id}
@@ -394,7 +394,7 @@ function Checkout({
           ))}
         </>
       ) : null}
-      <Text style={ui.label}>Bacșiș (opțional)</Text>
+      <Text style={ui.label}>{t("sheet.tipOpt")}</Text>
       <View style={ui.row}>
         <TextInput
           value={tip}
@@ -403,21 +403,21 @@ function Checkout({
           placeholder="0"
           placeholderTextColor={colors.muted}
           style={[ui.input, { flex: 1, marginTop: 0 }]}
-          accessibilityLabel="Bacșiș"
+          accessibilityLabel={t("sheet.tip")}
         />
-        <Text style={ui.text}>lei</Text>
+        <Text style={ui.text}>{t("sheet.currency")}</Text>
       </View>
       {err ? <Text style={{ color: colors.danger }}>{err}</Text> : null}
       <View style={{ flexDirection: "row", gap: space.sm }}>
         <View style={{ flex: 1 }}>
-          <Button title="Înapoi" variant="ghost" onPress={onCancel} />
+          <Button title={t("common.back")} variant="ghost" onPress={onCancel} />
         </View>
         <View style={{ flex: 2 }}>
           <Button
             title={
               mode === "subscription"
-                ? "Confirmă: pe abonament"
-                : `Confirmă: ${amount || 0} lei${gift ? ` + ${gift.take} card` : ""}`
+                ? t("sheet.confirmSub")
+                : `${t("sheet.confirmPaid", { n: amount || 0 })}${gift ? t("sheet.plusCard", { n: gift.take }) : ""}`
             }
             onPress={confirm}
             loading={busy}
@@ -488,6 +488,7 @@ function RequestButtons({
   token: string;
   onDone: (b: StaffBooking) => void;
 }) {
+  const { t } = useT();
   const [refusing, setRefusing] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -505,32 +506,29 @@ function RequestButtons({
   };
   return (
     <View style={{ gap: space.sm }}>
-      <Text style={ui.muted}>
-        Clientul a cerut programarea din aplicație și așteaptă confirmarea. Ora
-        e rezervată până răspunzi.
-      </Text>
+      <Text style={ui.muted}>{t("sheet.requestInfo")}</Text>
       {refusing ? (
         <>
           <TextInput
             value={reason}
             onChangeText={setReason}
-            placeholder="Motivul (opțional), ex. Frizerul nu e disponibil atunci."
+            placeholder={t("sheet.reasonPh")}
             placeholderTextColor={colors.muted}
             maxLength={200}
             style={ui.input}
-            accessibilityLabel="Motivul refuzului"
+            accessibilityLabel={t("sheet.reasonLabel")}
           />
           <View style={{ flexDirection: "row", gap: space.sm }}>
             <View style={{ flex: 1 }}>
               <Button
-                title="Trimite refuzul"
+                title={t("sheet.sendRefusal")}
                 variant="danger"
                 loading={busy}
                 onPress={() => act(() => staffApi.refuseRequest(token, b.id, reason))}
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Button title="Înapoi" variant="ghost" onPress={() => setRefusing(false)} />
+              <Button title={t("common.back")} variant="ghost" onPress={() => setRefusing(false)} />
             </View>
           </View>
         </>
@@ -538,13 +536,13 @@ function RequestButtons({
         <View style={{ flexDirection: "row", gap: space.sm }}>
           <View style={{ flex: 1 }}>
             <Button
-              title="Acceptă"
+              title={t("sheet.accept")}
               loading={busy}
               onPress={() => act(() => staffApi.acceptRequest(token, b.id))}
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Button title="Refuză" variant="danger" onPress={() => setRefusing(true)} />
+            <Button title={t("sheet.refuse")} variant="danger" onPress={() => setRefusing(true)} />
           </View>
         </View>
       )}

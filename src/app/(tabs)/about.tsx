@@ -4,13 +4,14 @@ import { router } from 'expo-router';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { Card, Logo, Screen, SectionTitle, styles } from '@/components/ui';
 import { whatsappUrl } from '@/lib/contact';
+import { dayName } from '@/lib/dates';
+import { useT } from '@/i18n';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
-const DAY_NAMES = ['Duminică', 'Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă'];
-
 export default function About() {
   const { business } = useApp();
+  const { t } = useT();
   if (!business) return null;
 
   return (
@@ -35,14 +36,14 @@ export default function About() {
         <Text style={[styles.text, { lineHeight: 22, marginTop: space.sm }]}>{business.description}</Text>
       </Card>
 
-      <SectionTitle>Program</SectionTitle>
+      <SectionTitle>{t('about.hours')}</SectionTitle>
       <Card style={{ gap: 6 }}>
         {[1, 2, 3, 4, 5, 6, 0].map((d) => {
           const h = business.hours[d];
           return (
             <View key={d} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={styles.text}>{DAY_NAMES[d]}</Text>
-              <Text style={h ? styles.text : styles.muted}>{h ? `${h.open} – ${h.close}` : 'Închis'}</Text>
+              <Text style={[styles.text, { textTransform: 'capitalize' }]}>{dayName(d, true)}</Text>
+              <Text style={h ? styles.text : styles.muted}>{h ? `${h.open} – ${h.close}` : t('about.closed')}</Text>
             </View>
           );
         })}
@@ -50,7 +51,7 @@ export default function About() {
 
       {business.address ? (
         <>
-          <SectionTitle>Locație</SectionTitle>
+          <SectionTitle>{t('about.location')}</SectionTitle>
           <Card style={styles.row} onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(business.address)}`)}>
             <Ionicons name="location" size={18} color={colors.gold} />
             <Text style={[styles.text, { flex: 1 }]}>{business.address}</Text>
@@ -66,17 +67,17 @@ export default function About() {
       {business.phone && whatsappUrl(business.phone) ? (
         <Card style={[styles.row, { marginTop: space.sm }]} onPress={() => Linking.openURL(whatsappUrl(business.phone)!)}>
           <Ionicons name="logo-whatsapp" size={18} color={colors.gold} />
-          <Text style={styles.text}>Scrie-ne pe WhatsApp</Text>
+          <Text style={styles.text}>{t('about.whatsapp')}</Text>
         </Card>
       ) : null}
 
-      <SectionTitle>Informații legale</SectionTitle>
+      <SectionTitle>{t('about.legal')}</SectionTitle>
       <Card style={{ gap: space.sm }}>
         <Text style={[styles.text, { color: colors.gold }]} onPress={() => router.push('/legal/terms')}>
-          Termeni și condiții
+          {t('about.terms')}
         </Text>
         <Text style={[styles.text, { color: colors.gold }]} onPress={() => router.push('/legal/privacy')}>
-          Politica de confidențialitate (GDPR)
+          {t('about.privacy')}
         </Text>
       </Card>
     </Screen>

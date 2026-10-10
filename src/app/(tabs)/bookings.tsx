@@ -11,7 +11,7 @@ import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function Bookings() {
-  const { user, token, bookings, cancelBooking, serviceById, barberById, resetDraft, setDraft, business, refreshBookings } = useApp();
+  const { user, token, bookings, cancelBooking, serviceById, barberById, locationById, locations, resetDraft, setDraft, business, refreshBookings } = useApp();
   const [tab, setTab] = useState(0);
   // Lista de așteptare: se reîncarcă la fiecare intrare pe ecran (clientul s-a putut înscrie chiar acum, din alegerea orei).
   const [waitlist, setWaitlist] = useState<WaitlistEntry[]>([]);
@@ -28,17 +28,17 @@ export default function Bookings() {
   const { t } = useT();
   const book = () => {
     resetDraft();
-    router.push('/book/service');
+    router.push('/book/location');
   };
 
   if (!user) {
     return (
       <Screen tab>
         <Title>{t('bookings.title')}</Title>
-        <Empty icon="calendar-outline" text="Intră în cont ca să-ți vezi programările." />
+        <Empty icon="calendar-outline" text={t('bookings.loginHint')} />
         <View style={{ gap: space.sm }}>
-          <Button title="Intră în cont" onPress={() => router.push('/login')} />
-          <Button title="Creează cont" variant="ghost" onPress={() => router.push({ pathname: '/login', params: { mode: 'register' } })} />
+          <Button title={t('common.login')} onPress={() => router.push('/login')} />
+          <Button title={t('common.register')} variant="ghost" onPress={() => router.push({ pathname: '/login', params: { mode: 'register' } })} />
         </View>
       </Screen>
     );
@@ -50,21 +50,21 @@ export default function Bookings() {
   const upcoming = sorted.filter((b) => (b.status === 'confirmed' || b.status === 'requested') && new Date(b.start).getTime() >= now);
   const past = sorted.filter((b) => !upcoming.includes(b)).reverse();
 
-  const notify = (msg: string) => (Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Anulare', msg));
+  const notify = (msg: string) => (Platform.OS === 'web' ? window.alert(msg) : Alert.alert(t('bookings.cancelTitle'), msg));
   const doCancel = (b: Booking) =>
     cancelBooking(b.id).catch((e) => {
-      notify(errorMessage(e, 'Nu am putut anula programarea.'));
+      notify(errorMessage(e, t('bookings.cancelFailed')));
       refreshBookings();
     });
   const confirmCancel = (b: Booking) => {
-    const msg = b.status === 'requested' ? t('bookings.withdrawAsk') : 'Sigur vrei să anulezi programarea?';
+    const msg = b.status === 'requested' ? t('bookings.withdrawAsk') : t('bookings.cancelAsk');
     if (Platform.OS === 'web') {
       if (window.confirm(msg)) doCancel(b);
       return;
     }
-    Alert.alert('Anulare', msg, [
-      { text: 'Nu', style: 'cancel' },
-      { text: 'Da, anulează', style: 'destructive', onPress: () => doCancel(b) },
+    Alert.alert(t('bookings.cancelTitle'), msg, [
+      { text: t('common.no'), style: 'cancel' },
+      { text: t('bookings.cancelYes'), style: 'destructive', onPress: () => doCancel(b) },
     ]);
   };
   const cancelMs = (business?.cancelHours ?? 0) * 3_600_000;
@@ -77,7 +77,7 @@ export default function Bookings() {
       notify(errorMessage(e));
     }
   };
-  const STATUS: Record<string, string> = { requested: t('bookings.pending'), cancelled: 'Anulată', completed: 'Finalizată', no_show: 'Neprezentare' };
+  const STATUS: Record<string, string> = { requested: t('bookings.pending'), cancelled: t('status.cancelled'), completed: t('status.completed'), no_show: t('status.noShow') };
   const pending = (b: Booking) => b.status === 'requested';
 
   const renderItem = (b: Booking, canCancel: boolean) => {
@@ -107,14 +107,18 @@ export default function Bookings() {
           <Text style={[styles.muted, { fontSize: 12 }]}>{t('bookings.expired')}</Text>
         ) : null}
         <Text style={styles.text}>{service?.name ?? b.serviceName}</Text>
+        {/* Locația, doar când salonul are mai multe. */}
+        {locations.length > 1 && (b.locationName || locationById(b.locationId)) ? (
+          <Text style={styles.muted}>{locationById(b.locationId)?.name ?? b.locationName}</Text>
+        ) : null}
         <Text style={styles.muted}>
-          cu {barberById(b.barberId)?.name ?? b.barberName} ·{' '}
-          {b.payment === 'subscription' ? 'pe abonament' : `${b.payment === 'paid' ? b.paidAmount : (b.price ?? service?.price)} lei`}
-          {b.onlinePaid ? (b.onlineRefunded ? ' · banii returnați pe card' : ' · plătită online') : ''}
+          {t('common.with', { name: barberById(b.barberId)?.name ?? b.barberName ?? '' })} ·{' '}
+          {b.payment === 'subscription' ? t('bookings.onSubscription') : t('common.lei', { n: (b.payment === 'paid' ? b.paidAmount : (b.price ?? service?.price)) ?? 0 })}
+          {b.onlinePaid ? (b.onlineRefunded ? t('bookings.refunded') : t('bookings.paidOnline')) : ''}
         </Text>
         {canCancel && !pending(b) && business?.onlinePayments && !b.onlinePaid && (b.price ?? 0) > 0 ? (
           <View style={{ marginTop: space.sm }}>
-            <Button title="Plătește acum cu cardul" variant="ghost" onPress={() => pay(b)} />
+            <Button title={t('bookings.payNow')} variant="ghost" onPress={() => pay(b)} />
           </View>
         ) : null}
         {canCancel && pending(b) ? (
@@ -124,11 +128,11 @@ export default function Bookings() {
           </View>
         ) : canCancel && start.getTime() - Date.now() < cancelMs ? (
           <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>
-            Se mai poate anula doar telefonic (mai puțin de {business?.cancelHours} ore până la programare).
+            {t('bookings.phoneOnly', { h: business?.cancelHours ?? 0 })}
           </Text>
         ) : canCancel ? (
           <View style={{ marginTop: space.sm }}>
-            <Button title="Anulează" variant="danger" onPress={() => confirmCancel(b)} />
+            <Button title={t('bookings.cancel')} variant="danger" onPress={() => confirmCancel(b)} />
           </View>
         ) : null}
       </Card>
@@ -152,13 +156,13 @@ export default function Bookings() {
       return;
     }
     Alert.alert(t('wait.title'), t('wait.removeAsk'), [
-      { text: 'Nu', style: 'cancel' },
+      { text: t('common.no'), style: 'cancel' },
       { text: t('wait.remove'), style: 'destructive', onPress: () => leave(w) },
     ]);
   };
   const seeTimes = (w: WaitlistEntry) => {
     resetDraft();
-    setDraft({ serviceId: w.serviceId, barberId: w.barberId });
+    setDraft({ serviceId: w.serviceId, presetService: true, barberId: w.barberId, locationId: w.barberId ? (barberById(w.barberId)?.locationId ?? null) : (w.locationId ?? null) });
     router.push({ pathname: '/book/time', params: { day: w.day } });
   };
   const waitStatus = (w: WaitlistEntry) =>
@@ -183,7 +187,7 @@ export default function Bookings() {
               </View>
               <Text style={styles.text}>{serviceById(w.serviceId)?.name ?? w.serviceName}</Text>
               <Text style={styles.muted}>
-                cu {w.barberId ? (barberById(w.barberId)?.name ?? w.barberName) : t('wait.anyBarber')} · {waitStatus(w)}
+                {t('common.with', { name: w.barberId ? (barberById(w.barberId)?.name ?? w.barberName ?? '') : t('wait.anyBarber') })} · {waitStatus(w)}
               </Text>
               {w.active ? (
                 <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
@@ -201,11 +205,11 @@ export default function Bookings() {
       ) : null}
       {list.length === 0 ? (
         <Card style={{ alignItems: 'center', gap: space.md, paddingVertical: space.lg }}>
-          <Text style={[styles.title, { fontSize: 22, textAlign: 'center' }]}>Nu s-au găsit programări</Text>
+          <Text style={[styles.title, { fontSize: 22, textAlign: 'center' }]}>{t('bookings.none')}</Text>
           <Text style={[styles.muted, { textAlign: 'center' }]}>
-            {tab === 0 ? 'Nu ai nicio programare viitoare.' : 'Nu ai încă programări în istoric.'}
+            {tab === 0 ? t('bookings.noneUpcoming') : t('bookings.nonePast')}
           </Text>
-          <Button title="Rezervă o programare" onPress={book} />
+          <Button title={t('bookings.bookOne')} onPress={book} />
         </Card>
       ) : (
         list.map((b) => renderItem(b, tab === 0))

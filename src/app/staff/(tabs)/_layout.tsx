@@ -3,6 +3,7 @@ import { Redirect, router } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
 import type { ComponentProps } from 'react';
 import { ActivityIndicator, Pressable, View, type ColorValue } from 'react-native';
+import { useT } from '@/i18n';
 import { useStaff } from '@/state/Staff';
 import { colors } from '@/theme';
 
@@ -15,6 +16,7 @@ const icon = (name: IconName) => ({ color, size }: { color: ColorValue; size: nu
 
 export default function StaffTabs() {
   const { staff, staffReady } = useStaff();
+  const { t } = useT();
   if (!staffReady)
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -34,8 +36,8 @@ export default function StaffTabs() {
         tabBarStyle: { height: 72, paddingTop: 8, paddingBottom: 10, borderTopColor: colors.border, backgroundColor: colors.card },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Acasă', tabBarIcon: icon('home-outline') }} />
-      <Tabs.Screen name="calendar" options={{ title: 'Programare', tabBarIcon: icon('calendar-outline') }} />
+      <Tabs.Screen name="index" options={{ title: t('stab.home'), tabBarIcon: icon('home-outline') }} />
+      <Tabs.Screen name="calendar" options={{ title: t('stab.calendar'), tabBarIcon: icon('calendar-outline') }} />
       <Tabs.Screen
         name="add"
         options={{
@@ -44,7 +46,7 @@ export default function StaffTabs() {
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               {p.bookings_create ? (
                 <Pressable
-                  accessibilityLabel="Programare nouă"
+                  accessibilityLabel={t('stab.new')}
                   onPress={() => router.push('/staff/new')}
                   style={({ pressed }) => ({
                     width: 52,
@@ -63,8 +65,8 @@ export default function StaffTabs() {
           ),
         }}
       />
-      <Tabs.Screen name="clients" options={{ title: 'Clienți', tabBarIcon: icon('people-outline'), href: p.clients ? undefined : null }} />
-      <Tabs.Screen name="menu" options={{ title: 'Meniu', tabBarIcon: icon('menu-outline') }} />
+      <Tabs.Screen name="clients" options={{ title: t('menu.clients'), tabBarIcon: icon('people-outline'), href: p.clients ? undefined : null }} />
+      <Tabs.Screen name="menu" options={{ title: t('menu.title'), tabBarIcon: icon('menu-outline') }} />
     </Tabs>
   );
 }

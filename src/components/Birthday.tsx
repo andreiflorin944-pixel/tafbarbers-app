@@ -1,11 +1,13 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useRef } from 'react';
 import { Animated, Platform, StyleSheet } from 'react-native';
+import { useT } from '@/i18n';
 import { colors } from '@/theme';
 
 /** Lumânarea de pe programările făcute de ziua clientului. */
 export function Candle({ size = 16 }: { size?: number }) {
-  return <MaterialCommunityIcons name="candle" size={size} color={colors.gold} accessibilityLabel="Ziua de naștere a clientului" />;
+  const { t } = useT();
+  return <MaterialCommunityIcons name="candle" size={size} color={colors.gold} accessibilityLabel={t('birthday.candle')} />;
 }
 
 /** Chenar auriu care pulsează peste un card (programare de ziua clientului). Se pune ca ultim copil, cu părintele `position: relative`. */

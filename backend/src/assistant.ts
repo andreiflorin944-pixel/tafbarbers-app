@@ -5,6 +5,8 @@ import { getBusiness } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
 import { onlinePaymentsOn } from './payments';
 import { addDays, iso, localDay, weekdayOf } from './time';
+import { aiOf } from './translate';
+import { localizeText } from './contentI18n';
 
 // Asistentul din aplicație: clientul scrie sau vorbește („Când are Florin loc vineri?”), asistentul răspunde despre
 // servicii, prețuri, program și ore libere, și propune programarea. Programarea o confirmă clientul cu un buton,
@@ -18,9 +20,18 @@ const ROUNDS = 3;
 const WEEKDAYS = ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
 
 type Msg = { role: 'user' | 'assistant'; content: string };
-type Step = { say: string; tool: 'none' | 'free_slots' | 'propose_booking'; serviceId?: string; barberId?: string; day?: string; time?: string };
-export type Proposal = { serviceId: string; barberId: string; start: string; serviceName: string; barberName: string; price: number; when: string };
-type Ai = { run(model: string, input: Record<string, unknown>): Promise<unknown> };
+type Step = { say: string; tool: 'none' | 'free_slots' | 'propose_booking'; serviceId?: string; barberId?: string; locationId?: string; day?: string; time?: string };
+export type Proposal = {
+  serviceId: string;
+  barberId: string;
+  locationId: string | null;
+  start: string;
+  serviceName: string;
+  barberName: string;
+  locationName: string | null;
+  price: number;
+  when: string;
+};
 
 const SCHEMA = {
   type: 'object',
@@ -29,38 +40,32 @@ const SCHEMA = {
     tool: { type: 'string', enum: ['none', 'free_slots', 'propose_booking'] },
     serviceId: { type: 'string' },
     barberId: { type: 'string' },
+    locationId: { type: 'string' },
     day: { type: 'string' },
     time: { type: 'string' },
   },
   required: ['say', 'tool'],
 };
 
-/** Workers AI; local, pentru teste, un server de probă (DEV_AI_MOCK_BASE). */
-function aiOf(env: Env): Ai | null {
-  if (env.AI) return env.AI;
-  const base = env.DEV_AI_MOCK_BASE;
-  if (!base) return null;
-  return {
-    run: async (model, input) => {
-      const r = await fetch(`${base}/ai/run`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, input }) });
-      return r.json();
-    },
-  };
-}
-
 type Ctx = {
   services: Array<{ id: string; name: string; duration_min: number; price_bani: number; description: string }>;
-  barbers: Array<{ id: string; name: string; role: string }>;
+  barbers: Array<{ id: string; name: string; role: string; location_id: string | null }>;
+  locations: Array<{ id: string; name: string; address: string }>;
   own: Array<{ barber_id: string; service_id: string; price_bani: number | null; duration_min: number | null }>;
 };
 
 async function loadCtx(env: Env): Promise<Ctx> {
-  const [s, b, o] = await Promise.all([
+  const [s, b, o, l] = await Promise.all([
     env.DB.prepare('SELECT id, name, duration_min, price_bani, description FROM services WHERE active = 1 ORDER BY sort, name').all<Ctx['services'][number]>(),
-    env.DB.prepare('SELECT id, name, role FROM barbers WHERE active = 1 ORDER BY sort, name').all<Ctx['barbers'][number]>(),
+    // Frizerii dintr-o locație dezactivată nu mai primesc programări, deci asistentul nu-i mai propune.
+    env.DB.prepare(
+      `SELECT b.id, b.name, b.role, b.location_id FROM barbers b LEFT JOIN locations l ON l.id = b.location_id
+       WHERE b.active = 1 AND (b.location_id IS NULL OR l.active = 1) ORDER BY b.sort, b.name`,
+    ).all<Ctx['barbers'][number]>(),
     env.DB.prepare('SELECT barber_id, service_id, price_bani, duration_min FROM barber_services').all<Ctx['own'][number]>(),
+    env.DB.prepare('SELECT id, name, address FROM locations WHERE active = 1 ORDER BY sort, name').all<Ctx['locations'][number]>(),
   ]);
-  return { services: s.results, barbers: b.results, own: o.results };
+  return { services: s.results, barbers: b.results, own: o.results, locations: l.results };
 }
 
 const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -88,7 +93,8 @@ async function systemPrompt(env: Env, ctx: Ctx, lang: string, loggedIn: boolean)
         })
         .filter(Boolean)
         .join('; ');
-      return `- ${b.name} (id ${b.id}, ${b.role}): ${txt || 'fără program'}`;
+      const loc = ctx.locations.length > 1 ? ctx.locations.find((l) => l.id === b.location_id) : null;
+      return `- ${b.name} (id ${b.id}, ${b.role}${loc ? `, locația ${loc.name}` : ''}): ${txt || 'fără program'}`;
     })
     .join('\n');
   const services = ctx.services
@@ -104,20 +110,25 @@ async function systemPrompt(env: Env, ctx: Ctx, lang: string, loggedIn: boolean)
     })
     .join('\n');
   const language = lang === 'en' ? 'engleză' : lang === 'fr' ? 'franceză' : 'română';
+  // Cu mai multe locații, asistentul le cunoaște și întreabă la care vrea clientul să vină.
+  const many = ctx.locations.length > 1;
+  const locations = many
+    ? `Locații (fiecare frizer lucrează într-o singură locație):\n${ctx.locations.map((l) => `- ${l.name} (id ${l.id})${l.address ? `: ${l.address}` : ''}`).join('\n')}\n`
+    : '';
   return `Ești asistentul salonului ${biz.name} în aplicația de programări. Răspunzi scurt (1-3 propoziții), cald și natural, în ${language}, sau în limba în care îți scrie clientul.
 Azi e ${WEEKDAYS[weekdayOf(today)]} ${today}, ora ${nowHm} (ora României). Zilele: ${days}.
 Salon: ${[biz.address, biz.phone].filter(Boolean).join(', ') || 'adresa și telefonul sunt în aplicație, la Despre'}. Anulare: ${biz.cancellationPolicy || `cu cel puțin ${biz.cancelHours} ore înainte`}. Plata: ${onlinePaymentsOn(env) ? 'la salon sau cu cardul în aplicație' : 'la salon'}.
 Servicii:
 ${services}
-Frizeri și program:
+${locations}Frizeri și program:
 ${program}
 
 Reguli:
-- Nu inventa niciodată ore libere. Pentru ore libere folosești tool "free_slots" cu serviceId, day (AAAA-LL-ZZ) și barberId (sau fără barberId pentru oricine). Dacă nu știi serviciul, presupune cel mai cerut (primul din listă) și spune asta.
+- Nu inventa niciodată ore libere. Pentru ore libere folosești tool "free_slots" cu serviceId, day (AAAA-LL-ZZ) și barberId (sau fără barberId pentru oricine${many ? ', dar atunci cu locationId' : ''}). Dacă nu știi serviciul, presupune cel mai cerut (primul din listă) și spune asta.${many ? '\n- Salonul are mai multe locații: dacă clientul nu a spus frizerul sau locația, întreabă-l întâi la care locație vrea să vină.' : ''}
 - Când clientul alege o oră anume dintre cele libere, folosești tool "propose_booking" cu serviceId, barberId, day și time (HH:MM). Clientul confirmă apoi cu un buton.
 - ${loggedIn ? 'Clientul e conectat în cont.' : 'Clientul nu e conectat; la confirmare aplicația îi cere să intre în cont.'}
 - Nu promite reduceri sau lucruri care nu sunt în listă. Pentru alte întrebări, îndrumă la telefonul salonului.
-- Răspunzi DOAR cu JSON: {"say": "...", "tool": "none" | "free_slots" | "propose_booking", "serviceId": "...", "barberId": "...", "day": "AAAA-LL-ZZ", "time": "HH:MM"}. În "say" scrii ce îi spui clientului.`;
+- Răspunzi DOAR cu JSON: {"say": "...", "tool": "none" | "free_slots" | "propose_booking", "serviceId": "...", "barberId": "...",${many ? ' "locationId": "...",' : ''} "day": "AAAA-LL-ZZ", "time": "HH:MM"}. În "say" scrii ce îi spui clientului.`;
 }
 
 function parseStep(raw: unknown): Step | null {
@@ -148,6 +159,7 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
   const messages: Array<{ role: string; content: string }> = [{ role: 'system', content: await systemPrompt(env, ctx, lang, loggedIn) }, ...history];
   const svcOf = (id?: string) => ctx.services.find((s) => s.id === id) ?? null;
   const barberOf = (id?: string) => (id ? (ctx.barbers.find((b) => b.id === id || b.name.toLowerCase() === id.toLowerCase()) ?? null) : null);
+  const locationOf = (id?: string) => (id ? (ctx.locations.find((l) => l.id === id || l.name.toLowerCase() === id.toLowerCase()) ?? null) : null);
 
   for (let round = 0; round < ROUNDS; round++) {
     let raw: unknown;
@@ -164,12 +176,21 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
 
     const svc = svcOf(step.serviceId) ?? ctx.services[0];
     const barber = barberOf(step.barberId);
+    // Cu frizer ales, locația e a lui; cu o singură locație, e aceea.
+    const loc = barber ? null : (locationOf(step.locationId) ?? (ctx.locations.length === 1 ? ctx.locations[0] : null));
+    if (!barber && !loc && ctx.locations.length > 1) {
+      messages.push({
+        role: 'user',
+        content: `[REZULTAT locatie] Salonul are mai multe locații: ${ctx.locations.map((l) => `${l.name} (id ${l.id})`).join(', ')}. Întreabă clientul la care locație vrea să vină (sau la ce frizer), fără ore deocamdată.`,
+      });
+      continue;
+    }
     const day = /^\d{4}-\d{2}-\d{2}$/.test(step.day ?? '') ? step.day! : localDay(env.TIMEZONE, new Date());
     if (!svc) return { reply: step.say };
     // Aceleași limite ca în aplicație: nici zile trecute, nici mai departe decât „cu câte zile înainte” din setări.
     const today = localDay(env.TIMEZONE, new Date());
     const inRange = day >= today && day <= addDays(today, (await getBusiness(env)).maxDaysAhead ?? 30);
-    const slots = inRange ? await availability(env, { serviceId: svc.id, barberId: barber?.id ?? null, day, access }) : [];
+    const slots = inRange ? await availability(env, { serviceId: svc.id, barberId: barber?.id ?? null, locationId: loc?.id ?? null, day, access }) : [];
 
     if (step.tool === 'free_slots') {
       const byBarber = new Map<string, string[]>();
@@ -177,7 +198,7 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
       const txt = slots.length
         ? [...byBarber.entries()].map(([id, t]) => `${ctx.barbers.find((b) => b.id === id)?.name ?? id}: ${t.slice(0, 16).join(', ')}${t.length > 16 ? '…' : ''}`).join('\n')
         : 'nicio oră liberă în ziua asta';
-      messages.push({ role: 'user', content: `[REZULTAT free_slots] ${svc.name}, ${WEEKDAYS[weekdayOf(day)]} ${day}:\n${txt}\nSpune-i clientului pe scurt orele (sau propune altă zi). Nu folosi din nou free_slots pentru aceeași zi.` });
+      messages.push({ role: 'user', content: `[REZULTAT free_slots] ${svc.name}${loc && ctx.locations.length > 1 ? `, locația ${loc.name}` : ''}, ${WEEKDAYS[weekdayOf(day)]} ${day}:\n${txt}\nSpune-i clientului pe scurt orele (sau propune altă zi). Nu folosi din nou free_slots pentru aceeași zi.` });
       continue;
     }
 
@@ -190,20 +211,31 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
     }
     const b = ctx.barbers.find((x) => x.id === slot.barberId)!;
     const own = ctx.own.find((o) => o.barber_id === b.id && o.service_id === svc.id);
+    const where = ctx.locations.find((l) => l.id === b.location_id) ?? null;
     return {
       reply: step.say,
       proposal: {
         serviceId: svc.id,
         barberId: b.id,
+        locationId: where?.id ?? null,
         start: slot.start,
-        serviceName: svc.name,
+        // Numele serviciului în limba clientului (traducerea din panou), ca pe ecranul de confirmare.
+        serviceName: await localizeText(env, lang, svc.name),
         barberName: b.name,
+        locationName: where?.name ?? null,
         price: (own?.price_bani ?? svc.price_bani) / 100,
         when: fmtWhen(env, slot.start, lang),
       },
     };
   }
-  return { reply: lang === 'en' ? 'Sorry, I could not find an answer. Please call the salon.' : 'Nu am reușit să găsesc răspunsul. Te rog sună la salon.' };
+  return {
+    reply:
+      lang === 'en'
+        ? 'Sorry, I could not find an answer. Please call the salon.'
+        : lang === 'fr'
+          ? 'Désolé, je n’ai pas trouvé de réponse. Veuillez appeler le salon.'
+          : 'Nu am reușit să găsesc răspunsul. Te rog sună la salon.',
+  };
 }
 
 /** Câte mesaje pe zi: după client sau după adresa IP, plus o limită pentru tot salonul. Aruncă eroarea potrivită peste limită. */

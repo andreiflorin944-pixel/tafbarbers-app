@@ -2,6 +2,7 @@ import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api } from '@/api';
+import { ApiError } from '@/api/client';
 import { Button, Card, Empty, Screen, Steps, styles as ui } from '@/components/ui';
 import type { DayPart, Slot, WaitlistEntry } from '@/data/types';
 import { useT } from '@/i18n';
@@ -15,7 +16,7 @@ import { colors, radius, space } from '@/theme';
 const daysAhead = (n: number | undefined) => Math.min(60, Math.max(1, (n ?? 30) + 1));
 
 export default function ChooseTime() {
-  const { draft, setDraft, serviceById, barberById, business, token } = useApp();
+  const { draft, setDraft, serviceById, barberById, locationById, business, token } = useApp();
   const gate = useLoginGate();
   const { t } = useT();
   // Linkul din mesajul „s-a eliberat un loc” deschide direct ziua din lista de așteptare.
@@ -26,6 +27,10 @@ export default function ChooseTime() {
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [selected, setSelected] = useState<Slot | null>(null);
   const [waitlist, setWaitlist] = useState<WaitlistEntry[]>([]);
+  // Locația aleasă nu mai primește programări (dezactivată între timp): mesaj clar, nu doar „nicio oră liberă”.
+  const [goneLocation, setGoneLocation] = useState(false);
+  // „Orice frizer”: orele frizerilor din locația aleasă (cu frizer ales, locația e a lui).
+  const locationId = draft.barberId ? null : draft.locationId;
 
   useEffect(() => {
     if (token) api.getWaitlist(token).then(setWaitlist, () => undefined);
@@ -35,20 +40,25 @@ export default function ChooseTime() {
     if (!service) return;
     setSlots(null);
     setSelected(null);
-    api.getAvailability({ serviceId: service.id, barberId: draft.barberId, day, token }).then(setSlots);
-  }, [service, draft.barberId, day, token]);
+    setGoneLocation(false);
+    api.getAvailability({ serviceId: service.id, barberId: draft.barberId, locationId, day, token }).then(setSlots, (e) => {
+      setGoneLocation(e instanceof ApiError && e.code === 'location_not_found');
+      setSlots([]);
+    });
+  }, [service, draft.barberId, locationId, day, token]);
 
   if (gate) return gate;
-  if (!service) return <Redirect href="/book/service" />;
+  if (!service) return <Redirect href="/book/location" />;
 
   const barber = barberById(draft.barberId);
+  const location = locationById(draft.locationId ?? barber?.locationId);
   const groups = groupByPart(slots ?? []);
 
   return (
     <Screen edges={['bottom']} scroll={false}>
-      <Steps current={3} />
+      <Steps current={4} />
       <Text style={[ui.muted, { marginBottom: space.sm }]}>
-        {service.name} · {barber ? barber.name : 'Orice frizer disponibil'}
+        {[location?.name, service.name, barber ? barber.name : t('book.anyBarber')].filter(Boolean).join(' · ')}
       </Text>
 
       <View>
@@ -78,14 +88,17 @@ export default function ChooseTime() {
           <ActivityIndicator color={colors.gold} style={{ marginTop: space.xl }} />
         ) : slots.length === 0 ? (
           <>
-            <Empty icon="calendar-clear-outline" text="Nu mai sunt ore libere în această zi. Încearcă altă zi." />
-            {token ? (
+            <Empty icon="calendar-clear-outline" text={goneLocation ? t('err.location_not_found') : t('book.noSlots')} />
+            {token && !goneLocation ? (
               <WaitlistOffer
                 token={token}
                 serviceId={service.id}
                 barberId={draft.barberId}
+                locationId={locationId}
                 day={day}
-                entry={waitlist.find((w) => w.active && w.day === day && w.serviceId === service.id && w.barberId === draft.barberId)}
+                entry={waitlist.find(
+                  (w) => w.active && w.day === day && w.serviceId === service.id && w.barberId === draft.barberId && (draft.barberId || (w.locationId ?? null) === locationId),
+                )}
                 onJoined={(w) => setWaitlist((l) => [...l.filter((x) => x.id !== w.id), w])}
                 t={t}
               />
@@ -96,7 +109,7 @@ export default function ChooseTime() {
             {slots.some((x) => x.membersOnly) ? <Text style={[ui.muted, { fontSize: 13 }]}>★ {t('time.membersHint')}</Text> : null}
             {groups.map(([label, list]) => (
               <View key={label} style={{ gap: space.sm }}>
-                <Text style={ui.section}>{label}</Text>
+                <Text style={ui.section}>{t(label)}</Text>
                 <View style={s.grid}>
                   {list.map((slot) => {
                     const active = selected?.start === slot.start;
@@ -120,7 +133,7 @@ export default function ChooseTime() {
       </ScrollView>
 
       <Button
-        title={selected ? `Continuă · ${formatTime(new Date(selected.start))}` : 'Alege o oră'}
+        title={selected ? t('book.continueAt', { time: formatTime(new Date(selected.start)) }) : t('book.pickTime')}
         disabled={!selected}
         onPress={() => {
           if (!selected) return;
@@ -139,6 +152,7 @@ function WaitlistOffer({
   token,
   serviceId,
   barberId,
+  locationId,
   day,
   entry,
   onJoined,
@@ -147,6 +161,7 @@ function WaitlistOffer({
   token: string;
   serviceId: string;
   barberId: string | null;
+  locationId: string | null;
   day: string;
   entry?: WaitlistEntry;
   onJoined: (w: WaitlistEntry) => void;
@@ -169,7 +184,7 @@ function WaitlistOffer({
     setBusy(true);
     setError(null);
     try {
-      onJoined(await api.joinWaitlist(token, { serviceId, barberId, day, part }));
+      onJoined(await api.joinWaitlist(token, { serviceId, barberId, locationId, day, part }));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -194,13 +209,15 @@ function WaitlistOffer({
   );
 }
 
-function groupByPart(slots: Slot[]): Array<[string, Slot[]]> {
-  const parts: Record<string, Slot[]> = { Dimineața: [], 'După-amiaza': [], Seara: [] };
+type PartKey = 'wait.morning' | 'wait.afternoon' | 'wait.evening';
+/** Orele grupate pe dimineață, după-amiază și seară (cheia textului din i18n). */
+function groupByPart(slots: Slot[]): Array<[PartKey, Slot[]]> {
+  const parts: Record<PartKey, Slot[]> = { 'wait.morning': [], 'wait.afternoon': [], 'wait.evening': [] };
   for (const sl of slots) {
     const h = hourOf(new Date(sl.start));
-    parts[h < 12 ? 'Dimineața' : h < 17 ? 'După-amiaza' : 'Seara'].push(sl);
+    parts[h < 12 ? 'wait.morning' : h < 17 ? 'wait.afternoon' : 'wait.evening'].push(sl);
   }
-  return Object.entries(parts).filter(([, l]) => l.length > 0);
+  return (Object.entries(parts) as Array<[PartKey, Slot[]]>).filter(([, l]) => l.length > 0);
 }
 
 const s = StyleSheet.create({

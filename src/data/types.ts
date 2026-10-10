@@ -21,6 +21,18 @@ export type Barber = {
   prices?: Record<string, number>;
   /** Durate proprii (minute) pe serviciu, doar unde diferă de durata standard. */
   durations?: Record<string, number>;
+  /** Locația în care lucrează (un frizer lucrează într-o singură locație). */
+  locationId?: string | null;
+};
+
+/** O locație a salonului: clientul o alege la primul pas al programării. */
+export type Location = {
+  id: string;
+  name: string;
+  address: string;
+  /** Gol = telefonul salonului. */
+  phone: string;
+  photoUrl?: string | null;
 };
 
 export type Slot = {
@@ -43,6 +55,8 @@ export type Booking = {
   status: BookingStatus;
   serviceName?: string;
   barberName?: string;
+  locationId?: string | null;
+  locationName?: string | null;
   payment?: 'paid' | 'subscription' | null;
   paidAmount?: number | null;
   onlinePaid?: number | null; // plătită cu cardul din aplicație
@@ -61,6 +75,7 @@ export type WaitlistEntry = {
   serviceName: string;
   barberId: string | null; // null = orice frizer
   barberName: string | null;
+  locationId?: string | null; // „orice frizer” din această locație
   day: string; // AAAA-LL-ZZ
   part: DayPart;
   // waiting = încă nimic; notified = a primit mesaj; booked = s-a programat; expired = ziua a trecut; removed = scos
@@ -135,6 +150,8 @@ export type Business = {
   hours: Array<{ open: string; close: string } | null>;
   appearance?: Appearance;
   onlinePayments?: boolean; // plata cu cardul în aplicație (Stripe) e pornită
+  /** Consilierul AI de tunsori e pornit în panou (cardul „Ce tunsoare mi se potrivește?”). */
+  advisor?: boolean;
   otpSms?: boolean; // codul de intrare poate fi cerut și prin SMS
   // Logare cu Apple / Google (Google apare doar cu id-urile de client OAuth puse pe server).
   social?: { apple: boolean; google: { iosClientId: string | null; androidClientId: string | null; webClientId: string | null } | null };
@@ -207,4 +224,4 @@ export type GiftCard = {
   buyerName?: string | null;
 };
 export type GiftCards = { enabled: boolean; amounts: number[]; validMonths: number; bought: GiftCard[]; received: GiftCard[] };
-export type BeforeAfter = { id: string; before: string; after: string; barberName: string | null; createdAt: string };
+export type BeforeAfter = { id: string; before: string; after: string; barberName: string | null; createdAt: string; showExample?: boolean };

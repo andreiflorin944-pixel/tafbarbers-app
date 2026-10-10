@@ -1,6 +1,8 @@
 import type { Bonus, Identity, IdentityPhoto, Plan, Subscription } from '@/data/types';
 import Constants from 'expo-constants';
+import { tr, type Key } from '@/i18n';
 import { ApiError } from './client';
+import { withLang } from './http';
 
 // Partea de echipă a aplicației (proprietar și frizeri) vorbește cu /v1/admin, cu contul din panou.
 /** Pozele urcate din panou au adrese relative la server (/v1/media/...). */
@@ -17,7 +19,7 @@ export const apiUrl: string = (
 
 export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'contacts' | 'timeoff' | 'stats' | 'reports' | 'shop';
 export type StaffRole = 'org_admin' | 'location_admin' | 'barber';
-export const ROLE_LABELS: Record<StaffRole, string> = { org_admin: 'Administrator', location_admin: 'Administrator de locație', barber: 'Frizer' };
+export const ROLE_LABELS: Record<StaffRole, Key> = { org_admin: 'role.orgAdmin', location_admin: 'role.locationAdmin', barber: 'role.barber' };
 export type StaffMe = { id: string; email: string; name: string; barberId: string | null; role?: StaffRole; owner: boolean; permissions: Record<Perm, boolean> };
 export type StaffBooking = {
   id: string;
@@ -49,7 +51,8 @@ async function call<T>(method: string, path: string, token: string | null, body?
   if (!apiUrl) throw new ApiError('no_server', 0);
   let res: Response;
   try {
-    res = await fetch(`${apiUrl}/v1${path}`, {
+    // Limba aplicației pleacă la fiecare cerere: rapoartele și numele serviciilor vin traduse.
+    res = await fetch(`${apiUrl}/v1${withLang(path)}`, {
       method,
       headers: {
         Accept: 'application/json',
@@ -100,7 +103,7 @@ export const staffApi = {
   // Blocuri în program: pauză de masă, liber, educațional, altceva, doar membri TAF Club.
   listBlocks: (t: string) => call<StaffBlock[]>('GET', '/admin/blocks', t),
   blockOccurrences: (t: string, from: string, to: string) =>
-    call<Array<{ blockId: string; barberId: string | null; kind: BlockKind; label: string; start: string; end: string }>>('GET', `/admin/blocks/occurrences?from=${from}&to=${to}`, t),
+    call<Array<{ blockId: string; barberId: string | null; kind: BlockKind; label: string; customLabel?: string; start: string; end: string }>>('GET', `/admin/blocks/occurrences?from=${from}&to=${to}`, t),
   addBlock: (t: string, body: StaffBlockInput) => call<{ block: StaffBlock; conflicts: number }>('POST', '/admin/blocks', t, body),
   deleteBlock: (t: string, id: string) => call('DELETE', `/admin/blocks/${encodeURIComponent(id)}`, t),
   barbers: (t: string) => call<StaffBarber[]>('GET', '/admin/barbers', t),
@@ -189,18 +192,25 @@ export type StaffBarber = {
   hours: Array<{ weekday: number; start: number; end: number }>; // minute de la miezul nopții
 };
 export type BlockKind = 'lunch' | 'off' | 'education' | 'other' | 'members';
-export const BLOCK_KINDS: Array<{ kind: BlockKind; label: string; color: string }> = [
-  { kind: 'lunch', label: 'Pauză de masă', color: '#F2A541' },
-  { kind: 'off', label: 'Liber', color: '#8B8B94' },
-  { kind: 'education', label: 'Educațional', color: '#3E7BFA' },
-  { kind: 'other', label: 'Altceva', color: '#8E4EC6' },
-  { kind: 'members', label: 'Doar membri TAF Club', color: '#D4AF37' },
+export const BLOCK_KINDS: Array<{ kind: BlockKind; label: Key; color: string }> = [
+  { kind: 'lunch', label: 'block.lunch', color: '#F2A541' },
+  { kind: 'off', label: 'block.off', color: '#8B8B94' },
+  { kind: 'education', label: 'block.education', color: '#3E7BFA' },
+  { kind: 'other', label: 'block.other', color: '#8E4EC6' },
+  { kind: 'members', label: 'block.members', color: '#D4AF37' },
 ];
+/** Numele blocului: cel scris de om (`customLabel`) sau numele tipului, în limba aplicației. */
+export const blockLabel = (b: { kind: BlockKind; label: string; customLabel?: string }) => {
+  if (b.customLabel) return b.customLabel;
+  const k = BLOCK_KINDS.find((x) => x.kind === b.kind);
+  return k && (b.customLabel !== undefined || b.kind !== 'other') ? tr(k.label) : b.label;
+};
 export type StaffBlock = {
   id: string;
   barberId: string | null;
   kind: BlockKind;
   label: string;
+  customLabel?: string; // numele scris de om (gol = numele tipului)
   repeat: boolean;
   day: string | null;
   weekdays: number[];

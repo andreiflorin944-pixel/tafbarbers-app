@@ -13,7 +13,7 @@ import type { Promo, Service } from '@/data/types';
 import { whatsappUrl } from '@/lib/contact';
 import { useT } from '@/i18n';
 import { formatDate, formatTime } from '@/lib/dates';
-import { usePriceLabel } from '@/lib/price';
+import { lei, usePriceLabel } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
@@ -34,12 +34,9 @@ export default function Home() {
 
   const startBooking = (service?: Service) => {
     resetDraft();
-    if (service) {
-      setDraft({ serviceId: service.id });
-      router.push('/book/barber');
-    } else {
-      router.push('/book/service');
-    }
+    // Întâi locația; cu serviciul deja ales (banner, card de serviciu), pasul „Serviciul” se sare.
+    if (service) setDraft({ serviceId: service.id, presetService: true });
+    router.push('/book/location');
   };
 
   const openPromo = (p: Promo) => {
@@ -60,8 +57,8 @@ export default function Home() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, padding: space.lg, justifyContent: 'center', gap: space.md }}>
         <Ionicons name="cloud-offline-outline" size={48} color={colors.gold} style={{ alignSelf: 'center' }} />
-        <Text style={[ui.text, { textAlign: 'center' }]}>Nu ne putem conecta la server. Verifică internetul.</Text>
-        <Button title="Încearcă din nou" onPress={reload} />
+        <Text style={[ui.text, { textAlign: 'center' }]}>{t('home.offline')}</Text>
+        <Button title={t('common.retry')} onPress={reload} />
       </SafeAreaView>
     );
   }
@@ -85,12 +82,12 @@ export default function Home() {
           </View>
           <View style={{ flexDirection: 'row', gap: space.sm }}>
             {staff ? (
-              <Pressable onPress={() => router.push('/staff')} hitSlop={10} accessibilityLabel="Agenda echipei" style={s.iconBtn}>
+              <Pressable onPress={() => router.push('/staff')} hitSlop={10} accessibilityLabel={t('home.teamAgenda')} style={s.iconBtn}>
                 <Ionicons name="calendar-outline" size={20} color={colors.gold} />
               </Pressable>
             ) : null}
             <LangButton />
-            <Pressable onPress={() => router.push('/account')} hitSlop={10} accessibilityLabel="Cont" style={s.iconBtn}>
+            <Pressable onPress={() => router.push('/account')} hitSlop={10} accessibilityLabel={t('tab.account')} style={s.iconBtn}>
               <Ionicons name="person-outline" size={20} color={colors.text} />
             </Pressable>
           </View>
@@ -151,6 +148,20 @@ export default function Home() {
           <Ionicons name="chevron-forward" size={18} color={colors.muted} />
         </Pressable>
 
+        {/* Consilierul AI de tunsori: doar când e pornit în panou. */}
+        {business?.advisor ? (
+          <Pressable onPress={() => router.push('/advisor')} style={({ pressed }) => [s.invite, pressed && { opacity: 0.85 }]} accessibilityRole="button">
+            <View style={s.quickIcon}>
+              <Ionicons name="sparkles-outline" size={22} color={colors.gold} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.svcName}>{t('advisor.title')}</Text>
+              <Text style={[ui.muted, { fontSize: 13 }]}>{t('advisor.homeText')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          </Pressable>
+        ) : null}
+
         <View style={s.sectionHead}>
           <SectionTitle>{t('home.services')}</SectionTitle>
           <Text style={s.link} onPress={() => router.push('/services')}>
@@ -188,8 +199,9 @@ export default function Home() {
                 <Pressable
                   key={b.id}
                   onPress={() => {
+                    // Frizerul ales: locația lui e știută, urmează serviciul.
                     resetDraft();
-                    setDraft({ barberId: b.id });
+                    setDraft({ barberId: b.id, locationId: b.locationId ?? null });
                     router.push('/book/service');
                   }}
                   style={({ pressed }) => [s.barberCard, pressed && { opacity: 0.85 }]}
@@ -224,9 +236,9 @@ export default function Home() {
         {products.length ? (
           <>
             <View style={s.sectionHead}>
-              <SectionTitle>Magazin</SectionTitle>
+              <SectionTitle>{t('home.shop')}</SectionTitle>
               <Text style={s.link} onPress={() => router.push(cartCount ? '/shop/cart' : '/shop')}>
-                {cartCount ? `Coș (${cartCount})` : t('home.seeAll')}
+                {cartCount ? t('home.cart', { n: cartCount }) : t('home.seeAll')}
               </Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingRight: space.md }}>
@@ -236,7 +248,7 @@ export default function Home() {
                   <Text style={s.prodName} numberOfLines={2}>
                     {p.name}
                   </Text>
-                  <Text style={s.svcPrice}>{p.price} lei</Text>
+                  <Text style={s.svcPrice}>{lei(p.price)}</Text>
                 </Pressable>
               ))}
             </ScrollView>

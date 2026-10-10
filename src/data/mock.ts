@@ -1,6 +1,7 @@
-import type { Barber, Business, Promo, Service } from './types';
+import type { Barber, Business, Location, Promo, Service } from './types';
 
 // Date de test preluate din panoul Barberly (capturi din 5 oct 2026).
+// i18n-ok-file: e conținutul salonului (cel scris în panou), nu text al aplicației; cu server, vine tradus de acolo.
 // Adresa, telefonul și programul sunt provizorii până le citim din API.
 
 export const business: Business = {
@@ -84,9 +85,11 @@ export const services: Service[] = [
   },
 ];
 
+export const locations: Location[] = [{ id: 'loc-main', name: 'TAFBarbers', address: 'Rediu, Iași', phone: '' }];
+
 export const barbers: Barber[] = [
-  { id: 'barber-florin', name: 'Florin', role: 'Barber', initials: 'F' },
-  { id: 'barber-andrei', name: 'Andrei', role: 'Barber', initials: 'A' },
+  { id: 'barber-florin', name: 'Florin', role: 'Barber', initials: 'F', locationId: 'loc-main' },
+  { id: 'barber-andrei', name: 'Andrei', role: 'Barber', initials: 'A', locationId: 'loc-main' },
 ];
 
 // Bannere de marketing pentru prima pagină. Textele sunt de test: le schimbăm

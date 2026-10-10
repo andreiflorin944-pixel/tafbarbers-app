@@ -3,14 +3,15 @@ import { booking, type BookingRow } from './db';
 import type { Env } from './env';
 import { runCampaign } from './campaigns';
 import { greetBirthdays } from './birthday';
-import { sendLastMinute, sendWinback } from './growth';
+import { channelsFor, sendLastMinute, sendWinback } from './growth';
 import { formatLocal, iso } from './time';
 import { runSocial } from './social';
 import { checkWaitlist } from './waitlist';
+import { translateAllOnce } from './translateAll';
 
 /**
  * Rulează la fiecare 5 minute: reminder-e (24h și 2h înainte), cererile de programare expirate, lista de așteptare, campanii programate, urări de ziua clientului,
- * „Ne e dor de tine”, ore libere de ultim moment,
+ * „Ne e dor de tine”, ore libere de ultim moment, traducerea conținutului care nu e încă tradus,
  * curățenie (sesiuni și coduri expirate). Fiecare reminder se marchează înainte de trimitere,
  * ca o rulare suprapusă să nu-l trimită de două ori.
  */
@@ -69,6 +70,13 @@ export async function scheduled(env: Env) {
     console.error('social posts failed', e);
   }
 
+  // Textele din panou netraduse încă în engleză și franceză (o dată, pe bucăți, până nu mai lipsește nimic).
+  try {
+    await translateAllOnce(env);
+  } catch (e) {
+    console.error('translations failed', e);
+  }
+
   await env.DB.batch([
     env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(iso(new Date(now))),
     env.DB.prepare('DELETE FROM otp_codes WHERE expires_at < ?').bind(iso(new Date(now - 3_600_000))),
@@ -82,6 +90,9 @@ async function reminders(
   from: number,
   to: number,
 ) {
+  // Reminder-ul oprit (Tablou de bord → Mesaje automate): nu pleacă nici pentru programările făcute deja.
+  // Programările nu se marchează, așa că dacă îl repornește, cele încă în fereastră îl primesc.
+  if (!(await channelsFor(env, kind))) return;
   // Programările făcute deja în fereastră (ex. rezervate cu o oră înainte) primesc doar reminder-ul de 2h,
   // iar cele create cu mai puțin de 30 de minute înainte nu mai primesc nimic (au primit confirmarea).
   // La o cerere acceptată contează momentul acceptării (atunci a plecat confirmarea), nu cel al cererii.

@@ -7,6 +7,7 @@ import { ROLE_LABELS, staffApi, type StaffBooking, type StaffStats } from '@/api
 import { BOOKING_STATUS, BookingSheet } from '@/components/BookingSheet';
 import { BirthdayGlow, Candle } from '@/components/Birthday';
 import { Card, styles as ui } from '@/components/ui';
+import { locale, useT } from '@/i18n';
 import { SALON_TZ, dayKey, formatTime, salonMidnight } from '@/lib/dates';
 import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
@@ -14,6 +15,7 @@ import { colors, radius, space } from '@/theme';
 // Acasă (echipă): ziua de azi pe scurt, următoarele programări, cifrele lunii și comenzile de pregătit.
 export default function StaffHome() {
   const { staff, staffToken } = useStaff();
+  const { t } = useT();
   const [today, setToday] = useState<StaffBooking[] | null>(null);
   const [stats, setStats] = useState<StaffStats | null>(null);
   const [orders, setOrders] = useState<number | null>(null);
@@ -43,30 +45,30 @@ export default function StaffHome() {
   const revenue = list.reduce((s, b) => s + (b.payment === 'paid' ? (b.paidAmount ?? 0) : 0), 0);
   const seesMoney = staff.permissions.stats || !staff.permissions.bookings_all;
   const hour = new Date().getHours();
-  const hello = hour < 12 ? 'Bună dimineața' : hour < 18 ? 'Bună ziua' : 'Bună seara';
+  const hello = t(hour < 12 ? 'sh.morning' : hour < 18 ? 'sh.day' : 'sh.evening');
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={s.content}>
         <Text style={ui.muted}>{hello},</Text>
         <Text style={s.name}>{staff.name || staff.email}</Text>
-        <Text style={[ui.muted, { marginBottom: space.md }]}>{ROLE_LABELS[staff.role ?? (staff.owner ? 'org_admin' : 'barber')]}</Text>
+        <Text style={[ui.muted, { marginBottom: space.md }]}>{t(ROLE_LABELS[staff.role ?? (staff.owner ? 'org_admin' : 'barber')])}</Text>
 
         <View style={s.tiles}>
-          <Tile label="Azi" value={String(list.length)} sub={list.length === 1 ? 'programare' : 'programări'} onPress={() => router.push('/staff/calendar')} />
+          <Tile label={t('sh.today')} value={String(list.length)} sub={t(list.length === 1 ? 'sh.bookingOne' : 'sh.bookingMany')} onPress={() => router.push('/staff/calendar')} />
           {seesMoney ? (
-            <Tile label="Încasat azi" value={`${revenue}`} sub="lei" onPress={() => router.push('/staff/register')} />
+            <Tile label={t('sh.collectedToday')} value={`${revenue}`} sub={t('sh.currency')} onPress={() => router.push('/staff/register')} />
           ) : (
-            <Tile label="Viitoare" value={String(stats?.upcoming ?? '–')} sub="programări" />
+            <Tile label={t('sh.upcoming')} value={String(stats?.upcoming ?? '–')} sub={t('sh.bookingMany')} />
           )}
-          {orders !== null ? <Tile label="Comenzi" value={String(orders)} sub="de pregătit" onPress={() => router.push('/staff/orders')} /> : null}
+          {orders !== null ? <Tile label={t('sh.orders')} value={String(orders)} sub={t('sh.toPrepare')} onPress={() => router.push('/staff/orders')} /> : null}
         </View>
 
         {todo ? (
           <Pressable onPress={() => router.push('/staff/notes')} style={{ marginTop: space.md }}>
             <Card style={[s.row, { borderLeftWidth: 5, borderLeftColor: colors.gold }]}>
               <Ionicons name="clipboard-outline" size={22} color={colors.gold} />
-              <Text style={[ui.cardTitle, { flex: 1 }]}>{todo === 1 ? 'Ai o sarcină de făcut' : `Ai ${todo} sarcini de făcut`}</Text>
+              <Text style={[ui.cardTitle, { flex: 1 }]}>{todo === 1 ? t('sh.taskOne') : t('sh.taskMany', { n: todo })}</Text>
               <Ionicons name="chevron-forward" size={18} color={colors.muted} />
             </Card>
           </Pressable>
@@ -75,9 +77,9 @@ export default function StaffHome() {
         {requests.length ? (
           <>
             <Text style={[ui.label, { marginTop: space.lg, color: BOOKING_STATUS.requested.color }]}>
-              {requests.length === 1 ? 'O cerere de programare așteaptă răspuns' : `${requests.length} cereri de programare așteaptă răspuns`}
+              {requests.length === 1 ? t('sh.requestOne') : t('sh.requestMany', { n: requests.length })}
             </Text>
-            <Text style={[ui.muted, { fontSize: 13, marginBottom: space.xs }]}>Apasă și alege: acceptă sau refuză. Ora rămâne rezervată până răspunzi.</Text>
+            <Text style={[ui.muted, { fontSize: 13, marginBottom: space.xs }]}>{t('sh.requestHint')}</Text>
             <View style={{ gap: space.sm }}>
               {requests.slice(0, 10).map((b) => (
                 <Pressable key={b.id} onPress={() => setOpen(b)}>
@@ -88,7 +90,7 @@ export default function StaffHome() {
                         {b.clientName || b.clientPhone}
                       </Text>
                       <Text style={ui.muted} numberOfLines={1}>
-                        {new Date(b.start).toLocaleDateString('ro-RO', { timeZone: SALON_TZ, weekday: 'short', day: 'numeric', month: 'short' })}, {formatTime(new Date(b.start))} · {b.serviceName}
+                        {new Date(b.start).toLocaleDateString(locale(), { timeZone: SALON_TZ, weekday: 'short', day: 'numeric', month: 'short' })}, {formatTime(new Date(b.start))} · {b.serviceName}
                         {staff.permissions.bookings_all ? ` · ${b.barberName}` : ''}
                       </Text>
                     </View>
@@ -103,9 +105,9 @@ export default function StaffHome() {
         {unclosed.length ? (
           <>
             <Text style={[ui.label, { marginTop: space.lg, color: colors.danger }]}>
-              {unclosed.length === 1 ? 'O programare trecută nu e închisă' : `${unclosed.length} programări trecute nu sunt închise`}
+              {unclosed.length === 1 ? t('sh.unclosedOne') : t('sh.unclosedMany', { n: unclosed.length })}
             </Text>
-            <Text style={[ui.muted, { fontSize: 13, marginBottom: space.xs }]}>Apasă și alege: încheiată (cu plata), nu a venit sau anulată.</Text>
+            <Text style={[ui.muted, { fontSize: 13, marginBottom: space.xs }]}>{t('sh.unclosedHint')}</Text>
             <View style={{ gap: space.sm }}>
               {unclosed.slice(0, 5).map((b) => (
                 <Pressable key={b.id} onPress={() => setOpen(b)}>
@@ -116,7 +118,7 @@ export default function StaffHome() {
                         {b.clientName || b.clientPhone}
                       </Text>
                       <Text style={ui.muted} numberOfLines={1}>
-                        {new Date(b.start).toLocaleDateString('ro-RO', { timeZone: SALON_TZ, day: 'numeric', month: 'short' })} · {b.serviceName}
+                        {new Date(b.start).toLocaleDateString(locale(), { timeZone: SALON_TZ, day: 'numeric', month: 'short' })} · {b.serviceName}
                         {staff.permissions.bookings_all ? ` · ${b.barberName}` : ''}
                       </Text>
                     </View>
@@ -128,9 +130,9 @@ export default function StaffHome() {
           </>
         ) : null}
 
-        <Text style={[ui.label, { marginTop: space.lg }]}>Urmează azi</Text>
+        <Text style={[ui.label, { marginTop: space.lg }]}>{t('sh.nextToday')}</Text>
         {today === null ? null : upcoming.length === 0 ? (
-          <Text style={ui.muted}>Nicio programare rămasă azi.</Text>
+          <Text style={ui.muted}>{t('sh.noneLeft')}</Text>
         ) : (
           <View style={{ gap: space.sm }}>
             {upcoming.slice(0, 6).map((b) => (
@@ -160,18 +162,18 @@ export default function StaffHome() {
         {stats ? (
           <>
             <View style={[ui.row, { justifyContent: 'space-between', marginTop: space.lg }]}>
-              <Text style={[ui.label, { marginTop: 0, marginBottom: 0 }]}>Ultimele 30 de zile</Text>
+              <Text style={[ui.label, { marginTop: 0, marginBottom: 0 }]}>{t('stats.last30')}</Text>
               {staff.permissions.reports ? (
                 <Pressable onPress={() => router.push('/staff/stats')} hitSlop={10}>
-                  <Text style={{ color: colors.gold, fontWeight: '600' }}>Tablou de bord ›</Text>
+                  <Text style={{ color: colors.gold, fontWeight: '600' }}>{t('sh.dashboardLink')}</Text>
                 </Pressable>
               ) : null}
             </View>
             <View style={s.tiles}>
-              <Tile label="Programări" value={String(stats.last30.bookings)} />
-              {stats.last30.revenue !== null ? <Tile label="Încasări" value={`${stats.last30.revenue}`} sub="lei" /> : null}
-              <Tile label="Absențe" value={String(stats.last30.noShow)} />
-              {stats.last30.newClients !== null ? <Tile label="Clienți noi" value={String(stats.last30.newClients)} /> : null}
+              <Tile label={t('stats.bookingsTab')} value={String(stats.last30.bookings)} />
+              {stats.last30.revenue !== null ? <Tile label={t('stats.revenueTab')} value={`${stats.last30.revenue}`} sub={t('sh.currency')} /> : null}
+              <Tile label={t('sh.noShows')} value={String(stats.last30.noShow)} />
+              {stats.last30.newClients !== null ? <Tile label={t('sh.newClients')} value={String(stats.last30.newClients)} /> : null}
             </View>
           </>
         ) : null}

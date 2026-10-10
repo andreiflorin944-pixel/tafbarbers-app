@@ -6,6 +6,7 @@ import { staffApi } from '@/api/staff';
 import { Button, Screen, styles as ui } from '@/components/ui';
 import type { Slot } from '@/data/types';
 import { addDays, dayKey, dayOfMonth, fromDayKey, formatTime, shortDay, shortMonth, startOfDay } from '@/lib/dates';
+import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
@@ -15,6 +16,7 @@ export default function StaffNewBooking() {
   // Din calendar: ziua, ora și frizerul slotului atins vin precompletate.
   const params = useLocalSearchParams<{ day?: string; time?: string; barberId?: string }>();
   const { staff, staffToken } = useStaff();
+  const { t } = useT();
   const { services, barbers } = useApp();
   const canPickBarber = !!staff && (staff.permissions.bookings_all || !staff.barberId);
   const [phone, setPhone] = useState('');
@@ -54,7 +56,7 @@ export default function StaffNewBooking() {
       await staffApi.create(staffToken, { phone, name: name.trim(), serviceId, barberId, start: start!, notify });
       router.back();
     } catch (e) {
-      setError(errorMessage(e, 'Nu am putut salva programarea.'));
+      setError(errorMessage(e, t('snew.saveFailed')));
     } finally {
       setBusy(false);
     }
@@ -62,12 +64,12 @@ export default function StaffNewBooking() {
 
   return (
     <Screen edges={['bottom']}>
-      <Text style={ui.label}>Telefon client</Text>
+      <Text style={ui.label}>{t('snew.phone')}</Text>
       <TextInput value={phone} onChangeText={setPhone} style={ui.input} keyboardType="phone-pad" placeholder="07xx xxx xxx" placeholderTextColor={colors.muted} />
-      <Text style={ui.label}>Nume (pentru client nou)</Text>
-      <TextInput value={name} onChangeText={setName} style={ui.input} placeholder="Opțional" placeholderTextColor={colors.muted} />
+      <Text style={ui.label}>{t('snew.name')}</Text>
+      <TextInput value={name} onChangeText={setName} style={ui.input} placeholder={t('snew.optional')} placeholderTextColor={colors.muted} />
 
-      <Text style={ui.label}>Serviciu</Text>
+      <Text style={ui.label}>{t('snew.service')}</Text>
       <View style={s.wrap}>
         {services.map((sv) => (
           <Pressable key={sv.id} onPress={() => setServiceId(sv.id)} style={[s.chip, sv.id === serviceId && s.chipOn]}>
@@ -80,7 +82,7 @@ export default function StaffNewBooking() {
 
       {canPickBarber ? (
         <>
-          <Text style={ui.label}>Frizer</Text>
+          <Text style={ui.label}>{t('snew.barber')}</Text>
           <View style={s.wrap}>
             {barbers.map((b) => (
               <Pressable key={b.id} onPress={() => setBarberId(b.id)} style={[s.chip, b.id === barberId && s.chipOn]}>
@@ -91,7 +93,7 @@ export default function StaffNewBooking() {
         </>
       ) : null}
 
-      <Text style={ui.label}>Ziua</Text>
+      <Text style={ui.label}>{t('snew.day')}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm }}>
         {days.map((d) => {
           const key = dayKey(d);
@@ -106,11 +108,11 @@ export default function StaffNewBooking() {
         })}
       </ScrollView>
 
-      <Text style={ui.label}>Ora</Text>
+      <Text style={ui.label}>{t('snew.time')}</Text>
       {slots === null ? (
         <ActivityIndicator color={colors.gold} />
       ) : slots.length === 0 ? (
-        <Text style={ui.muted}>Nicio oră liberă în ziua asta.</Text>
+        <Text style={ui.muted}>{t('snew.noSlots')}</Text>
       ) : (
         <View style={s.wrap}>
           {slots.map((sl) => (
@@ -122,12 +124,12 @@ export default function StaffNewBooking() {
       )}
 
       <View style={[ui.row, { justifyContent: 'space-between', marginTop: space.md }]}>
-        <Text style={ui.text}>SMS de confirmare către client</Text>
+        <Text style={ui.text}>{t('snew.sms')}</Text>
         <Switch value={notify} onValueChange={setNotify} trackColor={{ true: colors.gold, false: colors.border }} thumbColor={colors.text} />
       </View>
       {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
       <View style={{ marginTop: space.lg }}>
-        <Button title="Salvează programarea" onPress={save} loading={busy} disabled={!ok} />
+        <Button title={t('snew.save')} onPress={save} loading={busy} disabled={!ok} />
       </View>
     </Screen>
   );

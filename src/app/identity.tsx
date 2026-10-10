@@ -5,6 +5,7 @@ import { useLoginGate } from '@/components/LoginGate';
 import { PhotoGrid, PhotoViewer } from '@/components/PhotoViewer';
 import { Button, Card, Screen, styles } from '@/components/ui';
 import type { Identity, IdentityPhoto } from '@/data/types';
+import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
 import { pickImage } from '@/lib/pickImage';
 import { useApp } from '@/state/AppState';
@@ -15,6 +16,7 @@ const MAX = 5;
 // TAF Identity: până la 5 poze și o descriere a tunsorii dorite. Le vede și frizerul.
 export default function IdentityScreen() {
   const { token } = useApp();
+  const { t } = useT();
   const gate = useLoginGate();
   const [data, setData] = useState<Identity | null>(null);
   const [note, setNote] = useState('');
@@ -61,10 +63,10 @@ export default function IdentityScreen() {
 
   const chooseSource = () => {
     if (Platform.OS === 'web') return add(false);
-    Alert.alert('Adaugă poză', undefined, [
-      { text: 'Din galerie', onPress: () => add(false) },
-      { text: 'Fă o poză', onPress: () => add(true) },
-      { text: 'Renunță', style: 'cancel' },
+    Alert.alert(t('photo.add'), undefined, [
+      { text: t('photo.gallery'), onPress: () => add(false) },
+      { text: t('photo.camera'), onPress: () => add(true) },
+      { text: t('common.cancel'), style: 'cancel' },
     ]);
   };
 
@@ -79,10 +81,10 @@ export default function IdentityScreen() {
         setError(errorMessage(e));
       }
     };
-    if (Platform.OS === 'web') return window.confirm('Ștergi poza?') && go();
-    Alert.alert('Ștergi poza?', undefined, [
-      { text: 'Nu', style: 'cancel' },
-      { text: 'Șterge', style: 'destructive', onPress: go },
+    if (Platform.OS === 'web') return window.confirm(t('photo.deleteAsk')) && go();
+    Alert.alert(t('photo.deleteAsk'), undefined, [
+      { text: t('common.no'), style: 'cancel' },
+      { text: t('common.delete'), style: 'destructive', onPress: go },
     ]);
   };
 
@@ -103,20 +105,15 @@ export default function IdentityScreen() {
 
   return (
     <Screen edges={['bottom']}>
-      <Text style={[styles.muted, { marginBottom: space.md }]}>
-        Salvează aici pozele cu tunsoarea pe care o vrei și ce e important pentru tine. La salon le deschizi direct de aici, iar frizerul le vede
-        și el în fișa ta.
-      </Text>
+      <Text style={[styles.muted, { marginBottom: space.md }]}>{t('identity.intro')}</Text>
 
-      <Text style={styles.label}>
-        Pozele mele ({data.photos.length}/{MAX})
-      </Text>
+      <Text style={styles.label}>{t('identity.photos', { n: data.photos.length, max: MAX })}</Text>
       <PhotoGrid photos={data.photos} onOpen={setOpen} onAdd={data.photos.length < MAX ? chooseSource : undefined} busy={busy} />
       {data.photos.length ? (
-        <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>Atinge o poză ca s-o vezi pe tot ecranul.</Text>
+        <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>{t('identity.tapHint')}</Text>
       ) : null}
 
-      <Text style={[styles.label, { marginTop: space.lg }]}>Descrierea tunsorii și dorințe speciale</Text>
+      <Text style={[styles.label, { marginTop: space.lg }]}>{t('identity.noteTitle')}</Text>
       <TextInput
         value={note}
         onChangeText={(v) => {
@@ -125,17 +122,17 @@ export default function IdentityScreen() {
         }}
         multiline
         maxLength={1000}
-        placeholder="Ex.: fade la 0.5 pe părți, sus 3 cm, fără linie. Barba scurtă, conturată."
+        placeholder={t('identity.notePh')}
         placeholderTextColor={colors.muted}
         style={[styles.input, { minHeight: 110, textAlignVertical: 'top', paddingTop: 12 }]}
       />
       <View style={{ marginTop: space.md }}>
-        <Button title={saved && note.trim() === data.note ? 'Salvat' : 'Salvează descrierea'} onPress={saveNote} loading={busy} disabled={note.trim() === data.note} />
+        <Button title={saved && note.trim() === data.note ? t('identity.saved') : t('identity.saveNote')} onPress={saveNote} loading={busy} disabled={note.trim() === data.note} />
       </View>
       {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
 
       <Card style={{ marginTop: space.lg }}>
-        <Text style={styles.muted}>Pozele și descrierea le văd doar tu și echipa TAF Barber's. Le poți șterge oricând.</Text>
+        <Text style={styles.muted}>{t('identity.privacy')}</Text>
       </Card>
 
       <PhotoViewer photos={data.photos} index={open} onIndex={setOpen} onClose={() => setOpen(null)} onDelete={remove} />

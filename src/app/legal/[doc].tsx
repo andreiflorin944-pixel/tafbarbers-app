@@ -8,8 +8,8 @@ import { colors, space } from '@/theme';
 
 export default function LegalDoc() {
   const { doc } = useLocalSearchParams<{ doc: string }>();
-  const { lang } = useT();
-  const [data, setData] = useState<{ title: string; body: string; updatedAt: string | null } | null>(null);
+  const { lang, t } = useT();
+  const [data, setData] = useState<{ title: string; body: string; updatedAt: string | null; translated?: boolean } | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -21,12 +21,14 @@ export default function LegalDoc() {
     <Screen edges={['bottom']}>
       <Stack.Screen options={{ title: data?.title ?? '' }} />
       {error ? (
-        <Text style={styles.muted}>Nu am putut încărca documentul. Încearcă din nou.</Text>
+        <Text style={styles.muted}>{t('legal.loadFailed')}</Text>
       ) : !data ? (
         <ActivityIndicator color={colors.gold} style={{ marginTop: space.xl }} />
       ) : (
         <>
-          {data.updatedAt ? <Text style={[styles.muted, { fontSize: 12, marginBottom: space.sm }]}>Actualizat: {data.updatedAt.slice(0, 10)}</Text> : null}
+          {data.updatedAt ? <Text style={[styles.muted, { fontSize: 12, marginBottom: space.sm }]}>{t('legal.updated', { date: data.updatedAt.slice(0, 10) })}</Text> : null}
+          {/* Traducerea automată a regulamentului: varianta oficială rămâne cea în română. */}
+          {data.translated ? <Text style={[styles.muted, { fontSize: 12, marginBottom: space.sm }]}>{t('legal.translated')}</Text> : null}
           <Text style={[styles.text, { lineHeight: 23 }]}>{data.body}</Text>
         </>
       )}

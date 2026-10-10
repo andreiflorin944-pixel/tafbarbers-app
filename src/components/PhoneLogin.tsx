@@ -227,7 +227,7 @@ export function PhoneLogin({
           value={email}
           onChangeText={setEmail}
           editable={!sentTo && !social?.email}
-          placeholder="nume@exemplu.ro"
+          placeholder={t('account.emailPh')}
           placeholderTextColor={colors.muted}
           style={[styles.input, sentTo || social?.email ? local.locked : null]}
           keyboardType="email-address"
@@ -249,7 +249,7 @@ export function PhoneLogin({
             <TextInput
               value={ref}
               onChangeText={(v) => setRef(v.toUpperCase())}
-              placeholder="Ex. ANDREI7K"
+              placeholder={t('login.refPh')}
               placeholderTextColor={colors.muted}
               style={styles.input}
               autoCapitalize="characters"
@@ -277,9 +277,9 @@ export function PhoneLogin({
             autoFocus
           />
           {usingMock ? (
-            <Text style={local.hint}>Versiune de test: orice cod din 6 cifre e acceptat.</Text>
+            <Text style={local.hint}>{t('login.mockCode')}</Text>
           ) : devCode ? (
-            <Text style={local.hint}>Server de test, codul este {devCode}.</Text>
+            <Text style={local.hint}>{t('login.devCode', { code: devCode })}</Text>
           ) : null}
           <Pressable
             onPress={() => {

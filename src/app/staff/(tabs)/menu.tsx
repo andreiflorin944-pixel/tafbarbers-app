@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react';
 import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { panelUrl, ROLE_LABELS, staffApi } from '@/api/staff';
+import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
 import { styles as ui } from '@/components/ui';
 import { useStaff } from '@/state/Staff';
@@ -15,27 +16,28 @@ type Item = { icon: ComponentProps<typeof Ionicons>['name']; label: string; sub?
 // (echipă, aspect, bannere, campanii, regulamente) se deschid în panoul web.
 export default function StaffMenu() {
   const { staff, staffToken, staffSignOut } = useStaff();
+  const { t } = useT();
   if (!staff) return null;
   const p = staff.permissions;
   const owner = staff.owner;
 
   const items: Item[] = [
-    { icon: 'clipboard-outline', label: staff.role === 'barber' ? 'Notițele mele' : 'Notițe echipă', sub: 'Sarcini și scripturi de filmat', to: '/staff/notes', show: true },
-    { icon: 'stats-chart-outline', label: 'Tablou de bord', sub: 'Grafice, clienții de azi, păstrare', to: '/staff/stats', show: p.reports },
-    { icon: 'document-text-outline', label: 'Rapoarte', sub: 'Vânzări, rezervări, anulări, plăți, bacșiș', to: '/staff/reports', show: p.reports },
-    { icon: 'cash-outline', label: 'Registrul de încasări', sub: 'Programările zilei și ce s-a încasat', to: '/staff/register', show: p.reports || !!staff.barberId },
-    { icon: 'cube-outline', label: 'Stoc și NIR', sub: 'Intrări de marfă, consum, inventar', web: 'stock', show: p.shop },
-    { icon: 'gift-outline', label: 'Carduri cadou', web: 'giftcards', show: p.bookings_manage },
-    { icon: 'notifications-outline', label: 'Notificări automate', sub: 'Mesaje, canale, linkul Programează', web: 'notifications', show: owner },
-    { icon: 'people-circle-outline', label: 'Membrii echipei', sub: 'Conturi și drepturi', web: 'settings', show: owner },
-    { icon: 'cut-outline', label: 'Servicii', sub: 'Prețuri și durate', to: '/staff/services', show: true },
-    { icon: 'people-outline', label: 'Clienți', to: '/staff/clients', show: p.clients },
-    { icon: 'time-outline', label: 'Ore de lucru și concedii', to: '/staff/hours', show: true },
-    { icon: 'bag-handle-outline', label: 'Comenzi magazin', to: '/staff/orders', show: p.shop },
-    { icon: 'color-palette-outline', label: 'Aspect aplicație', sub: 'Culori, logo, poze', web: 'appearance', show: owner },
-    { icon: 'megaphone-outline', label: 'Bannere și campanii', web: 'promos', show: owner },
-    { icon: 'shield-checkmark-outline', label: 'Regulamente și GDPR', web: 'legal', show: owner },
-    { icon: 'settings-outline', label: 'Setări', sub: 'Salon, reguli de programare, parolă', web: 'settings', show: true },
+    { icon: 'clipboard-outline', label: staff.role === 'barber' ? t('menu.myNotes') : t('menu.teamNotes'), sub: t('menu.notesSub'), to: '/staff/notes', show: true },
+    { icon: 'stats-chart-outline', label: t('menu.dashboard'), sub: t('menu.dashboardSub'), to: '/staff/stats', show: p.reports },
+    { icon: 'document-text-outline', label: t('stats.reports'), sub: t('menu.reportsSub'), to: '/staff/reports', show: p.reports },
+    { icon: 'cash-outline', label: t('menu.register'), sub: t('menu.registerSub'), to: '/staff/register', show: p.reports || !!staff.barberId },
+    { icon: 'cube-outline', label: t('menu.stock'), sub: t('menu.stockSub'), web: 'stock', show: p.shop },
+    { icon: 'gift-outline', label: t('account.giftCards'), web: 'giftcards', show: p.bookings_manage },
+    { icon: 'notifications-outline', label: t('menu.notifications'), sub: t('menu.notificationsSub'), web: 'notifications', show: owner },
+    { icon: 'people-circle-outline', label: t('menu.team'), sub: t('menu.teamSub'), web: 'settings', show: owner },
+    { icon: 'cut-outline', label: t('menu.services'), sub: t('menu.servicesSub'), to: '/staff/services', show: true },
+    { icon: 'people-outline', label: t('menu.clients'), to: '/staff/clients', show: p.clients },
+    { icon: 'time-outline', label: t('menu.hours'), to: '/staff/hours', show: true },
+    { icon: 'bag-handle-outline', label: t('menu.orders'), to: '/staff/orders', show: p.shop },
+    { icon: 'color-palette-outline', label: t('menu.appearance'), sub: t('menu.appearanceSub'), web: 'appearance', show: owner },
+    { icon: 'megaphone-outline', label: t('menu.promos'), web: 'promos', show: owner },
+    { icon: 'shield-checkmark-outline', label: t('menu.legal'), web: 'legal', show: owner },
+    { icon: 'settings-outline', label: t('menu.settings'), sub: t('menu.settingsSub'), web: 'settings', show: true },
   ];
 
   const go = (it: Item) => {
@@ -45,10 +47,10 @@ export default function StaffMenu() {
   };
   const signOut = () => {
     const yes = () => staffSignOut().then(() => router.replace('/account'));
-    if (Platform.OS === 'web') return window.confirm('Ieși din contul de echipă?') && yes();
-    Alert.alert('Ieși din contul de echipă?', undefined, [
-      { text: 'Nu', style: 'cancel' },
-      { text: 'Ieși', style: 'destructive', onPress: yes },
+    if (Platform.OS === 'web') return window.confirm(t('menu.signOutAsk')) && yes();
+    Alert.alert(t('menu.signOutAsk'), undefined, [
+      { text: t('common.no'), style: 'cancel' },
+      { text: t('menu.signOutYes'), style: 'destructive', onPress: yes },
     ]);
   };
 
@@ -57,7 +59,7 @@ export default function StaffMenu() {
     const tell = (m: string) => (Platform.OS === 'web' ? window.alert(m) : Alert.alert(m));
     try {
       const r = await staffApi.logoutOthers(staffToken);
-      tell(r.loggedOut ? `Am închis contul pe ${r.loggedOut === 1 ? 'un alt dispozitiv' : `${r.loggedOut} alte dispozitive`}.` : 'Nu erai conectat pe alte dispozitive.');
+      tell(!r.loggedOut ? t('menu.noOthers') : r.loggedOut === 1 ? t('menu.loggedOutOne') : t('menu.loggedOutMany', { n: r.loggedOut }));
     } catch (e) {
       tell(errorMessage(e));
     }
@@ -66,7 +68,7 @@ export default function StaffMenu() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 40, width: '100%', maxWidth: 720, alignSelf: 'center' }}>
-        <Text style={s.title}>Meniu</Text>
+        <Text style={s.title}>{t('menu.title')}</Text>
         {items
           .filter((i) => i.show)
           .map((it) => (
@@ -84,23 +86,23 @@ export default function StaffMenu() {
         <Pressable onPress={() => router.push('/')} style={s.row}>
           <Ionicons name="person-outline" size={26} color={colors.muted} style={{ width: 34 }} />
           <View style={s.rowBody}>
-            <Text style={[s.label, { color: colors.muted }]}>Vezi aplicația ca un client</Text>
+            <Text style={[s.label, { color: colors.muted }]}>{t('menu.asClient')}</Text>
           </View>
         </Pressable>
         <Pressable onPress={signOutOthers} style={s.row}>
           <Ionicons name="phone-portrait-outline" size={26} color={colors.muted} style={{ width: 34 }} />
           <View style={s.rowBody}>
-            <Text style={[s.label, { color: colors.muted }]}>Ieși de pe celelalte dispozitive</Text>
+            <Text style={[s.label, { color: colors.muted }]}>{t('menu.signOutOthers')}</Text>
           </View>
         </Pressable>
         <Pressable onPress={signOut} style={s.row}>
           <Ionicons name="log-out-outline" size={26} color={colors.danger} style={{ width: 34 }} />
           <View style={s.rowBody}>
-            <Text style={[s.label, { color: colors.danger }]}>Ieși din contul de echipă</Text>
+            <Text style={[s.label, { color: colors.danger }]}>{t('account.staffSignOut')}</Text>
           </View>
         </Pressable>
         <Text style={[ui.muted, { fontSize: 12, textAlign: 'center', marginTop: space.lg }]}>
-          {staff.name || staff.email} · {ROLE_LABELS[staff.role ?? (owner ? 'org_admin' : 'barber')]}
+          {staff.name || staff.email} · {t(ROLE_LABELS[staff.role ?? (owner ? 'org_admin' : 'barber')])}
         </Text>
       </ScrollView>
     </SafeAreaView>

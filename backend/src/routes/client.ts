@@ -8,10 +8,13 @@ import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
 import { attributeQr } from '../qr';
 import { deleteClient, exportClient } from '../gdpr';
+import { marketingChannels, recordConsent } from '../consents';
 import { createOrder, getOrder, getOrders, notifyOrder, setOrderStatus } from '../shop';
 import { myReferrals } from '../referrals';
+import { localize, localizeText } from '../contentI18n';
 import { mySubscriptions } from '../subscriptions';
 import { joinWaitlist, myWaitlist, removeWaitlist } from '../waitlist';
+import { activeLocationId } from '../locations';
 import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
 
 export const clientRoutes = new Hono<AppEnv>();
@@ -62,10 +65,17 @@ clientRoutes.patch('/me', async (c) => {
     if (typeof b.marketing?.[ch] === 'boolean') sets.push(`marketing_${ch} = ?`), vals.push(b.marketing[ch] ? 1 : 0);
   }
   // Dovada acordului (GDPR): data ultimei schimbări a preferințelor pentru oferte.
-  if (b.marketing && Object.values(b.marketing).some((v) => typeof v === 'boolean')) sets.push('marketing_consent_at = ?'), vals.push(iso(new Date()));
+  const mkTouched = !!b.marketing && Object.values(b.marketing).some((v) => typeof v === 'boolean');
+  if (mkTouched) sets.push('marketing_consent_at = ?'), vals.push(iso(new Date()));
+  const before = mkTouched ? await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(id).first<ClientRow>() : null;
   if (sets.length) await c.env.DB.prepare(`UPDATE clients SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
   const r = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(id).first<ClientRow>();
-  return c.json(client(r!));
+  const me = client(r!);
+  // Acordul pentru oferte dat sau retras: un rând nou în dovada acordurilor, doar dacă s-a schimbat ceva.
+  if (before && marketingChannels(client(before).marketing) !== marketingChannels(me.marketing)) {
+    await recordConsent(c.env, c, id, { source: 'profile', terms: false, marketing: me.marketing, lang: me.lang });
+  }
+  return c.json(me);
 });
 
 // --- Poza de profil și TAF Identity ---
@@ -117,8 +127,17 @@ clientRoutes.delete('/me/identity/photos/:pid', async (c) => {
   return c.json({ ok: true });
 });
 
-clientRoutes.get('/me/referrals', async (c) => c.json(await myReferrals(c.env, c.get('client').clientId)));
-clientRoutes.get('/me/subscriptions', async (c) => c.json(await mySubscriptions(c.env, c.get('client').clientId)));
+// Titlurile bonusurilor, abonamentele și produsele comandate vin în limba aplicației (`?lang=en`), unde au fost traduse.
+clientRoutes.get('/me/referrals', async (c) => {
+  const lang = c.req.query('lang');
+  const r = await myReferrals(c.env, c.get('client').clientId);
+  return c.json({ ...r, reward: r.reward && (await localizeText(c.env, lang, r.reward)), bonuses: await localize(c.env, lang, r.bonuses, ['title']) });
+});
+clientRoutes.get('/me/subscriptions', async (c) => {
+  const lang = c.req.query('lang');
+  const r = await mySubscriptions(c.env, c.get('client').clientId);
+  return c.json({ plans: await localize(c.env, lang, r.plans, ['name', 'description']), subscriptions: await localize(c.env, lang, r.subscriptions, ['name']) });
+});
 
 // Carduri cadou: cele cumpărate de client și cele primite pe numărul lui de telefon.
 clientRoutes.get('/me/gift-cards', async (c) => {
@@ -196,12 +215,34 @@ clientRoutes.post('/me/gift-cards/:id/cancel', async (c) => {
 /** Pozele înainte / după ale clientului, puse de frizer. */
 clientRoutes.get('/me/before-after', async (c) => {
   const r = await c.env.DB.prepare(
-    `SELECT x.id, x.before_media, x.after_media, x.created_at, br.name AS barber_name FROM before_after x LEFT JOIN barbers br ON br.id = x.barber_id
+    `SELECT x.id, x.before_media, x.after_media, x.created_at, x.show_example, br.name AS barber_name FROM before_after x LEFT JOIN barbers br ON br.id = x.barber_id
      WHERE x.client_id = ? ORDER BY x.created_at DESC LIMIT 50`,
   )
     .bind(c.get('client').clientId)
-    .all<{ id: string; before_media: string; after_media: string; created_at: string; barber_name: string | null }>();
-  return c.json(r.results.map((x) => ({ id: x.id, before: mediaUrl(x.before_media), after: mediaUrl(x.after_media), barberName: x.barber_name, createdAt: x.created_at })));
+    .all<{ id: string; before_media: string; after_media: string; created_at: string; show_example: number; barber_name: string | null }>();
+  return c.json(
+    r.results.map((x) => ({
+      id: x.id,
+      before: mediaUrl(x.before_media),
+      after: mediaUrl(x.after_media),
+      barberName: x.barber_name,
+      createdAt: x.created_at,
+      // Perechea apare ca exemplu altor clienți în consilierul AI (clientul vede asta și o poate opri).
+      showExample: !!x.show_example,
+    })),
+  );
+});
+
+/** Clientul își retrage acordul: perechea nu mai apare ca exemplu altor clienți. */
+clientRoutes.post('/me/before-after/:id/hide-example', async (c) => {
+  const r = await c.env.DB.prepare('UPDATE before_after SET show_example = 0, example_withdrawn_at = ? WHERE id = ? AND client_id = ? AND show_example = 1')
+    .bind(iso(new Date()), c.req.param('id'), c.get('client').clientId)
+    .run();
+  if (!r.meta.changes) {
+    const own = await c.env.DB.prepare('SELECT 1 FROM before_after WHERE id = ? AND client_id = ?').bind(c.req.param('id'), c.get('client').clientId).first();
+    if (!own) throw new HttpError(404, 'not_found');
+  }
+  return c.json({ ok: true });
 });
 
 clientRoutes.get('/me/export', async (c) => c.json(await exportClient(c.env, c.get('client').clientId)));
@@ -215,12 +256,14 @@ clientRoutes.get('/me/bookings', async (c) => {
   const r = await c.env.DB.prepare(`${BOOKING_SELECT} WHERE b.client_id = ? ORDER BY b.starts_at DESC LIMIT 100`)
     .bind(c.get('client').clientId)
     .all<BookingRow>();
-  return c.json(r.results.map(booking));
+  return c.json(await localize(c.env, c.req.query('lang'), r.results.map(booking), ['serviceName']));
 });
 
 clientRoutes.post('/bookings', async (c) => {
-  const b = await c.req.json<{ serviceId?: string; barberId?: string | null; start?: string; note?: string }>();
+  const b = await c.req.json<{ serviceId?: string; barberId?: string | null; locationId?: string | null; start?: string; note?: string }>();
   if (!b.serviceId || !b.start) throw new HttpError(400, 'invalid_body');
+  // „Orice frizer” din locația aleasă (cu frizer ales, locația e a lui).
+  const locationId = b.barberId ? null : await activeLocationId(c.env, b.locationId);
   // Programare și anulare la nesfârșit ar trimite tot atâtea SMS-uri de confirmare: cel mult 10 programări noi pe zi.
   const today = await c.env.DB.prepare(`SELECT count(*) AS n FROM bookings WHERE client_id = ? AND source = 'app' AND created_at > ?`)
     .bind(c.get('client').clientId, iso(new Date(Date.now() - 86_400_000)))
@@ -232,11 +275,13 @@ clientRoutes.post('/bookings', async (c) => {
     clientId: c.get('client').clientId,
     serviceId: b.serviceId,
     barberId: b.barberId ?? null,
+    locationId,
     start: b.start,
     note: b.note,
     source: 'app',
   });
-  return c.json(created, 201);
+  // Numele serviciului în limba aplicației (ca în lista programărilor).
+  return c.json((await localize(c.env, c.req.query('lang'), [created], ['serviceName']))[0], 201);
 });
 
 // --- Lista de așteptare: „Anunță-mă dacă se eliberează un loc” ---
@@ -244,7 +289,7 @@ clientRoutes.post('/bookings', async (c) => {
 clientRoutes.get('/me/waitlist', async (c) => c.json(await myWaitlist(c.env, c.get('client').clientId)));
 
 clientRoutes.post('/me/waitlist', async (c) => {
-  const b = await c.req.json<{ serviceId?: string; barberId?: string | null; day?: string; part?: string }>().catch(() => ({}));
+  const b = await c.req.json<{ serviceId?: string; barberId?: string | null; locationId?: string | null; day?: string; part?: string }>().catch(() => ({}));
   const r = await joinWaitlist(c.env, c.get('client').clientId, b);
   return c.json(r.entry, r.created ? 201 : 200);
 });
@@ -255,14 +300,21 @@ clientRoutes.delete('/me/waitlist/:id', async (c) => {
 });
 
 clientRoutes.post('/bookings/:id/cancel', async (c) => {
-  return c.json(await cancelBooking(c.env, c.req.param('id'), 'client', c.get('client').clientId));
+  const b = await cancelBooking(c.env, c.req.param('id'), 'client', c.get('client').clientId);
+  return c.json((await localize(c.env, c.req.query('lang'), [b], ['serviceName']))[0]);
 });
 
 // --- Magazin ---
 
 const stripClient = <T extends { clientName: string; clientPhone: string }>({ clientName: _n, clientPhone: _p, ...o }: T) => o;
 
-clientRoutes.get('/me/orders', async (c) => c.json((await getOrders(c.env, 'o.client_id = ?', [c.get('client').clientId], 50)).map(stripClient)));
+clientRoutes.get('/me/orders', async (c) => {
+  const orders = (await getOrders(c.env, 'o.client_id = ?', [c.get('client').clientId], 50)).map(stripClient);
+  const lang = c.req.query('lang');
+  const names = await localize(c.env, lang, orders.flatMap((o) => o.items), ['name']);
+  let i = 0;
+  return c.json(orders.map((o) => ({ ...o, items: o.items.map(() => names[i++]) })));
+});
 
 clientRoutes.post('/orders', async (c) => {
   const o = await createOrder(c.env, c.get('client').clientId, await c.req.json());

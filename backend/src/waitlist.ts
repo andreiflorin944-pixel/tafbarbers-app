@@ -5,6 +5,7 @@ import { Hono } from 'hono';
 import { newId } from './auth';
 import { accessFor, availability, eligibleBarbers, type Access, type Slot } from './availability';
 import { getBusiness } from './db';
+import { activeLocationId, locationVars } from './locations';
 import { HttpError, type AppEnv, type Env } from './env';
 import { openAppPage } from './qr';
 import { channelsFor } from './growth';
@@ -33,6 +34,7 @@ export type WaitlistRow = {
   client_id: string;
   service_id: string;
   barber_id: string | null;
+  location_id?: string | null;
   day: string;
   part: Part;
   status: 'waiting' | 'notified' | 'booked' | 'expired' | 'removed';
@@ -44,16 +46,18 @@ export type WaitlistRow = {
   created_at: string;
   service_name?: string;
   barber_name?: string | null;
+  location_name?: string | null;
   client_name?: string;
   client_phone?: string;
 };
 
 export const WAITLIST_SELECT = `
-  SELECT w.*, s.name AS service_name, br.name AS barber_name, c.name AS client_name, c.phone AS client_phone
+  SELECT w.*, s.name AS service_name, br.name AS barber_name, loc.name AS location_name, c.name AS client_name, c.phone AS client_phone
   FROM waitlist w
   JOIN services s ON s.id = w.service_id
   JOIN clients c ON c.id = w.client_id
-  LEFT JOIN barbers br ON br.id = w.barber_id`;
+  LEFT JOIN barbers br ON br.id = w.barber_id
+  LEFT JOIN locations loc ON loc.id = w.location_id`;
 
 export function waitlistEntry(r: WaitlistRow, withClient = false) {
   return {
@@ -62,6 +66,9 @@ export function waitlistEntry(r: WaitlistRow, withClient = false) {
     serviceName: r.service_name ?? '',
     barberId: r.barber_id,
     barberName: r.barber_name ?? null,
+    // „Orice frizer” din această locație (NULL = oricare locație, la înscrierile de dinaintea locațiilor).
+    locationId: r.location_id ?? null,
+    locationName: r.location_name ?? null,
     day: r.day,
     part: r.part,
     status: r.status,
@@ -96,16 +103,23 @@ export function bookLink(env: Env, id: string) {
   return env.PUBLIC_URL ? `${env.PUBLIC_URL.replace(/\/+$/, '')}/w/${id}` : 'tafbarbers://book';
 }
 
-/** Adresa din aplicație pentru o înscriere: alegerea orei, cu serviciul, frizerul și ziua deja puse. */
-export function appBookUrl(w: { service_id: string; barber_id: string | null; day: string }) {
-  const q = new URLSearchParams({ serviceId: w.service_id, day: w.day, ...(w.barber_id && { barberId: w.barber_id }) });
+/** Adresa din aplicație pentru o înscriere: alegerea orei, cu serviciul, frizerul (sau locația) și ziua deja puse. */
+export function appBookUrl(w: { service_id: string; barber_id: string | null; location_id?: string | null; day: string }) {
+  const q = new URLSearchParams({
+    serviceId: w.service_id,
+    day: w.day,
+    ...(w.barber_id && { barberId: w.barber_id }),
+    ...(w.location_id && { locationId: w.location_id }),
+  });
   return `tafbarbers://book?${q.toString()}`;
 }
 
 /** Clientul se înscrie pe lista de așteptare a unei zile. Aceeași înscriere trimisă de două ori o întoarce pe cea existentă. */
-export async function joinWaitlist(env: Env, clientId: string, b: { serviceId?: unknown; barberId?: unknown; day?: unknown; part?: unknown }) {
+export async function joinWaitlist(env: Env, clientId: string, b: { serviceId?: unknown; barberId?: unknown; locationId?: unknown; day?: unknown; part?: unknown }) {
   const serviceId = typeof b.serviceId === 'string' ? b.serviceId : '';
   const barberId = typeof b.barberId === 'string' && b.barberId ? b.barberId : null;
+  // Locația: a frizerului ales sau, pentru „orice frizer”, cea aleasă în aplicație.
+  let locationId = barberId ? null : await activeLocationId(env, b.locationId);
   const part: Part = PARTS.includes(b.part as Part) ? (b.part as Part) : 'any';
   if (!serviceId || !isDay(b.day)) throw new HttpError(400, 'invalid_body');
   const day = b.day;
@@ -116,8 +130,9 @@ export async function joinWaitlist(env: Env, clientId: string, b: { serviceId?: 
 
   const svc = await env.DB.prepare('SELECT id FROM services WHERE id = ? AND active = 1').bind(serviceId).first();
   if (!svc) throw new HttpError(404, 'service_not_found');
-  const barbers = await eligibleBarbers(env, serviceId, barberId);
+  const barbers = await eligibleBarbers(env, serviceId, barberId, locationId);
   if (!barbers.length) throw new HttpError(404, 'barber_not_found');
+  if (barberId) locationId = (await env.DB.prepare('SELECT location_id FROM barbers WHERE id = ?').bind(barberId).first<{ location_id: string | null }>())?.location_id ?? null;
   // O zi în care nimeni nu lucrează (salon închis) nu are ce elibera.
   const ph = barbers.map(() => '?').join(',');
   const works = await env.DB.prepare(`SELECT 1 FROM working_hours WHERE weekday = ? AND barber_id IN (${ph}) LIMIT 1`)
@@ -126,14 +141,14 @@ export async function joinWaitlist(env: Env, clientId: string, b: { serviceId?: 
   if (!works) throw new HttpError(409, 'day_closed');
 
   const same = await env.DB.prepare(
-    `${WAITLIST_SELECT} WHERE w.client_id = ? AND w.service_id = ? AND w.day = ? AND w.part = ? AND w.barber_id IS ? AND w.status IN ${OPEN} AND w.notify_count < ?`,
+    `${WAITLIST_SELECT} WHERE w.client_id = ? AND w.service_id = ? AND w.day = ? AND w.part = ? AND w.barber_id IS ? AND w.location_id IS ? AND w.status IN ${OPEN} AND w.notify_count < ?`,
   )
-    .bind(clientId, serviceId, day, part, barberId, MAX_NOTICES)
+    .bind(clientId, serviceId, day, part, barberId, locationId, MAX_NOTICES)
     .first<WaitlistRow>();
   if (same) return { entry: waitlistEntry(same), created: false };
 
   // Dacă sunt deja ore libere în intervalul ales, clientul se programează direct.
-  const free = (await availability(env, { serviceId, barberId, day, access: await accessFor(env, clientId) })).filter((s) => inPart(env, part, s.start));
+  const free = (await availability(env, { serviceId, barberId, locationId, day, access: await accessFor(env, clientId) })).filter((s) => inPart(env, part, s.start));
   if (free.length) throw new HttpError(409, 'slots_available');
 
   const n = await env.DB.prepare(`SELECT count(*) AS n FROM waitlist WHERE client_id = ? AND status IN ${OPEN} AND notify_count < ? AND day >= ?`)
@@ -142,8 +157,8 @@ export async function joinWaitlist(env: Env, clientId: string, b: { serviceId?: 
   if ((n?.n ?? 0) >= MAX_ACTIVE) throw new HttpError(409, 'waitlist_limit');
 
   const id = newId('wl');
-  await env.DB.prepare('INSERT INTO waitlist (id, client_id, service_id, barber_id, day, part) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, clientId, serviceId, barberId, day, part)
+  await env.DB.prepare('INSERT INTO waitlist (id, client_id, service_id, barber_id, location_id, day, part) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, clientId, serviceId, barberId, locationId, day, part)
     .run();
   const row = await env.DB.prepare(`${WAITLIST_SELECT} WHERE w.id = ?`).bind(id).first<WaitlistRow>();
   return { entry: waitlistEntry(row!), created: true };
@@ -207,11 +222,13 @@ export async function checkWaitlist(env: Env, opts: { day?: string; now?: Date }
   const slotsFor = async (w: WaitlistRow) => {
     if (!accessOf.has(w.client_id)) accessOf.set(w.client_id, await accessFor(env, w.client_id));
     const access = accessOf.get(w.client_id)!;
-    const k = `${w.service_id}|${w.barber_id ?? ''}|${w.day}|${access}`;
+    // „Orice frizer”: doar frizerii din locația înscrierii (fără locație = din oricare).
+    const loc = w.barber_id ? null : (w.location_id ?? null);
+    const k = `${w.service_id}|${w.barber_id ?? ''}|${loc ?? ''}|${w.day}|${access}`;
     if (!cache.has(k)) {
       let s: Slot[] = [];
       try {
-        s = await availability(env, { serviceId: w.service_id, barberId: w.barber_id, day: w.day, access });
+        s = await availability(env, { serviceId: w.service_id, barberId: w.barber_id, locationId: loc, day: w.day, access });
       } catch {
         // serviciu scos între timp: nu are ce anunța
       }
@@ -350,7 +367,8 @@ async function notifyEntry(env: Env, w: WaitlistRow, slots: Slot[]) {
   const c = await env.DB.prepare('SELECT lang FROM clients WHERE id = ?').bind(w.client_id).first<{ lang: string }>();
   if (!c) return false;
   // „Orice frizer”: în mesaj apare frizerul orelor anunțate (toate sunt ale lui).
-  const barberName = w.barber_name ?? (await env.DB.prepare('SELECT name FROM barbers WHERE id = ?').bind(slots[0].barberId).first<{ name: string }>())?.name ?? '';
+  const br = await env.DB.prepare('SELECT name, location_id FROM barbers WHERE id = ?').bind(slots[0].barberId).first<{ name: string; location_id: string | null }>();
+  const barberName = w.barber_name ?? br?.name ?? '';
   const r = await sendTemplate(
     env,
     'waitlist_slot',
@@ -361,8 +379,10 @@ async function notifyEntry(env: Env, w: WaitlistRow, slots: Slot[]) {
       datetime: formatLocal(env.TIMEZONE, slots[0].start, c.lang),
       times: slots.map((s) => hm(env, s.start)).join(', '),
       booklink: bookLink(env, w.id),
+      // Locația frizerului orelor anunțate (cu mai multe locații, mesajul spune unde).
+      ...(await locationVars(env, br?.location_id ?? w.location_id, c.lang)),
     },
-    { data: { screen: 'book', serviceId: w.service_id, barberId: w.barber_id ?? '', day: w.day } },
+    { data: { screen: 'book', serviceId: w.service_id, barberId: w.barber_id ?? '', locationId: w.location_id ?? '', day: w.day } },
   );
   return r.sms || r.push || r.email;
 }
@@ -387,9 +407,9 @@ export async function adminWaitlist(env: Env, q: { from?: string; to?: string; a
 export const waitlistPublic = new Hono<AppEnv>();
 
 waitlistPublic.get('/w/:id', async (c) => {
-  const w = await c.env.DB.prepare('SELECT service_id, barber_id, day FROM waitlist WHERE id = ?')
+  const w = await c.env.DB.prepare('SELECT service_id, barber_id, location_id, day FROM waitlist WHERE id = ?')
     .bind(c.req.param('id').slice(0, 40))
-    .first<{ service_id: string; barber_id: string | null; day: string }>();
+    .first<{ service_id: string; barber_id: string | null; location_id: string | null; day: string }>();
   // Un link necunoscut tot deschide aplicația, la programare.
   return c.html(await openAppPage(c.env, w ? appBookUrl(w) : 'tafbarbers://book'));
 });

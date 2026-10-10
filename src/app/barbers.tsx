@@ -2,10 +2,12 @@ import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 import { Avatar, Button, Card, Screen, styles } from '@/components/ui';
 import { useApp } from '@/state/AppState';
+import { useT } from '@/i18n';
 import { space } from '@/theme';
 
 export default function Barbers() {
   const { barbers, resetDraft } = useApp();
+  const { t } = useT();
 
   return (
     <Screen edges={[]}>
@@ -20,10 +22,10 @@ export default function Barbers() {
       ))}
       <View style={{ marginTop: space.md }}>
         <Button
-          title="Programează-te"
+          title={t('barbers.book')}
           onPress={() => {
             resetDraft();
-            router.push('/book/service');
+            router.push('/book/location');
           }}
         />
       </View>

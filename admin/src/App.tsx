@@ -95,7 +95,7 @@ const NAV: NavSection[] = [
       { items: [{ label: 'Tablou de bord', to: 'dashboard' }] },
       { title: 'Echipa', items: [{ label: 'Frizeri, culori și program', to: 'barbers' }, { label: 'Pauze, ore speciale și concedii', to: 'timeoff' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }] },
       { title: 'Ce oferim', items: [{ label: 'Servicii și prețuri', to: 'services' }, { label: 'Abonamente', to: 'subscriptions' }] },
-      { title: 'Salonul', items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }] },
+      { title: 'Salonul', items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Locații', to: 'settings/locatii' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }] },
     ],
   },
   {
@@ -147,7 +147,7 @@ const NAV: NavSection[] = [
     label: 'Aplicații',
     icon: 'apps',
     groups: [
-      { items: [{ label: 'Aspectul aplicației', to: 'appearance' }, { label: 'Bannere în aplicație', to: 'promos' }] },
+      { items: [{ label: 'Aspectul aplicației', to: 'appearance' }, { label: 'Bannere în aplicație', to: 'promos' }, { label: 'Consilier AI de tunsori', to: 'settings/consilier' }] },
       { title: 'Linkuri', items: [{ label: 'Butonul „Programează” și recenzii', to: 'notifications/linkuri' }] },
       { title: 'Legal', items: [{ label: 'Regulamente și GDPR', to: 'legal' }] },
     ],
@@ -176,7 +176,7 @@ const NAV: NavSection[] = [
     label: 'Setări',
     icon: 'settings',
     groups: [
-      { items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }] },
+      { items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Locații', to: 'settings/locatii' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }, { label: 'Traduceri (engleză, franceză)', to: 'settings/traduceri' }, { label: 'Consilier AI de tunsori', to: 'settings/consilier' }] },
       { title: 'Contul meu', items: [{ label: 'Schimbă parola', to: 'settings/parola' }, { label: 'Deconectare de pe alte dispozitive', to: 'settings/sesiuni' }] },
       { items: [{ label: 'Regulamente și GDPR', to: 'legal' }, { label: 'Mesaje trimise', to: 'settings/mesaje' }] },
     ],

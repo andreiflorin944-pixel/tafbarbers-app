@@ -6,39 +6,41 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { staffApi, type StaffClient } from '@/api/staff';
 import { styles as ui } from '@/components/ui';
 import { formatDate } from '@/lib/dates';
+import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
 import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
 export default function StaffClients() {
   const { staff, staffToken } = useStaff();
+  const { t } = useT();
   const [q, setQ] = useState('');
   const [list, setList] = useState<StaffClient[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!staffToken || !staff?.permissions.clients) return;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       staffApi.clients(staffToken, q.trim()).then(setList, (e) => setError(errorMessage(e)));
     }, 300);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [q, staffToken, staff]);
 
   if (!staff) return null;
   if (!staff.permissions.clients)
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, padding: space.md }}>
-        <Text style={ui.muted}>Contul tău nu are acces la clienți. Cere-i administratorului.</Text>
+        <Text style={ui.muted}>{t('scl.noAccess')}</Text>
       </SafeAreaView>
     );
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ padding: space.md, paddingBottom: space.sm }}>
-        <Text style={s.title}>Clienți</Text>
+        <Text style={s.title}>{t('menu.clients')}</Text>
         <View style={s.search}>
           <Ionicons name="search" size={18} color={colors.muted} />
-          <TextInput value={q} onChangeText={setQ} placeholder={staff.permissions.contacts ? 'Caută după nume sau telefon' : 'Caută după nume sau numărul complet'} placeholderTextColor={colors.muted} style={s.input} autoCorrect={false} />
+          <TextInput value={q} onChangeText={setQ} placeholder={staff.permissions.contacts ? t('scl.searchPhone') : t('scl.searchFull')} placeholderTextColor={colors.muted} style={s.input} autoCorrect={false} />
         </View>
       </View>
       {error ? <Text style={{ color: colors.danger, paddingHorizontal: space.md }}>{error}</Text> : null}
@@ -49,7 +51,7 @@ export default function StaffClients() {
           data={list}
           keyExtractor={(c) => c.id}
           contentContainerStyle={{ paddingHorizontal: space.md, paddingBottom: 40 }}
-          ListEmptyComponent={<Text style={ui.muted}>{q ? 'Niciun client găsit.' : 'Încă nu există clienți.'}</Text>}
+          ListEmptyComponent={<Text style={ui.muted}>{q ? t('scl.noneFound') : t('scl.noneYet')}</Text>}
           renderItem={({ item: c }) => (
             <Pressable onPress={() => router.push({ pathname: '/staff/client/[id]', params: { id: c.id } })} style={s.row}>
               <View style={s.avatar}>
@@ -57,10 +59,10 @@ export default function StaffClients() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={ui.cardTitle} numberOfLines={1}>
-                  {c.name || 'fără nume'}
+                  {c.name || t('scl.noName')}
                 </Text>
                 <Text style={ui.muted}>
-                  {[c.phone, c.visits ? `${c.visits} ${c.visits === 1 ? 'vizită' : 'vizite'}` : '', c.lastVisit ? `ultima ${formatDate(new Date(c.lastVisit))}` : '']
+                  {[c.phone, c.visits ? (c.visits === 1 ? t('scl.visitOne') : t('scl.visitMany', { n: c.visits })) : '', c.lastVisit ? t('scl.last', { date: formatDate(new Date(c.lastVisit)) }) : '']
                     .filter(Boolean)
                     .join(' · ')}
                 </Text>
