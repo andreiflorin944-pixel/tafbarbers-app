@@ -9,6 +9,7 @@ import { Button } from '@/components/ui';
 import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
 import { lei } from '@/lib/price';
+import { storage } from '@/lib/storage';
 import { say, stopSpeaking } from '@/lib/voice';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
@@ -38,7 +39,16 @@ export default function Assistant() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
-  const [speak, setSpeak] = useState(false);
+  // Cum răspunde asistentul: scris sau și cu voce. Alegerea rămâne salvată pe telefon, iar microfonul n-o mai schimbă.
+  const [speak, setSpeakState] = useState(false);
+  useEffect(() => {
+    void storage.get('assist.voice').then((v) => setSpeakState(v === '1'));
+  }, []);
+  const setSpeak = (on: boolean) => {
+    setSpeakState(on);
+    if (!on) stopSpeaking();
+    void storage.set('assist.voice', on ? '1' : '0');
+  };
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const scroll = useRef<ScrollView>(null);
 
@@ -51,7 +61,7 @@ export default function Assistant() {
     setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 50);
   }, [items, busy]);
 
-  const send = async (text: string, viaVoice = false) => {
+  const send = async (text: string) => {
     const content = text.trim();
     if (!content || busy) return;
     setError(null);
@@ -64,7 +74,7 @@ export default function Assistant() {
       const history = next.slice(1).map(({ role, content: c }) => ({ role, content: c }));
       const r = await api.assistant({ messages: history, lang }, token);
       setItems((x) => [...x, { role: 'assistant', content: r.reply, proposal: r.proposal }]);
-      if (speak || viaVoice) void say(r.reply, lang);
+      if (speak) void say(r.reply, lang);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -84,8 +94,7 @@ export default function Assistant() {
         const { text } = await api.assistantVoice(uri, lang, token);
         setBusy(false);
         if (text) {
-          setSpeak(true);
-          await send(text, true);
+          await send(text);
         }
       } catch (e) {
         setBusy(false);
@@ -131,6 +140,12 @@ export default function Assistant() {
         {items.map((m, i) => (
           <View key={i} style={[s.bubble, m.role === 'user' ? s.me : s.bot]}>
             <Text style={m.role === 'user' ? s.meText : s.botText}>{m.content}</Text>
+            {m.role === 'assistant' && i > 0 ? (
+              <Pressable onPress={() => (stopSpeaking(), void say(m.content, lang))} style={s.listen} accessibilityRole="button" accessibilityLabel={t('assist.listen')} hitSlop={8}>
+                <Ionicons name="play-circle-outline" size={16} color={colors.muted} />
+                <Text style={{ color: colors.muted, fontSize: 12 }}>{t('assist.listen')}</Text>
+              </Pressable>
+            ) : null}
             {m.proposal ? (
               <View style={s.proposal}>
                 <Text style={s.propTitle}>{m.proposal.serviceName}</Text>
@@ -171,10 +186,15 @@ export default function Assistant() {
         {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
       </ScrollView>
 
-      <Pressable onPress={() => (setSpeak((v) => !v), stopSpeaking())} style={s.voiceToggle} accessibilityRole="switch" accessibilityState={{ checked: speak }}>
-        <Ionicons name={speak ? 'volume-high' : 'volume-mute'} size={16} color={speak ? colors.gold : colors.muted} />
-        <Text style={{ color: speak ? colors.gold : colors.muted, fontSize: 12 }}>{tx.voice}</Text>
-      </Pressable>
+      <View style={s.modeRow} accessibilityRole="radiogroup">
+        <Text style={{ color: colors.muted, fontSize: 12 }}>{t('assist.replyMode')}</Text>
+        {([false, true] as const).map((on) => (
+          <Pressable key={String(on)} onPress={() => setSpeak(on)} style={[s.modeBtn, speak === on && s.modeOn]} accessibilityRole="radio" accessibilityState={{ checked: speak === on }}>
+            <Ionicons name={on ? 'volume-high' : 'volume-mute'} size={14} color={speak === on ? colors.onGold : colors.muted} />
+            <Text style={{ color: speak === on ? colors.onGold : colors.muted, fontSize: 12, fontWeight: '600' }}>{on ? t('assist.modeVoice') : t('assist.modeText')}</Text>
+          </Pressable>
+        ))}
+      </View>
       <View style={s.bar}>
         {business?.advisor && !recording ? (
           <Pressable onPress={() => router.push('/advisor')} style={s.camera} accessibilityRole="button" accessibilityLabel={t('advisor.title')} disabled={busy}>
@@ -220,7 +240,10 @@ const s = StyleSheet.create({
   propTitle: { color: colors.text, fontWeight: '800', fontSize: 15 },
   propLine: { color: colors.muted, fontSize: 14 },
   example: { alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
-  voiceToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', paddingVertical: 4 },
+  modeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', paddingVertical: 6 },
+  modeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
+  modeOn: { backgroundColor: colors.gold, borderColor: colors.gold },
+  listen: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   bar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.sm, paddingBottom: space.md, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg },
   input: { flex: 1, minHeight: 46, borderRadius: 23, backgroundColor: colors.card, color: colors.text, paddingHorizontal: 16, fontSize: 15 },
   round: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
