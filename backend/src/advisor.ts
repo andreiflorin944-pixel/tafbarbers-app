@@ -12,6 +12,7 @@ import { aiOf } from './translate';
 // Poza nu se salvează nicăieri: nici în baza de date, nici în jurnale. Stă doar în memorie cât durează analiza.
 
 const VISION = '@cf/meta/llama-3.2-11b-vision-instruct';
+const VISION_FALLBACK = '@cf/meta/llama-4-scout-17b-16e-instruct';
 const TEXT = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const DAILY_LIMIT = 5; // analize pe zi pentru un client
 const GLOBAL_DAILY_LIMIT = 300; // analize pe zi la tot salonul
@@ -69,15 +70,22 @@ const VISION_PROMPT = `You are a professional barber. Look at the person in the 
 Answer ONLY with JSON: {"person": true|false, "face": "oval|round|square|oblong|heart|diamond|triangle", "hairType": "straight|wavy|curly|coily", "density": "thin|medium|thick", "length": "very short|short|medium|long", "hairline": "normal|receding|thinning crown|bald", "beard": "none|stubble|short|full", "notes": "max 15 words"}.
 If there is no clearly visible human face, answer {"person": false}.`;
 
+/** Poza ca „data URL” base64, forma din documentația Workers AI (un șir de numere pentru o poză întreagă era prea mare). */
+function dataUrl(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:image/${imageKind(bytes) ?? 'jpeg'};base64,${btoa(bin)}`;
+}
+
 /** Modelul cu vedere poate cere o singură dată acceptarea licenței (prompt „agree”); o facem automat și reîncercăm. */
-async function runVision(env: Env, bytes: Uint8Array): Promise<unknown> {
+async function runLlamaVision(env: Env, image: string): Promise<unknown> {
   const ai = aiOf(env)!;
   const input = {
     messages: [
       { role: 'system', content: VISION_PROMPT },
       { role: 'user', content: 'Describe the face and hair in this photo.' },
     ],
-    image: Array.from(bytes),
+    image,
     max_tokens: 250,
     temperature: 0.2,
   };
@@ -90,12 +98,38 @@ async function runVision(env: Env, bytes: Uint8Array): Promise<unknown> {
   }
 }
 
+/** Al doilea model cu vedere, folosit doar dacă primul dă eroare sau un răspuns de necitit. */
+async function runScout(env: Env, image: string): Promise<unknown> {
+  return aiOf(env)!.run(VISION_FALLBACK, {
+    messages: [
+      { role: 'system', content: VISION_PROMPT },
+      { role: 'user', content: [{ type: 'text', text: 'Describe the face and hair in this photo.' }, { type: 'image_url', image_url: { url: image } }] },
+    ],
+    max_tokens: 250,
+    temperature: 0.2,
+  });
+}
+
+async function runVision(env: Env, bytes: Uint8Array): Promise<Record<string, unknown>> {
+  const image = dataUrl(bytes);
+  try {
+    const o = jsonOf(await runLlamaVision(env, image));
+    if (o) return o;
+    console.error('advisor vision unreadable');
+  } catch (e) {
+    // Doar mesajul erorii în jurnal, niciodată poza.
+    console.error('advisor vision', e instanceof Error ? e.message.slice(0, 200) : 'error');
+  }
+  const o = jsonOf(await runScout(env, image));
+  if (!o) throw new Error('vision_unreadable');
+  return o;
+}
+
 const str = (v: unknown, max = 40) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 /** Analiza pozei: forma feței și părul. Întoarce null dacă în poză nu se vede o față. */
 async function analyse(env: Env, bytes: Uint8Array): Promise<Look | null> {
-  const o = jsonOf(await runVision(env, bytes));
-  if (!o) throw new Error('vision_unreadable');
+  const o = await runVision(env, bytes);
   if (o.person === false || (!o.face && !o.hairType)) return null;
   return { face: str(o.face), hairType: str(o.hairType), density: str(o.density), length: str(o.length), hairline: str(o.hairline), beard: str(o.beard), notes: str(o.notes, 160) };
 }
