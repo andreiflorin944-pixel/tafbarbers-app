@@ -66,7 +66,7 @@ export async function deleteClient(env: Env, id: string) {
   const now = iso(new Date());
   const c = await env.DB.prepare('SELECT phone, email FROM clients WHERE id = ? AND deleted_at IS NULL').bind(id).first<{ phone: string; email: string | null }>();
   if (!c) throw new HttpError(404, 'not_found');
-  // Comenzile nepreluate se anulează (stocul revine).
+  // Comenzile nepreluate se anulează (stocul revine, iar plata online se returnează pe card sau apare „de returnat” în panou).
   const open = await env.DB.prepare(`SELECT id FROM orders WHERE client_id = ? AND status IN ('new', 'ready')`).bind(id).all<{ id: string }>();
   for (const o of open.results) await setOrderStatus(env, o.id, 'cancelled', ['new', 'ready']);
   await wipeIdentity(env, id);

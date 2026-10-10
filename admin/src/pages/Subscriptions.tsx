@@ -41,7 +41,7 @@ export function ClientSubscriptions({ clientId, subs, owner, onChange }: { clien
                 className="ghost sm"
                 disabled={busy}
                 onClick={() =>
-                  confirm(`Anulezi abonamentul „${s.name}”? Banii nu se returnează automat.`) &&
+                  confirm(`Anulezi abonamentul „${s.name}”? Plătit la salon: banii nu se returnează automat. Cumpărat online: nefolosit, banii se returnează singuri pe card; cu tunsori folosite, apare „De returnat” la Plăți online și decizi tu cât returnezi.`) &&
                   run(async () => {
                     await api('PATCH', `/admin/subscriptions/${s.id}`, { status: 'cancelled' });
                     onChange();
@@ -126,7 +126,8 @@ export function SubscriptionsPage(_: { me: Me }) {
         <button onClick={() => setEdit({ periodDays: 30, cuts: 4, price: 150, serviceIds: [], sort: (plans.data?.length ?? 0) + 1, active: true })}>+ Abonament nou</button>
       </div>
       <p className="muted small" style={{ marginTop: -8, maxWidth: 760 }}>
-        Clienții văd abonamentele în aplicație (Cont → Abonamente) și le plătesc la salon. Frizerul sau tu le activați din fișa clientului. La fiecare
+        Clienții văd abonamentele în aplicație (Cont → Abonamente) și le plătesc la salon (frizerul sau tu le activați din fișa clientului) sau, cu plata
+        online pornită, le cumpără direct din aplicație cu cardul și se activează singure. La fiecare
         tunsoare, frizerul confirmă în aplicație „a plătit X lei” sau „pe abonament”, iar tunsoarea se scade din abonament.
       </p>
       {!plans.data ? (

@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
-import { hashPassword, normalizePhone, requireClient, sha256, tokenFrom, verifyPassword } from '../auth';
+import { hashPassword, newId, normalizePhone, requireClient, sha256, tokenFrom, verifyPassword } from '../auth';
 import { clearFailures, lockedAny, loginKeys, recordFailure, validClientPassword } from '../clientPassword';
 import { checkCode, issueCode, useCode } from '../otp';
 import { createGiftCard, getAutomations, giftCard, type GiftCardRow } from '../growth';
 import { BOOKING_SELECT, cancelBooking, createBooking } from '../bookings';
 import { booking, client, emailTaken, getBusiness, type BookingRow, type ClientRow } from '../db';
-import { createCheckout } from '../payments';
+import { createCheckout, publicBase } from '../payments';
 import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
 import { attributeQr } from '../qr';
@@ -178,20 +178,42 @@ clientRoutes.post('/me/gift-cards/:id/pay', async (c) => {
     .first<{ id: string; amount_bani: number; recipient_name: string; email: string | null }>();
   if (!g) throw new HttpError(409, 'not_pending');
   const shop = (await getBusiness(c.env)).name;
-  const url = await createCheckout(c.env, { kind: 'gift', ref: g.id, amountBani: g.amount_bani, title: `Card cadou ${shop} · ${g.amount_bani / 100} lei`, email: g.email });
+  const url = await createCheckout(c.env, {
+    kind: 'gift',
+    ref: g.id,
+    amountBani: g.amount_bani,
+    title: `Card cadou ${shop} · ${g.amount_bani / 100} lei`,
+    email: g.email,
+    base: publicBase(c.env, c.req.url),
+    clientId: id,
+    lang: c.req.query('lang'),
+  });
   return c.json({ url });
 });
 
-/** Plata cu cardul a unei programări viitoare, din aplicație (prețul întreg). */
+/**
+ * Plata cu cardul a unei programări din aplicație: prețul întreg, înainte de vizită, sau suma cerută de echipă
+ * („Cere plata în aplicație”, și după tunsoare). O programare plătită deja nu se mai poate plăti.
+ */
 clientRoutes.post('/bookings/:id/pay', async (c) => {
   const b = await c.env.DB.prepare(`${BOOKING_SELECT} WHERE b.id = ? AND b.client_id = ?`).bind(c.req.param('id'), c.get('client').clientId).first<BookingRow>();
   if (!b) throw new HttpError(404, 'booking_not_found');
   if (b.online_paid_bani) throw new HttpError(409, 'booking_paid');
-  if (b.status !== 'confirmed' || Date.parse(b.starts_at) < Date.now()) throw new HttpError(409, 'not_payable');
-  if (!b.price_bani) throw new HttpError(409, 'not_payable');
+  const due = booking(b).payDue;
+  const amountBani = due ? Math.round(due * 100) : b.status === 'confirmed' && Date.parse(b.starts_at) >= Date.now() ? b.price_bani : 0;
+  if (!amountBani) throw new HttpError(409, 'not_payable');
   const me = await c.env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(b.client_id).first<{ email: string | null }>();
   const biz = await getBusiness(c.env);
-  const url = await createCheckout(c.env, { kind: 'booking', ref: b.id, amountBani: b.price_bani, title: `${b.service_name} · ${b.barber_name} · ${biz.name}`, email: me?.email });
+  const url = await createCheckout(c.env, {
+    kind: 'booking',
+    ref: b.id,
+    amountBani,
+    title: `${b.service_name} · ${b.barber_name} · ${biz.name}`,
+    email: me?.email,
+    base: publicBase(c.env, c.req.url),
+    clientId: b.client_id,
+    lang: c.req.query('lang'),
+  });
   return c.json({ url });
 });
 
@@ -202,7 +224,38 @@ clientRoutes.post('/orders/:id/pay', async (c) => {
   if (o.status !== 'new' && o.status !== 'ready') throw new HttpError(409, 'not_payable');
   const me = await c.env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(o.clientId).first<{ email: string | null }>();
   const shop = (await getBusiness(c.env)).name;
-  const url = await createCheckout(c.env, { kind: 'order', ref: o.id, amountBani: Math.round(o.total * 100), title: `Comanda ${o.code} · ${shop}`, email: me?.email });
+  const url = await createCheckout(c.env, {
+    kind: 'order',
+    ref: o.id,
+    amountBani: Math.round(o.total * 100),
+    title: `Comanda ${o.code} · ${shop}`,
+    email: me?.email,
+    base: publicBase(c.env, c.req.url),
+    clientId: o.clientId,
+    lang: c.req.query('lang'),
+  });
+  return c.json({ url });
+});
+
+/** Cumpără un abonament din aplicație, cu cardul. Se activează singur când Stripe confirmă plata (fără plata online: doar la salon). */
+clientRoutes.post('/me/subscriptions/:planId/pay', async (c) => {
+  const clientId = c.get('client').clientId;
+  const p = await c.env.DB.prepare('SELECT id, name, price_bani FROM plans WHERE id = ? AND active = 1').bind(c.req.param('planId')).first<{ id: string; name: string; price_bani: number }>();
+  if (!p) throw new HttpError(404, 'plan_not_found');
+  const me = await c.env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(clientId).first<{ email: string | null }>();
+  const shop = (await getBusiness(c.env)).name;
+  // Id-ul abonamentului se alege acum; abonamentul apare doar după plată, o singură dată.
+  const url = await createCheckout(c.env, {
+    kind: 'sub',
+    ref: newId('sb'),
+    amountBani: p.price_bani,
+    title: `Abonament ${p.name} · ${shop}`,
+    email: me?.email,
+    base: publicBase(c.env, c.req.url),
+    clientId,
+    lang: c.req.query('lang'),
+    meta: { plan: p.id },
+  });
   return c.json({ url });
 });
 

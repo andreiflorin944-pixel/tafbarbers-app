@@ -90,6 +90,8 @@ export interface BookingApi {
   cancelOrder(token: string, id: string): Promise<Order>;
   payOrder(token: string, id: string): Promise<{ url: string }>;
   payBooking(token: string, id: string): Promise<{ url: string }>;
+  /** Cumpără online un abonament (se activează după plată). */
+  paySubscription(token: string, planId: string): Promise<{ url: string }>;
   /** Clientul din cont a deschis aplicația dintr-un cod QR de campanie. */
   qrOpen(token: string, code: string): Promise<{ ok: true }>;
   /** Asistentul: istoricul conversației → răspunsul și, poate, o programare propusă. */

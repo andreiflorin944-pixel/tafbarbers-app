@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, setToken, PERM_LABELS, ROLE_HELP, ROLE_LABELS, type Barber, type Business, type Location, type Me, type Perm, type Role } from '../api';
 import { emptyTr, Field, ImagePicker, Loading, TranslationFields, useAction, useLoad, useSub } from '../ui';
-import { date, time } from '../util';
+import { date, lei, time } from '../util';
 
 export function SettingsPage({ me }: { me: Me }) {
   // Din meniu: #/settings/<secțiune> derulează la secțiunea respectivă (după ce s-a încărcat).
@@ -34,6 +34,7 @@ export function SettingsPage({ me }: { me: Me }) {
           </a>
         ) : null}
         {me.owner ? <BusinessForm /> : null}
+        {me.owner ? <OnlinePayments /> : null}
         {me.owner ? <Locations /> : null}
         {me.owner ? <TranslateAll /> : null}
         {me.owner ? <HairAdvisor /> : null}
@@ -43,6 +44,171 @@ export function SettingsPage({ me }: { me: Me }) {
         {me.owner ? <MessageLog /> : null}
       </div>
     </>
+  );
+}
+
+type PayStatus = {
+  on: boolean;
+  missing: { STRIPE_SECRET_KEY: boolean; STRIPE_WEBHOOK_SECRET: boolean; PUBLIC_URL: boolean };
+  mode: 'test' | 'live' | 'unknown' | null;
+  base: string;
+  webhookUrl: string;
+  events: string[];
+  lastWebhookAt: string | null;
+  lastWebhookType: string | null;
+  lastWebhookResult: string | null;
+  lastBadSignatureAt: string | null;
+  toRefund: { count: number; amount: number };
+};
+
+/** O comandă de terminal sau o valoare de lipit, cu buton de copiere. */
+function Copy({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <div className="row" style={{ gap: 6, flexWrap: 'nowrap', alignItems: 'center' }}>
+      <code style={{ flex: 1, padding: '6px 8px', background: 'var(--card-alt)', borderRadius: 6, overflowX: 'auto', whiteSpace: 'nowrap' }}>{text}</code>
+      <button
+        className="ghost sm"
+        type="button"
+        onClick={() => navigator.clipboard?.writeText(text).then(() => (setDone(true), setTimeout(() => setDone(false), 1500)), () => prompt('Copiază:', text))}
+      >
+        {done ? 'Copiat' : 'Copiază'}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Plata online cu cardul (Stripe): starea, ce lipsește și pașii de pornire. Cheile nu se văd niciodată aici (doar dacă există),
+ * iar din cheia secretă se arată doar dacă e de test sau live.
+ */
+function OnlinePayments() {
+  const st = useLoad(() => api<PayStatus>('GET', '/admin/payments/status'));
+  const s = st.data;
+  const when = (iso: string) => `${date(iso)}, ${time(iso)}`;
+  return (
+    <div className="card grid">
+      <h2 id="set-plati" style={{ margin: 0, scrollMarginTop: 16 }}>Plăți online (card, Apple Pay, Google Pay)</h2>
+      {!s ? (
+        <Loading error={st.error} />
+      ) : (
+        <>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <span className={`pill ${s.on ? 'completed' : 'cancelled'}`}>{s.on ? 'Pornită' : 'Oprită'}</span>
+            {s.mode === 'test' ? <span className="pill confirmed">Mod test: plăți de probă, fără bani reali</span> : null}
+            {s.mode === 'live' ? <span className="pill completed">Mod live: bani reali</span> : null}
+            {s.mode === 'unknown' ? <span className="pill cancelled">Cheia nu pare o cheie secretă Stripe (sk_test_… sau sk_live_…)</span> : null}
+            <button className="ghost sm" onClick={st.reload}>
+              Verifică din nou
+            </button>
+          </div>
+          <div className="muted small">
+            {s.on
+              ? 'Clienții pot plăti din aplicație programările, comenzile, cardurile cadou și abonamentele, iar echipa poate cere plata în aplicație. La anulare, banii se returnează singuri pe card.'
+              : 'Până pornește, totul se plătește la salon și butoanele de plată online nu apar în aplicație.'}
+          </div>
+          <table>
+            <tbody>
+              <tr>
+                <td>STRIPE_SECRET_KEY</td>
+                <td>{s.missing.STRIPE_SECRET_KEY ? <span className="err small">lipsește</span> : <span className="success small">pusă</span>}</td>
+              </tr>
+              <tr>
+                <td>STRIPE_WEBHOOK_SECRET</td>
+                <td>{s.missing.STRIPE_WEBHOOK_SECRET ? <span className="err small">lipsește</span> : <span className="success small">pusă</span>}</td>
+              </tr>
+              <tr>
+                <td>PUBLIC_URL (opțională)</td>
+                <td className="small">{s.missing.PUBLIC_URL ? <span className="muted">nu e pusă: se folosește {s.base}</span> : <span className="success">pusă: {s.base}</span>}</td>
+              </tr>
+              <tr>
+                <td>Ultimul webhook primit</td>
+                <td className="small">
+                  {s.lastWebhookAt ? (
+                    <>
+                      {when(s.lastWebhookAt)} · <code>{s.lastWebhookType}</code>
+                      {s.lastWebhookResult ? ` · ${s.lastWebhookResult}` : ''}
+                    </>
+                  ) : (
+                    <span className="muted">niciunul încă</span>
+                  )}
+                </td>
+              </tr>
+              {s.lastBadSignatureAt ? (
+                <tr>
+                  <td>Webhook cu semnătură greșită</td>
+                  <td className="small err">
+                    {when(s.lastBadSignatureAt)}: secretul webhook-ului (whsec_…) nu e cel al acestui webhook din Stripe. Pune-l din nou (pasul 5).
+                  </td>
+                </tr>
+              ) : null}
+              {s.toRefund.count ? (
+                <tr>
+                  <td>De returnat</td>
+                  <td className="small err">
+                    {s.toRefund.count} plăți, {lei(s.toRefund.amount)} · <a href="#/payments">vezi Plăți online</a>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+
+          <b>Adresa webhook-ului (o lipești în Stripe)</b>
+          <Copy text={s.webhookUrl} />
+          <b>Evenimentele de bifat</b>
+          {s.events.map((e) => (
+            <Copy key={e} text={e} />
+          ))}
+
+          <details open={!s.on}>
+            <summary>
+              <b>Pașii de pornire (o singură dată)</b>
+            </summary>
+            <ol className="grid small" style={{ gap: 10, paddingLeft: 18, marginTop: 10 }}>
+              <li>
+                Intră pe <a href="https://dashboard.stripe.com" target="_blank" rel="noreferrer">dashboard.stripe.com</a> și fă-ți cont (sau intră în cel existent).
+                Completează datele firmei și contul bancar în lei, ca să primești banii. Pentru început lasă comutatorul „Test mode” pornit: plățile sunt de probă.
+              </li>
+              <li>
+                <b>Developers → API keys</b>: la „Secret key” apasă „Reveal” și copiaz-o (începe cu <code>sk_test_</code> în test, cu <code>sk_live_</code> pentru bani
+                reali). N-o trimite nimănui și n-o scrie nicăieri altundeva.
+              </li>
+              <li>
+                Pe laptop, deschide Terminal și scrie pe rând (după a doua comandă lipești cheia când ți-o cere și apeși Enter):
+                <Copy text="cd ~/tafbarbers-app/backend" />
+                <Copy text="npx wrangler secret put STRIPE_SECRET_KEY" />
+              </li>
+              <li>
+                În Stripe: <b>Developers → Webhooks → Add endpoint</b> (sau „Add destination” → Webhook endpoint). La „Endpoint URL” lipești adresa de mai sus, iar
+                la evenimente bifezi <code>checkout.session.completed</code> și <code>checkout.session.async_payment_succeeded</code>. Salvează. Apoi, în pagina
+                webhook-ului, la „Signing secret” apasă „Reveal” și copiază-l (începe cu <code>whsec_</code>).
+              </li>
+              <li>
+                Înapoi în Terminal (tot în folderul backend):
+                <Copy text="npx wrangler secret put STRIPE_WEBHOOK_SECRET" />
+                Lipești secretul și apeși Enter. Nu trebuie publicat nimic din nou: secretele intră imediat.
+              </li>
+              <li>
+                În Stripe: <b>Settings → Payment methods</b>: lasă pornite Cards, Apple Pay și Google Pay. Pagina de plată Stripe le arată singură clienților care le au pe
+                telefon. La <b>Settings → Business → Public details</b> pune numele salonului (apare pe extrasul clientului).
+              </li>
+              <li>
+                Apasă „Verifică din nou” mai sus: trebuie să scrie „Pornită” și „Mod test”. Fă o plată de probă din aplicație (de ex. un card cadou) cu cardul{' '}
+                <code>4242 4242 4242 4242</code>, orice dată din viitor și orice CVC. După câteva secunde, „Ultimul webhook primit” trebuie să arate ora plății.
+              </li>
+              <li>
+                Pentru bani reali: în Stripe oprește „Test mode”, apoi repetă pașii 2–5 cu cheia <code>sk_live_</code> și un webhook nou, creat în modul live (are alt{' '}
+                <code>whsec_</code>). Aici trebuie să apară „Mod live”.
+              </li>
+              <li className="muted">
+                Opțional, când aveți un domeniu propriu (ex. app.tafbarbers.ro): <code>npx wrangler secret put PUBLIC_URL</code> cu adresa întreagă, apoi actualizează
+                adresa webhook-ului în Stripe. Până atunci se folosește automat {s.base}.
+              </li>
+            </ol>
+          </details>
+        </>
+      )}
+    </div>
   );
 }
 

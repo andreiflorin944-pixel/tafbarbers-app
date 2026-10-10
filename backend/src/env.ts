@@ -21,7 +21,10 @@ export type Env = {
   // Plata online (Stripe). Fără ele butoanele „Plătește online” nu apar și totul se plătește la salon.
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
-  // Adresa publică a serverului (ex. https://app.tafbarbers.ro), pentru paginile la care revine clientul după plată.
+  // Doar pentru teste locale: server de probă în locul api.stripe.com.
+  STRIPE_MOCK_BASE?: string;
+  // Adresa publică a serverului (ex. https://app.tafbarbers.ro), pentru linkuri și întoarcerea de la plată.
+  // Opțională: fără ea se folosește adresa la care a venit cererea (ex. https://tafbarbers-api….workers.dev).
   PUBLIC_URL?: string;
   // Contul demo pentru verificarea din magazine, „telefon:cod” (ex. 0700000000:4826).
   REVIEW_LOGIN?: string;
@@ -41,6 +44,9 @@ export type Env = {
   // Doar pentru dezvoltare locală: codul OTP se întoarce în răspuns în loc de SMS.
   DEV_OTP?: string;
 };
+
+/** Plata online e pornită când există ambele secrete Stripe (adresa publică se ia din cerere dacă PUBLIC_URL lipsește). */
+export const onlinePaymentsOn = (env: Env) => !!(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET);
 
 export type ClientSession = { kind: 'client'; clientId: string };
 // Drepturi configurabile pe conturile echipei. Administratorul de organizație le are pe toate;

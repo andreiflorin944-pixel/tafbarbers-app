@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, AppState, Linking, Platform, Text, View } from 'react-native';
 import { api } from '@/api';
 import { useLoginGate } from '@/components/LoginGate';
 import { cutsText, SubscriptionRow } from '@/components/SubscriptionRow';
-import { Card, Screen, styles } from '@/components/ui';
+import { Button, Card, Screen, styles } from '@/components/ui';
 import type { Plan, Subscription } from '@/data/types';
 import { formatDate } from '@/lib/dates';
 import { useT } from '@/i18n';
@@ -15,15 +15,36 @@ import { colors, space } from '@/theme';
 
 // Abonamentele clientului: cel activ (cu tunsorile rămase), ce abonamente oferă salonul și istoricul.
 export default function Subscriptions() {
-  const { token, services } = useApp();
+  const { token, services, business } = useApp();
   const { t } = useT();
   const gate = useLoginGate();
   const [data, setData] = useState<{ plans: Plan[]; subscriptions: Subscription[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [paying, setPaying] = useState<string | null>(null);
+  const load = useCallback(() => {
     if (token) api.getSubscriptions(token).then(setData, (e) => setError(errorMessage(e)));
   }, [token]);
+  useEffect(load, [load]);
+  // La întoarcerea de pe pagina de plată, abonamentul cumpărat apare imediat (se activează prin webhook).
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => st === 'active' && load());
+    return () => sub.remove();
+  }, [load]);
+  const online = !!business?.onlinePayments;
+  const buy = async (p: Plan) => {
+    if (!token) return;
+    setPaying(p.id);
+    try {
+      const { url } = await api.paySubscription(token, p.id);
+      await Linking.openURL(url);
+    } catch (e) {
+      const m = errorMessage(e);
+      Platform.OS === 'web' ? window.alert(m) : Alert.alert('TAF', m);
+    } finally {
+      setPaying(null);
+    }
+  };
 
   if (gate) return gate;
   if (!data) return <Screen edges={[]}>{error ? <Text style={{ color: colors.danger }}>{error}</Text> : <ActivityIndicator color={colors.gold} />}</Screen>;
@@ -63,11 +84,16 @@ export default function Subscriptions() {
               {p.cuts === null ? t('subs.unlimitedCuts') : p.cuts === 1 ? t('subs.cutOne') : t('subs.cutMany', { n: p.cuts })} · {t('subs.days', { n: p.periodDays })} ·{' '}
               {covers(p.serviceIds)}
             </Text>
+            {online ? (
+              <View style={{ marginTop: space.sm }}>
+                <Button title={t('subs.buyOnline', { price: lei(p.price) })} onPress={() => buy(p)} loading={paying === p.id} />
+              </View>
+            ) : null}
           </Card>
         ))}
       </View>
       {data.plans.length ? (
-        <Text style={[styles.muted, { marginTop: space.sm }]}>{t('subs.payInfo')}</Text>
+        <Text style={[styles.muted, { marginTop: space.sm }]}>{online ? t('subs.payInfoOnline') : t('subs.payInfo')}</Text>
       ) : null}
 
       {past.length ? (

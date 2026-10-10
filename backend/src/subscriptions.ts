@@ -1,6 +1,6 @@
 import { newId } from './auth';
 import { redeemGiftCard, refundGiftCard } from './growth';
-import { HttpError, type Env } from './env';
+import { HttpError, onlinePaymentsOn, type Env } from './env';
 import { iso } from './time';
 import { sendTemplate } from './sendTemplate';
 
@@ -131,9 +131,18 @@ export async function getSubscriptions(env: Env, clientId: string, staff: boolea
 
 /** Activează un abonament după plata la salon. Dacă clientul are deja unul activ din același plan, noul începe când se termină acela. */
 /** `gift`: pachet oferit cadou (ex. premiu pentru recomandări): nu se încasează, deci prețul salvat e 0. */
-export async function activateSubscription(env: Env, clientId: string, planId: string, adminId: string, note: string, gift = false) {
+/** Cumpărat din aplicație (`adminId` null): `opts.id` e id-ul ales la plată, iar planul ascuns între timp se onorează (era plătit). */
+export async function activateSubscription(
+  env: Env,
+  clientId: string,
+  planId: string,
+  adminId: string | null,
+  note: string,
+  gift = false,
+  opts: { id?: string; payMethod?: string; anyPlan?: boolean } = {},
+) {
   const p = await env.DB.prepare('SELECT * FROM plans WHERE id = ?').bind(planId).first<PlanRow>();
-  if (!p || !p.active) throw new HttpError(404, 'plan_not_found');
+  if (!p || (!p.active && !opts.anyPlan)) throw new HttpError(404, 'plan_not_found');
   const exists = await env.DB.prepare('SELECT 1 FROM clients WHERE id = ? AND deleted_at IS NULL').bind(clientId).first();
   if (!exists) throw new HttpError(404, 'not_found');
   const now = iso(new Date());
@@ -145,12 +154,12 @@ export async function activateSubscription(env: Env, clientId: string, planId: s
     .first<{ e: string | null }>();
   const start = last?.e && last.e > now ? last.e : now;
   const end = iso(new Date(new Date(start).getTime() + p.period_days * 86_400_000));
-  const id = newId('sb');
+  const id = opts.id ?? newId('sb');
   await env.DB.prepare(
-    `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by, pay_method)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, clientId, p.id, p.name, gift ? 0 : p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId)
+    .bind(id, clientId, p.id, p.name, gift ? 0 : p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId, opts.payMethod ?? null)
     .run();
   const enddate = new Date(end).toLocaleDateString('ro-RO', { timeZone: env.TIMEZONE, day: 'numeric', month: 'long', year: 'numeric' });
   try {
@@ -207,8 +216,14 @@ export async function completeBooking(
 
   // Cum s-a plătit suma de la casă (pentru registrul de încasări): numerar implicit, card la POS sau transfer.
   // „online” = plătită din aplicație înainte de vizită (doar dacă plata online chiar a venit).
+  // „app” = echipa cere plata în aplicație: nu intră nici la numerar, nici la card; devine „online” când vine plata.
+  if (b.payMethod === 'app' && paidBani) {
+    if (!onlinePaymentsOn(env)) throw new HttpError(409, 'payments_off');
+    if (bk.online_paid_bani) throw new HttpError(409, 'booking_paid');
+    if (paidBani < 200) throw new HttpError(400, 'amount_too_small');
+  }
   const payMethod = paidBani
-    ? b.payMethod === 'card' || b.payMethod === 'transfer'
+    ? b.payMethod === 'card' || b.payMethod === 'transfer' || b.payMethod === 'app'
       ? b.payMethod
       : b.payMethod === 'online' && bk.online_paid_bani
         ? 'online'

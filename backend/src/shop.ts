@@ -1,9 +1,11 @@
 import { newId } from './auth';
 import { HttpError, type Env } from './env';
+import { refundFor } from './payments';
 import { sendTemplate } from './sendTemplate';
 import { iso } from './time';
 
-// Magazin online. Plata se face la ridicarea din salon; stocul scade la comandă și revine la anulare.
+// Magazin online. Plata se face la ridicarea din salon sau online, din aplicație; stocul scade la comandă și revine la anulare.
+// O comandă plătită online și apoi anulată își primește banii înapoi pe card (sau apare „de returnat” în panou).
 
 export type ProductRow = {
   id: string;
@@ -43,11 +45,13 @@ export const orderCode = (id: string) => id.slice(-5).toUpperCase();
 
 export async function getOrders(env: Env, where: string, binds: unknown[], limit = 100) {
   const orders = await env.DB.prepare(
-    `SELECT o.*, c.name AS client_name, c.phone AS client_phone FROM orders o JOIN clients c ON c.id = o.client_id
+    `SELECT o.*, c.name AS client_name, c.phone AS client_phone,
+       (SELECT p.status FROM online_payments p WHERE p.kind = 'order' AND p.ref = o.id AND p.session_id = o.payment_ref) AS online_status
+     FROM orders o JOIN clients c ON c.id = o.client_id
      WHERE ${where} ORDER BY o.created_at DESC LIMIT ${limit}`,
   )
     .bind(...binds)
-    .all<OrderRow & { client_name: string; client_phone: string }>();
+    .all<OrderRow & { client_name: string; client_phone: string; online_status: string | null }>();
   if (!orders.results.length) return [];
   const ids = orders.results.map((o) => o.id);
   const items = await env.DB.prepare(`SELECT * FROM order_items WHERE order_id IN (${ids.map(() => '?').join(',')})`)
@@ -61,6 +65,8 @@ export async function getOrders(env: Env, where: string, binds: unknown[], limit
     note: o.note,
     paidAt: o.paid_at,
     payMethod: o.pay_method,
+    // Plata online a comenzii: plătită / returnată pe card / de returnat (după anulare).
+    onlineStatus: (o.online_status ?? null) as 'paid' | 'refunded' | 'to_refund' | null,
     createdAt: o.created_at,
     updatedAt: o.updated_at,
     clientId: o.client_id,
@@ -168,6 +174,11 @@ export async function setOrderStatus(env: Env, id: string, to: OrderStatus, from
     )
       .bind(id)
       .run();
+    try {
+      await refundFor(env, 'order', id, 'Comandă anulată');
+    } catch (e) {
+      console.error('refund order', id, e);
+    }
   }
   if (to === 'ready') await notifyOrder(env, id, 'order_ready');
   return true;
@@ -175,6 +186,9 @@ export async function setOrderStatus(env: Env, id: string, to: OrderStatus, from
 
 /** Mesajul către client despre comanda lui (primită, gata, anulată), după șabloanele din panou. */
 export async function notifyOrder(env: Env, id: string, event: 'order_created' | 'order_ready' | 'order_cancelled') {
-  const o = await env.DB.prepare('SELECT client_id FROM orders WHERE id = ?').bind(id).first<{ client_id: string }>();
-  if (o) await sendTemplate(env, event, o.client_id, { ordernumber: orderCode(id) }, { data: { orderId: id } });
+  const o = await env.DB.prepare('SELECT client_id, paid_at FROM orders WHERE id = ?').bind(id).first<{ client_id: string; paid_at: string | null }>();
+  if (!o) return;
+  // Plătită deja online: mesajul „gata” nu-i mai spune să plătească la ridicare.
+  const tpl = event === 'order_ready' && o.paid_at ? 'order_ready_paid' : event;
+  await sendTemplate(env, tpl, o.client_id, { ordernumber: orderCode(id) }, { data: { orderId: id } });
 }

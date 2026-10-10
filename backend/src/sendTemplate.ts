@@ -10,15 +10,16 @@ import { renderTemplate, type TplEvent } from './templates';
  * Trimite unui client mesajul automat al unui eveniment, pe canalele bifate în panou (Notificări → Ce se trimite și pe unde),
  * cu textele din șabloane. Întoarce pe ce canale a plecat.
  */
+/** `opts.channel`: un șablon-variantă (ex. comanda gata, plătită deja) folosește canalele bifate la evenimentul de bază. */
 export async function sendTemplate(
   env: Env,
-  event: TplEvent & ChannelEvent,
+  event: (TplEvent & ChannelEvent) | 'order_ready_paid',
   clientId: string,
   vars: Record<string, string>,
-  opts: { bookingId?: string; data?: Record<string, string> } = {},
+  opts: { bookingId?: string; data?: Record<string, string>; channel?: ChannelEvent } = {},
 ): Promise<{ sms: boolean; push: boolean; email: boolean; off?: boolean }> {
   const out = { sms: false, push: false, email: false };
-  const ch = await channelsFor(env, event);
+  const ch = await channelsFor(env, opts.channel ?? (event === 'order_ready_paid' ? 'order_ready' : event));
   if (!ch) return { ...out, off: true };
   const c = await env.DB.prepare('SELECT phone, email, lang, name FROM clients WHERE id = ?')
     .bind(clientId)

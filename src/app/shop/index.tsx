@@ -5,12 +5,14 @@ import { CartBar, ProductImage, QtyControl } from '@/components/Shop';
 import { styles } from '@/components/ui';
 import { useT } from '@/i18n';
 import { lei } from '@/lib/price';
+import { useApp } from '@/state/AppState';
 import { useCart } from '@/state/Cart';
 import { colors, radius, space } from '@/theme';
 
 export default function Shop() {
   const { products, reloadProducts } = useCart();
   const { t } = useT();
+  const { business } = useApp();
   // Stocul se schimbă: la fiecare intrare în magazin luăm lista din nou.
   useEffect(reloadProducts, []);
 
@@ -18,7 +20,7 @@ export default function Shop() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Backdrop />
       <ScrollView contentContainerStyle={s.content}>
-        <Text style={[styles.muted, { marginBottom: space.sm }]}>{t('shop.intro')}</Text>
+        <Text style={[styles.muted, { marginBottom: space.sm }]}>{t(business?.onlinePayments ? 'shop.introOnline' : 'shop.intro')}</Text>
         {products.length === 0 ? <Text style={styles.muted}>{t('shop.empty')}</Text> : null}
         <View style={s.grid}>
           {products.map((p) => (

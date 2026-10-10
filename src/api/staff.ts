@@ -20,7 +20,8 @@ export const apiUrl: string = (
 export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'contacts' | 'timeoff' | 'stats' | 'reports' | 'shop';
 export type StaffRole = 'org_admin' | 'location_admin' | 'barber';
 export const ROLE_LABELS: Record<StaffRole, Key> = { org_admin: 'role.orgAdmin', location_admin: 'role.locationAdmin', barber: 'role.barber' };
-export type StaffMe = { id: string; email: string; name: string; barberId: string | null; role?: StaffRole; owner: boolean; permissions: Record<Perm, boolean> };
+// `onlinePayments`: plata cu cardul din aplicație e pornită pe server (altfel „Cere plata în aplicație” nu se poate folosi).
+export type StaffMe = { id: string; email: string; name: string; barberId: string | null; role?: StaffRole; owner: boolean; permissions: Record<Perm, boolean>; onlinePayments?: boolean };
 export type StaffBooking = {
   id: string;
   clientId: string;
@@ -41,10 +42,15 @@ export type StaffBooking = {
   paidAmount?: number | null;
   onlinePaid?: number | null;
   onlineRefunded?: boolean;
+  payMethod?: string | null; // cash | card | transfer | online | app (= plata cerută în aplicație, încă neplătită)
+  payRequest?: number | null; // suma cerută în aplicație
+  payDue?: number | null; // cât mai are clientul de plătit din aplicație
   tip?: number | null;
   bonusId?: string | null;
   clientBirthday?: boolean; // programarea cade de ziua clientului
 };
+/** Pe ce canale a plecat cererea de plată. */
+export type PaySent = { sms: boolean; push: boolean; email: boolean; off?: boolean };
 export type StaffCheckout = { booking: StaffBooking; subscription: Subscription | null; bonuses: Bonus[] };
 
 async function call<T>(method: string, path: string, token: string | null, body?: unknown): Promise<T> {
@@ -93,7 +99,13 @@ export const staffApi = {
   setStatus: (t: string, id: string, status: string) => call<StaffBooking>('PATCH', `/admin/bookings/${id}`, t, { status }),
   // Cererile de programare (când programările din aplicație cer aprobare).
   requests: (t: string) => call<{ count: number; items: StaffBooking[] }>('GET', '/admin/bookings/requests', t),
-  acceptRequest: (t: string, id: string) => call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/accept`, t),
+  acceptRequest: (t: string, id: string, payRequest = false) =>
+    call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/accept`, t, payRequest ? { payRequest: true } : undefined),
+  // Cererea de plată în aplicație: clientul primește mesajul și plătește din aplicație (Stripe).
+  payRequest: (t: string, id: string, amount?: number) =>
+    call<StaffBooking & { sent?: PaySent }>('POST', `/admin/bookings/${encodeURIComponent(id)}/pay-request`, t, amount === undefined ? {} : { amount }),
+  cancelPayRequest: (t: string, id: string, payMethod: 'cash' | 'card') =>
+    call<StaffBooking>('DELETE', `/admin/bookings/${encodeURIComponent(id)}/pay-request`, t, { payMethod }),
   refuseRequest: (t: string, id: string, reason: string) => call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/refuse`, t, { reason }),
   create: (t: string, body: { phone: string; name: string; serviceId: string; barberId: string; start: string; notify: boolean }) =>
     call<StaffBooking>('POST', '/admin/bookings', t, body),
@@ -161,10 +173,10 @@ export const staffApi = {
       bonusId?: string | null;
       giftCode?: string | null;
       giftAmount?: number | null;
-      payMethod?: 'cash' | 'card' | 'transfer' | 'online';
+      payMethod?: 'cash' | 'card' | 'transfer' | 'online' | 'app';
     },
   ) =>
-    call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/complete`, t, body),
+    call<StaffBooking & { sent?: PaySent }>('POST', `/admin/bookings/${encodeURIComponent(id)}/complete`, t, body),
   plans: (t: string) => call<Plan[]>('GET', '/admin/plans', t),
   activateSubscription: (t: string, clientId: string, planId: string) =>
     call<{ id: string }>('POST', `/admin/clients/${encodeURIComponent(clientId)}/subscriptions`, t, { planId }),

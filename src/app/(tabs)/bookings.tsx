@@ -1,12 +1,14 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, AppState, Linking, Platform, Text, View } from 'react-native';
+import { Alert, AppState, Platform, Text, View } from 'react-native';
 import { api } from '@/api';
 import { Button, Card, Empty, Screen, Segmented, Title, styles } from '@/components/ui';
+import { PayDueBanner, usePayBooking } from '@/components/PayDue';
 import type { Booking, WaitlistEntry } from '@/data/types';
 import { formatDate, formatTime, fromDayKey } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
 import { useT } from '@/i18n';
+import { lei } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
@@ -68,15 +70,7 @@ export default function Bookings() {
     ]);
   };
   const cancelMs = (business?.cancelHours ?? 0) * 3_600_000;
-  const pay = async (b: Booking) => {
-    if (!token) return;
-    try {
-      const { url } = await api.payBooking(token, b.id);
-      await Linking.openURL(url);
-    } catch (e) {
-      notify(errorMessage(e));
-    }
-  };
+  const { pay } = usePayBooking();
   const STATUS: Record<string, string> = { requested: t('bookings.pending'), cancelled: t('status.cancelled'), completed: t('status.completed'), no_show: t('status.noShow') };
   const pending = (b: Booking) => b.status === 'requested';
 
@@ -116,7 +110,10 @@ export default function Bookings() {
           {b.payment === 'subscription' ? t('bookings.onSubscription') : t('common.lei', { n: (b.payment === 'paid' ? b.paidAmount : (b.price ?? service?.price)) ?? 0 })}
           {b.onlinePaid ? (b.onlineRefunded ? t('bookings.refunded') : t('bookings.paidOnline')) : ''}
         </Text>
-        {canCancel && !pending(b) && business?.onlinePayments && !b.onlinePaid && (b.price ?? 0) > 0 ? (
+        {b.payDue && business?.onlinePayments ? (
+          <Text style={{ color: colors.gold, fontWeight: '700' }}>{t('pay.due', { amount: lei(b.payDue) })}</Text>
+        ) : null}
+        {canCancel && !pending(b) && business?.onlinePayments && !b.onlinePaid && !b.payDue && (b.price ?? 0) > 0 ? (
           <View style={{ marginTop: space.sm }}>
             <Button title={t('bookings.payNow')} variant="ghost" onPress={() => pay(b)} />
           </View>
@@ -173,6 +170,7 @@ export default function Bookings() {
   return (
     <Screen tab>
       <Title>{t('bookings.title')}</Title>
+      <PayDueBanner />
       <Segmented options={[t('bookings.upcoming'), t('bookings.past')]} value={tab} onChange={setTab} />
       {tab === 0 && waiting.length > 0 ? (
         <View style={{ gap: space.sm }}>

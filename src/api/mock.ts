@@ -286,6 +286,7 @@ export const mockApi: BookingApi = {
   payOrder: () => Promise.reject(new ApiError('payments_off', 409)),
   qrOpen: async () => ({ ok: true as const }),
   payBooking: () => Promise.reject(new ApiError('payments_off', 409)),
+  paySubscription: () => Promise.reject(new ApiError('payments_off', 409)),
   assistant: () => Promise.resolve({ reply: tr('mock.assistant') }),
   assistantVoice: () => Promise.reject(new ApiError('assistant_off', 409)),
   advisor: () => Promise.reject(new ApiError('advisor_off', 409)),

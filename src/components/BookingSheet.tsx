@@ -13,7 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { staffApi, type StaffBooking, type StaffCheckout } from "@/api/staff";
+import { staffApi, type PaySent, type StaffBooking, type StaffCheckout } from "@/api/staff";
 import { cutsText } from "@/components/SubscriptionRow";
 import { Candle } from "@/components/Birthday";
 import { Button, styles as ui } from "@/components/ui";
@@ -126,6 +126,12 @@ export function BookingSheet({
               }
             />
           ) : null}
+          {b.onlinePaid ? (
+            <Line
+              icon="card-outline"
+              text={b.onlineRefunded ? t("sheet.onlineRefunded", { amount: b.onlinePaid }) : t("sheet.onlinePaidLine", { amount: b.onlinePaid })}
+            />
+          ) : null}
           {b.note ? (
             <Line icon="chatbubble-outline" text={`„${b.note}”`} />
           ) : null}
@@ -166,6 +172,14 @@ export function BookingSheet({
                   onChange({ ...b, ...nb });
                   onClose();
                 }}
+              />
+            ) : null}
+            {p.bookings_manage && !checkout && (b.status === "confirmed" || b.payDue) && !b.onlinePaid ? (
+              <PayRequest
+                booking={b}
+                token={staffToken}
+                on={!!staff.onlinePayments}
+                onDone={(nb) => onChange({ ...b, ...nb })}
               />
             ) : null}
             {canComplete && checkout ? (
@@ -235,7 +249,9 @@ function Checkout({
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState<string | null>(null);
   const [tip, setTip] = useState("");
-  const [payMethod, setPayMethod] = useState<"cash" | "card" | "online">(b.onlinePaid ? "online" : "cash");
+  const { staff } = useStaff();
+  const appOn = !!staff?.onlinePayments && !b.onlinePaid;
+  const [payMethod, setPayMethod] = useState<"cash" | "card" | "online" | "app">(b.onlinePaid ? "online" : "cash");
   const [giftCode, setGiftCode] = useState("");
   const [gift, setGift] = useState<{ code: string; take: number; balance: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -273,15 +289,19 @@ function Checkout({
     setBusy(true);
     setErr("");
     try {
-      onDone(
-        await staffApi.complete(token, b.id, {
-          payment: mode,
-          ...(mode === "paid" && { amount: value, payMethod }),
-          ...(mode === "paid" && gift && { giftCode: gift.code, giftAmount: gift.take }),
-          tip: tipValue || null,
-          bonusId,
-        }),
-      );
+      const nb = await staffApi.complete(token, b.id, {
+        payment: mode,
+        ...(mode === "paid" && { amount: value, payMethod }),
+        ...(mode === "paid" && gift && { giftCode: gift.code, giftAmount: gift.take }),
+        tip: tipValue || null,
+        bonusId,
+      });
+      // Plata cerută în aplicație: spunem dacă mesajul a plecat (altfel clientul o vede doar când deschide aplicația).
+      if (nb.sent) {
+        const m = nb.sent.sms || nb.sent.push || nb.sent.email ? t("sheet.payRequestSent", { amount: value }) : t("sheet.payRequestInApp");
+        Platform.OS === "web" ? window.alert(m) : Alert.alert("TAF", m);
+      }
+      onDone(nb);
     } catch (e) {
       setErr(errorMessage(e));
       setBusy(false);
@@ -319,7 +339,7 @@ function Checkout({
         ) : null}
         {mode === "paid" ? (
           <View style={[ui.row, { gap: space.sm, marginTop: space.sm }]}>
-            {(b.onlinePaid ? (["online", "cash", "card"] as const) : (["cash", "card"] as const)).map((m) => (
+            {(b.onlinePaid ? (["online", "cash", "card"] as const) : appOn ? (["cash", "card", "app"] as const) : (["cash", "card"] as const)).map((m) => (
               <Pressable
                 key={m}
                 onPress={() => setPayMethod(m)}
@@ -335,10 +355,17 @@ function Checkout({
                   backgroundColor: payMethod === m ? colors.gold : "transparent",
                 }}
               >
-                <Text style={{ color: payMethod === m ? colors.onGold : colors.text, fontWeight: "700" }}>{t(m === "cash" ? "sheet.cash" : m === "card" ? "sheet.card" : "sheet.online")}</Text>
+                <Text style={{ color: payMethod === m ? colors.onGold : colors.text, fontWeight: "700" }}>
+                  {t(m === "cash" ? "sheet.cash" : m === "card" ? "sheet.card" : m === "app" ? "sheet.app" : "sheet.online")}
+                </Text>
               </Pressable>
             ))}
           </View>
+        ) : null}
+        {mode === "paid" && payMethod === "app" ? (
+          <Text style={[ui.muted, { fontSize: 13, marginTop: space.xs }]}>{t("sheet.appHint")}</Text>
+        ) : mode === "paid" && !staff?.onlinePayments && !b.onlinePaid ? (
+          <Text style={[ui.muted, { fontSize: 12, marginTop: space.xs }]}>{t("sheet.appOff")}</Text>
         ) : null}
         {mode === "paid" ? (
           <View style={{ marginTop: space.sm, gap: 4 }}>
@@ -417,7 +444,9 @@ function Checkout({
             title={
               mode === "subscription"
                 ? t("sheet.confirmSub")
-                : `${t("sheet.confirmPaid", { n: amount || 0 })}${gift ? t("sheet.plusCard", { n: gift.take }) : ""}`
+                : payMethod === "app"
+                  ? t("sheet.confirmApp", { n: amount || 0 })
+                  : `${t("sheet.confirmPaid", { n: amount || 0 })}${gift ? t("sheet.plusCard", { n: gift.take }) : ""}`
             }
             onPress={confirm}
             loading={busy}
@@ -489,6 +518,7 @@ function RequestButtons({
   onDone: (b: StaffBooking) => void;
 }) {
   const { t } = useT();
+  const { staff } = useStaff();
   const [refusing, setRefusing] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -533,19 +563,101 @@ function RequestButtons({
           </View>
         </>
       ) : (
-        <View style={{ flexDirection: "row", gap: space.sm }}>
-          <View style={{ flex: 1 }}>
+        <>
+          <View style={{ flexDirection: "row", gap: space.sm }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                title={t("sheet.accept")}
+                loading={busy}
+                onPress={() => act(() => staffApi.acceptRequest(token, b.id))}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button title={t("sheet.refuse")} variant="danger" onPress={() => setRefusing(true)} />
+            </View>
+          </View>
+          {/* Acceptă și îi cere clientului plata în aplicație (doar cu plata online pornită). */}
+          {staff?.onlinePayments ? (
             <Button
-              title={t("sheet.accept")}
+              title={t("sheet.acceptPay")}
+              variant="ghost"
               loading={busy}
-              onPress={() => act(() => staffApi.acceptRequest(token, b.id))}
+              onPress={() => act(() => staffApi.acceptRequest(token, b.id, true))}
             />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button title={t("sheet.refuse")} variant="danger" onPress={() => setRefusing(true)} />
-          </View>
-        </View>
+          ) : null}
+        </>
       )}
+      {err ? <Text style={{ color: colors.danger }}>{err}</Text> : null}
+    </View>
+  );
+}
+
+/**
+ * Cererea de plată în aplicație: clientul primește mesajul (push, SMS, e-mail, după setări) și plătește din aplicație.
+ * Trimisă deja: se poate retrimite sau retrage (ex. a plătit totuși la salon). Fără plata online pornită, spunem de ce lipsește.
+ */
+function PayRequest({
+  booking: b,
+  token,
+  on,
+  onDone,
+}: {
+  booking: StaffBooking;
+  token: string;
+  on: boolean;
+  onDone: (b: StaffBooking) => void;
+}) {
+  const { t } = useT();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const act = async (fn: () => Promise<StaffBooking & { sent?: PaySent }>) => {
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const nb = await fn();
+      onDone(nb);
+      if (nb.sent) setMsg(nb.sent.sms || nb.sent.push || nb.sent.email ? t("sheet.payRequestSent", { amount: nb.payDue ?? nb.payRequest ?? 0 }) : t("sheet.payRequestInApp"));
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!on) return b.payDue ? null : <Text style={[ui.muted, { fontSize: 12 }]}>{t("sheet.appOff")}</Text>;
+  const pendingApp = b.status === "completed" && b.payMethod === "app";
+  return (
+    <View style={{ gap: space.sm }}>
+      {b.payDue ? (
+        <>
+          <Text style={{ color: colors.gold, fontWeight: "700" }}>{t("sheet.payRequested", { amount: b.payDue })}</Text>
+          <View style={{ flexDirection: "row", gap: space.sm }}>
+            <View style={{ flex: 1 }}>
+              <Button title={t("sheet.payRequestResend")} variant="ghost" loading={busy} onPress={() => act(() => staffApi.payRequest(token, b.id))} />
+            </View>
+            {pendingApp ? null : (
+              <View style={{ flex: 1 }}>
+                <Button title={t("sheet.payRequestCancel")} variant="ghost" loading={busy} onPress={() => act(() => staffApi.cancelPayRequest(token, b.id, "cash"))} />
+              </View>
+            )}
+          </View>
+          {pendingApp ? (
+            // Încheiată cu plata în aplicație, dar clientul a plătit totuși la salon.
+            <View style={{ flexDirection: "row", gap: space.sm }}>
+              <View style={{ flex: 1 }}>
+                <Button title={t("sheet.paidCashInstead")} variant="ghost" loading={busy} onPress={() => act(() => staffApi.cancelPayRequest(token, b.id, "cash"))} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button title={t("sheet.paidCardInstead")} variant="ghost" loading={busy} onPress={() => act(() => staffApi.cancelPayRequest(token, b.id, "card"))} />
+              </View>
+            </View>
+          ) : null}
+        </>
+      ) : (
+        <Button title={t("sheet.payRequest")} variant="ghost" loading={busy} onPress={() => act(() => staffApi.payRequest(token, b.id))} />
+      )}
+      {msg ? <Text style={{ color: colors.success, fontSize: 13 }}>{msg}</Text> : null}
       {err ? <Text style={{ color: colors.danger }}>{err}</Text> : null}
     </View>
   );

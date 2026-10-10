@@ -116,7 +116,14 @@ export default function Orders() {
               ))}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.xs }}>
                 <Text style={styles.price}>{lei(o.total)}</Text>
-                {o.paidAt && o.payMethod === 'online' ? <Text style={{ color: colors.success, fontWeight: '700' }}>{t('orders.paidOnline')}</Text> : null}
+                {o.paidAt && o.payMethod === 'online' ? (
+                  o.onlineStatus === 'refunded' || o.onlineStatus === 'to_refund' ? (
+                    // Anulată după plata online: banii se întorc pe card (singuri sau de la salon).
+                    <Text style={{ color: colors.muted, fontWeight: '700' }}>{t(o.onlineStatus === 'refunded' ? 'orders.refunded' : 'orders.refundPending')}</Text>
+                  ) : (
+                    <Text style={{ color: colors.success, fontWeight: '700' }}>{t('orders.paidOnline')}</Text>
+                  )
+                ) : null}
                 {o.status === 'new' && !o.paidAt ? (
                   <Text style={{ color: colors.danger, fontWeight: '700' }} onPress={() => cancel(o)}>
                     {t('bookings.cancel')}

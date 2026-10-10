@@ -17,7 +17,7 @@ import { getAppearance } from '../appearance';
 import { product, type ProductRow } from '../shop';
 import { parseBirthDate } from '../identity';
 import { applyReferral } from '../referrals';
-import { handleStripeEvent, onlinePaymentsOn, verifyStripeSignature } from '../payments';
+import { handleStripeEvent, noteWebhook, onlinePaymentsOn, verifyStripeSignature } from '../payments';
 import { advisorAvailable } from '../advisor';
 import { linkTicket, readTicket, socialConfig, socialSignIn, verifyIdToken, type Provider } from '../socialLogin';
 
@@ -45,14 +45,20 @@ publicRoutes.post('/payments/stripe', async (c) => {
   const secret = c.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) throw new HttpError(404, 'not_found');
   const body = await c.req.text();
-  if (!(await verifyStripeSignature(secret, body, c.req.header('stripe-signature')))) throw new HttpError(400, 'bad_signature');
+  if (!(await verifyStripeSignature(secret, body, c.req.header('stripe-signature')))) {
+    // Semnătură greșită: de obicei secretul webhook-ului nu e cel din Stripe. Se vede în Setări → Plăți online.
+    await noteWebhook(c.env, 'stripe_webhook_bad', {});
+    throw new HttpError(400, 'bad_signature');
+  }
   let ev: Parameters<typeof handleStripeEvent>[1];
   try {
     ev = JSON.parse(body);
   } catch {
     throw new HttpError(400, 'invalid_json');
   }
-  return c.json({ received: true, result: await handleStripeEvent(c.env, ev) });
+  const result = await handleStripeEvent(c.env, ev);
+  await noteWebhook(c.env, 'stripe_webhook', { type: String(ev.type ?? ''), result });
+  return c.json({ received: true, result });
 });
 
 // Pozele urcate din panou. Id-ul e nou la fiecare urcare, deci se pot ține în cache oricât.

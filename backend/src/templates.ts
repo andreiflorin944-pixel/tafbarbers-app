@@ -5,7 +5,7 @@ import { autoTranslate, type Texts3 } from './translate';
 // Șabloanele mesajelor automate (cod de intrare, programări, comenzi, abonamente), pe canale: SMS, push, e-mail.
 // Adminul le scrie în română, cu variabile de tipul ##customerfirstname##; engleza și franceza se traduc singure.
 
-export type TplEvent = 'otp' | 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'sub_started';
+export type TplEvent = 'otp' | 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_ready_paid' | 'order_cancelled' | 'sub_started' | 'pay_request';
 export type TplField = 'sms' | 'pushTitle' | 'pushBody' | 'emailSubject' | 'emailBody';
 type Lang = 'ro' | 'en' | 'fr';
 type Stored = Partial<Record<TplEvent, Partial<Record<TplField, Texts3>>>>;
@@ -28,6 +28,8 @@ export const WILDCARDS: Record<string, string> = {
   locationname: 'numele locației',
   locationaddress: 'adresa locației',
   location: 'locația și adresa (doar când salonul are mai multe locații; altfel nu apare nimic)',
+  amount: 'suma de plătit (ex. 80 lei)',
+  paylink: 'linkul care deschide aplicația la plată',
 };
 
 const BOOKING = ['businessname', 'customerfullname', 'customerfirstname', 'servicename', 'barbername', 'datetime', 'locationname', 'locationaddress', 'location'];
@@ -195,6 +197,32 @@ export const TEMPLATE_DEFS: Record<TplEvent, Def> = {
     en: { sms: 'Your ##businessname## order ##ordernumber## is ready. Pick it up at the shop and pay there.' },
     fr: { sms: 'Votre commande ##ordernumber## chez ##businessname## est prête. Retrait et paiement au salon.' },
   },
+  order_ready_paid: {
+    label: 'Comanda e gata de ridicare (plătită deja online)',
+    vars: ORDER,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Comanda ta ##ordernumber## de la ##businessname## e gata. E plătită deja; o poți ridica din salon.',
+      pushTitle: 'Comanda ta e gata',
+      pushBody: 'Comanda ##ordernumber## te așteaptă în salon. E plătită deja.',
+      emailSubject: 'Comanda ta e gata · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, comanda ta ##ordernumber## e gata. Ai plătit-o deja online, deci doar treci s-o ridici din salon.',
+    },
+    en: {
+      sms: 'Your ##businessname## order ##ordernumber## is ready. It is already paid; pick it up at the shop.',
+      pushTitle: 'Your order is ready',
+      pushBody: 'Order ##ordernumber## is waiting for you at the shop. Already paid.',
+      emailSubject: 'Your order is ready · ##businessname##',
+      emailBody: 'Hi ##customerfirstname##, your order ##ordernumber## is ready. You already paid online, so just drop by the shop to pick it up.',
+    },
+    fr: {
+      sms: 'Votre commande ##ordernumber## chez ##businessname## est prête. Elle est déjà payée ; retirez-la au salon.',
+      pushTitle: 'Votre commande est prête',
+      pushBody: 'La commande ##ordernumber## vous attend au salon. Déjà payée.',
+      emailSubject: 'Votre commande est prête · ##businessname##',
+      emailBody: 'Bonjour ##customerfirstname##, votre commande ##ordernumber## est prête. Vous l’avez déjà payée en ligne : passez simplement la retirer au salon.',
+    },
+  },
   order_cancelled: {
     label: 'Comandă anulată (magazin)',
     vars: ORDER,
@@ -217,6 +245,32 @@ export const TEMPLATE_DEFS: Record<TplEvent, Def> = {
       pushBody: 'Abonamentul tău e activ până pe ##enddate##. Îl vezi în aplicație, la Abonamente.',
       emailSubject: 'Bun venit la ##membershipplanname##!',
       emailBody: 'Salut ##customerfirstname##, abonamentul tău ##membershipplanname## la ##businessname## e activ până pe ##enddate##.',
+    },
+  },
+  pay_request: {
+    label: 'Cerere de plată în aplicație (trimisă de echipă)',
+    vars: [...BOOKING, 'amount', 'paylink'],
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: '##businessname##: ai de plătit ##amount## pentru ##servicename## (##datetime##). Plătește din aplicație, cu cardul: ##paylink##',
+      pushTitle: 'Plătește programarea: ##amount##',
+      pushBody: '##servicename##, ##datetime##. Deschide aplicația și apasă „Plătește acum”.',
+      emailSubject: 'Plătește programarea: ##amount## · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, ai de plătit ##amount## pentru ##servicename## cu ##barbername##, ##datetime##. Deschide aplicația și apasă „Plătește acum” (card, Apple Pay sau Google Pay): ##paylink##',
+    },
+    en: {
+      sms: '##businessname##: you have ##amount## to pay for ##servicename## (##datetime##). Pay by card in the app: ##paylink##',
+      pushTitle: 'Pay for your booking: ##amount##',
+      pushBody: '##servicename##, ##datetime##. Open the app and tap “Pay now”.',
+      emailSubject: 'Pay for your booking: ##amount## · ##businessname##',
+      emailBody: 'Hi ##customerfirstname##, you have ##amount## to pay for ##servicename## with ##barbername##, ##datetime##. Open the app and tap “Pay now” (card, Apple Pay or Google Pay): ##paylink##',
+    },
+    fr: {
+      sms: '##businessname## : vous avez ##amount## à payer pour ##servicename## (##datetime##). Payez par carte dans l’app : ##paylink##',
+      pushTitle: 'Payez votre rendez-vous : ##amount##',
+      pushBody: '##servicename##, ##datetime##. Ouvrez l’app et appuyez sur « Payer maintenant ».',
+      emailSubject: 'Payez votre rendez-vous : ##amount## · ##businessname##',
+      emailBody: 'Bonjour ##customerfirstname##, vous avez ##amount## à payer pour ##servicename## avec ##barbername##, ##datetime##. Ouvrez l’app et appuyez sur « Payer maintenant » (carte, Apple Pay ou Google Pay) : ##paylink##',
     },
   },
 };

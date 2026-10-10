@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, blockKind, errorText, type Barber, type BlockOccurrence, type Booking, type Checkout, type Client, type Location, type Me, type Service, type Slot, type TimeOff } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
-import { BOOKINGS_CHANGED, bookingsChanged, RequestActions } from '../Requests';
+import { BOOKINGS_CHANGED, bookingsChanged, RequestActions, sentText } from '../Requests';
 import { addDays, date, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
 
 const PX = 1.2; // pixeli pe minut
@@ -306,6 +306,7 @@ export function CalendarPage({ me }: { me: Me }) {
           color={colorOf(open.barberId)}
           canManage={me.permissions.bookings_manage}
           owner={me.owner}
+          online={!!me.onlinePayments}
           onClose={() => setOpen(null)}
           onChange={reload}
         />
@@ -339,7 +340,9 @@ function Stat({ v, l }: { v: string | number; l: string }) {
 }
 
 /** Panoul din dreapta, la click pe o programare: stare, plată și client, ca în Barberly. */
-function BookingPanel({ b, color, canManage, owner, onClose, onChange }: { b: Booking; color: string; canManage: boolean; owner: boolean; onClose: () => void; onChange: () => void }) {
+function BookingPanel({ b: initial, color, canManage, owner, online, onClose, onChange }: { b: Booking; color: string; canManage: boolean; owner: boolean; online: boolean; onClose: () => void; onChange: () => void }) {
+  // Cererea de plată schimbă programarea fără să închidă panoul: ținem aici varianta primită de la server.
+  const [b, setB] = useState(initial);
   const { busy, error, run } = useAction();
   const [note, setNote] = useState(b.note);
   const [checkout, setCheckout] = useState(false);
@@ -441,7 +444,11 @@ function BookingPanel({ b, color, canManage, owner, onClose, onChange }: { b: Bo
               <span className={`pill ${b.status}`}>{STATUS[b.status]}</span>
               {b.payment ? (
                 <span className="small">
-                  {b.payment === 'subscription' ? 'pe abonament' : `a plătit ${lei(b.paidAmount ?? b.price)}${b.tip ? ` + bacșiș ${lei(b.tip)}` : ''}`}
+                  {b.payment === 'subscription'
+                    ? 'pe abonament'
+                    : b.payMethod === 'app' && b.payDue
+                      ? `are de plătit ${lei(b.payDue)} în aplicație`
+                      : `a plătit ${lei(b.paidAmount ?? b.price)}${b.tip ? ` + bacșiș ${lei(b.tip)}` : ''}`}
                 </span>
               ) : null}
             </div>
@@ -451,6 +458,7 @@ function BookingPanel({ b, color, canManage, owner, onClose, onChange }: { b: Bo
                 {canManage ? (
                   <RequestActions
                     b={b}
+                    online={online}
                     onDone={() => {
                       bookingsChanged();
                       onChange();
@@ -497,9 +505,21 @@ function BookingPanel({ b, color, canManage, owner, onClose, onChange }: { b: Bo
                   {b.onlineRefunded ? `Plata online de ${b.onlinePaid} lei a fost returnată pe card.` : `Plătită online din aplicație: ${b.onlinePaid} lei.`}
                 </div>
               ) : null}
+              {!checkout ? (
+                <PayRequestBox
+                  b={b}
+                  online={online}
+                  owner={owner}
+                  onChange={(nb) => {
+                    setB({ ...b, ...nb });
+                    onChange();
+                  }}
+                />
+              ) : null}
               {checkout && canComplete ? (
                 <CheckoutForm
                   b={b}
+                  online={online}
                   onCancel={() => setCheckout(false)}
                   onDone={() => {
                     onChange();
@@ -512,7 +532,11 @@ function BookingPanel({ b, color, canManage, owner, onClose, onChange }: { b: Bo
                 </button>
               ) : b.payment ? (
                 <div className="row" style={{ gap: 6 }}>
-                  <span className="small success">Plata e confirmată.</span>
+                  {b.payMethod === 'app' && b.payDue ? (
+                    <span className="small">Încheiată; plata se așteaptă în aplicație.</span>
+                  ) : (
+                    <span className="small success">Plata e confirmată{b.payMethod === 'online' ? ' (online, din aplicație)' : ''}.</span>
+                  )}
                   {owner ? (
                     <button
                       className="ghost sm"
@@ -565,14 +589,88 @@ function BookingPanel({ b, color, canManage, owner, onClose, onChange }: { b: Bo
   );
 }
 
+type PayMethod = 'cash' | 'card' | 'transfer' | 'online' | 'app';
+type Sent = { sms: boolean; push: boolean; email: boolean };
+
+/**
+ * Cererea de plată în aplicație: clientul primește mesajul și vede în aplicație „Ai de plătit X lei · Plătește acum”.
+ * Se poate trimite oricând cât programarea e confirmată (și după tunsoare, din „✓ Încheiată” → „cere plata în aplicație”).
+ */
+function PayRequestBox({ b, online, owner, onChange }: { b: Booking; online: boolean; owner: boolean; onChange: (b: Booking) => void }) {
+  const { busy, error, run } = useAction();
+  const [amount, setAmount] = useState(String(b.payDue ?? b.price));
+  const [msg, setMsg] = useState<string | null>(null);
+  if (b.onlinePaid) return null;
+  const pendingApp = b.status === 'completed' && b.payMethod === 'app';
+  if (b.status !== 'confirmed' && !pendingApp) return null;
+  if (!online)
+    return (
+      <div className="muted small" style={{ marginBottom: 6 }}>
+        „Cere plata în aplicație” nu e disponibil: plata online e oprită (lipsesc cheile Stripe).{' '}
+        {owner ? <a href="#/settings/plati">Vezi Setări → Plăți online</a> : 'Proprietarul o pornește din Setări → Plăți online.'}
+      </div>
+    );
+  const send = () =>
+    run(async () => {
+      const r = await api<Booking & { sent: Sent }>('POST', `/admin/bookings/${b.id}/pay-request`, { amount: Number(amount) });
+      setMsg(sentText(r.sent, r.payDue ?? Number(amount)));
+      onChange(r);
+    });
+  const withdraw = (payMethod: 'cash' | 'card') =>
+    run(async () => {
+      const r = await api<Booking>('DELETE', `/admin/bookings/${b.id}/pay-request`, { payMethod });
+      setMsg(pendingApp ? `Notat: a plătit ${payMethod === 'card' ? 'cu cardul (POS)' : 'numerar'} la salon.` : 'Cererea de plată a fost retrasă.');
+      onChange(r);
+    });
+  return (
+    <div className="card grid" style={{ gap: 6, marginBottom: 6 }}>
+      {b.payDue ? (
+        <>
+          <div className="small">
+            <b>Plată cerută în aplicație: {lei(b.payDue)}</b> · clientul n-a plătit încă.
+          </div>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="ghost sm" disabled={busy} onClick={send}>
+              Trimite din nou
+            </button>
+            {pendingApp ? (
+              <>
+                <button className="ghost sm" disabled={busy} onClick={() => withdraw('cash')}>
+                  A plătit numerar
+                </button>
+                <button className="ghost sm" disabled={busy} onClick={() => withdraw('card')}>
+                  A plătit cu cardul (POS)
+                </button>
+              </>
+            ) : (
+              <button className="ghost sm" disabled={busy} onClick={() => withdraw('cash')}>
+                Retrage cererea
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+          <input type="number" min={2} value={amount} onChange={(e) => setAmount(e.target.value)} style={{ width: 100 }} aria-label="Suma cerută" /> lei
+          <button className="ghost sm" disabled={busy || !(Number(amount) >= 2)} onClick={send}>
+            Cere plata în aplicație
+          </button>
+        </div>
+      )}
+      {msg ? <div className="success small">{msg}</div> : null}
+      {error ? <div className="err small">{error}</div> : null}
+    </div>
+  );
+}
+
 /** Confirmarea tunsorii: „a plătit X lei” sau „pe abonament”, plus un bonus folosit (opțional). */
-function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => void; onDone: () => void }) {
+function CheckoutForm({ b, online, onCancel, onDone }: { b: Booking; online: boolean; onCancel: () => void; onDone: () => void }) {
   const data = useLoad(() => api<Checkout>('GET', `/admin/bookings/${b.id}/checkout`), [b.id]);
   const [mode, setMode] = useState<'paid' | 'subscription' | null>(null);
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState('');
   const [tip, setTip] = useState('');
-  const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'transfer' | 'online'>(b.onlinePaid ? 'online' : 'cash');
+  const [payMethod, setPayMethod] = useState<PayMethod>(b.onlinePaid ? 'online' : 'cash');
   const [giftCode, setGiftCode] = useState('');
   const [gift, setGift] = useState<{ code: string; take: number; balance: number } | null>(null);
   const [giftErr, setGiftErr] = useState<string | null>(null);
@@ -601,13 +699,22 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
       <label className="check">
         <input type="radio" checked={m === 'paid'} onChange={() => setMode('paid')} /> A plătit
         <input type="number" min={0} value={amount} onChange={(e) => { setMode('paid'); setAmount(e.target.value); }} style={{ width: 110 }} aria-label="Suma plătită" /> lei
-        <select value={payMethod} onChange={(e) => { setMode('paid'); setPayMethod(e.target.value as 'cash' | 'card' | 'transfer' | 'online'); }} style={{ width: 130 }} aria-label="Cum a plătit">
+        <select value={payMethod} onChange={(e) => { setMode('paid'); setPayMethod(e.target.value as PayMethod); }} style={{ width: 170 }} aria-label="Cum a plătit">
           <option value="cash">numerar</option>
           <option value="card">card (POS)</option>
           <option value="transfer">transfer</option>
           {b.onlinePaid ? <option value="online">online (în aplicație)</option> : null}
+          {online && !b.onlinePaid ? <option value="app">cere plata în aplicație</option> : null}
         </select>
       </label>
+      {m === 'paid' && payMethod === 'app' ? (
+        <div className="muted small">
+          Clientul primește cererea de plată (SMS, e-mail sau notificare, după Notificări) și plătește din aplicație cu cardul, Apple Pay sau Google Pay. Suma nu
+          intră la numerar sau card în registru; apare la online după ce plătește.
+        </div>
+      ) : !online && !b.onlinePaid ? (
+        <div className="muted small">„Cere plata în aplicație” apare după ce pornești plata online (Setări → Plăți online).</div>
+      ) : null}
       <label className="check" style={{ opacity: sub ? 1 : 0.5 }}>
         <input type="radio" disabled={!sub} checked={m === 'subscription'} onChange={() => setMode('subscription')} />
         <span>
@@ -652,18 +759,23 @@ function CheckoutForm({ b, onCancel, onDone }: { b: Booking; onCancel: () => voi
           disabled={busy || (m === 'paid' && amount === '')}
           onClick={() =>
             run(async () => {
-              await api('POST', `/admin/bookings/${b.id}/complete`, {
+              const r = await api<Booking & { sent?: Sent }>('POST', `/admin/bookings/${b.id}/complete`, {
                 payment: m,
                 ...(m === 'paid' && { amount: Number(amount), payMethod }),
                 ...(m === 'paid' && gift && { giftCode: gift.code, giftAmount: gift.take }),
                 tip: tip ? Number(tip) : null,
                 bonusId: bonusId || null,
               });
+              if (r.sent) alert(sentText(r.sent, Number(amount)));
               onDone();
             })
           }
         >
-          {m === 'subscription' ? 'Confirmă: pe abonament' : `Confirmă: ${amount || 0} lei${gift ? ` + ${gift.take} lei card cadou` : ''}`}
+          {m === 'subscription'
+            ? 'Confirmă: pe abonament'
+            : payMethod === 'app'
+              ? `Confirmă și cere ${amount || 0} lei în aplicație`
+              : `Confirmă: ${amount || 0} lei${gift ? ` + ${gift.take} lei card cadou` : ''}`}
         </button>
         <button className="ghost" onClick={onCancel}>
           Înapoi

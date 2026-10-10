@@ -19,6 +19,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { ReportsPage } from './pages/Reports';
 import { NotificationsPage } from './pages/Notifications';
 import { GiftCardsPage } from './pages/GiftCards';
+import { PaymentsPage } from './pages/Payments';
 import { StockPage } from './pages/Stock';
 import { NotesPage } from './pages/Notes';
 import { SocialPage } from './pages/Social';
@@ -40,6 +41,7 @@ const PAGES = [
   { key: 'stock', label: 'Stoc și NIR', show: (m: Me) => m.owner || m.permissions.shop, el: StockPage },
   { key: 'subscriptions', label: 'Abonamente', show: (m: Me) => m.owner, el: SubscriptionsPage },
   { key: 'giftcards', label: 'Carduri cadou', show: (m: Me) => m.permissions.bookings_manage, el: GiftCardsPage },
+  { key: 'payments', label: 'Plăți online', show: (m: Me) => m.owner || m.permissions.stats, el: PaymentsPage },
   { key: 'birthdays', label: 'Zile de naștere', show: (m: Me) => m.owner, el: BirthdaysPage },
   { key: 'referrals', label: 'Recomandări și bonusuri', show: (m: Me) => m.owner, el: ReferralsPage },
   { key: 'timeoff', label: 'Pauze și concedii', show: (m: Me) => m.permissions.timeoff, el: TimeOffPage },
@@ -114,6 +116,7 @@ const NAV: NavSection[] = [
     icon: 'pay',
     groups: [
       { title: 'Încasări', items: [{ label: 'Registrul de încasări', to: 'reports/register' }, { label: 'Toate plățile', to: 'reports/payments' }, { label: 'Plăți pe frizer', to: 'reports/payments-member' }, { label: 'Bacșișuri', to: 'reports/tips-member' }] },
+      { title: 'Online (Stripe)', items: [{ label: 'Plăți online', to: 'payments' }, { label: 'Setări plăți online', to: 'settings/plati' }] },
       { title: 'Vânzări', items: [{ label: 'Carduri cadou', to: 'giftcards' }, { label: 'Abonamente vândute', to: 'subscriptions' }, { label: 'Comenzi magazin', to: 'shop' }] },
     ],
   },
@@ -176,7 +179,7 @@ const NAV: NavSection[] = [
     label: 'Setări',
     icon: 'settings',
     groups: [
-      { items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Locații', to: 'settings/locatii' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }, { label: 'Traduceri (engleză, franceză)', to: 'settings/traduceri' }, { label: 'Consilier AI de tunsori', to: 'settings/consilier' }] },
+      { items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Locații', to: 'settings/locatii' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }, { label: 'Plăți online (Stripe)', to: 'settings/plati' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }, { label: 'Traduceri (engleză, franceză)', to: 'settings/traduceri' }, { label: 'Consilier AI de tunsori', to: 'settings/consilier' }] },
       { title: 'Contul meu', items: [{ label: 'Schimbă parola', to: 'settings/parola' }, { label: 'Deconectare de pe alte dispozitive', to: 'settings/sesiuni' }] },
       { items: [{ label: 'Regulamente și GDPR', to: 'legal' }, { label: 'Mesaje trimise', to: 'settings/mesaje' }] },
     ],

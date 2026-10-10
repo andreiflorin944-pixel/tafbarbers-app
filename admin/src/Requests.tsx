@@ -179,7 +179,7 @@ export function RequestsBell({ me }: { me: Me }) {
                       </a>
                     ) : null}
                     {b.note ? <div className="small">„{b.note}”</div> : null}
-                    <RequestActions b={b} onDone={() => bookingsChanged()} />
+                    <RequestActions b={b} online={me.onlinePayments} onDone={() => bookingsChanged()} />
                   </div>
                 ))
               )}
@@ -192,13 +192,23 @@ export function RequestsBell({ me }: { me: Me }) {
 }
 
 /** Butoanele Acceptă / Refuză (cu motiv) ale unei cereri; folosite în lista clopoțelului și în calendar. */
-export function RequestActions({ b, onDone }: { b: Booking; onDone: () => void }) {
+/** `online`: plata online e pornită, deci se poate accepta și cere plata în aplicație în același pas. */
+/** Pe ce canale a plecat cererea de plată, pentru mesajul din panou. */
+export function sentText(s: { sms: boolean; push: boolean; email: boolean }, amount: number) {
+  const ch = [s.sms && 'SMS', s.email && 'e-mail', s.push && 'notificare'].filter(Boolean);
+  return ch.length
+    ? `Cererea de plată de ${lei(amount)} a plecat prin ${ch.join(', ')}. Clientul o vede și în aplicație („Plătește acum”).`
+    : `Cererea de plată de ${lei(amount)} e salvată, dar niciun mesaj n-a plecat (verifică Notificări → „Cerere de plată în aplicație”). Clientul o vede când deschide aplicația.`;
+}
+
+export function RequestActions({ b, online, onDone }: { b: Booking; online?: boolean; onDone: () => void }) {
   const { busy, error, run } = useAction();
   const [refusing, setRefusing] = useState(false);
   const [reason, setReason] = useState('');
-  const accept = () =>
+  const accept = (payRequest = false) =>
     run(async () => {
-      await api('POST', `/admin/bookings/${b.id}/accept`);
+      const r = await api<Booking & { sent?: { sms: boolean; push: boolean; email: boolean } }>('POST', `/admin/bookings/${b.id}/accept`, payRequest ? { payRequest: true } : undefined);
+      if (r.sent) alert(sentText(r.sent, r.payDue ?? b.price));
       onDone();
     });
   const refuse = () =>
@@ -210,9 +220,14 @@ export function RequestActions({ b, onDone }: { b: Booking; onDone: () => void }
     <div className="grid" style={{ gap: 6 }}>
       {!refusing ? (
         <div className="row" style={{ gap: 6 }}>
-          <button className="sm" disabled={busy} onClick={accept}>
+          <button className="sm" disabled={busy} onClick={() => accept()}>
             ✓ Acceptă
           </button>
+          {online ? (
+            <button className="ghost sm" disabled={busy} onClick={() => accept(true)} title="Clientul primește confirmarea și cererea de plată (SMS, e-mail, notificare) și plătește din aplicație">
+              ✓ Acceptă și cere plata în aplicație
+            </button>
+          ) : null}
           <button className="danger sm" disabled={busy} onClick={() => setRefusing(true)}>
             Refuză
           </button>

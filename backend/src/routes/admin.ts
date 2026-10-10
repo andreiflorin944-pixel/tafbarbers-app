@@ -14,7 +14,8 @@ import {
   tokenFrom,
   verifyPassword,
 } from '../auth';
-import { acceptRequest, BOOKING_SELECT, cancelBooking, createBooking, getBooking, HOLDS_SLOT, pendingRequests, refuseRequest } from '../bookings';
+import { acceptRequest, BOOKING_SELECT, cancelBooking, cancelPayRequest, createBooking, getBooking, HOLDS_SLOT, pendingRequests, refuseRequest, sendPayRequest } from '../bookings';
+import { listPayments, markRefunded, onlinePaymentsOn, paymentsStatus, publicBase, refundOrFlag, retryRefund } from '../payments';
 import {
   barber,
   booking,
@@ -34,7 +35,7 @@ import {
 } from '../db';
 import { HttpError, PERMS, isRole, parsePerms, type AppEnv, type Env, type Perm, type Role } from '../env';
 import { runCampaign } from '../campaigns';
-import { iso, isBirthdayOn, isDay, localDay, localToUtc } from '../time';
+import { addDays, iso, isBirthdayOn, isDay, localDay, localToUtc } from '../time';
 import { clientsCells, clientsCsv, deleteClient } from '../gdpr';
 import { DOCS, getLegal, legalBase, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, notifyOrder, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
@@ -142,7 +143,8 @@ adminRoutes.get('/me', async (c) => {
     .bind(c.get('admin').adminId)
     .first<{ id: string; email: string; name: string; barber_id: string | null }>();
   const s = c.get('admin');
-  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, role: s.role, owner: s.owner, permissions: s.perms });
+  // `onlinePayments`: plata cu cardul din aplicație e pornită (altfel acțiunea „Cere plata în aplicație” nu apare).
+  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, role: s.role, owner: s.owner, permissions: s.perms, onlinePayments: onlinePaymentsOn(c.env) });
 });
 
 /** Catalogul, campaniile și setările sunt doar pentru proprietar. */
@@ -928,9 +930,14 @@ adminRoutes.get('/bookings/requests', async (c) => {
 });
 
 /** Acceptă cererea: devine confirmată și clientul primește confirmarea. */
+/** `{ payRequest: true }`: acceptă și îi cere clientului plata în aplicație (prețul programării). */
 adminRoutes.post('/bookings/:id/accept', async (c) => {
   const cur = await bookingForStaff(c);
-  return c.json(await acceptRequest(c.env, cur.id, c.get('admin').adminId));
+  const b = await c.req.json<{ payRequest?: boolean }>().catch(() => ({}) as { payRequest?: boolean });
+  const accepted = await acceptRequest(c.env, cur.id, c.get('admin').adminId);
+  if (!b.payRequest) return c.json(accepted);
+  const r = await sendPayRequest(c.env, cur.id, c.get('admin').adminId, null, publicBase(c.env, c.req.url));
+  return c.json({ ...r.booking, sent: r.sent });
 });
 
 /** Refuză cererea, cu un motiv opțional pe care îl primește clientul. */
@@ -970,7 +977,28 @@ adminRoutes.post('/bookings/:id/complete', async (c) => {
   const cur = await bookingForStaff(c);
   const b = await c.req.json<{ payment?: string; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null; payMethod?: string | null }>();
   await completeBooking(c.env, cur.id, b, c.get('admin').adminId);
+  // „Cere plata în aplicație”: încheiată acum, iar clientul primește cererea de plată pentru suma rămasă.
+  if (b.payMethod === 'app' && b.payment === 'paid') {
+    const after = await c.env.DB.prepare('SELECT paid_bani FROM bookings WHERE id = ?').bind(cur.id).first<{ paid_bani: number | null }>();
+    const r = await sendPayRequest(c.env, cur.id, c.get('admin').adminId, (after?.paid_bani ?? 0) / 100, publicBase(c.env, c.req.url));
+    return c.json({ ...r.booking, sent: r.sent });
+  }
   return c.json(await getBooking(c.env, cur.id));
+});
+
+/** Cere plata în aplicație: `{ amount? }` în lei (implicit suma de la încheiere sau prețul). Clientul primește mesajul și vede „Plătește acum”. */
+adminRoutes.post('/bookings/:id/pay-request', async (c) => {
+  const cur = await bookingForStaff(c);
+  const b = await c.req.json<{ amount?: number | null }>().catch(() => ({}) as { amount?: number | null });
+  const r = await sendPayRequest(c.env, cur.id, c.get('admin').adminId, b.amount, publicBase(c.env, c.req.url));
+  return c.json({ ...r.booking, sent: r.sent });
+});
+
+/** Retrage cererea de plată; încheiată cu „plata în aplicație”, `payMethod` spune cum a plătit totuși la salon (numerar implicit). */
+adminRoutes.delete('/bookings/:id/pay-request', async (c) => {
+  const cur = await bookingForStaff(c);
+  const b = await c.req.json<{ payMethod?: string }>().catch(() => ({}) as { payMethod?: string });
+  return c.json(await cancelPayRequest(c.env, cur.id, payMethodOf(b.payMethod)));
 });
 
 /** Anulează confirmarea plății (doar proprietarul). */
@@ -1076,9 +1104,16 @@ adminRoutes.post('/clients/:id/subscriptions', async (c) => {
 adminRoutes.patch('/subscriptions/:id', ownerOnly, async (c) => {
   const b = await c.req.json<{ status?: string }>();
   if (b.status !== 'cancelled') throw new HttpError(400, 'invalid_status');
-  await c.env.DB.prepare(`UPDATE subscriptions SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND status = 'active'`)
-    .bind(iso(new Date()), c.req.param('id')!)
+  const id = c.req.param('id')!;
+  const r = await c.env.DB.prepare(`UPDATE subscriptions SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND status = 'active'`)
+    .bind(iso(new Date()), id)
     .run();
+  // Cumpărat online: nefolosit, banii se returnează singuri; cu tunsori folosite, plata apare „de returnat” (decizi tu cât).
+  if (r.meta.changes) {
+    const sub = await c.env.DB.prepare('SELECT cuts_used FROM subscriptions WHERE id = ?').bind(id).first<{ cuts_used: number }>();
+    const used = sub?.cuts_used ?? 0;
+    await refundOrFlag(c.env, 'sub', id, used ? `Abonament anulat după ${used} tunsori folosite` : 'Abonament anulat', !used);
+  }
   return c.json({ ok: true });
 });
 
@@ -1467,6 +1502,10 @@ adminRoutes.patch('/gift-cards/:id', async (c) => {
     if (!c.get('admin').owner) throw new HttpError(403, 'owner_only');
     const r = await c.env.DB.prepare(`UPDATE gift_cards SET status = 'cancelled' WHERE id = ? AND status IN ('pending','active')`).bind(id).run();
     if (!r.meta.changes) throw new HttpError(409, 'not_cancellable');
+    // Plătit online: nefolosit, banii se returnează singuri; folosit parțial, plata apare „de returnat” în Plăți online.
+    const g = await c.env.DB.prepare('SELECT amount_bani, balance_bani FROM gift_cards WHERE id = ?').bind(id).first<{ amount_bani: number; balance_bani: number }>();
+    const unused = !!g && g.balance_bani >= g.amount_bani;
+    await refundOrFlag(c.env, 'gift', id, unused ? 'Card cadou anulat' : `Card cadou anulat după ce a fost folosit (au rămas ${(g?.balance_bani ?? 0) / 100} lei)`, unused);
   } else throw new HttpError(400, 'invalid_status');
   const g = await c.env.DB.prepare(`${GIFT_SELECT} WHERE g.id = ?`).bind(id).first<GiftCardRow>();
   return c.json(giftCard(g!, true));
@@ -1845,7 +1884,7 @@ adminRoutes.get('/stats', async (c) => {
     db
       .prepare(
         `SELECT count(*) AS n,
-           coalesce(sum(CASE WHEN status = 'cancelled' THEN 0 WHEN payment = 'paid' THEN paid_bani WHEN payment = 'subscription' THEN 0 ELSE 0 END), 0) AS revenue,
+           coalesce(sum(CASE WHEN status = 'cancelled' THEN 0 WHEN payment = 'paid' AND coalesce(pay_method, '') != 'app' THEN paid_bani WHEN payment = 'subscription' THEN 0 ELSE 0 END), 0) AS revenue,
            sum(status = 'cancelled') AS cancelled, sum(status = 'no_show') AS no_show
          FROM bookings WHERE starts_at >= ? AND starts_at < ? ${f}`,
       )
@@ -1927,6 +1966,40 @@ adminRoutes.get('/reports/:kind', async (c) => {
     },
   });
 });
+
+// --- Plăți online (Stripe) ---
+
+/** Starea plății online pentru Setări: ce secrete lipsesc (doar da/nu), test sau live, adresa webhook-ului și ultimul webhook primit. */
+adminRoutes.get('/payments/status', ownerOnly, async (c) => c.json(await paymentsStatus(c.env, c.req.url)));
+
+/** GET /payments?from=AAAA-LL-ZZ&to=…&status=paid|refunded|to_refund&kind=booking|order|gift|sub — plățile online, cu totaluri. */
+adminRoutes.get('/payments', async (c) => {
+  const a = c.get('admin');
+  if (!a.owner && !a.perms.stats) throw new HttpError(403, 'no_permission');
+  const q = c.req.query();
+  const tz = c.env.TIMEZONE || 'Europe/Bucharest';
+  const today = localDay(tz, new Date());
+  const from = isDay(q.from) ? q.from : addDays(today, -30);
+  const to = isDay(q.to) ? q.to : today;
+  if (to < from) throw new HttpError(400, 'invalid_range');
+  const r = await listPayments(c.env, {
+    start: iso(localToUtc(tz, from, 0)),
+    end: iso(localToUtc(tz, addDays(to, 1), 0)),
+    status: q.status,
+    kind: q.kind,
+    contacts: a.perms.contacts,
+  });
+  return c.json({ from, to, ...r });
+});
+
+/** O plată „de returnat” a fost returnată de mână (din contul Stripe). */
+adminRoutes.post('/payments/:id/refunded', ownerOnly, async (c) => {
+  await markRefunded(c.env, c.req.param('id')!, c.get('admin').adminId);
+  return c.json({ ok: true });
+});
+
+/** Încearcă din nou returnarea automată (ex. după ce s-a pus cheia Stripe sau Stripe a fost indisponibil). */
+adminRoutes.post('/payments/:id/retry', ownerOnly, async (c) => c.json({ refunded: await retryRefund(c.env, c.req.param('id')!) }));
 
 adminRoutes.get('/messages', ownerOnly, async (c) => {
   const r = await c.env.DB.prepare('SELECT * FROM message_log ORDER BY id DESC LIMIT 200').all();

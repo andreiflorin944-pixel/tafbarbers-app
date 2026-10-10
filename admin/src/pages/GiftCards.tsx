@@ -38,7 +38,7 @@ export function GiftCardsPage({ me }: { me: Me }) {
 
   const act = (g: GiftCard, status: 'active' | 'cancelled') =>
     run(async () => {
-      if (status === 'cancelled' && !confirm(`Anulezi cardul de ${lei(g.amount)} pentru ${g.recipientName || 'destinatar'}?`)) return;
+      if (status === 'cancelled' && !confirm(`Anulezi cardul de ${lei(g.amount)} pentru ${g.recipientName || 'destinatar'}?${g.payMethod === 'online' ? ' E plătit online: nefolosit, banii se returnează singuri pe card; folosit parțial, apare „De returnat” la Plăți online.' : ''}`)) return;
       await api('PATCH', `/admin/gift-cards/${g.id}`, { status, payMethod: method });
       list.reload();
     });

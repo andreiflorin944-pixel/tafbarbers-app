@@ -124,6 +124,7 @@ export function httpApi(baseUrl: string): BookingApi {
     payOrder: (token, id) => call('POST', `/orders/${encodeURIComponent(id)}/pay`, { token }),
     qrOpen: (token, code) => call('POST', '/me/qr', { token, body: { code } }),
     payBooking: (token, id) => call('POST', `/bookings/${encodeURIComponent(id)}/pay`, { token }),
+    paySubscription: (token, planId) => call('POST', `/me/subscriptions/${encodeURIComponent(planId)}/pay`, { token }),
     assistant: (input, token) => call('POST', '/assistant', { body: input, token: token ?? undefined }),
     assistantVoice: async (uri, lang, token) => {
       let res: Response;

@@ -92,7 +92,13 @@ function Orders() {
               {o.paidAt ? (
                 <div className="small" style={{ color: 'var(--ok, #8FC79A)' }}>
                   Plătită {o.payMethod === 'online' ? 'online, cu cardul' : o.payMethod === 'card' ? 'cu cardul (POS)' : o.payMethod === 'transfer' ? 'prin transfer' : 'numerar'}
-                  {o.status === 'cancelled' && o.payMethod === 'online' ? ' · banii trebuie returnați din Stripe' : ''}
+                  {o.onlineStatus === 'refunded' ? ' · banii au fost returnați pe card' : ''}
+                  {o.onlineStatus === 'to_refund' ? (
+                    <>
+                      {' · '}
+                      <a href="#/payments">de returnat din Stripe</a>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
               <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -119,7 +125,7 @@ function Orders() {
                         disabled={busy}
                         onClick={() =>
                           confirm(
-                            `Anulezi comanda ${o.code}? Produsele revin în stoc.${o.payMethod === 'online' ? ' Comanda e plătită online: returnează banii din contul Stripe.' : ''}`,
+                            `Anulezi comanda ${o.code}? Produsele revin în stoc.${o.payMethod === 'online' ? ' Comanda e plătită online: banii se returnează singuri pe card (dacă Stripe nu poate, apare „De returnat” la Plăți online).' : ''}`,
                           ) && setStatus(o, 'cancelled')
                         }
                       >

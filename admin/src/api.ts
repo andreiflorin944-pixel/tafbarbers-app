@@ -102,6 +102,14 @@ const MESSAGES: Record<string, string> = {
   invalid_color: 'Culoarea nu e corectă.',
   invalid_stock: 'Stocul trebuie să fie un număr întreg (sau gol, fără limită).',
   invalid_transition: 'Comanda și-a schimbat deja starea. Reîncarcă pagina.',
+  payments_off: 'Plata online nu e pornită: lipsesc cheile Stripe (vezi Setări → Plăți online).',
+  booking_paid: 'Programarea e deja plătită online.',
+  already_paid: 'Programarea a fost deja încasată la salon (sau pe abonament).',
+  not_payable: 'Programarea nu se poate plăti acum (e anulată, neconfirmată sau încheiată fără plată).',
+  amount_too_small: 'Suma e prea mică pentru plata cu cardul (cel puțin 2 lei).',
+  no_pay_request: 'Programarea nu are o cerere de plată.',
+  pay_request_recent: 'Cererea de plată tocmai a plecat. Mai încearcă peste un minut.',
+  not_to_refund: 'Plata nu mai e „de returnat” (a fost deja returnată). Reîncarcă pagina.',
   no_active_subscription: 'Clientul nu are un abonament activ (cu tunsori rămase) pentru acest serviciu.',
   already_completed: 'Tunsoarea a fost deja confirmată.',
   booking_cancelled: 'Programarea e anulată și nu se mai poate confirma (ora poate fi deja luată). Fă o programare nouă.',
@@ -220,6 +228,7 @@ export type Order = {
   note: string;
   paidAt?: string | null;
   payMethod?: string | null; // cash | card | transfer | online
+  onlineStatus?: 'paid' | 'refunded' | 'to_refund' | null; // plata online după anulare: returnată singură sau de returnat
   createdAt: string;
   clientName: string;
   clientPhone: string;
@@ -308,6 +317,9 @@ export type Booking = {
   paidAmount?: number | null;
   onlinePaid?: number | null; // plătită cu cardul din aplicație, înainte de vizită
   onlineRefunded?: boolean;
+  payMethod?: string | null; // cash | card | transfer | online | app (= plata cerută în aplicație, încă neplătită)
+  payRequest?: number | null; // suma cerută clientului în aplicație
+  payDue?: number | null; // cât mai are clientul de plătit din aplicație
   tip?: number | null;
   cancelledBy?: 'client' | 'staff' | null;
   requestOutcome?: 'accepted' | 'refused' | 'expired' | null; // cererile cu aprobare: cum s-au încheiat
@@ -435,7 +447,8 @@ export const ROLE_HELP: Record<Role, string> = {
   location_admin: 'Vede toate programările și datele de contact ale clienților. Nu schimbă setările afacerii.',
   barber: 'Își vede programările, caută clienți și le completează fișa. Fără telefon și e-mail, dacă nu bifezi.',
 };
-export type Me = { id: string; email: string; name: string; barberId: string | null; role?: Role; owner: boolean; permissions: Record<Perm, boolean> };
+// `onlinePayments`: plata cu cardul în aplicație (Stripe) e pornită; altfel „Cere plata în aplicație” nu apare.
+export type Me = { id: string; email: string; name: string; barberId: string | null; role?: Role; owner: boolean; permissions: Record<Perm, boolean>; onlinePayments?: boolean };
 export const PERM_LABELS: Record<Perm, string> = {
   bookings_all: 'Vede programările tuturor frizerilor',
   bookings_create: 'Adaugă programări',

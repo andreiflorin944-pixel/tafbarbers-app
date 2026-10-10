@@ -39,8 +39,8 @@ CORS_ORIGINS = "*"
 #   EMAIL_API_KEY     cheia furnizorului de e-mail
 #   ADMIN_SETUP_KEY   parolă unică pentru crearea primului cont de admin
 #   EMAIL_FROM        expeditorul e-mailurilor (ex. TAFBarbers <programari@tafbarbers.ro>)
-#   PUBLIC_URL        adresa publică (ex. https://app.tafbarbers.ro), pentru întoarcerea de la plată
-#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET   plata online cu cardul (fără ele plata e doar la salon)
+#   PUBLIC_URL        adresa publică (ex. https://app.tafbarbers.ro); opțională, altfel se folosește adresa workers.dev
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET   plata online cu cardul (fără ele plata e doar la salon; pașii sunt în panou, Setări → Plăți online)
 #   REVIEW_LOGIN      contul demo pentru Apple / Google, „telefon:cod” (cod din 6 cifre)
 #   META_APP_ID, META_APP_SECRET            aplicația Meta pentru postări pe Facebook și Instagram
 #   TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET aplicația TikTok pentru postări

@@ -61,6 +61,7 @@ export type Booking = {
   paidAmount?: number | null;
   onlinePaid?: number | null; // plătită cu cardul din aplicație
   onlineRefunded?: boolean;
+  payDue?: number | null; // echipa a cerut plata în aplicație: suma de plătit acum (null = nimic de plătit)
   requestOutcome?: 'accepted' | 'refused' | 'expired' | null;
   refuseReason?: string | null;
 };
@@ -206,6 +207,7 @@ export type Order = {
   note: string;
   paidAt?: string | null;
   payMethod?: string | null; // cash | card | transfer | online
+  onlineStatus?: 'paid' | 'refunded' | 'to_refund' | null; // plata online: returnată pe card după anulare
   createdAt: string;
   items: Array<{ productId: string; name: string; price: number; qty: number }>;
 };

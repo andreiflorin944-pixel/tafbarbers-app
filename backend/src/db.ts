@@ -180,6 +180,8 @@ export type BookingRow = {
   pay_method?: string | null;
   online_paid_bani?: number | null;
   online_refunded_at?: string | null;
+  pay_request_bani?: number | null;
+  pay_requested_at?: string | null;
   cancelled_by?: string | null;
   request_outcome?: string | null;
   refuse_reason?: string | null;
@@ -216,6 +218,16 @@ export const booking = (r: BookingRow) => ({
   // Plătită din aplicație cu cardul (Stripe), înainte de vizită; la anulare banii se returnează singuri.
   onlinePaid: r.online_paid_bani ? r.online_paid_bani / 100 : null,
   onlineRefunded: !!r.online_refunded_at,
+  // Cererea de plată în aplicație trimisă de echipă; `payDue` = cât mai are clientul de plătit din aplicație (null = nimic).
+  payRequest: r.pay_request_bani ? r.pay_request_bani / 100 : null,
+  payRequestedAt: r.pay_requested_at ?? null,
+  payDue: r.online_paid_bani
+    ? null
+    : r.status === 'completed' && r.pay_method === 'app'
+      ? (r.pay_request_bani ?? r.paid_bani ?? 0) / 100 || null
+      : r.status === 'confirmed' && r.pay_request_bani
+        ? r.pay_request_bani / 100
+        : null,
   cancelledBy: (r.cancelled_by ?? null) as 'client' | 'staff' | null,
   // Cererile de programare (cu aprobare): cum s-au încheiat și motivul refuzului, spus clientului.
   requestOutcome: (r.request_outcome ?? null) as 'accepted' | 'refused' | 'expired' | null,

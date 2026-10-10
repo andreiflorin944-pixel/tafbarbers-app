@@ -22,6 +22,7 @@ export const REPORTS = [
   { kind: 'cancel-client', title: 'Anulări de către client', range: 'period' },
   { kind: 'payments', title: 'Plăți', range: 'period' },
   { kind: 'payments-member', title: 'Plăți în funcție de membrul echipei', range: 'period' },
+  { kind: 'online-payments', title: 'Plăți online (card în aplicație)', range: 'period' },
   { kind: 'tips-member', title: 'Bacșișuri pe membru de echipă', range: 'period' },
   { kind: 'top100', title: 'Clienți TOP-100', range: 'period', clients: true },
   { kind: 'retention', title: 'Păstrarea clienților', range: 'months' },
@@ -38,7 +39,7 @@ const MAX_DAYS = 400;
 const STATUS: Record<string, string> = { requested: 'Cerere în așteptare', confirmed: 'Confirmată', completed: 'Finalizată', cancelled: 'Anulată', no_show: 'Neprezentare' };
 const SOURCE: Record<string, string> = { app: 'Aplicație', admin: 'Echipă', web: 'Site' };
 const PAYMENT: Record<string, string> = { paid: 'Plătită', subscription: 'Abonament' };
-const METHOD: Record<string, string> = { cash: 'Numerar', card: 'Card (POS)', transfer: 'Transfer', online: 'Online' };
+const METHOD: Record<string, string> = { cash: 'Numerar', card: 'Card (POS)', transfer: 'Transfer', online: 'Online', app: 'În aplicație (neplătită încă)' };
 
 type BRow = {
   id: string;
@@ -100,7 +101,8 @@ const localDT = (t: string) => {
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : 0);
 /** Vizită = programare care a avut loc (nu anulată, nu neprezentare, ora a trecut). */
 const isVisit = (b: { status: string; starts_at: string }, now: string) => (b.status === 'completed' || b.status === 'confirmed') && b.starts_at <= now;
-const collected = (b: BRow) => (b.payment === 'paid' ? (b.paid_bani ?? 0) : 0);
+// Plata cerută în aplicație și încă neplătită („app”) nu e încasată: intră când vine plata (devine „online”).
+const collected = (b: BRow) => (b.payment === 'paid' && b.pay_method !== 'app' ? (b.paid_bani ?? 0) : 0);
 
 function range(from: string, to: string) {
   return { start: iso(localToUtc(TZ, from, 0)), end: iso(localToUtc(TZ, addDays(to, 1), 0)) };
@@ -630,6 +632,49 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
       break;
     }
 
+    case 'online-payments': {
+      // Plățile online cu cardul (Stripe), pe ziua plății: păstrate, returnate pe card sau de returnat de mână.
+      const { start, end } = range(from, to);
+      const own = scope.barberId ? `AND p.kind = 'booking' AND b.barber_id = ?` : '';
+      const r = await env.DB.prepare(
+        `SELECT p.kind, p.ref, p.amount_bani, p.status, p.note, p.created_at, p.payment_intent, p.session_id, c.name AS client_name, s.name AS service_name, sb.name AS sub_name
+         FROM online_payments p LEFT JOIN clients c ON c.id = p.client_id
+         LEFT JOIN bookings b ON p.kind = 'booking' AND b.id = p.ref LEFT JOIN services s ON s.id = b.service_id
+         LEFT JOIN subscriptions sb ON p.kind = 'sub' AND sb.id = p.ref
+         WHERE p.created_at >= ? AND p.created_at < ? ${own} ORDER BY p.created_at LIMIT 30000`,
+      )
+        .bind(...(scope.barberId ? [start, end, scope.barberId] : [start, end]))
+        .all<{ kind: string; ref: string; amount_bani: number; status: string; note: string; created_at: string; payment_intent: string | null; session_id: string; client_name: string | null; service_name: string | null; sub_name: string | null }>();
+      const KIND: Record<string, string> = { booking: 'Programare', order: 'Comandă magazin', gift: 'Card cadou', sub: 'Abonament' };
+      const ST: Record<string, string> = { paid: 'Plătită', refunded: 'Returnată', to_refund: 'De returnat' };
+      columns = [
+        { key: 'date', label: 'Data', type: 'datetime' },
+        { key: 'client', label: 'Client', type: 'text' },
+        { key: 'kind', label: 'Tip', type: 'text' },
+        { key: 'what', label: 'Pentru', type: 'text' },
+        { key: 'state', label: 'Stare', type: 'text' },
+        { key: 'note', label: 'Motiv', type: 'text' },
+        { key: 'paid', label: 'Încasat (lei)', type: 'money' },
+        { key: 'refunded', label: 'Returnat (lei)', type: 'money' },
+        { key: 'toRefund', label: 'De returnat (lei)', type: 'money' },
+        { key: 'ref', label: 'Referință Stripe', type: 'text' },
+      ];
+      rows = r.results.map((p) => ({
+        date: localDT(p.created_at),
+        client: p.client_name || 'Fără nume',
+        kind: KIND[p.kind] ?? p.kind,
+        what: p.kind === 'booking' ? (p.service_name ?? '') : p.kind === 'order' ? `Comanda ${p.ref.slice(-5).toUpperCase()}` : p.kind === 'sub' ? (p.sub_name ?? '') : '',
+        state: ST[p.status] ?? p.status,
+        note: p.note,
+        paid: p.status === 'paid' ? lei(p.amount_bani) : null,
+        refunded: p.status === 'refunded' ? lei(p.amount_bani) : null,
+        toRefund: p.status === 'to_refund' ? lei(p.amount_bani) : null,
+        ref: p.payment_intent ?? p.session_id,
+      }));
+      totals = sumRows(rows, columns, `Total: ${rows.length} plăți`);
+      break;
+    }
+
     case 'register': {
       // Registrul de încasări: fiecare programare din zi (sau perioadă) cu felul în care s-a închis și cum s-a plătit.
       const [bk, subs] = await Promise.all([loadBookings(env, scope, from, to, filters), loadSubscriptions(env, scope, from, to)]);
@@ -654,7 +699,9 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         b.status === 'completed'
           ? b.payment === 'subscription'
             ? 'Încheiată · din abonament'
-            : 'Încheiată · plătită'
+            : b.pay_method === 'app'
+              ? 'Încheiată · așteaptă plata în aplicație'
+              : 'Încheiată · plătită'
           : b.status === 'no_show'
             ? 'Nu a venit'
             : b.status === 'cancelled'

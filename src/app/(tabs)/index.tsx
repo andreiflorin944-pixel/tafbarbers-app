@@ -8,6 +8,7 @@ import type { NextFree } from '@/api/client';
 import { mediaUrl } from '@/api/staff';
 import { Backdrop } from '@/components/Backdrop';
 import { LangButton } from '@/components/LangButton';
+import { PayDueBanner } from '@/components/PayDue';
 import { PromoCarousel } from '@/components/PromoCarousel';
 import { ProductImage } from '@/components/Shop';
 import { useCart } from '@/state/Cart';
@@ -116,6 +117,9 @@ export default function Home() {
             </Pressable>
           </View>
         </View>
+
+        {/* Salonul a cerut plata în aplicație: „Ai de plătit X lei · Plătește acum”. */}
+        {user ? <PayDueBanner refresh /> : null}
 
         {promos.length ? <PromoCarousel promos={promos} onPress={openPromo} /> : null}
 

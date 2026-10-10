@@ -1,10 +1,10 @@
 import { newId } from './auth';
 import { booking, getBusiness, type BookingRow } from './db';
-import { HttpError, type Env } from './env';
+import { HttpError, onlinePaymentsOn, type Env } from './env';
 import { accessFor, availability } from './availability';
 import { sendTemplate } from './sendTemplate';
 import { addDays, formatLocal, iso, localDay } from './time';
-import { refundBooking } from './payments';
+import { MIN_BANI, refundBooking } from './payments';
 import type { TplEvent } from './templates';
 import { checkWaitlist, closeOnBooking } from './waitlist';
 import { locationVars } from './locations';
@@ -167,7 +167,7 @@ type BookingJson = NonNullable<Awaited<ReturnType<typeof getBooking>>>;
 export async function notifyBooking(
   env: Env,
   b: BookingJson,
-  kind: Extract<TplEvent, 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired'>,
+  kind: Extract<TplEvent, 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'pay_request'>,
   extra: Record<string, string> = {},
 ) {
   const c = await env.DB.prepare('SELECT lang FROM clients WHERE id = ?').bind(b.clientId).first<{ lang: string }>();
@@ -185,6 +185,58 @@ export async function notifyBooking(
     },
     { bookingId: b.id, data: { bookingId: b.id } },
   );
+}
+
+// --- Cererea de plată în aplicație ---
+
+type PayRow = { status: string; payment: string | null; pay_method: string | null; price_bani: number; paid_bani: number | null; online_paid_bani: number | null; pay_request_bani: number | null; pay_requested_at: string | null };
+const payRow = (env: Env, id: string) =>
+  env.DB.prepare('SELECT status, payment, pay_method, price_bani, paid_bani, online_paid_bani, pay_request_bani, pay_requested_at FROM bookings WHERE id = ?').bind(id).first<PayRow>();
+const leiText = (bani: number) => `${bani % 100 ? (bani / 100).toFixed(2) : bani / 100} lei`;
+
+/**
+ * Echipa îi cere clientului să plătească programarea din aplicație (după tunsoare, la confirmare sau oricând înainte).
+ * Clientul primește mesajul pe canalele bifate (push, SMS, e-mail) și vede în aplicație „Ai de plătit X lei · Plătește acum”.
+ * `amount` în lei; implicit suma încasată la încheiere sau prețul programării. Întoarce pe ce canale a plecat mesajul.
+ */
+export async function sendPayRequest(env: Env, id: string, adminId: string, amount: number | null | undefined, base: string) {
+  if (!onlinePaymentsOn(env)) throw new HttpError(409, 'payments_off');
+  const r = await payRow(env, id);
+  if (!r) throw new HttpError(404, 'not_found');
+  if (r.online_paid_bani) throw new HttpError(409, 'booking_paid');
+  // Încheiată cu „plata în aplicație”, sau încă neîncheiată (confirmată). Încasată la salon sau pe abonament: nu mai e nimic de cerut.
+  const pending = r.status === 'completed' && r.payment === 'paid' && r.pay_method === 'app';
+  if (r.status === 'completed' && !pending) throw new HttpError(409, 'already_paid');
+  if (r.status !== 'confirmed' && !pending) throw new HttpError(409, 'not_payable');
+  const bani = amount === undefined || amount === null ? (pending ? (r.paid_bani ?? r.price_bani) : (r.pay_request_bani ?? r.price_bani)) : Math.round(Number(amount) * 100);
+  if (!(bani >= MIN_BANI && bani <= 10_000_000)) throw new HttpError(400, 'invalid_amount');
+  // Două apăsări la rând nu trimit două SMS-uri.
+  if (r.pay_requested_at && r.pay_request_bani === bani && Date.now() - Date.parse(r.pay_requested_at) < 60_000) throw new HttpError(429, 'pay_request_recent');
+  const now = iso(new Date());
+  await env.DB.prepare(
+    `UPDATE bookings SET pay_request_bani = ?, pay_requested_at = ?, pay_requested_by = ?, paid_bani = CASE WHEN status = 'completed' AND pay_method = 'app' THEN ? ELSE paid_bani END
+     WHERE id = ? AND online_paid_bani IS NULL`,
+  )
+    .bind(bani, now, adminId, bani, id)
+    .run();
+  const b = (await getBooking(env, id))!;
+  const sent = (await notifyBooking(env, b, 'pay_request', { amount: leiText(bani), paylink: `${base}/plata/deschide` })) ?? { sms: false, push: false, email: false };
+  return { booking: b, sent };
+}
+
+/** Echipa retrage cererea de plată (ex. clientul a plătit totuși la salon: `payMethod` numerar / card / transfer). */
+export async function cancelPayRequest(env: Env, id: string, payMethod: string) {
+  const r = await payRow(env, id);
+  if (!r) throw new HttpError(404, 'not_found');
+  if (r.online_paid_bani) throw new HttpError(409, 'booking_paid');
+  if (!r.pay_request_bani && r.pay_method !== 'app') throw new HttpError(409, 'no_pay_request');
+  await env.DB.prepare(
+    `UPDATE bookings SET pay_request_bani = NULL, pay_requested_at = NULL, pay_requested_by = NULL,
+       pay_method = CASE WHEN status = 'completed' AND pay_method = 'app' THEN ? ELSE pay_method END WHERE id = ? AND online_paid_bani IS NULL`,
+  )
+    .bind(payMethod, id)
+    .run();
+  return (await getBooking(env, id))!;
 }
 
 // --- Cereri de programare (când programările din aplicație cer aprobare) ---

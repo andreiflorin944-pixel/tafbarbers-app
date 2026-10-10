@@ -45,9 +45,9 @@ export type GiftCardSettings = {
 };
 export type LinkSettings = { appStoreUrl: string; playStoreUrl: string; googleReviewUrl: string };
 /** Notificările despre programări, comenzi și carduri cadou: adminul alege dacă pleacă și pe ce canale. */
-export type ChannelEvent = 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started';
+export type ChannelEvent = 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started' | 'pay_request';
 export type Channel = { enabled: boolean; push: boolean; sms: boolean; email: boolean };
-export const CHANNEL_EVENTS: ChannelEvent[] = ['confirm', 'cancel', 'booking_request', 'booking_request_refused', 'booking_request_expired', 'waitlist_slot', 'reminder_24h', 'reminder_2h', 'review', 'order_created', 'order_ready', 'order_cancelled', 'gift_card', 'sub_started'];
+export const CHANNEL_EVENTS: ChannelEvent[] = ['confirm', 'cancel', 'booking_request', 'booking_request_refused', 'booking_request_expired', 'waitlist_slot', 'reminder_24h', 'reminder_2h', 'review', 'order_created', 'order_ready', 'order_cancelled', 'gift_card', 'sub_started', 'pay_request'];
 export type Automations = {
   winback: WinbackSettings;
   lastMinute: LastMinuteSettings;
@@ -118,6 +118,8 @@ export const DEFAULT_AUTOMATIONS: Automations = {
     order_cancelled: { enabled: true, push: true, sms: false, email: false },
     gift_card: { enabled: true, push: true, sms: true, email: false },
     sub_started: { enabled: true, push: true, sms: false, email: false },
+    // Cererea de plată pleacă doar când o trimite echipa; pe toate canalele, ca să ajungă și la cine n-are notificările pornite.
+    pay_request: { enabled: true, push: true, sms: true, email: true },
   },
   otpSms: true,
 };
