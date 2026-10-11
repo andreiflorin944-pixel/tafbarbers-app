@@ -132,6 +132,10 @@ export type Subscription = {
   cancelledAt: string | null;
   note?: string;
   createdByName?: string | null;
+  /** Plata automată cu cardul: null = plătit la salon sau o singură dată. `at` = următoarea plată; `ended` = abonamentul Stripe s-a încheiat. */
+  renewal?: { on: boolean; at: string | null; price: number; failed: boolean; ended: boolean } | null;
+  /** Clientul poate porni reînnoirea automată (plata online pornită, planul încă de vânzare). */
+  renewable?: boolean;
 };
 export type Referrals = { enabled: boolean; code: string; referred: number; reward: string | null; bonuses: Bonus[] };
 export type Identity = { note: string; photos: IdentityPhoto[]; staffPhotos?: IdentityPhoto[] };

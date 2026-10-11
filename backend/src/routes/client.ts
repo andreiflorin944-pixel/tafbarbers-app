@@ -15,6 +15,7 @@ import { createOrder, getOrder, getOrders, notifyOrder, setOrderStatus } from '.
 import { myReferrals } from '../referrals';
 import { localize, localizeText } from '../contentI18n';
 import { mySubscriptions } from '../subscriptions';
+import { cardPortalUrl, createRecurringCheckout, setRenewal } from '../recurring';
 import { joinWaitlist, myWaitlist, removeWaitlist } from '../waitlist';
 import { activeLocationId } from '../locations';
 import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
@@ -237,25 +238,57 @@ clientRoutes.post('/orders/:id/pay', async (c) => {
   return c.json({ url });
 });
 
-/** Cumpără un abonament din aplicație, cu cardul. Se activează singur când Stripe confirmă plata (fără plata online: doar la salon). */
+/**
+ * Cumpără un abonament din aplicație, cu cardul. Se activează singur când Stripe confirmă plata (fără plata online: doar la salon).
+ * Planurile de până la un an se plătesc recurent: Stripe taxează singur cardul la fiecare perioadă, până când clientul oprește reînnoirea.
+ */
 clientRoutes.post('/me/subscriptions/:planId/pay', async (c) => {
   const clientId = c.get('client').clientId;
-  const p = await c.env.DB.prepare('SELECT id, name, price_bani FROM plans WHERE id = ? AND active = 1').bind(c.req.param('planId')).first<{ id: string; name: string; price_bani: number }>();
+  const p = await c.env.DB.prepare('SELECT id, name, price_bani, period_days FROM plans WHERE id = ? AND active = 1')
+    .bind(c.req.param('planId'))
+    .first<{ id: string; name: string; price_bani: number; period_days: number }>();
   if (!p) throw new HttpError(404, 'plan_not_found');
-  const me = await c.env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(clientId).first<{ email: string | null }>();
   const shop = (await getBusiness(c.env)).name;
+  const base = publicBase(c.env, c.req.url);
+  const title = `Abonament ${p.name} · ${shop}`;
+  const recurring = await createRecurringCheckout(c.env, { clientId, plan: p, title, base, lang: c.req.query('lang') });
+  if (recurring) return c.json({ url: recurring, recurring: true });
+  // Perioadă de peste un an: Stripe n-o poate reînnoi singur, deci o plată o singură dată.
+  const me = await c.env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(clientId).first<{ email: string | null }>();
   // Id-ul abonamentului se alege acum; abonamentul apare doar după plată, o singură dată.
   const url = await createCheckout(c.env, {
     kind: 'sub',
     ref: newId('sb'),
     amountBani: p.price_bani,
-    title: `Abonament ${p.name} · ${shop}`,
+    title,
     email: me?.email,
-    base: publicBase(c.env, c.req.url),
+    base,
     clientId,
     lang: c.req.query('lang'),
     meta: { plan: p.id },
   });
+  return c.json({ url, recurring: false });
+});
+
+/**
+ * Oprește (`{ on: false }`) sau pornește (`{ on: true }`) reînnoirea automată a unui abonament al clientului.
+ * Pornită după ce abonamentul Stripe s-a încheiat (sau pentru unul plătit la salon): întoarce `url`, pagina de plată nouă.
+ */
+clientRoutes.post('/me/subscriptions/:id/renewal', async (c) => {
+  const b = await c.req.json<{ on?: boolean }>().catch(() => ({}) as { on?: boolean });
+  if (typeof b.on !== 'boolean') throw new HttpError(400, 'invalid_body');
+  const shop = (await getBusiness(c.env)).name;
+  const r = await setRenewal(c.env, c.req.param('id'), b.on, { clientId: c.get('client').clientId }, {
+    base: publicBase(c.env, c.req.url),
+    lang: c.req.query('lang'),
+    title: async (name) => `Abonament ${name} · ${shop}`,
+  });
+  return c.json(r);
+});
+
+/** „Schimbă cardul” pentru plățile automate ale abonamentului: pagina Stripe unde clientul pune alt card. */
+clientRoutes.post('/me/subscriptions/card', async (c) => {
+  const url = await cardPortalUrl(c.env, c.get('client').clientId, publicBase(c.env, c.req.url), c.req.query('lang'));
   return c.json({ url });
 });
 

@@ -90,7 +90,32 @@ type SubRow = {
   created_at: string;
   cancelled_at: string | null;
   created_by_name?: string | null;
+  recurring_id?: string | null;
+  // Din recurring_subs (doar în listele care le cer, cu RENEWAL_JOIN).
+  rec_auto_renew?: number | null;
+  rec_status?: string | null;
+  rec_period_end?: string | null;
+  rec_price?: number | null;
 };
+/** Câmpurile abonamentului recurent (Stripe) al fiecărei perioade, pentru `subscription()`: „se reînnoiește pe …” sau „nu se mai reînnoiește”. */
+export const RENEWAL_COLS = 'rs.auto_renew AS rec_auto_renew, rs.status AS rec_status, rs.current_period_end AS rec_period_end, rs.price_bani AS rec_price';
+export const RENEWAL_JOIN = 'LEFT JOIN recurring_subs rs ON rs.id = s.recurring_id';
+
+/**
+ * Reînnoirea automată a unei perioade: null = plătit la salon sau o singură dată.
+ * `on` = se plătește singur la `at`; oprită, perioada rămâne valabilă până la capăt; `failed` = ultima plată a căzut (Stripe reîncearcă).
+ */
+const renewalOf = (r: SubRow) =>
+  r.recurring_id && r.rec_status
+    ? {
+        on: !!r.rec_auto_renew && r.rec_status !== 'ended',
+        at: r.rec_period_end ?? null,
+        price: (r.rec_price ?? r.price_bani) / 100,
+        failed: r.rec_status === 'past_due',
+        ended: r.rec_status === 'ended',
+      }
+    : null;
+
 export const subscription = (r: SubRow) => {
   const now = iso(new Date());
   const state =
@@ -111,6 +136,7 @@ export const subscription = (r: SubRow) => {
     createdAt: r.created_at,
     cancelledAt: r.cancelled_at,
     ...(r.created_by_name !== undefined && { createdByName: r.created_by_name }),
+    ...(r.rec_status !== undefined && { renewal: renewalOf(r) }),
   };
 };
 export type Subscription = ReturnType<typeof subscription>;
@@ -118,7 +144,7 @@ export type Subscription = ReturnType<typeof subscription>;
 /** Abonamentele unui client, cele mai noi primele; cu `staff` și numele celui care l-a activat. */
 export async function getSubscriptions(env: Env, clientId: string, staff: boolean) {
   const r = await env.DB.prepare(
-    `SELECT s.*, ${staff ? 'a.name' : 'NULL'} AS created_by_name FROM subscriptions s LEFT JOIN admins a ON a.id = s.created_by
+    `SELECT s.*, ${staff ? 'a.name' : 'NULL'} AS created_by_name, ${RENEWAL_COLS} FROM subscriptions s LEFT JOIN admins a ON a.id = s.created_by ${RENEWAL_JOIN}
      WHERE s.client_id = ? ORDER BY s.starts_at DESC LIMIT 100`,
   )
     .bind(clientId)
@@ -132,6 +158,7 @@ export async function getSubscriptions(env: Env, clientId: string, staff: boolea
 /** Activează un abonament după plata la salon. Dacă clientul are deja unul activ din același plan, noul începe când se termină acela. */
 /** `gift`: pachet oferit cadou (ex. premiu pentru recomandări): nu se încasează, deci prețul salvat e 0. */
 /** Cumpărat din aplicație (`adminId` null): `opts.id` e id-ul ales la plată, iar planul ascuns între timp se onorează (era plătit). */
+/** Plată recurentă (`opts.recurringId`): începe acum, ca perioadele să se potrivească cu plățile făcute de Stripe. */
 export async function activateSubscription(
   env: Env,
   clientId: string,
@@ -139,7 +166,7 @@ export async function activateSubscription(
   adminId: string | null,
   note: string,
   gift = false,
-  opts: { id?: string; payMethod?: string; anyPlan?: boolean } = {},
+  opts: { id?: string; payMethod?: string; anyPlan?: boolean; recurringId?: string } = {},
 ) {
   const p = await env.DB.prepare('SELECT * FROM plans WHERE id = ?').bind(planId).first<PlanRow>();
   if (!p || (!p.active && !opts.anyPlan)) throw new HttpError(404, 'plan_not_found');
@@ -152,14 +179,14 @@ export async function activateSubscription(
   )
     .bind(clientId, planId, now)
     .first<{ e: string | null }>();
-  const start = last?.e && last.e > now ? last.e : now;
+  const start = !opts.recurringId && last?.e && last.e > now ? last.e : now;
   const end = iso(new Date(new Date(start).getTime() + p.period_days * 86_400_000));
   const id = opts.id ?? newId('sb');
   await env.DB.prepare(
-    `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by, pay_method)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by, pay_method, recurring_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, clientId, p.id, p.name, gift ? 0 : p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId, opts.payMethod ?? null)
+    .bind(id, clientId, p.id, p.name, gift ? 0 : p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId, opts.payMethod ?? null, opts.recurringId ?? null)
     .run();
   const enddate = new Date(end).toLocaleDateString('ro-RO', { timeZone: env.TIMEZONE, day: 'numeric', month: 'long', year: 'numeric' });
   try {
@@ -302,10 +329,34 @@ export async function undoCompletion(env: Env, bookingId: string) {
   if (bk.gift_card_id && bk.gift_bani) await refundGiftCard(env, bk.gift_card_id, bk.gift_bani);
 }
 
+/**
+ * Cum se reînnoiește un plan prin Stripe. Stripe acceptă cel mult un an între plăți (365 de zile, 52 de săptămâni, 12 luni sau 1 an),
+ * iar orice număr întreg de zile până la 365 se scrie exact în zile: un plan de 30 de zile se plătește la fiecare 30 de zile, nu „lunar”.
+ * Peste un an (chiar și multipli exacți, ex. 730 de zile = 2 ani) Stripe nu poate taxa singur: planul se cumpără cu o plată o singură dată, ca până acum.
+ */
+export function recurringInterval(days: number): { interval: 'day'; count: number } | null {
+  return Number.isInteger(days) && days >= 1 && days <= 365 ? { interval: 'day', count: days } : null;
+}
+
 /** Ce vede clientul: planurile disponibile, abonamentul activ și istoricul lui. */
+/** `renewable` = poate porni reînnoirea automată cu cardul (plata online pornită, planul încă de vânzare și reînnoibil prin Stripe). */
 export async function mySubscriptions(env: Env, clientId: string) {
-  const [plans, subs] = await Promise.all([getPlans(env, false), getSubscriptions(env, clientId, false)]);
-  return { plans, subscriptions: subs };
+  const [plans, subs, recs] = await Promise.all([
+    getPlans(env, false),
+    getSubscriptions(env, clientId, false),
+    env.DB.prepare(`SELECT plan_id FROM recurring_subs WHERE client_id = ? AND status != 'ended'`).bind(clientId).all<{ plan_id: string | null }>(),
+  ]);
+  const online = onlinePaymentsOn(env);
+  const busy = new Set(recs.results.map((r) => r.plan_id));
+  return {
+    plans,
+    subscriptions: subs.map((s) => {
+      const p = plans.find((x) => x.id === s.planId);
+      const live = s.state === 'active' || s.state === 'upcoming';
+      const renewable = online && live && !!p && !!recurringInterval(p.periodDays) && p.price * 100 >= 200 && (!s.renewal || s.renewal.ended) && !busy.has(p.id);
+      return { ...s, renewable };
+    }),
+  };
 }
 
 /**

@@ -14,7 +14,7 @@ type Automations = {
   channels: Record<Ev, Channel>;
   otpSms: boolean;
 };
-type Ev = 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started' | 'pay_request';
+type Ev = 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started' | 'sub_renewed' | 'sub_payment_failed' | 'pay_request';
 type Channel = { enabled: boolean; push: boolean; sms: boolean; email: boolean };
 const EVENTS: Array<{ k: Ev; label: string }> = [
   { k: 'confirm', label: 'Confirmarea programării' },
@@ -31,6 +31,8 @@ const EVENTS: Array<{ k: Ev; label: string }> = [
   { k: 'order_cancelled', label: 'Comandă anulată de salon' },
   { k: 'gift_card', label: 'Codul cardului cadou (către cine îl primește)' },
   { k: 'sub_started', label: 'Abonament activat' },
+  { k: 'sub_renewed', label: 'Abonament reînnoit automat (plătit cu cardul)' },
+  { k: 'sub_payment_failed', label: 'Abonament: plata automată cu cardul n-a mers (să-și schimbe cardul)' },
   { k: 'pay_request', label: 'Cerere de plată în aplicație (trimisă de echipă)' },
 ];
 type Slot = { start: string; barberName: string };

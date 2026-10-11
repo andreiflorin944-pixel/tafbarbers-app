@@ -114,6 +114,12 @@ const MESSAGES: Record<string, string> = {
   already_completed: 'Tunsoarea a fost deja confirmată.',
   booking_cancelled: 'Programarea e anulată și nu se mai poate confirma (ora poate fi deja luată). Fă o programare nouă.',
   plan_not_found: 'Abonamentul nu mai există sau e ascuns.',
+  not_recurring: 'Abonamentul nu are plată automată cu cardul.',
+  renewal_needs_client: 'Reînnoirea s-a încheiat în Stripe: o poate porni din nou doar clientul, din aplicație (pune el cardul).',
+  subscription_cancelled: 'Abonamentul e anulat.',
+  already_recurring: 'Clientul are deja reînnoirea automată pornită pe acest abonament.',
+  card_change_off: 'Portalul Stripe pentru schimbarea cardului nu e pornit (vezi Setări → Plăți online).',
+  renewal_unavailable: 'Abonamentul nu se poate reînnoi automat (perioadă de peste un an).',
   invalid_amount: 'Suma nu e corectă (cardurile cadou: între 10 și 5000 de lei, maxim 6 sume propuse).',
   bonus_not_active: 'Bonusul nu mai e activ.',
   invalid_role: 'Rolul nu e corect.',
@@ -327,7 +333,20 @@ export type Booking = {
   bonusId?: string | null;
   clientBirthday?: boolean;
 };
-export type Plan = { translations?: Translations; id: string; name: string; description: string; price: number; periodDays: number; cuts: number | null; serviceIds: string[]; sort: number; active: boolean };
+export type Plan = {
+  translations?: Translations;
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  periodDays: number;
+  cuts: number | null;
+  serviceIds: string[];
+  sort: number;
+  active: boolean;
+  /** Câți clienți au reînnoirea automată cu cardul pornită pe acest plan. */
+  renewing?: number;
+};
 export type Subscription = {
   id: string;
   planId: string | null;
@@ -345,6 +364,8 @@ export type Subscription = {
   cancelledAt: string | null;
   createdByName?: string | null;
   client?: { id: string; name: string; phone: string };
+  /** Plata automată cu cardul (Stripe): null = plătit la salon sau o singură dată. `at` = următoarea plată; `ended` = abonamentul Stripe s-a încheiat. */
+  renewal?: { on: boolean; at: string | null; price: number; failed: boolean; ended: boolean } | null;
 };
 export type Checkout = { booking: Booking; subscription: Subscription | null; bonuses: Bonus[] };
 export type BonusKind = 'percent' | 'amount' | 'free' | 'other';

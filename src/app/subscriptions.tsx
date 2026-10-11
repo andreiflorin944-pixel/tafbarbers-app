@@ -32,6 +32,10 @@ export default function Subscriptions() {
     return () => sub.remove();
   }, [load]);
   const online = !!business?.onlinePayments;
+  const fail = (e: unknown) => {
+    const m = errorMessage(e);
+    Platform.OS === 'web' ? window.alert(m) : Alert.alert('TAF', m);
+  };
   const buy = async (p: Plan) => {
     if (!token) return;
     setPaying(p.id);
@@ -39,8 +43,49 @@ export default function Subscriptions() {
       const { url } = await api.paySubscription(token, p.id);
       await Linking.openURL(url);
     } catch (e) {
-      const m = errorMessage(e);
-      Platform.OS === 'web' ? window.alert(m) : Alert.alert('TAF', m);
+      fail(e);
+    } finally {
+      setPaying(null);
+    }
+  };
+  /** Întrebare cu Da / Nu înainte de a opri sau porni plata automată. */
+  const ask = (msg: string, yes: () => void) => {
+    if (Platform.OS === 'web') return window.confirm(msg) && yes();
+    Alert.alert(t('common.confirmTitle'), msg, [
+      { text: t('common.no'), style: 'cancel' },
+      { text: t('common.yes'), onPress: yes },
+    ]);
+  };
+  // Oprește / pornește reînnoirea automată. Pornită după ce abonamentul Stripe s-a încheiat: se deschide pagina de plată.
+  const toggle = (s: Subscription, on: boolean) =>
+    ask(
+      on
+        ? s.renewal && !s.renewal.ended
+          ? t('subs.resumeConfirm', { price: lei(s.renewal.price), date: formatDate(new Date(s.renewal.at ?? s.endsAt)) })
+          : t('subs.startRenewConfirm', { date: formatDate(new Date(s.endsAt)) })
+        : t('subs.stopRenewConfirm', { date: formatDate(new Date(s.endsAt)) }),
+      async () => {
+        if (!token) return;
+        setPaying(s.id);
+        try {
+          const r = await api.setSubscriptionRenewal(token, s.id, on);
+          if (r.url) await Linking.openURL(r.url);
+          load();
+        } catch (e) {
+          fail(e);
+        } finally {
+          setPaying(null);
+        }
+      },
+    );
+  const changeCard = async () => {
+    if (!token) return;
+    setPaying('card');
+    try {
+      const { url } = await api.changeSubscriptionCard(token);
+      await Linking.openURL(url);
+    } catch (e) {
+      fail(e);
     } finally {
       setPaying(null);
     }
@@ -51,6 +96,8 @@ export default function Subscriptions() {
 
   const live = data.subscriptions.filter((s) => s.state === 'active' || s.state === 'upcoming');
   const past = data.subscriptions.filter((s) => s.state !== 'active' && s.state !== 'upcoming');
+  // Reînnoirea se arată o singură dată pe plan: pe ultima perioadă (cea care se termină ultima), nu și pe cea de acum dacă urmează alta.
+  const lastOfPlan = (s: Subscription) => !live.some((o) => o.id !== s.id && o.planId === s.planId && o.endsAt > s.endsAt);
   const covers = (ids: string[]) =>
     ids.length ? ids.map((id) => services.find((s) => s.id === id)?.name).filter(Boolean).join(', ') : t('subs.allServices');
 
@@ -67,6 +114,26 @@ export default function Subscriptions() {
             {s.state === 'upcoming' ? t('subs.startsOn', { date: formatDate(new Date(s.startsAt)) }) : cutsText(s)} · {t('common.until', { date: formatDate(new Date(s.endsAt)) })}
           </Text>
           <Text style={[styles.muted, { fontSize: 13, textAlign: 'center' }]}>{t('subs.for', { list: covers(s.serviceIds) })}</Text>
+          {s.renewal && lastOfPlan(s) ? (
+            <Text style={[styles.text, { textAlign: 'center', color: s.renewal.on ? colors.gold : colors.muted }]}>
+              {s.renewal.on
+                ? t('subs.renewsOn', { date: formatDate(new Date(s.renewal.at ?? s.endsAt)), price: lei(s.renewal.price) })
+                : t('subs.renewOff', { date: formatDate(new Date(s.endsAt)) })}
+            </Text>
+          ) : null}
+          {s.renewal?.on && s.renewal.failed && lastOfPlan(s) ? <Text style={{ color: colors.danger, textAlign: 'center' }}>{t('subs.renewFailed')}</Text> : null}
+          {online && lastOfPlan(s) && (s.renewal?.on || (s.renewal && !s.renewal.ended) || s.renewable) ? (
+            <View style={{ alignSelf: 'stretch', gap: space.xs, marginTop: space.xs }}>
+              {s.renewal?.on ? (
+                <Button title={t('subs.stopRenew')} variant="ghost" onPress={() => toggle(s, false)} loading={paying === s.id} />
+              ) : (
+                <Button title={t('subs.startRenew')} onPress={() => toggle(s, true)} loading={paying === s.id} />
+              )}
+              {s.renewal && !s.renewal.ended ? (
+                <Button title={t('subs.changeCard')} variant={s.renewal.failed ? 'primary' : 'ghost'} onPress={changeCard} loading={paying === 'card'} />
+              ) : null}
+            </View>
+          ) : null}
         </Card>
       ))}
 

@@ -637,14 +637,14 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
       const { start, end } = range(from, to);
       const own = scope.barberId ? `AND p.kind = 'booking' AND b.barber_id = ?` : '';
       const r = await env.DB.prepare(
-        `SELECT p.kind, p.ref, p.amount_bani, p.status, p.note, p.created_at, p.payment_intent, p.session_id, c.name AS client_name, s.name AS service_name, sb.name AS sub_name
+        `SELECT p.kind, p.ref, p.amount_bani, p.status, p.note, p.created_at, p.payment_intent, p.session_id, p.renewal, c.name AS client_name, s.name AS service_name, sb.name AS sub_name
          FROM online_payments p LEFT JOIN clients c ON c.id = p.client_id
          LEFT JOIN bookings b ON p.kind = 'booking' AND b.id = p.ref LEFT JOIN services s ON s.id = b.service_id
          LEFT JOIN subscriptions sb ON p.kind = 'sub' AND sb.id = p.ref
          WHERE p.created_at >= ? AND p.created_at < ? ${own} ORDER BY p.created_at LIMIT 30000`,
       )
         .bind(...(scope.barberId ? [start, end, scope.barberId] : [start, end]))
-        .all<{ kind: string; ref: string; amount_bani: number; status: string; note: string; created_at: string; payment_intent: string | null; session_id: string; client_name: string | null; service_name: string | null; sub_name: string | null }>();
+        .all<{ kind: string; ref: string; amount_bani: number; status: string; note: string; created_at: string; payment_intent: string | null; session_id: string; renewal: number; client_name: string | null; service_name: string | null; sub_name: string | null }>();
       const KIND: Record<string, string> = { booking: 'Programare', order: 'Comandă magazin', gift: 'Card cadou', sub: 'Abonament' };
       const ST: Record<string, string> = { paid: 'Plătită', refunded: 'Returnată', to_refund: 'De returnat' };
       columns = [
@@ -663,7 +663,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         date: localDT(p.created_at),
         client: p.client_name || 'Fără nume',
         kind: KIND[p.kind] ?? p.kind,
-        what: p.kind === 'booking' ? (p.service_name ?? '') : p.kind === 'order' ? `Comanda ${p.ref.slice(-5).toUpperCase()}` : p.kind === 'sub' ? (p.sub_name ?? '') : '',
+        what: p.kind === 'booking' ? (p.service_name ?? '') : p.kind === 'order' ? `Comanda ${p.ref.slice(-5).toUpperCase()}` : p.kind === 'sub' ? `${p.sub_name ?? ''}${p.renewal ? ' (reînnoire automată)' : ''}` : '',
         state: ST[p.status] ?? p.status,
         note: p.note,
         paid: p.status === 'paid' ? lei(p.amount_bani) : null,

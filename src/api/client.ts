@@ -90,8 +90,12 @@ export interface BookingApi {
   cancelOrder(token: string, id: string): Promise<Order>;
   payOrder(token: string, id: string): Promise<{ url: string }>;
   payBooking(token: string, id: string): Promise<{ url: string }>;
-  /** Cumpără online un abonament (se activează după plată). */
-  paySubscription(token: string, planId: string): Promise<{ url: string }>;
+  /** Cumpără online un abonament (se activează după plată; `recurring` = se plătește singur la fiecare perioadă). */
+  paySubscription(token: string, planId: string): Promise<{ url: string; recurring?: boolean }>;
+  /** Oprește sau pornește reînnoirea automată; pornită după ce s-a încheiat, întoarce pagina de plată (`url`). */
+  setSubscriptionRenewal(token: string, id: string, on: boolean): Promise<{ ok: true; on: boolean; url?: string }>;
+  /** „Schimbă cardul” pentru plățile automate: pagina Stripe. */
+  changeSubscriptionCard(token: string): Promise<{ url: string }>;
   /** Clientul din cont a deschis aplicația dintr-un cod QR de campanie. */
   qrOpen(token: string, code: string): Promise<{ ok: true }>;
   /** Asistentul: istoricul conversației → răspunsul și, poate, o programare propusă. */

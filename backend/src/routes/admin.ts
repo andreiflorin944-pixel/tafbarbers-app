@@ -54,7 +54,10 @@ import {
   usableSubscription,
   isClubMember,
   type PlanInput,
+  RENEWAL_COLS,
+  RENEWAL_JOIN,
 } from '../subscriptions';
+import { setRenewal, stopPlanRenewals, stopRecurringFor } from '../recurring';
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
 import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } from '../reports';
 import { localizeReport, reportText } from '../reportsI18n';
@@ -1044,7 +1047,15 @@ async function bookingForStaff(c: Context<AppEnv>) {
 
 // --- Abonamente ---
 
-adminRoutes.get('/plans', async (c) => c.json(await withTranslations(c.env, await getPlans(c.env, true), ['name', 'description'])));
+/** Planurile, cu câți clienți au reînnoirea automată pornită pe fiecare (`renewing`), ca la scoaterea de la vânzare să se poată alege ce se întâmplă cu ei. */
+adminRoutes.get('/plans', async (c) => {
+  const [plans, rec] = await Promise.all([
+    withTranslations(c.env, await getPlans(c.env, true), ['name', 'description']),
+    c.env.DB.prepare(`SELECT plan_id, count(*) AS n FROM recurring_subs WHERE status != 'ended' AND auto_renew = 1 GROUP BY plan_id`).all<{ plan_id: string; n: number }>(),
+  ]);
+  const n = new Map(rec.results.map((r) => [r.plan_id, r.n]));
+  return c.json(plans.map((p) => ({ ...p, renewing: n.get(p.id) ?? 0 })));
+});
 
 adminRoutes.post('/plans', ownerOnly, async (c) => {
   const body = await c.req.json<PlanInput & { translations?: ManualTr }>();
@@ -1058,13 +1069,18 @@ adminRoutes.post('/plans', ownerOnly, async (c) => {
   return c.json({ id }, 201);
 });
 
+/**
+ * Editează un plan. Scos de la vânzare (`active: false`), abonații cu reînnoire automată continuă să plătească și să primească perioade noi,
+ * afară de cazul în care proprietarul trimite și `stopRenewals: true`: atunci reînnoirile se opresc (perioada plătită rămâne valabilă).
+ */
 adminRoutes.patch('/plans/:id', ownerOnly, async (c) => {
-  const body = await c.req.json<PlanInput & { translations?: ManualTr }>();
+  const body = await c.req.json<PlanInput & { translations?: ManualTr; stopRenewals?: boolean }>();
   const prev = await c.env.DB.prepare('SELECT name, description FROM plans WHERE id = ?').bind(c.req.param('id')!).first<{ name: string; description: string }>();
   await update(c.env.DB, 'plans', c.req.param('id')!, planValues(body, true));
   const cur = await c.env.DB.prepare('SELECT name, description FROM plans WHERE id = ?').bind(c.req.param('id')!).first<{ name: string; description: string }>();
   if (cur) await saveTranslations(c.env, { name: { ro: cur.name, prev: prev?.name }, description: { ro: cur.description, prev: prev?.description } }, body.translations);
-  return c.json({ ok: true });
+  const stoppedRenewals = body.stopRenewals === true && body.active === false ? await stopPlanRenewals(c.env, c.req.param('id')!, c.get('admin').adminId) : 0;
+  return c.json({ ok: true, stoppedRenewals });
 });
 
 adminRoutes.delete('/plans/:id', ownerOnly, async (c) => {
@@ -1077,8 +1093,8 @@ adminRoutes.get('/subscriptions', async (c) => {
   need(c, 'clients');
   const all = c.req.query('all') === '1';
   const r = await c.env.DB.prepare(
-    `SELECT s.*, a.name AS created_by_name, cl.name AS client_name, cl.phone AS client_phone FROM subscriptions s
-     JOIN clients cl ON cl.id = s.client_id LEFT JOIN admins a ON a.id = s.created_by
+    `SELECT s.*, a.name AS created_by_name, cl.name AS client_name, cl.phone AS client_phone, ${RENEWAL_COLS} FROM subscriptions s
+     JOIN clients cl ON cl.id = s.client_id LEFT JOIN admins a ON a.id = s.created_by ${RENEWAL_JOIN}
      ${all ? '' : `WHERE s.status = 'active' AND s.ends_at > ?`} ORDER BY s.ends_at ${all ? 'DESC' : ''} LIMIT 500`,
   )
     .bind(...(all ? [] : [iso(new Date())]))
@@ -1100,7 +1116,17 @@ adminRoutes.post('/clients/:id/subscriptions', async (c) => {
   return c.json({ id: sid }, 201);
 });
 
-/** Anulează un abonament (doar proprietarul). */
+/**
+ * Oprește (`{ on: false }`) sau repornește (`{ on: true }`) reînnoirea automată cu cardul (doar proprietarul).
+ * Repornirea merge cât abonamentul Stripe încă există; încheiat, doar clientul îl poate porni din nou din aplicație (cu cardul lui).
+ */
+adminRoutes.post('/subscriptions/:id/renewal', ownerOnly, async (c) => {
+  const b = await c.req.json<{ on?: boolean }>();
+  if (typeof b.on !== 'boolean') throw new HttpError(400, 'invalid_body');
+  return c.json(await setRenewal(c.env, c.req.param('id')!, b.on, { adminId: c.get('admin').adminId }));
+});
+
+/** Anulează un abonament (doar proprietarul). Cu plată recurentă, se oprește și abonamentul din Stripe (fără alte plăți). */
 adminRoutes.patch('/subscriptions/:id', ownerOnly, async (c) => {
   const b = await c.req.json<{ status?: string }>();
   if (b.status !== 'cancelled') throw new HttpError(400, 'invalid_status');
@@ -1113,6 +1139,7 @@ adminRoutes.patch('/subscriptions/:id', ownerOnly, async (c) => {
     const sub = await c.env.DB.prepare('SELECT cuts_used FROM subscriptions WHERE id = ?').bind(id).first<{ cuts_used: number }>();
     const used = sub?.cuts_used ?? 0;
     await refundOrFlag(c.env, 'sub', id, used ? `Abonament anulat după ${used} tunsori folosite` : 'Abonament anulat', !used);
+    await stopRecurringFor(c.env, id, c.get('admin').adminId);
   }
   return c.json({ ok: true });
 });

@@ -5,7 +5,7 @@ import { autoTranslate, type Texts3 } from './translate';
 // Șabloanele mesajelor automate (cod de intrare, programări, comenzi, abonamente), pe canale: SMS, push, e-mail.
 // Adminul le scrie în română, cu variabile de tipul ##customerfirstname##; engleza și franceza se traduc singure.
 
-export type TplEvent = 'otp' | 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_ready_paid' | 'order_cancelled' | 'sub_started' | 'pay_request';
+export type TplEvent = 'otp' | 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_ready_paid' | 'order_cancelled' | 'sub_started' | 'sub_renewed' | 'sub_payment_failed' | 'pay_request';
 export type TplField = 'sms' | 'pushTitle' | 'pushBody' | 'emailSubject' | 'emailBody';
 type Lang = 'ro' | 'en' | 'fr';
 type Stored = Partial<Record<TplEvent, Partial<Record<TplField, Texts3>>>>;
@@ -245,6 +245,64 @@ export const TEMPLATE_DEFS: Record<TplEvent, Def> = {
       pushBody: 'Abonamentul tău e activ până pe ##enddate##. Îl vezi în aplicație, la Abonamente.',
       emailSubject: 'Bun venit la ##membershipplanname##!',
       emailBody: 'Salut ##customerfirstname##, abonamentul tău ##membershipplanname## la ##businessname## e activ până pe ##enddate##.',
+    },
+  },
+  sub_renewed: {
+    label: 'Abonament reînnoit automat (plătit cu cardul)',
+    vars: ['businessname', 'customerfullname', 'customerfirstname', 'membershipplanname', 'enddate', 'amount'],
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: '##businessname##: abonamentul ##membershipplanname## s-a reînnoit (##amount##). E valabil până pe ##enddate##, cu tunsorile de la zero.',
+      pushTitle: 'Abonament reînnoit: ##membershipplanname##',
+      pushBody: 'Am încasat ##amount## cu cardul. Abonamentul e valabil până pe ##enddate##, cu tunsorile de la zero.',
+      emailSubject: 'Abonamentul tău s-a reînnoit · ##businessname##',
+      emailBody:
+        'Salut ##customerfirstname##, abonamentul tău ##membershipplanname## s-a reînnoit automat: am încasat ##amount## cu cardul. E valabil până pe ##enddate##, cu tunsorile de la zero. Reînnoirea o poți opri oricând din aplicație, la Abonamente.',
+    },
+    en: {
+      sms: '##businessname##: your ##membershipplanname## membership renewed (##amount##). Valid until ##enddate##, with your haircuts reset.',
+      pushTitle: 'Membership renewed: ##membershipplanname##',
+      pushBody: 'We charged ##amount## to your card. Your membership is valid until ##enddate##, with your haircuts reset.',
+      emailSubject: 'Your membership has renewed · ##businessname##',
+      emailBody:
+        'Hi ##customerfirstname##, your ##membershipplanname## membership renewed automatically: we charged ##amount## to your card. It is valid until ##enddate##, with your haircuts reset. You can stop renewal at any time in the app, under Memberships.',
+    },
+    fr: {
+      sms: '##businessname## : votre abonnement ##membershipplanname## a été renouvelé (##amount##). Valable jusqu’au ##enddate##, coupes remises à zéro.',
+      pushTitle: 'Abonnement renouvelé : ##membershipplanname##',
+      pushBody: 'Nous avons débité ##amount## sur votre carte. Votre abonnement est valable jusqu’au ##enddate##, coupes remises à zéro.',
+      emailSubject: 'Votre abonnement a été renouvelé · ##businessname##',
+      emailBody:
+        'Bonjour ##customerfirstname##, votre abonnement ##membershipplanname## a été renouvelé automatiquement : nous avons débité ##amount## sur votre carte. Il est valable jusqu’au ##enddate##, coupes remises à zéro. Vous pouvez arrêter le renouvellement à tout moment dans l’app, rubrique Abonnements.',
+    },
+  },
+  sub_payment_failed: {
+    label: 'Abonament: plata automată cu cardul n-a mers',
+    vars: ['businessname', 'customerfullname', 'customerfirstname', 'membershipplanname', 'amount', 'paylink'],
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: '##businessname##: plata de ##amount## pentru abonamentul ##membershipplanname## n-a mers. Actualizează cardul din aplicație, la Abonamente: ##paylink##',
+      pushTitle: 'Plata abonamentului n-a mers',
+      pushBody: 'Nu am putut încasa ##amount## pentru ##membershipplanname##. Actualizează cardul în aplicație, la Abonamente.',
+      emailSubject: 'Plata abonamentului n-a mers · ##businessname##',
+      emailBody:
+        'Salut ##customerfirstname##, nu am putut încasa ##amount## de pe card pentru abonamentul ##membershipplanname##. Deschide aplicația, la Abonamente, și apasă „Schimbă cardul” (sau verifică dacă ai bani pe card). Mai încercăm singuri în zilele următoare: ##paylink##',
+    },
+    en: {
+      sms: '##businessname##: the ##amount## payment for your ##membershipplanname## membership failed. Update your card in the app, under Memberships: ##paylink##',
+      pushTitle: 'Membership payment failed',
+      pushBody: 'We could not charge ##amount## for ##membershipplanname##. Update your card in the app, under Memberships.',
+      emailSubject: 'Membership payment failed · ##businessname##',
+      emailBody:
+        'Hi ##customerfirstname##, we could not charge ##amount## to your card for your ##membershipplanname## membership. Open the app, go to Memberships and tap “Change card” (or check your card balance). We will try again automatically over the next few days: ##paylink##',
+    },
+    fr: {
+      sms: '##businessname## : le paiement de ##amount## pour votre abonnement ##membershipplanname## a échoué. Mettez à jour votre carte dans l’app, rubrique Abonnements : ##paylink##',
+      pushTitle: 'Le paiement de l’abonnement a échoué',
+      pushBody: 'Nous n’avons pas pu débiter ##amount## pour ##membershipplanname##. Mettez à jour votre carte dans l’app, rubrique Abonnements.',
+      emailSubject: 'Le paiement de l’abonnement a échoué · ##businessname##',
+      emailBody:
+        'Bonjour ##customerfirstname##, nous n’avons pas pu débiter ##amount## sur votre carte pour votre abonnement ##membershipplanname##. Ouvrez l’app, rubrique Abonnements, et appuyez sur « Changer de carte » (ou vérifiez le solde de votre carte). Nous réessaierons automatiquement dans les prochains jours : ##paylink##',
     },
   },
   pay_request: {

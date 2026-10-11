@@ -12,6 +12,43 @@ const STATE: Record<Subscription['state'], string> = {
 };
 const PILL: Record<Subscription['state'], string> = { active: 'completed', upcoming: 'confirmed', used_up: 'off', expired: 'off', cancelled: 'cancelled' };
 
+/** Reînnoirea automată cu cardul, pe scurt: „se reînnoiește pe 12 nov. · 150 lei”, „oprită, valabil până pe …” sau „plata a căzut”. */
+const renewalText = (s: Subscription) =>
+  !s.renewal
+    ? ''
+    : s.renewal.on
+      ? `se reînnoiește automat pe ${s.renewal.at ? date(s.renewal.at) : date(s.endsAt)} · ${lei(s.renewal.price)}${s.renewal.failed ? ' · plata cu cardul a căzut, Stripe reîncearcă' : ''}`
+      : `reînnoire oprită${s.renewal.ended ? ' (încheiată în Stripe)' : ''}, valabil până pe ${date(s.endsAt)}`;
+
+/** Butonul proprietarului: oprește sau repornește plata automată (repornirea merge cât abonamentul Stripe încă există). */
+function RenewalToggle({ s, onChange }: { s: Subscription; onChange: () => void }) {
+  const { busy, error, run } = useAction();
+  if (!s.renewal || s.renewal.ended || (s.state !== 'active' && s.state !== 'upcoming')) return null;
+  const on = s.renewal.on;
+  return (
+    <>
+      <button
+        className="ghost sm"
+        disabled={busy}
+        onClick={() =>
+          confirm(
+            on
+              ? `Oprești reînnoirea automată pentru „${s.name}”? Stripe nu mai taxează cardul; abonamentul rămâne valabil până pe ${date(s.endsAt)}. Banii nu se returnează.`
+              : `Pornești din nou reînnoirea pentru „${s.name}”? Cardul clientului se taxează automat cu ${lei(s.renewal!.price)} la finalul perioadei.`,
+          ) &&
+          run(async () => {
+            await api('POST', `/admin/subscriptions/${s.id}/renewal`, { on: !on });
+            onChange();
+          })
+        }
+      >
+        {on ? 'Oprește reînnoirea' : 'Pornește reînnoirea'}
+      </button>
+      {error ? <span className="err small">{error}</span> : null}
+    </>
+  );
+}
+
 const cuts = (n: number | null) => (n === null ? 'nelimitat' : `${n} ${n === 1 ? 'tunsoare' : 'tunsori'}`);
 const used = (s: Subscription) => (s.cutsTotal === null ? `${s.cutsUsed} folosite (nelimitat)` : `${s.cutsUsed} din ${s.cutsTotal} folosite`);
 
@@ -32,16 +69,20 @@ export function ClientSubscriptions({ clientId, subs, owner, onChange }: { clien
               {' '}
               · {date(s.startsAt)} – {date(s.endsAt)} · {used(s)} · {lei(s.price)}
               {s.createdByName ? ` · activat de ${s.createdByName}` : ''}
+              {s.renewal && (s.state === 'active' || s.state === 'upcoming') ? ` · ${renewalText(s)}` : ''}
             </span>
           </span>
           <span className="row" style={{ gap: 6 }}>
             <span className={`pill ${PILL[s.state]}`}>{STATE[s.state]}</span>
+            {owner ? <RenewalToggle s={s} onChange={onChange} /> : null}
             {owner && (s.state === 'active' || s.state === 'upcoming') ? (
               <button
                 className="ghost sm"
                 disabled={busy}
                 onClick={() =>
-                  confirm(`Anulezi abonamentul „${s.name}”? Plătit la salon: banii nu se returnează automat. Cumpărat online: nefolosit, banii se returnează singuri pe card; cu tunsori folosite, apare „De returnat” la Plăți online și decizi tu cât returnezi.`) &&
+                  confirm(
+                    `Anulezi abonamentul „${s.name}”? Plătit la salon: banii nu se returnează automat. Cumpărat online: nefolosit, banii se returnează singuri pe card; cu tunsori folosite, apare „De returnat” la Plăți online și decizi tu cât returnezi.${s.renewal && !s.renewal.ended ? ' Plata automată cu cardul se oprește imediat (nu se mai taxează nimic). Dacă vrei doar să nu se mai reînnoiască, folosește „Oprește reînnoirea”.' : ''}`,
+                  ) &&
                   run(async () => {
                     await api('PATCH', `/admin/subscriptions/${s.id}`, { status: 'cancelled' });
                     onChange();
@@ -111,7 +152,7 @@ export function ClientSubscriptions({ clientId, subs, owner, onChange }: { clien
   );
 }
 
-export function SubscriptionsPage(_: { me: Me }) {
+export function SubscriptionsPage({ me }: { me: Me }) {
   const plans = useLoad(() => api<Plan[]>('GET', '/admin/plans'));
   const services = useLoad(() => api<Service[]>('GET', '/admin/services'));
   const [all, setAll] = useState(false);
@@ -129,6 +170,11 @@ export function SubscriptionsPage(_: { me: Me }) {
         Clienții văd abonamentele în aplicație (Cont → Abonamente) și le plătesc la salon (frizerul sau tu le activați din fișa clientului) sau, cu plata
         online pornită, le cumpără direct din aplicație cu cardul și se activează singure. La fiecare
         tunsoare, frizerul confirmă în aplicație „a plătit X lei” sau „pe abonament”, iar tunsoarea se scade din abonament.
+      </p>
+      <p className="muted small" style={{ maxWidth: 760 }}>
+        Cumpărate online, abonamentele de până la un an se reînnoiesc singure: Stripe taxează cardul clientului la fiecare perioadă (ex. la 30 de zile), iar
+        în aplicație apare o perioadă nouă, cu tunsorile de la zero. Clientul oprește sau pornește reînnoirea din aplicație; tu o poți opri sau reporni din
+        lista de mai jos sau din fișa clientului. Oprită, perioada deja plătită rămâne valabilă până la capăt. Abonamentele de peste un an se plătesc o singură dată.
       </p>
       {!plans.data ? (
         <Loading error={plans.error} />
@@ -163,7 +209,14 @@ export function SubscriptionsPage(_: { me: Me }) {
                   <td>{p.periodDays} zile</td>
                   <td>{cuts(p.cuts)}</td>
                   <td className="small">{svcName(p.serviceIds)}</td>
-                  <td>{p.active ? null : <span className="pill off">ascuns</span>}</td>
+                  <td>
+                    {p.active ? null : <span className="pill off">ascuns</span>}
+                    {p.renewing ? (
+                      <div className="muted small" title="Clienți cu reînnoirea automată cu cardul pornită">
+                        {p.renewing} cu reînnoire automată
+                      </div>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -189,12 +242,13 @@ export function SubscriptionsPage(_: { me: Me }) {
                 <th>Perioadă</th>
                 <th>Tunsori</th>
                 <th>Stare</th>
+                <th>Reînnoire automată</th>
               </tr>
             </thead>
             <tbody>
               {subs.data.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="muted small">
+                  <td colSpan={6} className="muted small">
                     Niciunul.
                   </td>
                 </tr>
@@ -218,6 +272,23 @@ export function SubscriptionsPage(_: { me: Me }) {
                   <td className="small">{used(s)}</td>
                   <td>
                     <span className={`pill ${PILL[s.state]}`}>{STATE[s.state]}</span>
+                  </td>
+                  <td className="small">
+                    {s.renewal ? (
+                      <div className="grid" style={{ gap: 4 }}>
+                        <span>
+                          {s.renewal.on ? <span className={`pill ${s.renewal.failed ? 'cancelled' : 'completed'}`}>{s.renewal.failed ? 'plata a căzut' : 'pornită'}</span> : <span className="pill off">oprită</span>}
+                        </span>
+                        <span className="muted">{renewalText(s)}</span>
+                        {me.owner ? (
+                          <span>
+                            <RenewalToggle s={s} onChange={subs.reload} />
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -258,6 +329,10 @@ function PlanModal({ p, services, onClose, onDone }: { p: Partial<Plan>; service
     active: v.active !== false,
     translations: tr,
   };
+
+  // Scos de la vânzare cu clienți care se reînnoiesc automat: proprietarul alege dacă reînnoirile lor continuă (implicit) sau se opresc.
+  const hiding = !!p.id && v.active === false && (p.renewing ?? 0) > 0;
+  const [stopRenewals, setStopRenewals] = useState(false);
 
   return (
     <Modal title={p.id ? 'Editează abonamentul' : 'Abonament nou'} onClose={onClose}>
@@ -318,13 +393,27 @@ function PlanModal({ p, services, onClose, onDone }: { p: Partial<Plan>; service
         <label className="check">
           <input type="checkbox" checked={v.active !== false} onChange={(e) => set({ active: e.target.checked })} /> Se poate cumpăra (vizibil în aplicație)
         </label>
+        {hiding ? (
+          <div className="card grid small" style={{ gap: 6 }}>
+            <div>
+              {p.renewing === 1 ? 'Un client are' : `${p.renewing} clienți au`} reînnoirea automată pornită pe acest abonament. Scos de la vânzare, ei continuă să
+              plătească și să primească perioade noi, dacă nu alegi altfel:
+            </div>
+            <label className="check">
+              <input type="radio" checked={!stopRenewals} onChange={() => setStopRenewals(false)} /> Reînnoirile lor continuă (doar clienții noi nu îl mai pot cumpăra)
+            </label>
+            <label className="check">
+              <input type="radio" checked={stopRenewals} onChange={() => setStopRenewals(true)} /> Oprește și reînnoirile lor (perioada plătită rămâne valabilă până la capăt)
+            </label>
+          </div>
+        ) : null}
         {error ? <div className="err">{error}</div> : null}
         <div className="row">
           <button
             disabled={busy}
             onClick={() =>
               run(async () => {
-                if (p.id) await api('PATCH', `/admin/plans/${p.id}`, body);
+                if (p.id) await api('PATCH', `/admin/plans/${p.id}`, hiding && stopRenewals ? { ...body, stopRenewals: true } : body);
                 else await api('POST', '/admin/plans', body);
                 onDone();
               })
@@ -337,7 +426,9 @@ function PlanModal({ p, services, onClose, onDone }: { p: Partial<Plan>; service
               className="danger"
               disabled={busy}
               onClick={() =>
-                confirm('Ștergi abonamentul? Abonamentele deja vândute rămân valabile.') &&
+                confirm(
+                  `Ștergi abonamentul? Abonamentele deja vândute rămân valabile.${p.renewing ? ` Cei ${p.renewing} clienți cu reînnoire automată continuă să se reînnoiască; dacă vrei să se oprească, debifează întâi „Se poate cumpăra” și alege „Oprește și reînnoirile lor”.` : ''}`,
+                ) &&
                 run(async () => {
                   await api('DELETE', `/admin/plans/${p.id}`);
                   onDone();

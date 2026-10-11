@@ -17,7 +17,8 @@ import { getAppearance } from '../appearance';
 import { product, type ProductRow } from '../shop';
 import { parseBirthDate } from '../identity';
 import { applyReferral } from '../referrals';
-import { handleStripeEvent, noteWebhook, onlinePaymentsOn, verifyStripeSignature } from '../payments';
+import { noteWebhook, onlinePaymentsOn, publicBase, verifyStripeSignature } from '../payments';
+import { handleAnyStripeEvent } from '../recurring';
 import { advisorAvailable } from '../advisor';
 import { linkTicket, readTicket, socialConfig, socialSignIn, verifyIdToken, type Provider } from '../socialLogin';
 
@@ -50,13 +51,13 @@ publicRoutes.post('/payments/stripe', async (c) => {
     await noteWebhook(c.env, 'stripe_webhook_bad', {});
     throw new HttpError(400, 'bad_signature');
   }
-  let ev: Parameters<typeof handleStripeEvent>[1];
+  let ev: Parameters<typeof handleAnyStripeEvent>[1];
   try {
     ev = JSON.parse(body);
   } catch {
     throw new HttpError(400, 'invalid_json');
   }
-  const result = await handleStripeEvent(c.env, ev);
+  const result = await handleAnyStripeEvent(c.env, ev, publicBase(c.env, c.req.url));
   await noteWebhook(c.env, 'stripe_webhook', { type: String(ev.type ?? ''), result });
   return c.json({ received: true, result });
 });

@@ -180,8 +180,14 @@ function OnlinePayments() {
               </li>
               <li>
                 În Stripe: <b>Developers → Webhooks → Add endpoint</b> (sau „Add destination” → Webhook endpoint). La „Endpoint URL” lipești adresa de mai sus, iar
-                la evenimente bifezi <code>checkout.session.completed</code> și <code>checkout.session.async_payment_succeeded</code>. Salvează. Apoi, în pagina
-                webhook-ului, la „Signing secret” apasă „Reveal” și copiază-l (începe cu <code>whsec_</code>).
+                la evenimente bifezi toate cele {s.events.length} de mai sus: <code>checkout.session.completed</code> și{' '}
+                <code>checkout.session.async_payment_succeeded</code> (plățile), plus <code>invoice.paid</code>, <code>invoice.payment_failed</code>,{' '}
+                <code>customer.subscription.updated</code> și <code>customer.subscription.deleted</code> (abonamentele care se reînnoiesc singure cu cardul).
+                Salvează. Apoi, în pagina webhook-ului, la „Signing secret” apasă „Reveal” și copiază-l (începe cu <code>whsec_</code>).
+                <div className="muted" style={{ marginTop: 6 }}>
+                  Ai deja webhook-ul făcut (doar cu primele două evenimente)? Deschide-l în <b>Developers → Webhooks</b>, apasă „…” → „Update details” (sau „Edit
+                  destination”) → „Select events” și bifează și cele patru noi. Adresa și secretul rămân aceleași, deci nu trebuie schimbat nimic aici.
+                </div>
               </li>
               <li>
                 Înapoi în Terminal (tot în folderul backend):
@@ -193,11 +199,16 @@ function OnlinePayments() {
                 telefon. La <b>Settings → Business → Public details</b> pune numele salonului (apare pe extrasul clientului).
               </li>
               <li>
+                Pentru abonamentele care se reînnoiesc singure: în Stripe, la <b>Settings → Billing → Customer portal</b>, apasă „Activate” / „Save” (o dată în
+                test și o dată în live). Așa merge butonul „Schimbă cardul” din aplicație. Tot la Billing, la <b>Revenue recovery → Retries</b>, lasă pornite
+                reîncercările automate pentru plățile căzute (Stripe încearcă din nou câteva zile); clientul primește de la noi SMS și e-mail să-și schimbe cardul.
+              </li>
+              <li>
                 Apasă „Verifică din nou” mai sus: trebuie să scrie „Pornită” și „Mod test”. Fă o plată de probă din aplicație (de ex. un card cadou) cu cardul{' '}
                 <code>4242 4242 4242 4242</code>, orice dată din viitor și orice CVC. După câteva secunde, „Ultimul webhook primit” trebuie să arate ora plății.
               </li>
               <li>
-                Pentru bani reali: în Stripe oprește „Test mode”, apoi repetă pașii 2–5 cu cheia <code>sk_live_</code> și un webhook nou, creat în modul live (are alt{' '}
+                Pentru bani reali: în Stripe oprește „Test mode”, apoi repetă pașii 2–5 și 7 cu cheia <code>sk_live_</code> și un webhook nou, creat în modul live (are alt{' '}
                 <code>whsec_</code>). Aici trebuie să apară „Mod live”.
               </li>
               <li className="muted">

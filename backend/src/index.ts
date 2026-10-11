@@ -129,7 +129,8 @@ const PAY_PAGE = {
 };
 app.get('/plata/:rez', async (c) => {
   const rez = c.req.param('rez');
-  if (rez === 'deschide') return c.html(await openAppPage(c.env, 'tafbarbers://bookings'));
+  // Linkurile din mesaje (cererea de plată, plata abonamentului căzută) și întoarcerea din pagina Stripe „Schimbă cardul”.
+  if (rez === 'deschide') return c.html(await openAppPage(c.env, c.req.query('tip') === 'sub' ? 'tafbarbers://subscriptions' : 'tafbarbers://bookings'));
   const ok = rez === 'gata';
   const tip = c.req.query('tip');
   const q = c.req.query('lang');

@@ -13,8 +13,10 @@ export { onlinePaymentsOn };
 
 export type Kind = 'gift' | 'order' | 'booking' | 'sub';
 const KINDS: Kind[] = ['gift', 'order', 'booking', 'sub'];
-/** Evenimentele Stripe pe care le ascultăm (se bifează la crearea webhook-ului în Stripe). */
-export const STRIPE_EVENTS = ['checkout.session.completed', 'checkout.session.async_payment_succeeded'];
+/** Plata terminată pe pagina Stripe (o singură dată sau prima plată a unui abonament recurent). */
+export const CHECKOUT_EVENTS = ['checkout.session.completed', 'checkout.session.async_payment_succeeded'];
+/** Evenimentele Stripe pe care le ascultăm (se bifează la crearea webhook-ului în Stripe): plățile, plus ciclul abonamentelor recurente. */
+export const STRIPE_EVENTS = [...CHECKOUT_EVENTS, 'invoice.paid', 'invoice.payment_failed', 'customer.subscription.updated', 'customer.subscription.deleted'];
 /** Stripe nu primește plăți mai mici de 2 lei. */
 export const MIN_BANI = 200;
 
@@ -23,15 +25,19 @@ export const publicBase = (env: Env, reqUrl: string) => (env.PUBLIC_URL || new U
 const stripeApi = (env: Env) => (env.STRIPE_MOCK_BASE || 'https://api.stripe.com').replace(/\/+$/, '');
 const LANGS = ['ro', 'en', 'fr'];
 
-async function stripePost(env: Env, path: string, form: URLSearchParams, idempotencyKey: string) {
-  const r = await fetch(`${stripeApi(env)}${path}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Idempotency-Key': idempotencyKey },
-    body: form,
-  });
-  const json = (await r.json().catch(() => null)) as { id?: string; url?: string; error?: { message?: string } } | null;
+type StripeJson = { id?: string; url?: string; error?: { message?: string; code?: string; param?: string } } & Record<string, unknown>;
+
+/** Un apel către Stripe (POST cu formular, GET sau DELETE). Cheia de idempotență face ca un apel repetat să nu se aplice de două ori. */
+export async function stripeCall(env: Env, method: 'POST' | 'GET' | 'DELETE', path: string, form?: URLSearchParams, idempotencyKey?: string) {
+  const headers: Record<string, string> = { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` };
+  if (form) headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  if (idempotencyKey && method !== 'GET') headers['Idempotency-Key'] = idempotencyKey;
+  const r = await fetch(`${stripeApi(env)}${path}`, { method, headers, body: form });
+  const json = (await r.json().catch(() => null)) as StripeJson | null;
   return { ok: r.ok, status: r.status, json };
 }
+
+const stripePost = (env: Env, path: string, form: URLSearchParams, idempotencyKey: string) => stripeCall(env, 'POST', path, form, idempotencyKey);
 
 /** Deschide o sesiune de plată și întoarce adresa paginii Stripe. `base` = adresa publică a serverului (pentru întoarcere). */
 export async function createCheckout(
@@ -85,16 +91,20 @@ export async function verifyStripeSignature(secret: string, body: string, header
   return sigs.some((s) => timingSafeEqual(s, want));
 }
 
-type Session = {
+export type Session = {
   id: string;
+  mode?: string;
+  subscription?: string | null;
+  invoice?: string | null;
+  customer?: string | null;
   payment_intent?: string | null;
   payment_status?: string;
   amount_total?: number;
   currency?: string;
-  metadata?: { kind?: string; ref?: string; client?: string; plan?: string };
+  metadata?: { kind?: string; ref?: string; client?: string; plan?: string; recurring?: string };
 };
 /** Ce s-a întâmplat cu plata: aplicată (păstrăm banii) sau refuzată (se returnează), cu motivul pentru panou. */
-type Outcome = { ok: true; result: string; clientId?: string | null } | { ok: false; reason: string; result?: string; clientId?: string | null };
+export type Outcome = { ok: true; result: string; clientId?: string | null } | { ok: false; reason: string; result?: string; clientId?: string | null };
 
 /** Ultimul webhook primit (pentru Setări → Plăți online). */
 export async function noteWebhook(env: Env, key: 'stripe_webhook' | 'stripe_webhook_bad', v: Record<string, string>) {
@@ -108,7 +118,8 @@ export async function noteWebhook(env: Env, key: 'stripe_webhook' | 'stripe_webh
 /** Ce facem când Stripe confirmă plata. Același eveniment poate veni de mai multe ori, deci totul e idempotent. */
 export async function handleStripeEvent(env: Env, ev: { type?: string; data?: { object?: Session } }) {
   const s = ev.data?.object;
-  if (!s || !STRIPE_EVENTS.includes(ev.type ?? '')) return 'ignored';
+  // Abonamentele recurente (mode=subscription) le tratează recurring.ts.
+  if (!s || !CHECKOUT_EVENTS.includes(ev.type ?? '') || s.mode === 'subscription') return 'ignored';
   if (s.payment_status !== 'paid' || s.currency !== 'ron') return 'not_paid';
   const kind = s.metadata?.kind as Kind;
   const ref = s.metadata?.ref ?? '';
@@ -116,21 +127,36 @@ export async function handleStripeEvent(env: Env, ev: { type?: string; data?: { 
   if (!KINDS.includes(kind) || !ref || !s.id) return 'unknown';
   const pi = typeof s.payment_intent === 'string' && s.payment_intent ? s.payment_intent : null;
   const amount = Math.round(Number(s.amount_total) || 0);
+  return recordPayment(env, { kind, ref, clientId: s.metadata?.client || null, sessionId: s.id, pi, amount }, () => applyPayment(env, kind, ref, s, pi, amount));
+}
 
-  // O sesiune (și o plată Stripe) se trece o singură dată în registru; rândul „ocupă” evenimentul și pentru trimiterile în paralel.
-  const seen = await env.DB.prepare('SELECT 1 FROM online_payments WHERE session_id = ?1 OR (?2 IS NOT NULL AND payment_intent = ?2)').bind(s.id, pi).first();
+/**
+ * Trece o plată în registru o singură dată și o aplică (`apply`). Rândul din registru „ocupă” plata și pentru trimiterile în paralel;
+ * o plată refuzată se returnează singură (sau apare „de returnat”). `sessionId` = sesiunea Stripe (cs_…) sau factura (in_…) la plățile recurente.
+ */
+export async function recordPayment(
+  env: Env,
+  p: { kind: Kind; ref: string; clientId: string | null; sessionId: string; pi: string | null; amount: number; invoiceId?: string | null; renewal?: boolean },
+  apply: () => Promise<Outcome>,
+) {
+  const inv = p.invoiceId ?? null;
+  const seen = await env.DB.prepare(
+    'SELECT 1 FROM online_payments WHERE session_id = ?1 OR (?2 IS NOT NULL AND payment_intent = ?2) OR (?3 IS NOT NULL AND invoice_id = ?3)',
+  )
+    .bind(p.sessionId, p.pi, inv)
+    .first();
   if (seen) return 'duplicate';
   const id = newId('op');
   const claim = await env.DB.prepare(
-    `INSERT OR IGNORE INTO online_payments (id, kind, ref, client_id, session_id, payment_intent, amount_bani, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'paid')`,
+    `INSERT OR IGNORE INTO online_payments (id, kind, ref, client_id, session_id, payment_intent, amount_bani, status, invoice_id, renewal) VALUES (?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?)`,
   )
-    .bind(id, kind, ref, s.metadata?.client || null, s.id, pi, amount)
+    .bind(id, p.kind, p.ref, p.clientId, p.sessionId, p.pi, p.amount, inv, p.renewal ? 1 : 0)
     .run();
   if (!claim.meta.changes) return 'duplicate';
 
   let out: Outcome;
   try {
-    out = await applyPayment(env, kind, ref, s, pi, amount);
+    out = await apply();
   } catch (e) {
     // Eroare neașteptată: scoatem rândul, ca Stripe să poată trimite din nou evenimentul (îl retrimite singur la răspuns 500).
     await env.DB.prepare('DELETE FROM online_payments WHERE id = ?').bind(id).run();
@@ -139,7 +165,7 @@ export async function handleStripeEvent(env: Env, ev: { type?: string; data?: { 
   if (out.clientId) await env.DB.prepare('UPDATE online_payments SET client_id = ? WHERE id = ?').bind(out.clientId, id).run();
   if (out.ok) return out.result;
   // Banii nu rămân la noi fără nimic în schimb: returnare automată sau, dacă nu se poate, „de returnat” în panou.
-  console.error('stripe: payment refused', kind, ref, out.reason);
+  console.error('stripe: payment refused', p.kind, p.ref, out.reason);
   const refunded = await refundPayment(env, id, out.reason);
   return out.result ?? (refunded ? 'refunded' : 'needs_refund');
 }
@@ -241,6 +267,8 @@ type PaymentRow = {
   refunded_at: string | null;
   refunded_by: string | null;
   refund_ref: string | null;
+  invoice_id: string | null;
+  renewal: number;
 };
 
 /** Programarea a cărei plată e aceasta: o marcăm returnată (clientul vede „returnată”). */
@@ -261,6 +289,11 @@ export async function refundPayment(env: Env, id: string, reason: string, retry 
     await env.DB.prepare(`UPDATE online_payments SET status = 'to_refund', note = ? WHERE id = ? AND status != 'refunded'`).bind(reason.slice(0, 300), id).run();
     return false;
   };
+  // Plată recurentă (factură Stripe): plata cu care se returnează (pi_…) se ia din factură, dacă evenimentul n-a avut-o.
+  if (!p.payment_intent && p.invoice_id && env.STRIPE_SECRET_KEY) {
+    p.payment_intent = await invoicePaymentIntent(env, p.invoice_id).catch(() => null);
+    if (p.payment_intent) await env.DB.prepare('UPDATE online_payments SET payment_intent = ? WHERE id = ? AND payment_intent IS NULL').bind(p.payment_intent, id).run();
+  }
   if (!p.payment_intent?.startsWith('pi_') || !env.STRIPE_SECRET_KEY) return flag();
   let r: Awaited<ReturnType<typeof stripePost>>;
   try {
@@ -284,6 +317,15 @@ export async function refundPayment(env: Env, id: string, reason: string, retry 
     .run();
   await syncBookingRefund(env, p, now);
   return true;
+}
+
+/** Plata Stripe (pi_…) a unei facturi: în versiunile vechi ale API-ului e pe factură, în cele noi în lista ei de plăți. */
+export async function invoicePaymentIntent(env: Env, invoiceId: string): Promise<string | null> {
+  const r = await stripeCall(env, 'GET', `/v1/invoices/${encodeURIComponent(invoiceId)}?expand[]=payments`);
+  if (!r.ok || !r.json) return null;
+  const j = r.json as { payment_intent?: unknown; payments?: { data?: Array<{ payment?: { payment_intent?: unknown } }> } };
+  const pi = typeof j.payment_intent === 'string' ? j.payment_intent : j.payments?.data?.map((x) => x.payment?.payment_intent).find((x) => typeof x === 'string');
+  return typeof pi === 'string' && pi.startsWith('pi_') ? pi : null;
 }
 
 /** Returnează toate plățile păstrate pentru ceva anulat (programare, comandă). Ce nu se poate returna singur rămâne „de returnat”. */
@@ -363,7 +405,8 @@ export async function listPayments(env: Env, f: { start: string; end: string; st
           ? `Comanda ${p.ref.slice(-5).toUpperCase()}`
           : p.kind === 'gift'
             ? `Card cadou${p.gift_code ? ` ${p.gift_code}` : ''}`
-            : `Abonament${p.sub_name ? `: ${p.sub_name}` : ''}`,
+            : `Abonament${p.sub_name ? `: ${p.sub_name}` : ''}${p.renewal ? ' · reînnoire automată' : ''}`,
+    renewal: !!p.renewal,
     bookingStart: p.booking_start,
     clientId: p.client_id,
     clientName: p.client_name ?? '',
