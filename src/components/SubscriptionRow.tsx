@@ -35,6 +35,14 @@ export function SubscriptionRow({ s, staff }: { s: Subscription; staff?: boolean
           {formatDate(new Date(s.startsAt))} – {formatDate(new Date(s.endsAt))} · {s.cutsTotal === null ? t('subs.unlimitedLow') : t('subs.used', { used: s.cutsUsed, total: s.cutsTotal })}
           {staff ? ` · ${lei(s.price)}${s.createdByName ? t('subs.activatedBy', { name: s.createdByName }) : ''}` : ''}
         </Text>
+        {/* Echipa vede și reînnoirea automată cu cardul; o oprește sau o pornește doar proprietarul, din panou. */}
+        {staff && s.renewal && live ? (
+          <Text style={[styles.muted, { fontSize: 12, color: s.renewal.on && s.renewal.failed ? colors.danger : colors.muted }]}>
+            {s.renewal.on
+              ? `${t('subs.renewsOn', { date: formatDate(new Date(s.renewal.at ?? s.endsAt)), price: lei(s.renewal.price) })}${s.renewal.failed ? ` · ${t('subs.staffRenewFailed')}` : ''}`
+              : t('subs.renewOff', { date: formatDate(new Date(s.endsAt)) })}
+          </Text>
+        ) : null}
       </View>
       <Text style={{ color: st.color, fontWeight: '700', fontSize: 12 }}>{t(st.label)}</Text>
     </Card>

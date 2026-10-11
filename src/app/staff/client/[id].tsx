@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Platform, Text, TextInput, View } from 'react-native';
 import { mediaUrl, staffApi, type StaffClient } from '@/api/staff';
@@ -167,6 +167,12 @@ export default function StaffClient() {
         </View>
       </View>
       {c.phone ? <Button title={t('cl.call', { phone: c.phone })} variant="ghost" onPress={() => Linking.openURL(`tel:${c.phone}`)} /> : null}
+      {/* Programare nouă pentru clientul ales din bază (serverul cere și dreptul „clients”, ca în panou). */}
+      {staff.permissions.bookings_create && staff.permissions.clients ? (
+        <View style={{ marginTop: space.sm }}>
+          <Button title={t('cl.book')} variant="ghost" onPress={() => router.push({ pathname: '/staff/new', params: { clientId: c.id, clientName: c.name } })} />
+        </View>
+      ) : null}
 
       {activeBonuses.length ? (
         <>
@@ -186,6 +192,7 @@ export default function StaffClient() {
       ) : null}
 
       <Text style={[ui.label, { color: colors.gold }]}>{t('cl.subscription')}</Text>
+      {c.clubMember ? <Text style={{ color: colors.gold, fontWeight: '700', marginBottom: space.xs }}>★ {t('cl.club')}</Text> : null}
       <View style={{ gap: space.sm }}>
         {subs.length === 0 ? <Text style={ui.muted}>{t('cl.noSub')}</Text> : null}
         {subs.map((x) => (
@@ -260,7 +267,13 @@ export default function StaffClient() {
             <Text style={ui.muted}>
               {b.serviceName} · {b.barberName}
               {staff.permissions.stats && !b.payment ? ` · ${lei(b.price)}` : ''}
-              {b.payment === 'subscription' ? t('cl.onSub') : b.payment === 'paid' ? t('cl.paid', { n: b.paidAmount ?? 0 }) : ''}
+              {b.payment === 'subscription'
+                ? t('cl.onSub')
+                : b.payment === 'paid' && b.payMethod === 'app' && b.payDue
+                  ? t('cl.payDue', { n: b.payDue })
+                  : b.payment === 'paid'
+                    ? t('cl.paid', { n: b.paidAmount ?? 0 })
+                    : ''}
             </Text>
           </Card>
         ))}

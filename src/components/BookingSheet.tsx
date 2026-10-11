@@ -69,6 +69,7 @@ export function BookingSheet({
     past &&
     (b.status === "confirmed" || (b.status === "completed" && !b.payment));
 
+  const tell = (m: string) => (Platform.OS === "web" ? window.alert(m) : Alert.alert("TAF", m));
   const setStatus = async (status: string) => {
     try {
       onChange({
@@ -77,8 +78,25 @@ export function BookingSheet({
       });
       onClose();
     } catch (e) {
-      const m = errorMessage(e);
-      Platform.OS === "web" ? window.alert(m) : Alert.alert("TAF", m);
+      tell(errorMessage(e));
+    }
+  };
+  // Anulează confirmarea plății: doar proprietarul, ca în panou (tunsoarea revine în abonament, bonusul redevine activ).
+  const undoPay = () =>
+    ask(t("sheet.undoPayAsk"), async () => {
+      try {
+        onChange({ ...b, ...(await staffApi.undoComplete(staffToken, b.id)) });
+        onClose();
+      } catch (e) {
+        tell(errorMessage(e));
+      }
+    });
+  const review = async () => {
+    try {
+      await staffApi.reviewRequest(staffToken, b.id);
+      tell(t("sheet.reviewSent"));
+    } catch (e) {
+      tell(errorMessage(e));
     }
   };
 
@@ -122,9 +140,18 @@ export function BookingSheet({
               text={
                 b.payment === "subscription"
                   ? t("sheet.onSub")
-                  : t("sheet.paid", { amount: t("common.lei", { n: b.paidAmount ?? b.price }) })
+                  : b.payMethod === "app" && b.payDue
+                    ? t("sheet.payDueLine", { amount: t("common.lei", { n: b.payDue }) })
+                    : b.tip
+                      ? t("sheet.paidTip", { amount: t("common.lei", { n: b.paidAmount ?? b.price }), tip: t("common.lei", { n: b.tip }) })
+                      : t("sheet.paid", { amount: t("common.lei", { n: b.paidAmount ?? b.price }) })
               }
             />
+          ) : null}
+          {b.requestOutcome === "refused" ? (
+            <Line icon="close-circle-outline" text={b.refuseReason ? t("sheet.refusedWhy", { reason: b.refuseReason }) : t("sheet.refused")} />
+          ) : b.requestOutcome === "expired" ? (
+            <Line icon="hourglass-outline" text={t("sheet.expired")} />
           ) : null}
           {b.onlinePaid ? (
             <Line
@@ -132,7 +159,7 @@ export function BookingSheet({
               text={b.onlineRefunded ? t("sheet.onlineRefunded", { amount: b.onlinePaid }) : t("sheet.onlinePaidLine", { amount: b.onlinePaid })}
             />
           ) : null}
-          {b.note ? (
+          {b.note && !p.bookings_manage ? (
             <Line icon="chatbubble-outline" text={`„${b.note}”`} />
           ) : null}
           <View style={{ gap: space.sm, marginTop: space.md }}>
@@ -219,6 +246,19 @@ export function BookingSheet({
                   ask(t("sheet.cancelAsk"), () => setStatus("cancelled"))
                 }
               />
+            ) : null}
+            {/* „Nu a venit” pus din greșeală: înapoi la confirmată (doar dacă ora n-a fost luată între timp), ca în panou. */}
+            {p.bookings_manage && b.status === "no_show" ? (
+              <Button title={t("sheet.backToConfirmed")} variant="ghost" onPress={() => setStatus("confirmed")} />
+            ) : null}
+            {p.bookings_manage && b.status === "completed" && !checkout ? (
+              <Button title={t("sheet.review")} variant="ghost" onPress={review} />
+            ) : null}
+            {staff.owner && b.payment && !checkout ? (
+              <Button title={t("sheet.undoPay")} variant="ghost" onPress={undoPay} />
+            ) : null}
+            {p.bookings_manage && !checkout ? (
+              <NoteEdit booking={b} token={staffToken} onDone={(nb) => onChange({ ...b, ...nb })} />
             ) : null}
           </View>
           </ScrollView>
@@ -658,6 +698,41 @@ function PayRequest({
         <Button title={t("sheet.payRequest")} variant="ghost" loading={busy} onPress={() => act(() => staffApi.payRequest(token, b.id))} />
       )}
       {msg ? <Text style={{ color: colors.success, fontSize: 13 }}>{msg}</Text> : null}
+      {err ? <Text style={{ color: colors.danger }}>{err}</Text> : null}
+    </View>
+  );
+}
+
+/** Notița internă a programării (o vede doar echipa); aceeași cu cea din panou. */
+function NoteEdit({ booking: b, token, onDone }: { booking: StaffBooking; token: string; onDone: (b: StaffBooking) => void }) {
+  const { t } = useT();
+  const [note, setNote] = useState(b.note ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => setNote(b.note ?? ""), [b.id, b.note]);
+  const save = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      onDone(await staffApi.saveNote(token, b.id, note.trim()));
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={{ gap: space.xs }}>
+      <Text style={[ui.label, { marginBottom: 0 }]}>{t("sheet.noteLabel")}</Text>
+      <TextInput
+        value={note}
+        onChangeText={setNote}
+        multiline
+        maxLength={500}
+        style={[ui.input, { height: 70, paddingTop: 10, textAlignVertical: "top", marginTop: 0 }]}
+        accessibilityLabel={t("sheet.noteLabel")}
+      />
+      {note.trim() !== (b.note ?? "").trim() ? <Button title={t("sheet.saveNote")} variant="ghost" loading={busy} onPress={save} /> : null}
       {err ? <Text style={{ color: colors.danger }}>{err}</Text> : null}
     </View>
   );

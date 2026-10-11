@@ -28,6 +28,8 @@ export default function StaffOrders() {
   const [tab, setTab] = useState('open');
   const [list, setList] = useState<StaffOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Cum se încasează la ridicare (dacă nu e plătită deja online): numerar implicit sau card, ca în panou.
+  const [method, setMethod] = useState<Record<string, 'cash' | 'card'>>({});
 
   const load = useCallback(() => {
     if (!staffToken) return;
@@ -43,7 +45,7 @@ export default function StaffOrders() {
 
   const set = async (o: StaffOrder, status: string) => {
     try {
-      await staffApi.setOrderStatus(staffToken, o.id, status);
+      await staffApi.setOrderStatus(staffToken, o.id, status, status === 'picked_up' && !o.paidAt ? (method[o.id] ?? 'cash') : undefined);
       load();
     } catch (e) {
       setError(errorMessage(e));
@@ -52,8 +54,9 @@ export default function StaffOrders() {
   const cancel = (o: StaffOrder) => {
     const yes = () => set(o, 'cancelled');
     const ask = t('orders.cancelAsk', { code: o.code });
-    if (Platform.OS === 'web') return window.confirm(`${ask} ${t('sord.stockBack')}`) && yes();
-    Alert.alert(ask, t('sord.stockBack'), [
+    const more = o.payMethod === 'online' ? `${t('sord.stockBack')} ${t('sord.refundNote')}` : t('sord.stockBack');
+    if (Platform.OS === 'web') return window.confirm(`${ask} ${more}`) && yes();
+    Alert.alert(ask, more, [
       { text: t('common.no'), style: 'cancel' },
       { text: t('bookings.cancel'), style: 'destructive', onPress: yes },
     ]);
@@ -95,10 +98,35 @@ export default function StaffOrders() {
               ))}
               {o.note ? <Text style={[ui.muted, { fontStyle: 'italic' }]}>„{o.note}”</Text> : null}
               <Text style={[ui.price, { marginTop: 4 }]}>{lei(o.total)}</Text>
+              {o.paidAt ? (
+                <Text style={{ color: colors.success, fontSize: 13 }}>
+                  {t(o.payMethod === 'online' ? 'sord.paidOnline' : o.payMethod === 'card' ? 'sord.paidCard' : o.payMethod === 'transfer' ? 'sord.paidTransfer' : 'sord.paidCash')}
+                  {o.onlineStatus === 'refunded' ? t('sord.refunded') : o.onlineStatus === 'to_refund' ? t('sord.toRefund') : ''}
+                </Text>
+              ) : null}
               {o.status === 'new' || o.status === 'ready' ? (
                 <View style={{ gap: space.sm, marginTop: space.sm }}>
                   {o.status === 'new' ? <Button title={t('sord.ready')} onPress={() => set(o, 'ready')} /> : null}
-                  <Button title={t('sord.paid')} variant={o.status === 'ready' ? 'primary' : 'ghost'} onPress={() => set(o, 'picked_up')} />
+                  {!o.paidAt ? (
+                    <View style={[ui.row, { gap: space.sm }]}>
+                      <Text style={ui.muted}>{t('sord.payWith')}</Text>
+                      {(['cash', 'card'] as const).map((m) => {
+                        const on = (method[o.id] ?? 'cash') === m;
+                        return (
+                          <Pressable
+                            key={m}
+                            onPress={() => setMethod({ ...method, [o.id]: m })}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected: on }}
+                            style={{ flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: on ? colors.gold : colors.border, backgroundColor: on ? colors.gold : 'transparent' }}
+                          >
+                            <Text style={{ color: on ? colors.onGold : colors.text, fontWeight: '700' }}>{t(m === 'cash' ? 'sheet.cash' : 'sheet.card')}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                  <Button title={o.paidAt ? t('sord.pickedUpOnly') : t('sord.paid')} variant={o.status === 'ready' ? 'primary' : 'ghost'} onPress={() => set(o, 'picked_up')} />
                   <View style={{ flexDirection: 'row', gap: space.sm }}>
                     {o.clientPhone ? (
                       <View style={{ flex: 1 }}>

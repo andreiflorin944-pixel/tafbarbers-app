@@ -3,6 +3,12 @@ import { api, BLOCK_KINDS, blockKind, type Barber, type Block, type BlockKind, t
 import { Field, Loading, useAction, useLoad } from '../ui';
 import { date, time, today, WEEKDAYS } from '../util';
 
+/**
+ * Cine poate șterge o perioadă liberă sau un bloc, după regula serverului (aceeași și în aplicația echipei): proprietarul orice;
+ * un cont legat de un frizer doar pe ale lui; un administrator fără frizer, cu „toate programările”, orice.
+ */
+const canEditOff = (me: Me, barberId: string | null) => me.owner || (me.barberId ? barberId === me.barberId : me.permissions.bookings_all);
+
 /** Pauze, ore pentru membri și concedii: blocurile din program sus, zilele libere întregi jos. */
 export function TimeOffPage({ me }: { me: Me }) {
   return (
@@ -44,10 +50,10 @@ function TimeOffSection({ me }: { me: Me }) {
           deja făcute rămân; verifică-le în calendar.
         </p>
         <Field label="Cine">
-          <select value={barberId} onChange={(e) => setBarberId(e.target.value)} disabled={!!me.barberId}>
-            {!me.barberId ? <option value="">Tot salonul (închis)</option> : null}
+          <select value={barberId} onChange={(e) => setBarberId(e.target.value)} disabled={!me.owner && !!me.barberId}>
+            {me.owner || !me.barberId ? <option value="">Tot salonul (închis)</option> : null}
             {barbers
-              .filter((b) => b.active && (!me.barberId || b.id === me.barberId))
+              .filter((b) => b.active && (me.owner || !me.barberId || b.id === me.barberId))
               .map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -107,15 +113,17 @@ function TimeOffSection({ me }: { me: Me }) {
                   </td>
                   <td className="muted">{t.reason}</td>
                   <td>
-                    <button
-                      className="danger sm"
-                      onClick={() =>
-                        confirm('Ștergi perioada liberă?') &&
-                        api('DELETE', `/admin/time-off/${t.id}`).then(data.reload)
-                      }
-                    >
-                      Șterge
-                    </button>
+                    {canEditOff(me, t.barberId) ? (
+                      <button
+                        className="danger sm"
+                        onClick={() =>
+                          confirm('Ștergi perioada liberă?') &&
+                          api('DELETE', `/admin/time-off/${t.id}`).then(data.reload)
+                        }
+                      >
+                        Șterge
+                      </button>
+                    ) : null}
                   </td>
                 </tr>
               ))}
@@ -176,7 +184,7 @@ function BlocksSection({ me }: { me: Me }) {
     b.repeat
       ? `${WEEK.filter((d) => b.weekdays.includes(d)).map((d) => WEEKDAYS[d]).join(', ')}${b.fromDay && b.fromDay > today() ? `, din ${date(b.fromDay + 'T12:00:00Z')}` : ''}${b.untilDay ? `, până pe ${date(b.untilDay + 'T12:00:00Z')}` : ''}`
       : date(b.day + 'T12:00:00Z');
-  const canDelete = (b: Block) => me.owner || !me.barberId || b.barberId === me.barberId;
+  const canDelete = (b: Block) => canEditOff(me, b.barberId);
   const help = blockKind(kind).help;
 
   return (

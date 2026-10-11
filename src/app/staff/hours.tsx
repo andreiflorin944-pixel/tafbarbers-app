@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
-import { BLOCK_KINDS, blockLabel, panelUrl, staffApi, type BlockKind, type StaffBarber, type StaffBlock, type StaffTimeOff } from '@/api/staff';
+import { BLOCK_KINDS, blockLabel, panelUrl, staffApi, type BlockKind, type StaffBarber, type StaffBlock, type StaffMe, type StaffTimeOff } from '@/api/staff';
 import { Button, Card, Screen, styles as ui } from '@/components/ui';
 import { useT } from '@/i18n';
 import { addDays, dayKey, dayName, formatDate, formatTime, pad } from '@/lib/dates';
@@ -11,6 +11,13 @@ import { colors, space } from '@/theme';
 const WEEK = [1, 2, 3, 4, 5, 6, 0];
 const isHm = (v: string) => /^\d{1,2}:\d{2}$/.test(v.trim());
 const hm = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+
+/**
+ * Cine poate șterge o perioadă liberă sau un bloc, după aceeași regulă ca serverul (și panoul): proprietarul orice;
+ * un cont legat de un frizer doar pe ale lui; un administrator fără frizer, cu „toate programările”, orice.
+ */
+const canEditOff = (staff: StaffMe, barberId: string | null) =>
+  staff.permissions.timeoff && (staff.owner || (staff.barberId ? barberId === staff.barberId : staff.permissions.bookings_all));
 
 // Programul de lucru (din panou) și concediile / zilele libere, care se pot pune direct de aici.
 export default function StaffHours() {
@@ -35,7 +42,8 @@ export default function StaffHours() {
 
   if (!staff || !staffToken) return null;
   const mine = staff.barberId ? barbers.filter((b) => b.id === staff.barberId) : barbers;
-  const visibleOff = off.filter((o) => staff.owner || !o.barberId || o.barberId === staff.barberId);
+  const seesAll = staff.owner || (!staff.barberId && staff.permissions.bookings_all);
+  const visibleOff = off.filter((o) => seesAll || !o.barberId || o.barberId === staff.barberId);
   const nameOf = (id: string | null) => (id ? (barbers.find((b) => b.id === id)?.name ?? '') : t('hours.wholeSalon'));
 
   const add = async () => {
@@ -94,7 +102,7 @@ export default function StaffHours() {
               {o.reason ? ` · ${o.reason}` : ''}
             </Text>
           </View>
-          {staff.permissions.timeoff && (staff.owner || o.barberId === staff.barberId) ? (
+          {canEditOff(staff, o.barberId) ? (
             <Pressable onPress={() => remove(o)} hitSlop={10}>
               <Text style={{ color: colors.danger, fontWeight: '700' }}>{t('common.delete')}</Text>
             </Pressable>
@@ -196,7 +204,7 @@ function BlocksSection({ blocks, nameOf, onChange }: { blocks: StaffBlock[]; nam
               {nameOf(b.barberId)}
             </Text>
           </View>
-          {staff.permissions.timeoff && (staff.owner || b.barberId === staff.barberId) ? (
+          {canEditOff(staff, b.barberId) ? (
             <Pressable onPress={() => remove(b)} hitSlop={10}>
               <Text style={{ color: colors.danger, fontWeight: '700' }}>{t('common.delete')}</Text>
             </Pressable>

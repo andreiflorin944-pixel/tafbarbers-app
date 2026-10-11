@@ -1,8 +1,8 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { blockLabel, staffApi, type StaffBarber, type StaffBooking, type StaffTimeOff } from '@/api/staff';
+import { blockLabel, panelUrl, staffApi, type StaffBarber, type StaffBooking, type StaffTimeOff } from '@/api/staff';
 import { BOOKING_STATUS, BookingSheet } from '@/components/BookingSheet';
 import { BirthdayGlow, Candle } from '@/components/Birthday';
 import { styles as ui } from '@/components/ui';
@@ -34,6 +34,8 @@ export default function StaffCalendar() {
   const [timeOff, setTimeOff] = useState<StaffTimeOff[]>([]);
   const [open, setOpen] = useState<StaffBooking | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Câți clienți așteaptă un loc liber în ziua afișată (ca în calendarul din panou).
+  const [waiting, setWaiting] = useState(0);
   const days = useMemo(() => Array.from({ length: 60 }, (_, i) => addDays(startOfDay(new Date()), i - 14)), []);
   const strip = useRef<ScrollView>(null);
 
@@ -64,6 +66,7 @@ export default function StaffCalendar() {
       // Pauzele și celelalte blocuri care scot ore din program se hașurează ca timpul liber (cele „doar membri” rămân de lucru).
       const blocks = await staffApi.blockOccurrences(staffToken, day, day).catch(() => []);
       setBookings(b);
+      staffApi.waitlist(staffToken, day, day).then((w) => setWaiting(w.filter((x) => x.active).length), () => setWaiting(0));
       setTimeOff([...t, ...blocks.filter((o) => o.kind !== 'members').map((o) => ({ id: 0, barberId: o.barberId, start: o.start, end: o.end, reason: blockLabel(o) }))]);
     } catch (e) {
       setError(errorMessage(e));
@@ -158,6 +161,11 @@ export default function StaffCalendar() {
         </ScrollView>
       ) : null}
 
+      {waiting ? (
+        <Pressable onPress={() => panelUrl() && Linking.openURL(panelUrl('waitlist'))} style={{ paddingHorizontal: space.md, paddingVertical: space.xs }} accessibilityRole="link">
+          <Text style={{ color: colors.gold, fontWeight: '600' }}>{t('cal.waitlist', { n: waiting })}</Text>
+        </Pressable>
+      ) : null}
       {error ? <Text style={{ color: colors.danger, padding: space.md }}>{error}</Text> : null}
       {bookings === null || !barbers.length ? (
         <ActivityIndicator color={colors.gold} style={{ marginTop: space.xl }} />

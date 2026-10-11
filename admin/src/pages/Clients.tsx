@@ -404,7 +404,11 @@ function ClientModal({ id, canDelete, canConsents, onClose, onChange }: { id: st
                   {date(b.start)}, {time(b.start)} · {b.serviceName} · {b.barberName}
                 </span>
                 <span>
-                  {b.payment === 'subscription' ? 'pe abonament' : lei(b.payment === 'paid' ? (b.paidAmount ?? b.price) : b.price)}{' '}
+                  {b.payment === 'subscription'
+                    ? 'pe abonament'
+                    : b.payMethod === 'app' && b.payDue
+                      ? `de plătit ${lei(b.payDue)} în aplicație`
+                      : lei(b.payment === 'paid' ? (b.paidAmount ?? b.price) : b.price)}{' '}
                   <span className={`pill ${b.status}`}>{STATUS[b.status]}</span>
                 </span>
               </div>

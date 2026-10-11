@@ -41,8 +41,9 @@ export default function StaffHome() {
   if (!staff) return null;
   const list = (today ?? []).filter((b) => b.status !== 'cancelled').sort((a, b) => a.start.localeCompare(b.start));
   const upcoming = list.filter((b) => new Date(b.end).getTime() > Date.now());
-  // Doar ce s-a încasat deja azi (programările închise ca plătite); tunsorile pe abonament nu intră.
-  const revenue = list.reduce((s, b) => s + (b.payment === 'paid' ? (b.paidAmount ?? 0) : 0), 0);
+  // Doar ce s-a încasat deja azi (programările închise ca plătite); tunsorile pe abonament nu intră și nici plata
+  // cerută în aplicație, cât timp clientul n-a plătit-o (la fel ca încasările din panou și registrul de încasări).
+  const revenue = list.reduce((s, b) => s + (b.payment === 'paid' && b.payMethod !== 'app' ? (b.paidAmount ?? 0) : 0), 0);
   const seesMoney = staff.permissions.stats || !staff.permissions.bookings_all;
   const hour = new Date().getHours();
   const hello = t(hour < 12 ? 'sh.morning' : hour < 18 ? 'sh.day' : 'sh.evening');

@@ -487,7 +487,8 @@ function BookingPanel({ b: initial, color, canManage, owner, online, onClose, on
                     Anulează
                   </button>
                 ) : null}
-                {b.status !== 'confirmed' && b.status !== 'cancelled' && !b.payment ? (
+                {/* Doar după „Nu a venit”: o programare încheiată se redeschide cu „Anulează confirmarea plății” (proprietarul). */}
+                {b.status === 'no_show' ? (
                   <button className="ghost sm" disabled={busy} onClick={() => set({ status: 'confirmed' })}>
                     Readu la confirmată
                   </button>

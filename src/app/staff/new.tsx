@@ -2,8 +2,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { api } from '@/api';
-import { staffApi } from '@/api/staff';
-import { Button, Screen, styles as ui } from '@/components/ui';
+import { staffApi, type StaffClient } from '@/api/staff';
+import { Button, Card, Screen, styles as ui } from '@/components/ui';
 import type { Slot } from '@/data/types';
 import { addDays, dayKey, dayOfMonth, fromDayKey, formatTime, shortDay, shortMonth, startOfDay } from '@/lib/dates';
 import { useT } from '@/i18n';
@@ -13,8 +13,8 @@ import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
 export default function StaffNewBooking() {
-  // Din calendar: ziua, ora și frizerul slotului atins vin precompletate.
-  const params = useLocalSearchParams<{ day?: string; time?: string; barberId?: string }>();
+  // Din calendar: ziua, ora și frizerul slotului atins vin precompletate. Din fișa clientului: clientul (`clientId`).
+  const params = useLocalSearchParams<{ day?: string; time?: string; barberId?: string; clientId?: string; clientName?: string }>();
   const { staff, staffToken } = useStaff();
   const { t } = useT();
   const { services, barbers } = useApp();
@@ -29,6 +29,10 @@ export default function StaffNewBooking() {
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [start, setStart] = useState<string | null>(null);
   const [notify, setNotify] = useState(true);
+  // Clientul ales din bază (căutat după nume sau numărul complet), ca în panou; fără el se face client nou din telefon + nume.
+  const [picked, setPicked] = useState<Pick<StaffClient, 'id' | 'name' | 'phone' | 'visits'> | null>(params.clientId ? { id: params.clientId, name: params.clientName ?? '' } : null);
+  const [hits, setHits] = useState<StaffClient[]>([]);
+  const [term, setTerm] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,14 +50,29 @@ export default function StaffNewBooking() {
     );
   }, [serviceId, barberId, day]);
 
+  useEffect(() => {
+    const q = term.trim();
+    if (!staffToken || !staff?.permissions.clients || picked || q.replace(/\s/g, '').length < 3) {
+      setHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      staffApi.clients(staffToken, q).then(
+        (r) => setHits(r.slice(0, 6)),
+        () => setHits([]),
+      );
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [term, picked, staffToken, staff]);
+
   if (!staff || !staffToken) return null;
-  const ok = phone.replace(/\D/g, '').length >= 9 && !!start;
+  const ok = (!!picked || phone.replace(/\D/g, '').length >= 9) && !!start;
 
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
-      await staffApi.create(staffToken, { phone, name: name.trim(), serviceId, barberId, start: start!, notify });
+      await staffApi.create(staffToken, { ...(picked ? { clientId: picked.id } : { phone, name: name.trim() }), serviceId, barberId, start: start!, notify });
       router.back();
     } catch (e) {
       setError(errorMessage(e, t('snew.saveFailed')));
@@ -64,10 +83,58 @@ export default function StaffNewBooking() {
 
   return (
     <Screen edges={['bottom']}>
-      <Text style={ui.label}>{t('snew.phone')}</Text>
-      <TextInput value={phone} onChangeText={setPhone} style={ui.input} keyboardType="phone-pad" placeholder="07xx xxx xxx" placeholderTextColor={colors.muted} />
-      <Text style={ui.label}>{t('snew.name')}</Text>
-      <TextInput value={name} onChangeText={setName} style={ui.input} placeholder={t('snew.optional')} placeholderTextColor={colors.muted} />
+      {picked ? (
+        <Card style={[ui.row, { justifyContent: 'space-between', marginTop: space.sm }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={ui.cardTitle}>{picked.name || t('scl.noName')}</Text>
+            <Text style={ui.muted}>
+              {[picked.phone, picked.visits ? (picked.visits === 1 ? t('scl.visitOne') : t('scl.visitMany', { n: picked.visits })) : params.clientId === picked.id ? '' : t('snew.noVisits')].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+          <Pressable onPress={() => setPicked(null)} hitSlop={8}>
+            <Text style={{ color: colors.gold, fontWeight: '700' }}>{t('snew.otherClient')}</Text>
+          </Pressable>
+        </Card>
+      ) : (
+        <>
+          <Text style={ui.label}>{t('snew.phone')}</Text>
+          <TextInput
+            value={phone}
+            onChangeText={(v) => {
+              setPhone(v);
+              setTerm(v);
+            }}
+            style={ui.input}
+            keyboardType="phone-pad"
+            placeholder="07xx xxx xxx"
+            placeholderTextColor={colors.muted}
+          />
+          <Text style={ui.label}>{staff.permissions.clients ? t('snew.nameSearch') : t('snew.name')}</Text>
+          <TextInput
+            value={name}
+            onChangeText={(v) => {
+              setName(v);
+              setTerm(v);
+            }}
+            style={ui.input}
+            placeholder={t('snew.optional')}
+            placeholderTextColor={colors.muted}
+          />
+          {hits.length ? (
+            <View style={{ marginTop: space.sm, gap: space.xs }}>
+              <Text style={[ui.muted, { fontSize: 12 }]}>{t('snew.found')}</Text>
+              {hits.map((h) => (
+                <Card key={h.id} onPress={() => setPicked(h)}>
+                  <Text style={ui.cardTitle}>{h.name || t('scl.noName')}</Text>
+                  <Text style={ui.muted}>
+                    {[h.phone, h.visits ? (h.visits === 1 ? t('scl.visitOne') : t('scl.visitMany', { n: h.visits })) : t('snew.noVisits')].filter(Boolean).join(' · ')}
+                  </Text>
+                </Card>
+              ))}
+            </View>
+          ) : null}
+        </>
+      )}
 
       <Text style={ui.label}>{t('snew.service')}</Text>
       <View style={s.wrap}>

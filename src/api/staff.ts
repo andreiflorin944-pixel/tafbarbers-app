@@ -48,6 +48,9 @@ export type StaffBooking = {
   tip?: number | null;
   bonusId?: string | null;
   clientBirthday?: boolean; // programarea cade de ziua clientului
+  // Cererile de programare: cum s-au încheiat (refuzată / expirată) și motivul refuzului, ca în panou.
+  requestOutcome?: 'accepted' | 'refused' | 'expired' | null;
+  refuseReason?: string | null;
 };
 /** Pe ce canale a plecat cererea de plată. */
 export type PaySent = { sms: boolean; push: boolean; email: boolean; off?: boolean };
@@ -97,6 +100,12 @@ export const staffApi = {
   logoutOthers: (t: string) => call<{ loggedOut: number }>('POST', '/admin/me/logout-others', t),
   bookings: (t: string, from: string, to: string) => call<StaffBooking[]>('GET', `/admin/bookings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, t),
   setStatus: (t: string, id: string, status: string) => call<StaffBooking>('PATCH', `/admin/bookings/${id}`, t, { status }),
+  /** Notița internă a programării (o vede doar echipa), aceeași ca în panou. */
+  saveNote: (t: string, id: string, note: string) => call<StaffBooking>('PATCH', `/admin/bookings/${id}`, t, { note }),
+  /** Anulează confirmarea plății (doar proprietarul): programarea revine la confirmată. */
+  undoComplete: (t: string, id: string) => call<StaffBooking>('DELETE', `/admin/bookings/${encodeURIComponent(id)}/complete`, t),
+  /** Cererea de recenzie Google după o tunsoare încheiată (o singură dată pe programare). */
+  reviewRequest: (t: string, id: string) => call<{ ok: true; sms: boolean; push: boolean; email: boolean }>('POST', `/admin/bookings/${encodeURIComponent(id)}/review-request`, t),
   // Cererile de programare (când programările din aplicație cer aprobare).
   requests: (t: string) => call<{ count: number; items: StaffBooking[] }>('GET', '/admin/bookings/requests', t),
   acceptRequest: (t: string, id: string, payRequest = false) =>
@@ -107,7 +116,8 @@ export const staffApi = {
   cancelPayRequest: (t: string, id: string, payMethod: 'cash' | 'card') =>
     call<StaffBooking>('DELETE', `/admin/bookings/${encodeURIComponent(id)}/pay-request`, t, { payMethod }),
   refuseRequest: (t: string, id: string, reason: string) => call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/refuse`, t, { reason }),
-  create: (t: string, body: { phone: string; name: string; serviceId: string; barberId: string; start: string; notify: boolean }) =>
+  // Clientul se dă după telefon (+ nume, pentru client nou) sau, ales din bază, după `clientId`.
+  create: (t: string, body: { phone?: string; name?: string; clientId?: string; serviceId: string; barberId: string; start: string; notify: boolean }) =>
     call<StaffBooking>('POST', '/admin/bookings', t, body),
   timeOff: (t: string, body: { fromDay: string; toDay: string; reason: string; barberId?: string | null }) => call('POST', '/admin/time-off', t, body),
   listTimeOff: (t: string, from: string) => call<StaffTimeOff[]>('GET', `/admin/time-off?from=${encodeURIComponent(from)}`, t),
@@ -188,7 +198,11 @@ export const staffApi = {
   report: (t: string, kind: string, from: string, to: string) =>
     call<Report>('GET', `/admin/reports/${encodeURIComponent(kind)}?from=${from}&to=${to}`, t),
   orders: (t: string, status: string) => call<StaffOrder[]>('GET', `/admin/orders?status=${status}`, t),
-  setOrderStatus: (t: string, id: string, status: string) => call<StaffOrder>('PATCH', `/admin/orders/${encodeURIComponent(id)}`, t, { status }),
+  // La ridicare se spune cum s-a încasat la salon (numerar sau card), ca în panou.
+  setOrderStatus: (t: string, id: string, status: string, payMethod?: 'cash' | 'card') =>
+    call<StaffOrder>('PATCH', `/admin/orders/${encodeURIComponent(id)}`, t, payMethod ? { status, payMethod } : { status }),
+  /** Lista de așteptare pe zile (frizerul vede înscrierile lui și pe cele „orice frizer”). */
+  waitlist: (t: string, from: string, to: string) => call<Array<{ id: string; active: boolean }>>('GET', `/admin/waitlist?from=${from}&to=${to}`, t),
 };
 
 /** Adresa unei pagini din panoul web (ex. „settings”). */
@@ -246,6 +260,7 @@ export type StaffClient = {
   bonuses?: Bonus[];
   subscriptions?: Subscription[];
   referredBy?: { id: string; name: string } | null;
+  clubMember?: boolean; // membru TAF Club (vede și orele „doar membri”)
   referredCount?: number;
   visits?: number;
   lastVisit?: string | null;
@@ -265,6 +280,10 @@ export type StaffOrder = {
   clientName: string;
   clientPhone?: string; // lipsește fără dreptul „contacts”
   items: Array<{ productId: string; name: string; price: number; qty: number }>;
+  // Plătită (la salon sau online, înainte de ridicare): cum și dacă banii online au fost returnați după anulare.
+  paidAt?: string | null;
+  payMethod?: string | null;
+  onlineStatus?: 'paid' | 'refunded' | 'to_refund' | null;
 };
 
 // Tabloul de bord și rapoartele (dreptul „reports”; sumele apar doar cu „stats”).

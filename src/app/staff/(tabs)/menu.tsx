@@ -33,6 +33,7 @@ export default function StaffMenu() {
     { icon: 'cut-outline', label: t('menu.services'), sub: t('menu.servicesSub'), to: '/staff/services', show: true },
     { icon: 'people-outline', label: t('menu.clients'), to: '/staff/clients', show: p.clients },
     { icon: 'time-outline', label: t('menu.hours'), to: '/staff/hours', show: true },
+    { icon: 'hourglass-outline', label: t('menu.waitlist'), sub: t('menu.waitlistSub'), web: 'waitlist', show: true },
     { icon: 'bag-handle-outline', label: t('menu.orders'), to: '/staff/orders', show: p.shop },
     { icon: 'color-palette-outline', label: t('menu.appearance'), sub: t('menu.appearanceSub'), web: 'appearance', show: owner },
     { icon: 'megaphone-outline', label: t('menu.promos'), web: 'promos', show: owner },
