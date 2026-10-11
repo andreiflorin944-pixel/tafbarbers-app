@@ -299,3 +299,52 @@ details.translations summary {
 .switch input:disabled + span { cursor: wait; opacity: 0.7; }
 .auto-msg { display: flex; gap: 12px; align-items: flex-start; }
 .toast.saved { right: auto; left: 50%; transform: translateX(-50%); text-align: center; }
+
+/* Programarea în calendar: ✕ / ✓ la trecerea cu mouse-ul, bulina stării și fereastra mică (ca în Barberly). */
+.cal-dot { position: absolute; top: 6px; right: 6px; width: 9px; height: 9px; border-radius: 50%; background: color-mix(in srgb, var(--c) 70%, #888); box-shadow: 0 0 0 2px var(--card); }
+.cal-dot.completed { background: #30a46c; }
+.cal-dot.no_show { background: var(--danger); }
+.cal-dot.requested { background: var(--gold); }
+.cal-quick { position: absolute; top: 3px; right: 3px; display: none; gap: 4px; }
+.cal-ev:hover .cal-quick { display: flex; }
+.cal-ev:hover .cal-dot { visibility: hidden; }
+.cal-ev:hover .cal-quick ~ b { padding-right: 52px; }
+.cal-quick button { width: 24px; height: 24px; padding: 0; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--card); color: #fff; }
+.cal-quick button.no { background: #e5484d; }
+.cal-quick button.ok { background: #30a46c; }
+.cal-quick button:disabled { opacity: 0.45; }
+.cal-pop { position: fixed; z-index: 60; width: 280px; background: #182024; color: #f2f2f2; border-radius: 14px; padding: 14px 16px; display: grid; gap: 8px; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35); pointer-events: none; font-size: 14px; }
+.cal-pop .muted { color: #a9b1b6; }
+.cal-pop-name { font-size: 19px; font-weight: 800; }
+.cal-pop-foot { border-top: 1px solid #2c363b; padding-top: 8px; }
+
+/* Panoul programării */
+.drawer.bk { width: 460px; }
+.drawer.bk .drawer-body { padding-bottom: 20px; flex: 1; }
+.bk-icons { gap: 6px; }
+.bk-icons .btn, .bk-icons button { width: 40px; height: 40px; padding: 0; display: inline-grid; place-items: center; border-radius: 10px; }
+.bk-sum { gap: 6px; padding: 14px 16px; }
+.bk-price { font-size: 28px; font-weight: 800; }
+.bk-list { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--card); }
+.bk-row { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; width: 100%; padding: 11px 14px; text-align: left; background: transparent; color: var(--text); border: 0; border-bottom: 1px solid var(--border); border-radius: 0; font-weight: 400; font-size: 14px; }
+.bk-row:last-child { border-bottom: 0; }
+button.bk-row:hover:not(:disabled) { background: var(--card-alt); }
+button.bk-row:disabled { opacity: 1; cursor: default; }
+.bk-menu button.bk-row:disabled { opacity: 0.45; }
+.bk-row.sub { grid-template-columns: 1fr auto; background: var(--card-alt); }
+.bk-row.danger b { color: var(--danger); }
+.bk-row.danger .bk-thumb { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--card)); }
+.bk-thumb { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; border: 2px solid transparent; }
+.bk-thumb.ic { display: grid; place-items: center; background: var(--card-alt); color: var(--text); font-weight: 800; }
+.bk-thumb.round { border-radius: 50%; }
+.bk-chev { color: var(--muted); font-size: 22px; line-height: 1; }
+.bk-edit { display: grid; gap: 8px; padding: 10px 14px 12px; border-bottom: 1px solid var(--border); background: var(--card-alt); }
+.bk-tabs { margin-bottom: 4px; }
+.bk-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 13px; }
+.bk-log li { display: flex; gap: 10px; align-items: flex-start; }
+.bk-log .dot { border-radius: 50%; width: 9px; height: 9px; margin-top: 5px; flex-shrink: 0; }
+.bk-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawer-foot { display: grid; grid-template-columns: auto 1fr; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); background: var(--card); }
+.bk-menu-back { position: absolute; inset: 0; background: var(--backdrop); z-index: 5; display: flex; align-items: flex-end; }
+.bk-menu { width: 100%; max-height: 92%; overflow-y: auto; background: var(--card); border-radius: 18px 18px 0 0; padding: 16px 18px 22px; display: grid; gap: 10px; }
+.bk-menu h3 { margin: 6px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }

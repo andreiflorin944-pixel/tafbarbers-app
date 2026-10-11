@@ -45,9 +45,9 @@ export type GiftCardSettings = {
 };
 export type LinkSettings = { appStoreUrl: string; playStoreUrl: string; googleReviewUrl: string };
 /** Notificările despre programări, comenzi și carduri cadou: adminul alege dacă pleacă și pe ce canale. */
-export type ChannelEvent = 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started' | 'sub_renewed' | 'sub_payment_failed' | 'pay_request';
+export type ChannelEvent = 'confirm' | 'cancel' | 'booking_moved' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started' | 'sub_renewed' | 'sub_payment_failed' | 'pay_request';
 export type Channel = { enabled: boolean; push: boolean; sms: boolean; email: boolean };
-export const CHANNEL_EVENTS: ChannelEvent[] = ['confirm', 'cancel', 'booking_request', 'booking_request_refused', 'booking_request_expired', 'waitlist_slot', 'reminder_24h', 'reminder_2h', 'review', 'order_created', 'order_ready', 'order_cancelled', 'gift_card', 'sub_started', 'sub_renewed', 'sub_payment_failed', 'pay_request'];
+export const CHANNEL_EVENTS: ChannelEvent[] = ['confirm', 'cancel', 'booking_moved', 'booking_request', 'booking_request_refused', 'booking_request_expired', 'waitlist_slot', 'reminder_24h', 'reminder_2h', 'review', 'order_created', 'order_ready', 'order_cancelled', 'gift_card', 'sub_started', 'sub_renewed', 'sub_payment_failed', 'pay_request'];
 export type Automations = {
   winback: WinbackSettings;
   lastMinute: LastMinuteSettings;
@@ -106,6 +106,8 @@ export const DEFAULT_AUTOMATIONS: Automations = {
   channels: {
     confirm: { enabled: true, push: false, sms: true, email: false },
     cancel: { enabled: true, push: false, sms: true, email: false },
+    // Mutată de salon (altă oră sau alt frizer): ca la anulare, prin SMS, ca să afle sigur.
+    booking_moved: { enabled: true, push: true, sms: true, email: false },
     booking_request: { enabled: true, push: true, sms: true, email: false },
     booking_request_refused: { enabled: true, push: true, sms: true, email: false },
     booking_request_expired: { enabled: true, push: true, sms: true, email: false },

@@ -52,6 +52,13 @@ export type StaffBooking = {
   requestOutcome?: 'accepted' | 'refused' | 'expired' | null;
   refuseReason?: string | null;
 };
+/** Istoricul unei programări: jurnalul, plățile și mesajele trimise clientului, plus linkul programării pentru client. */
+export type StaffActivity = {
+  link: string;
+  log: Array<{ at: string; kind: string; by: string | null; detail?: Record<string, unknown> }>;
+  payments: Array<{ at: string; kind: 'salon' | 'subscription' | 'request' | 'online' | 'refund'; amount: number | null; method?: string | null; tip?: number | null; gift?: number | null; status?: string; note?: string }>;
+  messages: Array<{ at: string; kind: string; channel: string; status: string; error: string | null }>;
+};
 /** Pe ce canale a plecat cererea de plată. */
 export type PaySent = { sms: boolean; push: boolean; email: boolean; off?: boolean };
 export type StaffCheckout = { booking: StaffBooking; subscription: Subscription | null; bonuses: Bonus[] };
@@ -102,6 +109,24 @@ export const staffApi = {
   setStatus: (t: string, id: string, status: string) => call<StaffBooking>('PATCH', `/admin/bookings/${id}`, t, { status }),
   /** Notița internă a programării (o vede doar echipa), aceeași ca în panou. */
   saveNote: (t: string, id: string, note: string) => call<StaffBooking>('PATCH', `/admin/bookings/${id}`, t, { note }),
+  /**
+   * Modifică programarea, ca „Salvează modificările” din panou: altă oră (`start`), alt frizer, alt serviciu, alt preț (cu reducere).
+   * `force` = altă oră decât cele libere; `notify` = clientul primește mesaj cu noua oră.
+   */
+  editBooking: (
+    t: string,
+    id: string,
+    body: { start?: string; barberId?: string; serviceId?: string; price?: number; discount?: string | null; force?: boolean; notify?: boolean; note?: string },
+  ) => call<StaffBooking>('PATCH', `/admin/bookings/${encodeURIComponent(id)}`, t, body),
+  /** Orele libere pentru mutare: ora de acum a programării (`exclude`) contează ca liberă. */
+  freeSlots: (t: string, serviceId: string, barberId: string, day: string, exclude: string) =>
+    call<Array<{ start: string; end: string; barberId: string; membersOnly?: boolean }>>(
+      'GET',
+      `/availability?serviceId=${encodeURIComponent(serviceId)}&barberId=${encodeURIComponent(barberId)}&day=${day}&exclude=${encodeURIComponent(exclude)}`,
+      t,
+    ),
+  /** Istoricul programării (jurnal, plăți, mesaje) și linkul ei pentru client, ca în panou. */
+  activity: (t: string, id: string) => call<StaffActivity>('GET', `/admin/bookings/${encodeURIComponent(id)}/activity`, t),
   /** Anulează confirmarea plății (doar proprietarul): programarea revine la confirmată. */
   undoComplete: (t: string, id: string) => call<StaffBooking>('DELETE', `/admin/bookings/${encodeURIComponent(id)}/complete`, t),
   /** Cererea de recenzie Google după o tunsoare încheiată (o singură dată pe programare). */

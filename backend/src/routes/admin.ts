@@ -14,7 +14,7 @@ import {
   tokenFrom,
   verifyPassword,
 } from '../auth';
-import { acceptRequest, BOOKING_SELECT, cancelBooking, cancelPayRequest, createBooking, getBooking, HOLDS_SLOT, pendingRequests, refuseRequest, sendPayRequest } from '../bookings';
+import { acceptRequest, BOOKING_SELECT, cancelBooking, cancelPayRequest, createBooking, editBooking, getBooking, HOLDS_SLOT, logBookingEvent, pendingRequests, refuseRequest, sendPayRequest, type BookingEdit } from '../bookings';
 import { listPayments, markRefunded, onlinePaymentsOn, paymentsStatus, publicBase, refundOrFlag, retryRefund } from '../payments';
 import {
   barber,
@@ -885,8 +885,15 @@ adminRoutes.patch('/bookings/:id', async (c) => {
   need(c, 'bookings_manage');
   const scoped = ownBarber(c);
   if (!cur || (scoped && cur.barberId !== scoped)) throw new HttpError(404, 'not_found');
-  const b = await c.req.json<{ status?: string; note?: string }>();
+  const b = await c.req.json<{ status?: string; note?: string } & BookingEdit>();
   if (b.status === 'cancelled') return c.json(await cancelBooking(c.env, id, 'admin', undefined, c.get('admin').adminId));
+  // Mutată (altă oră sau alt frizer), alt serviciu sau alt preț: „Salvați modificările” din panoul programării.
+  // Frizerul care vede doar programările lui nu le poate da altui frizer.
+  if (b.start !== undefined || b.barberId !== undefined || b.serviceId !== undefined || (b.price !== undefined && b.price !== null)) {
+    if (scoped && b.barberId && b.barberId !== scoped) throw new HttpError(403, 'forbidden');
+    await editBooking(c.env, id, b, c.get('admin').adminId);
+    if (b.note === undefined) return c.json(await getBooking(c.env, id));
+  }
   // O cerere se acceptă (cu mesaj la client) sau se refuză; nu se poate marca direct încheiată sau neprezentare.
   if (cur.status === 'requested' && b.status === 'confirmed') return c.json(await acceptRequest(c.env, id, c.get('admin').adminId));
   if (cur.status === 'requested' && b.status) throw new HttpError(409, 'booking_requested');
@@ -908,10 +915,88 @@ adminRoutes.patch('/bookings/:id', async (c) => {
         .run();
       if (!r.meta.changes) throw new HttpError(409, 'slot_unavailable');
     } else v.status = b.status;
+    await logBookingEvent(c.env, id, b.status === 'no_show' ? 'no_show' : 'reopened', {}, c.get('admin').adminId);
   }
   if (b.note !== undefined) v.note = String(b.note).slice(0, 500);
   await update(c.env.DB, 'bookings', id, v);
   return c.json(await getBooking(c.env, id));
+});
+
+/**
+ * Istoricul programării, pentru taburile Jurnal / Plăți / Notificări din panoul programării:
+ * jurnalul (creată, acceptată, mutată, încheiată, anulată…), plățile (la salon, online, returnări, cererea de plată) și mesajele trimise clientului.
+ */
+adminRoutes.get('/bookings/:id/activity', async (c) => {
+  const cur = await bookingForStaff(c);
+  const row = (await c.env.DB.prepare(
+    `SELECT b.created_at, b.source, b.completed_at, b.completed_by, b.cancelled_at, b.cancelled_by, b.cancelled_by_admin,
+       b.request_outcome, b.request_answered_at, b.request_answered_by, b.pay_requested_at, b.pay_requested_by, b.pay_request_bani,
+       b.payment, b.paid_bani, b.pay_method, b.tip_bani, b.gift_bani FROM bookings b WHERE b.id = ?`,
+  )
+    .bind(cur.id)
+    .first<Record<string, string | number | null>>())!;
+  const [events, online, msgs, admins] = await Promise.all([
+    c.env.DB.prepare('SELECT kind, detail, admin_id, created_at FROM booking_events WHERE booking_id = ? ORDER BY id').bind(cur.id).all<{ kind: string; detail: string; admin_id: string | null; created_at: string }>(),
+    c.env.DB.prepare(`SELECT amount_bani, status, note, created_at, refunded_at FROM online_payments WHERE kind = 'booking' AND ref = ? ORDER BY created_at`)
+      .bind(cur.id)
+      .all<{ amount_bani: number; status: string; note: string; created_at: string; refunded_at: string | null }>(),
+    c.env.DB.prepare('SELECT channel, kind, status, error, created_at FROM message_log WHERE booking_id = ? ORDER BY id').bind(cur.id).all<{ channel: string; kind: string; status: string; error: string | null; created_at: string }>(),
+    c.env.DB.prepare('SELECT id, name, email FROM admins').all<{ id: string; name: string | null; email: string }>(),
+  ]);
+  const who = (id: unknown) => {
+    if (!id) return null;
+    const a = admins.results.find((x) => x.id === id);
+    return a ? a.name || a.email : null;
+  };
+  const log: Array<{ at: string; kind: string; by: string | null; detail?: Record<string, unknown> }> = [];
+  const add = (at: unknown, kind: string, by: unknown = null, detail?: Record<string, unknown>) => {
+    if (at) log.push({ at: String(at), kind, by: who(by), ...(detail && { detail }) });
+  };
+  add(row.created_at, 'created', null, { source: row.source });
+  if (row.request_outcome === 'accepted') add(row.request_answered_at, 'accepted', row.request_answered_by);
+  if (row.request_outcome === 'expired') add(row.request_answered_at || row.cancelled_at, 'expired');
+  for (const e of events.results) {
+    let detail: Record<string, unknown> = {};
+    try {
+      detail = JSON.parse(e.detail);
+    } catch {
+      /* jurnal vechi fără detalii */
+    }
+    add(e.created_at, e.kind, e.admin_id, detail);
+  }
+  if (row.pay_requested_at) add(row.pay_requested_at, 'pay_requested', row.pay_requested_by, { amount: Number(row.pay_request_bani ?? 0) / 100 });
+  if (row.completed_at) add(row.completed_at, 'completed', row.completed_by, { payment: row.payment });
+  if (row.cancelled_at && row.request_outcome !== 'expired') {
+    add(row.cancelled_at, row.request_outcome === 'refused' ? 'refused' : 'cancelled', row.cancelled_by_admin, { by: row.cancelled_by });
+  }
+  for (const m of msgs.results) if (m.kind === 'review' && m.status === 'sent') add(m.created_at, 'review_sent');
+  log.sort((a, b) => a.at.localeCompare(b.at));
+
+  const payments: Array<{ at: string; kind: string; amount: number | null; method?: string | null; tip?: number | null; gift?: number | null; status?: string; note?: string }> = [];
+  if (row.payment === 'subscription') payments.push({ at: String(row.completed_at), kind: 'subscription', amount: null });
+  else if (row.payment === 'paid' && row.pay_method !== 'app' && row.pay_method !== 'online') {
+    payments.push({
+      at: String(row.completed_at),
+      kind: 'salon',
+      amount: Number(row.paid_bani ?? 0) / 100,
+      method: (row.pay_method as string | null) ?? 'cash',
+      tip: row.tip_bani ? Number(row.tip_bani) / 100 : null,
+      gift: row.gift_bani ? Number(row.gift_bani) / 100 : null,
+    });
+  }
+  if (row.pay_requested_at) payments.push({ at: String(row.pay_requested_at), kind: 'request', amount: Number(row.pay_request_bani ?? 0) / 100 || null, status: cur.payDue ? 'open' : 'closed' });
+  for (const p of online.results) {
+    payments.push({ at: p.created_at, kind: 'online', amount: p.amount_bani / 100, status: p.status, note: p.note });
+    if (p.refunded_at) payments.push({ at: p.refunded_at, kind: 'refund', amount: p.amount_bani / 100, note: p.note });
+  }
+  payments.sort((a, b) => a.at.localeCompare(b.at));
+  return c.json({
+    // Linkul programării pentru client (pagina /b/…): ce, când, cu cine și unde.
+    link: `${publicBase(c.env, c.req.url)}/b/${cur.id}`,
+    log,
+    payments,
+    messages: msgs.results.map((m) => ({ at: m.created_at, kind: m.kind, channel: m.channel, status: m.status, error: m.error })),
+  });
 });
 
 /** Ce trebuie la confirmarea tunsorii: prețul, abonamentul care o poate acoperi și bonusurile active ale clientului. */
@@ -1007,6 +1092,7 @@ adminRoutes.delete('/bookings/:id/pay-request', async (c) => {
 /** Anulează confirmarea plății (doar proprietarul). */
 adminRoutes.delete('/bookings/:id/complete', ownerOnly, async (c) => {
   await undoCompletion(c.env, c.req.param('id')!);
+  await logBookingEvent(c.env, c.req.param('id')!, 'uncompleted', {}, c.get('admin').adminId);
   return c.json(await getBooking(c.env, c.req.param('id')!));
 });
 

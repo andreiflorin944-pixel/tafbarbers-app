@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, blockKind, errorText, type Barber, type BlockOccurrence, type Booking, type Checkout, type Client, type Location, type Me, type Service, type Slot, type TimeOff } from '../api';
+import { api, blockKind, errorText, type Barber, type BlockOccurrence, type Booking, type Client, type Location, type Me, type Service, type Slot, type TimeOff } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
-import { BOOKINGS_CHANGED, bookingsChanged, RequestActions, sentText } from '../Requests';
+import { BOOKINGS_CHANGED } from '../Requests';
 import { addDays, date, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
+import { BookingPanel, Icon } from './BookingPanel';
 
 const PX = 1.2; // pixeli pe minut
 /** Culorile implicite, dacă frizerul nu are una aleasă în „Frizeri”. */
@@ -17,6 +18,11 @@ type Stats = {
 export function CalendarPage({ me }: { me: Me }) {
   const [day, setDay] = useState(today());
   const [open, setOpen] = useState<Booking | null>(null);
+  // ✓ de pe calendar: panoul se deschide direct la încasare.
+  const [openCheckout, setOpenCheckout] = useState(false);
+  // Fereastra mică de la trecerea cu mouse-ul peste o programare.
+  const [hover, setHover] = useState<{ b: Booking; x: number; y: number } | null>(null);
+  const [quickErr, setQuickErr] = useState<string | null>(null);
   const [create, setCreate] = useState<{ barberId?: string; time?: string } | null>(null);
 
   const meta = useLoad(() => Promise.all([api<Barber[]>('GET', '/admin/barbers'), api<Service[]>('GET', '/admin/services')]));
@@ -259,14 +265,64 @@ export function CalendarPage({ me }: { me: Me }) {
                       .map((x) => {
                         const s = minutesOf(x.start);
                         const len = (Date.parse(x.end) - Date.parse(x.start)) / 60000;
+                        const started = Date.parse(x.start) < Date.now();
+                        const canQuick = me.permissions.bookings_manage && x.status === 'confirmed';
                         return (
                           <div
                             key={x.id}
                             className={`cal-ev ${x.status}${x.clientBirthday ? ' bday' : ''}${open?.id === x.id ? ' sel' : ''}`}
-                            title={x.status === 'requested' ? 'Cerere în așteptare: apasă ca s-o accepți sau s-o refuzi' : x.clientBirthday ? 'E ziua de naștere a clientului' : `${STATUS[x.status]} · ${x.serviceName}`}
                             style={{ top: (s - startMin) * PX + 1, height: Math.max(len * PX - 2, 22), ['--c' as string]: colorOf(b.id) }}
-                            onClick={() => setOpen(x)}
+                            onClick={() => {
+                              setHover(null);
+                              setOpenCheckout(false);
+                              setOpen(x);
+                            }}
+                            onMouseEnter={(e) => {
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setHover({ b: x, x: r.right, y: r.top });
+                            }}
+                            onMouseLeave={() => setHover(null)}
                           >
+                            <span className={`cal-dot ${x.status}`} aria-hidden="true" />
+                            {canQuick ? (
+                              <span className="cal-quick">
+                                <button
+                                  type="button"
+                                  className="no"
+                                  title="Anulează programarea"
+                                  aria-label="Anulează programarea"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    setHover(null);
+                                    if (!confirm(`Anulezi programarea lui ${x.clientName || 'client'} de la ${time(x.start)}? Ora se eliberează și clientul primește mesaj.`)) return;
+                                    try {
+                                      setQuickErr(null);
+                                      await api('PATCH', `/admin/bookings/${x.id}`, { status: 'cancelled' });
+                                      reload();
+                                    } catch (err) {
+                                      setQuickErr(errorText(err));
+                                    }
+                                  }}
+                                >
+                                  <Icon name="x" size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ok"
+                                  disabled={!started}
+                                  title={started ? 'Programare încheiată: încasează' : 'Se poate marca încheiată după ce începe'}
+                                  aria-label="Programare încheiată"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setHover(null);
+                                    setOpenCheckout(true);
+                                    setOpen(x);
+                                  }}
+                                >
+                                  <Icon name="check" size={14} />
+                                </button>
+                              </span>
+                            ) : null}
                             <b>
                               {time(x.start)}–{time(x.end)} {x.status === 'completed' ? '✓ ' : x.status === 'no_show' ? '✗ ' : ''}
                               {x.clientBirthday ? '🕯️ ' : ''}
@@ -299,15 +355,53 @@ export function CalendarPage({ me }: { me: Me }) {
         </details>
       ) : null}
 
+      {quickErr ? (
+        <div className="err" style={{ marginTop: 10 }}>
+          {quickErr}
+        </div>
+      ) : null}
+
+      {hover && !open ? (
+        <div className="cal-pop" style={{ left: Math.min(hover.x + 10, window.innerWidth - 300), top: Math.max(8, Math.min(hover.y, window.innerHeight - 190)) }} role="tooltip">
+          <div className="row" style={{ justifyContent: 'space-between', gap: 10, flexWrap: 'nowrap' }}>
+            <b>
+              {time(hover.b.start)} – {time(hover.b.end)}
+            </b>
+            <span className={`pill ${hover.b.status}`}>{STATUS[hover.b.status]}</span>
+          </div>
+          <div className="cal-pop-name">
+            {hover.b.clientBirthday ? '🕯️ ' : ''}
+            {hover.b.clientName || hover.b.clientPhone || 'Client'}
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
+            <span className="dot" style={{ background: services.find((x) => x.id === hover.b.serviceId)?.color || colorOf(hover.b.barberId) }} />
+            <span style={{ flex: 1 }}>{hover.b.serviceName}</span>
+            <span className="muted">{Math.round((Date.parse(hover.b.end) - Date.parse(hover.b.start)) / 60000)} min</span>
+          </div>
+          {hover.b.note ? <div className="muted small">📝 {hover.b.note}</div> : null}
+          <div className="muted small cal-pop-foot">
+            {hover.b.status === 'requested' ? 'Cerere în așteptare: apasă ca s-o accepți sau s-o refuzi' : 'Apasă ca să deschizi panoul programării'}
+          </div>
+        </div>
+      ) : null}
+
       {open ? (
         <BookingPanel
           key={open.id}
           b={open}
           color={colorOf(open.barberId)}
           canManage={me.permissions.bookings_manage}
+          allBarbers={!!me.permissions.bookings_all}
           owner={me.owner}
           online={!!me.onlinePayments}
-          onClose={() => setOpen(null)}
+          barbers={barbers}
+          services={services}
+          locations={locs.data ?? []}
+          startCheckout={openCheckout}
+          onClose={() => {
+            setOpen(null);
+            setOpenCheckout(false);
+          }}
           onChange={reload}
         />
       ) : null}
@@ -335,453 +429,6 @@ function Stat({ v, l }: { v: string | number; l: string }) {
     <div className="card stat">
       <div className="v">{v}</div>
       <div className="l">{l}</div>
-    </div>
-  );
-}
-
-/** Panoul din dreapta, la click pe o programare: stare, plată și client, ca în Barberly. */
-function BookingPanel({ b: initial, color, canManage, owner, online, onClose, onChange }: { b: Booking; color: string; canManage: boolean; owner: boolean; online: boolean; onClose: () => void; onChange: () => void }) {
-  // Cererea de plată schimbă programarea fără să închidă panoul: ținem aici varianta primită de la server.
-  const [b, setB] = useState(initial);
-  const { busy, error, run } = useAction();
-  const [note, setNote] = useState(b.note);
-  const [checkout, setCheckout] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
-  }, [onClose]);
-  const set = (patch: Record<string, string>) =>
-    run(async () => {
-      await api('PATCH', `/admin/bookings/${b.id}`, patch);
-      onChange();
-      onClose();
-    });
-  const past = Date.parse(b.start) < Date.now();
-  const canComplete = past && (b.status === 'confirmed' || (b.status === 'completed' && !b.payment));
-  const digits = b.clientPhone?.replace(/[^\d]/g, '') ?? '';
-  const clientLink = `${location.origin}${location.pathname}#/clients/${b.clientId}`;
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(clientLink);
-      setMsg('Linkul fișei clientului e copiat.');
-    } catch {
-      prompt('Copiază linkul:', clientLink);
-    }
-  };
-  const review = () =>
-    run(async () => {
-      const r = await api<{ sms: boolean; push: boolean }>('POST', `/admin/bookings/${b.id}/review-request`);
-      setMsg(`Cererea de recenzie a plecat${r.sms && r.push ? ' prin SMS și notificare' : r.push ? ' prin notificare' : ' prin SMS'}.`);
-    });
-
-  return (
-    <>
-      <div className="drawer-back" onMouseDown={onClose} />
-      <aside className="drawer" role="dialog" aria-label="Programare">
-        <div className="drawer-head" style={{ borderTopColor: color }}>
-          <div>
-            <div className="drawer-time">
-              {time(b.start)}–{time(b.end)}
-            </div>
-            <div className="muted small" style={{ textTransform: 'capitalize' }}>
-              {longDate(b.start)}
-            </div>
-          </div>
-          <button className="ghost sm" onClick={onClose} aria-label="Închide">
-            ✕
-          </button>
-        </div>
-
-        <div className="drawer-body">
-          <div className="row" style={{ gap: 12, flexWrap: 'nowrap' }}>
-            <div className="avatar" style={{ background: color }}>
-              {(b.clientName || '?').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <strong style={{ fontSize: 17 }}>{b.clientName || 'Client fără nume'}</strong>
-              {b.clientPhone ? (
-                <div>
-                  <a href={`tel:${b.clientPhone}`}>{b.clientPhone}</a>
-                </div>
-              ) : null}
-            </div>
-          </div>
-          <div className="row" style={{ gap: 6 }}>
-            {b.clientPhone ? (
-              <>
-                <a className="btn ghost sm" href={`tel:${b.clientPhone}`}>
-                  Sună
-                </a>
-                <a className="btn ghost sm" href={`sms:${b.clientPhone}`}>
-                  SMS
-                </a>
-                <a className="btn ghost sm" href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer">
-                  WhatsApp
-                </a>
-              </>
-            ) : null}
-            <a className="btn ghost sm" href={`#/clients/${b.clientId}`}>
-              Fișa clientului
-            </a>
-          </div>
-          {b.clientBirthday ? <div className="bday-note">🕯️ E ziua lui de naștere! Urează-i „La mulți ani” și, dacă vrei, fă-i o reducere.</div> : null}
-
-          <div className="drawer-card">
-            <div className="row" style={{ justifyContent: 'space-between' }}>
-              <strong>{b.serviceName}</strong>
-              <strong>{lei(b.price)}</strong>
-            </div>
-            <div className="muted small">
-              <span className="dot" style={{ background: color }} /> {b.barberName} · {b.source === 'admin' ? 'adăugată din panou' : 'din aplicație'}
-            </div>
-          </div>
-
-          <section className="drawer-sec">
-            <h3>Stare</h3>
-            <div className="row" style={{ gap: 8 }}>
-              <span className={`pill ${b.status}`}>{STATUS[b.status]}</span>
-              {b.payment ? (
-                <span className="small">
-                  {b.payment === 'subscription'
-                    ? 'pe abonament'
-                    : b.payMethod === 'app' && b.payDue
-                      ? `are de plătit ${lei(b.payDue)} în aplicație`
-                      : `a plătit ${lei(b.paidAmount ?? b.price)}${b.tip ? ` + bacșiș ${lei(b.tip)}` : ''}`}
-                </span>
-              ) : null}
-            </div>
-            {b.status === 'requested' ? (
-              <>
-                <div className="small">Clientul a cerut programarea din aplicație și așteaptă confirmarea. Ora e rezervată până răspunzi.</div>
-                {canManage ? (
-                  <RequestActions
-                    b={b}
-                    online={online}
-                    onDone={() => {
-                      bookingsChanged();
-                      onChange();
-                      onClose();
-                    }}
-                  />
-                ) : null}
-              </>
-            ) : null}
-            {b.requestOutcome === 'refused' ? <div className="muted small">Cerere refuzată{b.refuseReason ? `: ${b.refuseReason}` : '.'}</div> : null}
-            {b.requestOutcome === 'expired' ? <div className="muted small">Cererea a expirat: nimeni n-a răspuns până la ora programării.</div> : null}
-            {canManage && !checkout && b.status !== 'requested' ? (
-              <div className="row" style={{ gap: 6, marginTop: 8 }}>
-                {canComplete ? (
-                  <button className="sm" disabled={busy} onClick={() => setCheckout(true)}>
-                    ✓ Încheiată
-                  </button>
-                ) : null}
-                {b.status === 'confirmed' && past ? (
-                  <button className="ghost sm" disabled={busy} onClick={() => set({ status: 'no_show' })}>
-                    Nu a venit
-                  </button>
-                ) : null}
-                {b.status === 'confirmed' ? (
-                  <button className="danger sm" disabled={busy} onClick={() => confirm('Anulezi programarea? Clientul primește mesaj.') && set({ status: 'cancelled' })}>
-                    Anulează
-                  </button>
-                ) : null}
-                {/* Doar după „Nu a venit”: o programare încheiată se redeschide cu „Anulează confirmarea plății” (proprietarul). */}
-                {b.status === 'no_show' ? (
-                  <button className="ghost sm" disabled={busy} onClick={() => set({ status: 'confirmed' })}>
-                    Readu la confirmată
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            {b.status === 'confirmed' && !past ? <div className="muted small" style={{ marginTop: 6 }}>Se închide după ce începe: încheiată (cu plata), nu a venit sau anulată.</div> : null}
-          </section>
-
-          {canManage ? (
-            <section className="drawer-sec">
-              <h3>Plată</h3>
-              {b.onlinePaid ? (
-                <div className={b.onlineRefunded ? 'muted small' : 'success small'} style={{ marginBottom: 6 }}>
-                  {b.onlineRefunded ? `Plata online de ${b.onlinePaid} lei a fost returnată pe card.` : `Plătită online din aplicație: ${b.onlinePaid} lei.`}
-                </div>
-              ) : null}
-              {!checkout ? (
-                <PayRequestBox
-                  b={b}
-                  online={online}
-                  owner={owner}
-                  onChange={(nb) => {
-                    setB({ ...b, ...nb });
-                    onChange();
-                  }}
-                />
-              ) : null}
-              {checkout && canComplete ? (
-                <CheckoutForm
-                  b={b}
-                  online={online}
-                  onCancel={() => setCheckout(false)}
-                  onDone={() => {
-                    onChange();
-                    onClose();
-                  }}
-                />
-              ) : canComplete ? (
-                <button className="ghost sm" onClick={() => setCheckout(true)}>
-                  Încasează (checkout rapid)
-                </button>
-              ) : b.payment ? (
-                <div className="row" style={{ gap: 6 }}>
-                  {b.payMethod === 'app' && b.payDue ? (
-                    <span className="small">Încheiată; plata se așteaptă în aplicație.</span>
-                  ) : (
-                    <span className="small success">Plata e confirmată{b.payMethod === 'online' ? ' (online, din aplicație)' : ''}.</span>
-                  )}
-                  {owner ? (
-                    <button
-                      className="ghost sm"
-                      disabled={busy}
-                      onClick={() =>
-                        confirm('Anulezi confirmarea plății? Tunsoarea revine în abonament și bonusul folosit redevine activ.') &&
-                        run(async () => {
-                          await api('DELETE', `/admin/bookings/${b.id}/complete`);
-                          onChange();
-                          onClose();
-                        })
-                      }
-                    >
-                      Anulează confirmarea plății
-                    </button>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="muted small">{past ? 'Nu e nimic de încasat.' : 'Plata se încasează după tunsoare.'}</div>
-              )}
-            </section>
-          ) : null}
-
-          <section className="drawer-sec">
-            <h3>Client</h3>
-            <div className="row" style={{ gap: 6 }}>
-              {canManage && b.status === 'completed' ? (
-                <button className="ghost sm" disabled={busy} onClick={review}>
-                  Cere recenzie Google
-                </button>
-              ) : null}
-              <button className="ghost sm" onClick={copy}>
-                Copiază linkul fișei
-              </button>
-            </div>
-            <Field label="Notiță internă (o vede doar echipa)">
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} disabled={!canManage} />
-            </Field>
-            {canManage && note !== b.note ? (
-              <button className="sm" disabled={busy} onClick={() => set({ note })} style={{ justifySelf: 'start' }}>
-                Salvează notița
-              </button>
-            ) : null}
-          </section>
-          {msg ? <div className="success small">{msg}</div> : null}
-          {error ? <div className="err">{error}</div> : null}
-        </div>
-      </aside>
-    </>
-  );
-}
-
-type PayMethod = 'cash' | 'card' | 'transfer' | 'online' | 'app';
-type Sent = { sms: boolean; push: boolean; email: boolean };
-
-/**
- * Cererea de plată în aplicație: clientul primește mesajul și vede în aplicație „Ai de plătit X lei · Plătește acum”.
- * Se poate trimite oricând cât programarea e confirmată (și după tunsoare, din „✓ Încheiată” → „cere plata în aplicație”).
- */
-function PayRequestBox({ b, online, owner, onChange }: { b: Booking; online: boolean; owner: boolean; onChange: (b: Booking) => void }) {
-  const { busy, error, run } = useAction();
-  const [amount, setAmount] = useState(String(b.payDue ?? b.price));
-  const [msg, setMsg] = useState<string | null>(null);
-  if (b.onlinePaid) return null;
-  const pendingApp = b.status === 'completed' && b.payMethod === 'app';
-  if (b.status !== 'confirmed' && !pendingApp) return null;
-  if (!online)
-    return (
-      <div className="muted small" style={{ marginBottom: 6 }}>
-        „Cere plata în aplicație” nu e disponibil: plata online e oprită (lipsesc cheile Stripe).{' '}
-        {owner ? <a href="#/settings/plati">Vezi Setări → Plăți online</a> : 'Proprietarul o pornește din Setări → Plăți online.'}
-      </div>
-    );
-  const send = () =>
-    run(async () => {
-      const r = await api<Booking & { sent: Sent }>('POST', `/admin/bookings/${b.id}/pay-request`, { amount: Number(amount) });
-      setMsg(sentText(r.sent, r.payDue ?? Number(amount)));
-      onChange(r);
-    });
-  const withdraw = (payMethod: 'cash' | 'card') =>
-    run(async () => {
-      const r = await api<Booking>('DELETE', `/admin/bookings/${b.id}/pay-request`, { payMethod });
-      setMsg(pendingApp ? `Notat: a plătit ${payMethod === 'card' ? 'cu cardul (POS)' : 'numerar'} la salon.` : 'Cererea de plată a fost retrasă.');
-      onChange(r);
-    });
-  return (
-    <div className="card grid" style={{ gap: 6, marginBottom: 6 }}>
-      {b.payDue ? (
-        <>
-          <div className="small">
-            <b>Plată cerută în aplicație: {lei(b.payDue)}</b> · clientul n-a plătit încă.
-          </div>
-          <div className="row" style={{ gap: 6 }}>
-            <button className="ghost sm" disabled={busy} onClick={send}>
-              Trimite din nou
-            </button>
-            {pendingApp ? (
-              <>
-                <button className="ghost sm" disabled={busy} onClick={() => withdraw('cash')}>
-                  A plătit numerar
-                </button>
-                <button className="ghost sm" disabled={busy} onClick={() => withdraw('card')}>
-                  A plătit cu cardul (POS)
-                </button>
-              </>
-            ) : (
-              <button className="ghost sm" disabled={busy} onClick={() => withdraw('cash')}>
-                Retrage cererea
-              </button>
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="row" style={{ gap: 6, alignItems: 'center' }}>
-          <input type="number" min={2} value={amount} onChange={(e) => setAmount(e.target.value)} style={{ width: 100 }} aria-label="Suma cerută" /> lei
-          <button className="ghost sm" disabled={busy || !(Number(amount) >= 2)} onClick={send}>
-            Cere plata în aplicație
-          </button>
-        </div>
-      )}
-      {msg ? <div className="success small">{msg}</div> : null}
-      {error ? <div className="err small">{error}</div> : null}
-    </div>
-  );
-}
-
-/** Confirmarea tunsorii: „a plătit X lei” sau „pe abonament”, plus un bonus folosit (opțional). */
-function CheckoutForm({ b, online, onCancel, onDone }: { b: Booking; online: boolean; onCancel: () => void; onDone: () => void }) {
-  const data = useLoad(() => api<Checkout>('GET', `/admin/bookings/${b.id}/checkout`), [b.id]);
-  const [mode, setMode] = useState<'paid' | 'subscription' | null>(null);
-  const [amount, setAmount] = useState(String(b.price));
-  const [bonusId, setBonusId] = useState('');
-  const [tip, setTip] = useState('');
-  const [payMethod, setPayMethod] = useState<PayMethod>(b.onlinePaid ? 'online' : 'cash');
-  const [giftCode, setGiftCode] = useState('');
-  const [gift, setGift] = useState<{ code: string; take: number; balance: number } | null>(null);
-  const [giftErr, setGiftErr] = useState<string | null>(null);
-  const { busy, error, run } = useAction();
-  if (!data.data) return <Loading error={data.error} />;
-  const applyGift = async () => {
-    setGiftErr(null);
-    try {
-      const g = await api<{ code: string; balance: number; status: string }>('GET', `/admin/gift-cards/check?code=${encodeURIComponent(giftCode)}`);
-      if (g.status !== 'active') throw new Error(g.status === 'expired' ? 'Cardul cadou a expirat.' : 'Pe cardul cadou nu mai sunt bani.');
-      const take = Math.min(g.balance, b.price);
-      setGift({ code: g.code, take, balance: g.balance });
-      setMode('paid');
-      setAmount(String(Math.max(0, b.price - take)));
-    } catch (e) {
-      setGift(null);
-      setGiftErr(e instanceof Error && !('code' in e) ? e.message : errorText(e));
-    }
-  };
-  const sub = data.data.subscription;
-  const m = mode ?? (sub ? 'subscription' : 'paid');
-  return (
-    <div className="card grid">
-      <b>Cum a plătit?</b>
-      {b.onlinePaid ? <div className="success small">A plătit deja online, din aplicație: {b.onlinePaid} lei.</div> : null}
-      <label className="check">
-        <input type="radio" checked={m === 'paid'} onChange={() => setMode('paid')} /> A plătit
-        <input type="number" min={0} value={amount} onChange={(e) => { setMode('paid'); setAmount(e.target.value); }} style={{ width: 110 }} aria-label="Suma plătită" /> lei
-        <select value={payMethod} onChange={(e) => { setMode('paid'); setPayMethod(e.target.value as PayMethod); }} style={{ width: 170 }} aria-label="Cum a plătit">
-          <option value="cash">numerar</option>
-          <option value="card">card (POS)</option>
-          <option value="transfer">transfer</option>
-          {b.onlinePaid ? <option value="online">online (în aplicație)</option> : null}
-          {online && !b.onlinePaid ? <option value="app">cere plata în aplicație</option> : null}
-        </select>
-      </label>
-      {m === 'paid' && payMethod === 'app' ? (
-        <div className="muted small">
-          Clientul primește cererea de plată (SMS, e-mail sau notificare, după Notificări) și plătește din aplicație cu cardul, Apple Pay sau Google Pay. Suma nu
-          intră la numerar sau card în registru; apare la online după ce plătește.
-        </div>
-      ) : !online && !b.onlinePaid ? (
-        <div className="muted small">„Cere plata în aplicație” apare după ce pornești plata online (Setări → Plăți online).</div>
-      ) : null}
-      <label className="check" style={{ opacity: sub ? 1 : 0.5 }}>
-        <input type="radio" disabled={!sub} checked={m === 'subscription'} onChange={() => setMode('subscription')} />
-        <span>
-          Pe abonament{' '}
-          <span className="muted small">
-          {sub
-            ? `· ${sub.name} · ${sub.cutsTotal === null ? 'nelimitat' : `${sub.cutsLeft} din ${sub.cutsTotal} rămase`} · până pe ${longDate(sub.endsAt)}`
-            : '· clientul nu are abonament activ pentru acest serviciu'}
-          </span>
-        </span>
-      </label>
-      {data.data.bonuses.length ? (
-        <Field label="Folosește un bonus (opțional)">
-          <select value={bonusId} onChange={(e) => setBonusId(e.target.value)}>
-            <option value="">Fără bonus</option>
-            {data.data.bonuses.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.title}
-              </option>
-            ))}
-          </select>
-        </Field>
-      ) : null}
-      {m === 'paid' ? (
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span>Card cadou</span>
-          <input value={giftCode} onChange={(e) => { setGiftCode(e.target.value); setGift(null); }} placeholder="TAF-XXXX-XXXX" style={{ width: 160 }} aria-label="Cod card cadou" />
-          <button className="ghost sm" disabled={!giftCode.trim()} onClick={applyGift}>
-            Folosește
-          </button>
-          {gift ? <span className="success small">Se scad {gift.take} lei de pe card (are {gift.balance} lei). Restul, {amount || 0} lei, se plătește acum.</span> : null}
-          {giftErr ? <span className="err small">{giftErr}</span> : null}
-        </div>
-      ) : null}
-      <label className="check">
-        Bacșiș (opțional)
-        <input type="number" min={0} value={tip} onChange={(e) => setTip(e.target.value)} style={{ width: 110 }} aria-label="Bacșiș" /> lei
-      </label>
-      {error ? <div className="err">{error}</div> : null}
-      <div className="row">
-        <button
-          disabled={busy || (m === 'paid' && amount === '')}
-          onClick={() =>
-            run(async () => {
-              const r = await api<Booking & { sent?: Sent }>('POST', `/admin/bookings/${b.id}/complete`, {
-                payment: m,
-                ...(m === 'paid' && { amount: Number(amount), payMethod }),
-                ...(m === 'paid' && gift && { giftCode: gift.code, giftAmount: gift.take }),
-                tip: tip ? Number(tip) : null,
-                bonusId: bonusId || null,
-              });
-              if (r.sent) alert(sentText(r.sent, Number(amount)));
-              onDone();
-            })
-          }
-        >
-          {m === 'subscription'
-            ? 'Confirmă: pe abonament'
-            : payMethod === 'app'
-              ? `Confirmă și cere ${amount || 0} lei în aplicație`
-              : `Confirmă: ${amount || 0} lei${gift ? ` + ${gift.take} lei card cadou` : ''}`}
-        </button>
-        <button className="ghost" onClick={onCancel}>
-          Înapoi
-        </button>
-      </div>
     </div>
   );
 }

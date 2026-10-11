@@ -167,7 +167,7 @@ type BookingJson = NonNullable<Awaited<ReturnType<typeof getBooking>>>;
 export async function notifyBooking(
   env: Env,
   b: BookingJson,
-  kind: Extract<TplEvent, 'confirm' | 'cancel' | 'reminder_24h' | 'reminder_2h' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'pay_request'>,
+  kind: Extract<TplEvent, 'confirm' | 'cancel' | 'booking_moved' | 'reminder_24h' | 'reminder_2h' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'pay_request'>,
   extra: Record<string, string> = {},
 ) {
   const c = await env.DB.prepare('SELECT lang FROM clients WHERE id = ?').bind(b.clientId).first<{ lang: string }>();
@@ -185,6 +185,96 @@ export async function notifyBooking(
     },
     { bookingId: b.id, data: { bookingId: b.id } },
   );
+}
+
+// --- Modificarea programării (panoul și aplicația echipei) ---
+
+/** Jurnalul programării: o linie pentru fiecare schimbare făcută de echipă. */
+export async function logBookingEvent(env: Env, bookingId: string, kind: string, detail: Record<string, unknown>, adminId: string | null) {
+  await env.DB.prepare('INSERT INTO booking_events (booking_id, kind, detail, admin_id) VALUES (?, ?, ?, ?)')
+    .bind(bookingId, kind, JSON.stringify(detail), adminId)
+    .run();
+}
+
+/**
+ * Ce se poate schimba la o programare confirmată: ora (`start`), frizerul, serviciul și prețul în lei (`discount` spune de unde vine
+ * reducerea, pentru jurnal). Ora nouă trebuie să fie liberă, ca la o programare nouă din panou; `force` o pune oricum (peste program),
+ * doar să nu se suprapună cu altă programare. La mutare clientul primește mesaj (`notify: false` îl oprește).
+ */
+export type BookingEdit = { start?: string; barberId?: string; serviceId?: string; price?: number | null; discount?: string | null; force?: boolean; notify?: boolean };
+
+export async function editBooking(env: Env, id: string, input: BookingEdit, adminId: string | null) {
+  const cur = await getBooking(env, id);
+  if (!cur) throw new HttpError(404, 'not_found');
+  if (cur.status !== 'confirmed') throw new HttpError(409, 'booking_not_editable');
+  const start = new Date(input.start ?? cur.start);
+  if (Number.isNaN(start.getTime())) throw new HttpError(400, 'invalid_start');
+  const barberId = input.barberId || cur.barberId;
+  const serviceId = input.serviceId || cur.serviceId;
+  const barberChanged = barberId !== cur.barberId;
+  const serviceChanged = serviceId !== cur.serviceId;
+  const moved = barberChanged || start.getTime() !== Date.parse(cur.start);
+
+  const service = await env.DB.prepare('SELECT id, name, duration_min, price_bani FROM services WHERE id = ?')
+    .bind(serviceId)
+    .first<{ id: string; name: string; duration_min: number; price_bani: number }>();
+  if (!service) throw new HttpError(404, 'service_not_found');
+  if (barberChanged) {
+    const br = await env.DB.prepare('SELECT active FROM barbers WHERE id = ?').bind(barberId).first<{ active: number }>();
+    if (!br?.active) throw new HttpError(404, 'barber_not_found');
+  }
+  const own = await env.DB.prepare('SELECT price_bani, duration_min FROM barber_services WHERE barber_id = ? AND service_id = ?')
+    .bind(barberId, serviceId)
+    .first<{ price_bani: number | null; duration_min: number | null }>();
+  // Durata: a serviciului (sau a frizerului) când se schimbă unul dintre ei; altfel rămâne cea de acum.
+  const durMs = serviceChanged || barberChanged ? (own?.duration_min ?? service.duration_min) * 60_000 : Date.parse(cur.end) - Date.parse(cur.start);
+  const end = new Date(start.getTime() + durMs);
+
+  let price = Math.round(cur.price * 100);
+  if (serviceChanged) price = own?.price_bani ?? service.price_bani;
+  if (input.price !== undefined && input.price !== null) {
+    const p = Math.round(Number(input.price) * 100);
+    if (!(p >= 0 && p <= 10_000_000)) throw new HttpError(400, 'invalid_amount');
+    price = p;
+  }
+  const priceChanged = price !== Math.round(cur.price * 100);
+  // Plătită online: suma e deja luată de pe card, nu se mai schimbă (se anulează și se returnează, dacă e cazul).
+  if (cur.onlinePaid && (priceChanged || serviceChanged)) throw new HttpError(409, 'booking_paid');
+  if (!moved && !serviceChanged && !priceChanged) return cur;
+
+  if ((moved || serviceChanged) && !input.force) {
+    const slots = await availability(env, { serviceId, barberId, day: localDay(env.TIMEZONE, start), excludeBookingId: id, access: 'staff' });
+    if (!slots.some((s) => Date.parse(s.start) === start.getTime() && s.barberId === barberId)) throw new HttpError(409, 'slot_unavailable');
+  }
+  // Suprapunerea cu altă programare se verifică în aceeași instrucțiune (și cu `force`).
+  const r = await env.DB.prepare(
+    `UPDATE bookings SET barber_id = ?, service_id = ?, starts_at = ?, ends_at = ?, price_bani = ?,
+       location_id = CASE WHEN ? THEN (SELECT location_id FROM barbers WHERE id = ?) ELSE location_id END,
+       reminder_24h_at = CASE WHEN ? THEN NULL ELSE reminder_24h_at END, reminder_2h_at = CASE WHEN ? THEN NULL ELSE reminder_2h_at END
+     WHERE id = ? AND status = 'confirmed'
+       AND NOT EXISTS (SELECT 1 FROM bookings o WHERE o.id != ? AND o.barber_id = ? AND o.status IN ${HOLDS_SLOT} AND o.starts_at < ? AND o.ends_at > ?)`,
+  )
+    .bind(barberId, serviceId, iso(start), iso(end), price, barberChanged ? 1 : 0, barberId, moved ? 1 : 0, moved ? 1 : 0, id, id, barberId, iso(end), iso(start))
+    .run();
+  if (!r.meta.changes) {
+    const now = await env.DB.prepare('SELECT status FROM bookings WHERE id = ?').bind(id).first<{ status: string }>();
+    throw new HttpError(409, now?.status !== 'confirmed' ? 'booking_not_editable' : 'slot_unavailable');
+  }
+  const updated = (await getBooking(env, id))!;
+  if (moved) {
+    await logBookingEvent(env, id, 'moved', { from: cur.start, to: updated.start, ...(barberChanged && { fromBarber: cur.barberName, toBarber: updated.barberName }) }, adminId);
+  }
+  if (serviceChanged) await logBookingEvent(env, id, 'service', { from: cur.serviceName, to: updated.serviceName }, adminId);
+  if (priceChanged) {
+    const why = String(input.discount ?? '').trim().slice(0, 40);
+    await logBookingEvent(env, id, 'price', { from: cur.price, to: updated.price, ...(why && { discount: why }) }, adminId);
+  }
+  if (moved) {
+    if (input.notify !== false) await notifyBooking(env, updated, 'booking_moved');
+    // Ora veche s-a eliberat: poate o vrea cineva de pe lista de așteptare.
+    await freedSlot(env, cur.start);
+  }
+  return updated;
 }
 
 // --- Cererea de plată în aplicație ---

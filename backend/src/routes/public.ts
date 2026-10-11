@@ -156,7 +156,9 @@ publicRoutes.get('/availability', async (c) => {
   // Cu cont: membrii TAF Club văd și orele „doar membri” (marcate); panoul le vede pe toate.
   const who = await optionalSession(c);
   const access = who?.kind === 'admin' ? 'staff' : await accessFor(c.env, who?.id);
-  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, locationId, day, access }));
+  // Panoul, la mutarea unei programări: ora ei de acum contează ca liberă (`exclude` = programarea mutată).
+  const exclude = who?.kind === 'admin' ? c.req.query('exclude') || undefined : undefined;
+  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, locationId, day, access, excludeBookingId: exclude }));
 });
 
 publicRoutes.get('/legal/:doc', async (c) => {

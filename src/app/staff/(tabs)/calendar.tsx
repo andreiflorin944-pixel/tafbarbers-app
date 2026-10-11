@@ -240,7 +240,16 @@ export default function StaffCalendar() {
         </ScrollView>
       )}
 
-      <BookingSheet booking={open} onClose={() => setOpen(null)} onChange={(u) => setBookings((l) => (l ?? []).map((x) => (x.id === u.id ? u : x)))} />
+      <BookingSheet
+        booking={open}
+        onClose={() => setOpen(null)}
+        onChange={(u) => {
+          // Fereastra arată programarea nouă; mutată în altă zi sau la alt frizer, calendarul se reîncarcă.
+          setOpen((o) => (o && o.id === u.id ? u : o));
+          setBookings((l) => (l ?? []).map((x) => (x.id === u.id ? u : x)));
+          if (open && (u.start !== open.start || u.barberId !== open.barberId)) load();
+        }}
+      />
     </SafeAreaView>
   );
 }

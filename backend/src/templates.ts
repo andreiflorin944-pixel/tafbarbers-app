@@ -5,7 +5,7 @@ import { autoTranslate, type Texts3 } from './translate';
 // Șabloanele mesajelor automate (cod de intrare, programări, comenzi, abonamente), pe canale: SMS, push, e-mail.
 // Adminul le scrie în română, cu variabile de tipul ##customerfirstname##; engleza și franceza se traduc singure.
 
-export type TplEvent = 'otp' | 'confirm' | 'cancel' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_ready_paid' | 'order_cancelled' | 'sub_started' | 'sub_renewed' | 'sub_payment_failed' | 'pay_request';
+export type TplEvent = 'otp' | 'confirm' | 'cancel' | 'booking_moved' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_ready_paid' | 'order_cancelled' | 'sub_started' | 'sub_renewed' | 'sub_payment_failed' | 'pay_request';
 export type TplField = 'sms' | 'pushTitle' | 'pushBody' | 'emailSubject' | 'emailBody';
 type Lang = 'ro' | 'en' | 'fr';
 type Stored = Partial<Record<TplEvent, Partial<Record<TplField, Texts3>>>>;
@@ -74,6 +74,32 @@ export const TEMPLATE_DEFS: Record<TplEvent, Def> = {
     },
     en: { sms: 'Your ##businessname## booking on ##datetime## was cancelled. Sorry! You can rebook in the app.' },
     fr: { sms: 'Votre rendez-vous chez ##businessname## du ##datetime## a été annulé. Désolé ! Reprenez RDV dans l’app.' },
+  },
+  booking_moved: {
+    label: 'Programare mutată de salon (altă oră sau alt frizer)',
+    vars: BOOKING,
+    fields: ['sms', 'pushTitle', 'pushBody', 'emailSubject', 'emailBody'],
+    ro: {
+      sms: 'Programarea ta la ##businessname## s-a mutat: ##servicename##, ##datetime##, cu ##barbername##. ##location## Dacă nu-ți convine, o schimbi din aplicație.',
+      pushTitle: 'Programarea ta s-a mutat',
+      pushBody: '##servicename## cu ##barbername##, ##datetime##',
+      emailSubject: 'Programarea ta s-a mutat · ##businessname##',
+      emailBody: 'Salut ##customerfirstname##, programarea ta s-a mutat: ##servicename## cu ##barbername##, ##datetime##. ##location## Dacă nu-ți convine, o poți schimba sau anula din aplicație.',
+    },
+    en: {
+      sms: 'Your ##businessname## booking has moved: ##servicename##, ##datetime##, with ##barbername##. ##location## If it does not suit you, change it in the app.',
+      pushTitle: 'Your booking has moved',
+      pushBody: '##servicename## with ##barbername##, ##datetime##',
+      emailSubject: 'Your booking has moved · ##businessname##',
+      emailBody: 'Hi ##customerfirstname##, your booking has moved: ##servicename## with ##barbername##, ##datetime##. ##location## If it does not suit you, you can change or cancel it in the app.',
+    },
+    fr: {
+      sms: 'Votre rendez-vous chez ##businessname## a été déplacé : ##servicename##, ##datetime##, avec ##barbername##. ##location## S’il ne vous convient pas, modifiez-le dans l’app.',
+      pushTitle: 'Votre rendez-vous a été déplacé',
+      pushBody: '##servicename## avec ##barbername##, ##datetime##',
+      emailSubject: 'Votre rendez-vous a été déplacé · ##businessname##',
+      emailBody: 'Bonjour ##customerfirstname##, votre rendez-vous a été déplacé : ##servicename## avec ##barbername##, ##datetime##. ##location## S’il ne vous convient pas, vous pouvez le modifier ou l’annuler dans l’app.',
+    },
   },
   booking_request: {
     label: 'Cerere de programare primită (când programările cer aprobare)',

@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { staffApi, type PaySent, type StaffBooking, type StaffCheckout } from "@/api/staff";
 import { cutsText } from "@/components/SubscriptionRow";
+import { BookingEdit, BookingHistory } from "@/components/BookingEdit";
 import { Candle } from "@/components/Birthday";
 import { Button, styles as ui } from "@/components/ui";
 import { tr, useT, type Key } from "@/i18n";
@@ -55,7 +56,14 @@ export function BookingSheet({
   const { staff, staffToken } = useStaff();
   const { t } = useT();
   const [checkout, setCheckout] = useState(false);
-  useEffect(() => setCheckout(false), [b?.id]);
+  // „Modifică programarea” și „Istoric” se deschid în aceeași fereastră, în locul butoanelor.
+  const [mode, setMode] = useState<"view" | "edit" | "history">("view");
+  const [saved, setSaved] = useState<string | null>(null);
+  useEffect(() => {
+    setCheckout(false);
+    setMode("view");
+    setSaved(null);
+  }, [b?.id]);
   if (!b || !staff || !staffToken) return null;
   const p = staff.permissions;
   const past = new Date(b.start).getTime() < Date.now();
@@ -162,6 +170,25 @@ export function BookingSheet({
           {b.note && !p.bookings_manage ? (
             <Line icon="chatbubble-outline" text={`„${b.note}”`} />
           ) : null}
+          {saved ? <Text style={[ui.text, { color: colors.success, marginTop: space.sm }]}>{saved}</Text> : null}
+          {mode === "edit" ? (
+            <View style={{ marginTop: space.md }}>
+              <BookingEdit
+                booking={b}
+                onCancel={() => setMode("view")}
+                onDone={(nb, msg) => {
+                  onChange({ ...b, ...nb });
+                  setSaved(msg);
+                  setMode("view");
+                }}
+              />
+            </View>
+          ) : mode === "history" ? (
+            <View style={{ marginTop: space.md, gap: space.sm }}>
+              <BookingHistory booking={b} />
+              <Button title={t("common.back")} variant="ghost" onPress={() => setMode("view")} />
+            </View>
+          ) : (
           <View style={{ gap: space.sm, marginTop: space.md }}>
             {b.clientPhone || b.clientId ? (
               <View style={{ flexDirection: "row", gap: space.sm }}>
@@ -257,10 +284,17 @@ export function BookingSheet({
             {staff.owner && b.payment && !checkout ? (
               <Button title={t("sheet.undoPay")} variant="ghost" onPress={undoPay} />
             ) : null}
+            {p.bookings_manage && b.status === "confirmed" && !checkout ? (
+              <Button title={t("sedit.edit")} variant="ghost" onPress={() => { setSaved(null); setMode("edit"); }} />
+            ) : null}
+            {p.bookings_manage && !checkout ? (
+              <Button title={t("sedit.history")} variant="ghost" onPress={() => setMode("history")} />
+            ) : null}
             {p.bookings_manage && !checkout ? (
               <NoteEdit booking={b} token={staffToken} onDone={(nb) => onChange({ ...b, ...nb })} />
             ) : null}
           </View>
+          )}
           </ScrollView>
         </View>
       </View>

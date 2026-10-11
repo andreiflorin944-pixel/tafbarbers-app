@@ -12,6 +12,7 @@ import { openAppPage, qrPublic } from './qr';
 import { waitlistPublic } from './waitlist';
 import { DOCS, legalDoc, type Doc } from './legal';
 import { getBusiness } from './db';
+import { formatLocal } from './time';
 
 const app = new Hono<AppEnv>();
 
@@ -144,6 +145,43 @@ app.get('/plata/:rez', async (c) => {
   return c.html(`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · ${esc(biz.name)}</title><meta name="robots" content="noindex">
 <style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:480px;margin:0 auto;padding:56px 20px;text-align:center}h1{font-size:26px;color:${ok ? '#8FC79A' : '#F9A11B'}}a.b{display:inline-block;background:#F9A11B;color:#000;font-weight:800;text-decoration:none;padding:14px 26px;border-radius:999px;margin-top:14px}</style></head>
 <body><main><h1>${title}</h1><p>${text}</p><a class="b" href="${deep}">${L.back}</a></main></body></html>`);
+});
+
+// Linkul programării pentru client („Copiază linkul clientului” din panou): ce, când, cu cine și unde, plus butonul spre aplicație.
+// Id-ul programării e lung și aleatoriu; pagina nu arată telefonul sau numele întreg al clientului.
+app.get('/b/:id', async (c) => {
+  const id = c.req.param('id').slice(0, 40);
+  const b = await c.env.DB.prepare(
+    `SELECT b.starts_at, b.ends_at, b.status, b.price_bani, c.name AS client_name, s.name AS service_name, br.name AS barber_name, l.name AS loc_name, l.address AS loc_address
+     FROM bookings b JOIN clients c ON c.id = b.client_id JOIN services s ON s.id = b.service_id JOIN barbers br ON br.id = b.barber_id
+     LEFT JOIN locations l ON l.id = b.location_id WHERE b.id = ?`,
+  )
+    .bind(id)
+    .first<{ starts_at: string; ends_at: string; status: string; price_bani: number; client_name: string; service_name: string; barber_name: string; loc_name: string | null; loc_address: string | null }>();
+  if (!b) return c.html(await openAppPage(c.env, 'tafbarbers://bookings'), 404);
+  const biz = await getBusiness(c.env);
+  const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+  const first = (b.client_name || '').trim().split(/\s+/)[0];
+  const address = b.loc_address || biz.address || '';
+  const place = [b.loc_name || biz.name, address].filter(Boolean).join(', ');
+  const maps = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}` : '';
+  const end = new Intl.DateTimeFormat('ro-RO', { timeZone: c.env.TIMEZONE, hour: '2-digit', minute: '2-digit' }).format(new Date(b.ends_at));
+  const state: Record<string, [string, string]> = {
+    confirmed: ['Programare confirmată', '#8FC79A'],
+    requested: ['Cerere în așteptare: salonul o confirmă în curând', '#F9A11B'],
+    completed: ['Programare încheiată. Mulțumim!', '#8FC79A'],
+    no_show: ['Programarea a trecut', '#999'],
+    cancelled: ['Programare anulată', '#E5484D'],
+  };
+  const [label, color] = state[b.status] ?? state.confirmed;
+  const price = b.price_bani % 100 ? (b.price_bani / 100).toFixed(2) : String(b.price_bani / 100);
+  const phone = biz.phone ? `<p class="m">Vrei s-o muți sau s-o anulezi? Din aplicație sau la <a href="tel:${esc(biz.phone.replace(/\s+/g, ''))}">${esc(biz.phone)}</a>.</p>` : '';
+  return c.html(`<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Programarea ta · ${esc(biz.name)}</title><meta name="robots" content="noindex">
+<style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:480px;margin:0 auto;padding:44px 20px}h1{font-size:26px;margin:0 0 4px}.st{color:${color};font-weight:700}.card{border:1px solid #333;border-radius:16px;padding:16px 18px;margin:20px 0}.r{display:flex;justify-content:space-between;gap:12px;padding:6px 0}.r span:first-child{color:#999}a.b{display:block;text-align:center;background:#F9A11B;color:#000;font-weight:800;text-decoration:none;padding:15px;border-radius:999px;margin-top:10px}a.s{display:block;text-align:center;border:1px solid #333;color:#eee;text-decoration:none;padding:13px;border-radius:999px;margin-top:10px}.m{color:#999;font-size:14px}a{color:#F9A11B}</style></head>
+<body><main><h1>${first ? `Salut, ${esc(first)}!` : esc(biz.name)}</h1><div class="st">${label}</div>
+<div class="card"><div class="r"><span>Serviciu</span><b>${esc(b.service_name)}</b></div><div class="r"><span>Când</span><b>${esc(formatLocal(c.env.TIMEZONE, b.starts_at))}–${end}</b></div>
+<div class="r"><span>Frizer</span><b>${esc(b.barber_name)}</b></div>${place ? `<div class="r"><span>Unde</span><b>${esc(place)}</b></div>` : ''}<div class="r"><span>Preț</span><b>${price} lei</b></div></div>
+<a class="b" href="tafbarbers://bookings">Deschide în aplicație</a>${maps ? `<a class="s" href="${esc(maps)}">Vezi pe hartă</a>` : ''}${phone}</main></body></html>`);
 });
 
 // Butonul „Programează” din Google Maps, Instagram, Facebook sau site: deschide aplicația direct la programare

@@ -60,6 +60,7 @@ const MESSAGES: Record<string, string> = {
   invalid_email: 'Adresa de e-mail nu e corectă.',
   email_taken: 'Există deja un cont cu acest e-mail.',
   slot_unavailable: 'Ora nu mai e liberă la frizerul ales.',
+  booking_not_editable: 'Programarea nu se mai poate modifica: doar cele confirmate se mută sau se schimbă.',
   invalid_phone: 'Numărul de telefon nu e corect.',
   owner_only: 'Doar proprietarul poate face asta.',
   name_required: 'Completează numele.',
@@ -337,6 +338,17 @@ export type Booking = {
   refuseReason?: string | null;
   bonusId?: string | null;
   clientBirthday?: boolean;
+  /** Locația programării (a frizerului când s-a făcut). */
+  locationId?: string | null;
+  locationName?: string;
+};
+/** Istoricul unei programări: jurnalul, plățile și mesajele trimise clientului (panoul programării). */
+export type BookingActivity = {
+  /** Linkul programării pentru client (pagina cu ce, când, cu cine și unde). */
+  link: string;
+  log: Array<{ at: string; kind: string; by: string | null; detail?: Record<string, unknown> }>;
+  payments: Array<{ at: string; kind: 'salon' | 'subscription' | 'request' | 'online' | 'refund'; amount: number | null; method?: string | null; tip?: number | null; gift?: number | null; status?: string; note?: string }>;
+  messages: Array<{ at: string; kind: string; channel: string; status: string; error: string | null }>;
 };
 export type Plan = {
   translations?: Translations;

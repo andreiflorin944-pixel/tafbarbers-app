@@ -183,7 +183,9 @@ export default function StaffHome() {
         booking={open}
         onClose={() => setOpen(null)}
         onChange={(u) => {
-          setToday((l) => (l ?? []).map((x) => (x.id === u.id ? u : x)));
+          setOpen((o) => (o && o.id === u.id ? u : o));
+          // Mutată în altă zi: iese din lista de azi.
+          setToday((l) => (l ?? []).map((x) => (x.id === u.id ? u : x)).filter((x) => x.id !== u.id || dayKey(new Date(u.start)) === dayKey(new Date())));
           setUnclosed((l) => (u.status === 'confirmed' ? l.map((x) => (x.id === u.id ? u : x)) : l.filter((x) => x.id !== u.id)));
           setRequests((l) => l.filter((x) => x.id !== u.id || u.status === 'requested'));
         }}
