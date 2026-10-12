@@ -10,6 +10,10 @@ const PX = 2; // pixeli pe minut: un rând de 15 minute = 30 px, cu ora pe fieca
 export const BARBER_PALETTE = ['#F28C28', '#E5484D', '#3E7BFA', '#30A46C', '#8E4EC6', '#12A594', '#D6409F', '#AD7F58'];
 export const barberColor = (b: Pick<Barber, 'color'>, i: number) => b.color || BARBER_PALETTE[i % BARBER_PALETTE.length];
 
+const WIDE_KEY = 'taf-cal-wide';
+const WIDE_FROM = 7 * 60;
+const WIDE_TO = 22 * 60;
+
 export function CalendarPage({ me }: { me: Me }) {
   const [day, setDay] = useState(today());
   const [open, setOpen] = useState<Booking | null>(null);
@@ -18,7 +22,23 @@ export function CalendarPage({ me }: { me: Me }) {
   // Fereastra mică de la trecerea cu mouse-ul peste o programare.
   const [hover, setHover] = useState<{ b: Booking; x: number; y: number } | null>(null);
   const [quickErr, setQuickErr] = useState<string | null>(null);
-  const [create, setCreate] = useState<{ barberId?: string; time?: string } | null>(null);
+  const [create, setCreate] = useState<{ barberId?: string; time?: string; outside?: boolean } | null>(null);
+  // „Toată ziua”: calendarul se întinde 07:00–22:00, cu orele din afara programului hașurate (și programabile). Ținut minte în browser.
+  const [wide, setWide] = useState(() => {
+    try {
+      return localStorage.getItem(WIDE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleWide = () => {
+    setWide(!wide);
+    try {
+      localStorage.setItem(WIDE_KEY, wide ? '0' : '1');
+    } catch {
+      // fără stocare: alegerea ține doar până la reîncărcare
+    }
+  };
 
   const meta = useLoad(() => Promise.all([api<Barber[]>('GET', '/admin/barbers'), api<Service[]>('GET', '/admin/services')]));
   // Pasul din Setări → Reguli de programare (la fel ca orele libere și calendarul din aplicație).
@@ -62,8 +82,12 @@ export function CalendarPage({ me }: { me: Me }) {
       s = Math.min(s, minutesOf(b.start));
       e = Math.max(e, minutesOf(b.end) || 1440);
     }
+    if (wide) {
+      s = Math.min(s, WIDE_FROM);
+      e = Math.max(e, WIDE_TO);
+    }
     return [Math.floor(s / 60) * 60, Math.ceil(e / 60) * 60];
-  }, [cols, bookings.data, weekday]);
+  }, [cols, bookings.data, weekday, wide]);
 
   const height = (endMin - startMin) * PX;
   const nowMin = day === today() ? minutesOf(new Date().toISOString()) : -1;
@@ -115,6 +139,9 @@ export function CalendarPage({ me }: { me: Me }) {
         </button>
         <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} style={{ width: 170 }} />
         <strong style={{ textTransform: 'capitalize' }}>{longDate(day + 'T12:00:00Z')}</strong>
+        <button className={`ghost sm${wide ? ' on' : ''}`} onClick={toggleWide} title="Arată și orele din afara programului (hașurate), ca să poți programa peste ele">
+          {wide ? 'Doar programul' : 'Arată toată ziua'}
+        </button>
         {activeLocs.length > 1 && !own ? (
           <select value={loc} onChange={(e) => setLoc(e.target.value)} style={{ width: 200 }} aria-label="Locația">
             <option value="">Toate locațiile</option>
@@ -217,7 +244,9 @@ export function CalendarPage({ me }: { me: Me }) {
                       if (e.target !== e.currentTarget && !cl.contains('cal-off') && !cl.contains('cal-line') && !cl.contains('cal-block')) return;
                       const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
                       const m = Math.floor((startMin + y / PX) / step) * step;
-                      if (me.permissions.bookings_create) setCreate({ barberId: b.id, time: hm(m) });
+                      // Pe zona hașurată (în afara programului sau concediu): programarea se deschide direct „la altă oră”.
+                      const outside = gaps.some(([gs, ge]) => m >= gs && m < ge);
+                      if (me.permissions.bookings_create) setCreate({ barberId: b.id, time: hm(m), outside });
                     }}
                     title="Click pe o zonă liberă pentru programare nouă"
                   >
@@ -422,7 +451,7 @@ function NewBooking({
   barbers: Barber[];
   services: Service[];
   day: string;
-  initial: { barberId?: string; time?: string };
+  initial: { barberId?: string; time?: string; outside?: boolean };
   onClose: () => void;
   onDone: (day: string) => void;
 }) {
@@ -433,7 +462,7 @@ function NewBooking({
   const [day, setDay] = useState(initialDay);
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [start, setStart] = useState<string | null>(null);
-  const [force, setForce] = useState(false);
+  const [force, setForce] = useState(!!initial.outside);
   const [forceTime, setForceTime] = useState(initial.time ?? '10:00');
   const [notify, setNotify] = useState(true);
   // Clientul ales din bază (căutat după telefon sau nume); fără el se face client nou din telefon + nume.
