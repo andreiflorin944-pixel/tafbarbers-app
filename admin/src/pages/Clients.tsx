@@ -46,7 +46,7 @@ export function ClientsPage({ me }: { me: Me }) {
             placeholder={me.permissions.contacts ? 'Caută după nume, telefon sau e-mail' : 'Caută după nume sau numărul complet'}
             style={{ maxWidth: 320 }}
           />
-          {me.permissions.contacts ? (
+          {me.owner ? (
             <>
               <button className="ghost" onClick={() => setImporting(true)}>
                 Importă
@@ -114,7 +114,8 @@ export function ClientsPage({ me }: { me: Me }) {
 }
 
 const FIELDS = [
-  { key: 'name', label: 'Nume', match: /^(nume|name|client|nume (complet|client)|full ?name|prenume)/i },
+  { key: 'name', label: 'Nume (sau prenume)', match: /^(?!nume de familie)(nume|name|client|nume (complet|client)|full ?name|first ?name|prenume)/i },
+  { key: 'lastName', label: 'Nume de familie (se lipește după)', match: /^(last ?name|surname|nume de familie)/i },
   { key: 'phone', label: 'Telefon', match: /(telefon|phone|mobil|tel\b|nr\.? ?tel)/i },
   { key: 'email', label: 'E-mail', match: /(e-?mail|mail)/i },
   { key: 'birthDate', label: 'Data nașterii', match: /(na[șs]ter|birth|zi(ua)? de)/i },
@@ -128,7 +129,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   const [rows, setRows] = useState<string[][] | null>(null);
   const [fileName, setFileName] = useState('');
   const [header, setHeader] = useState(true);
-  const [map, setMap] = useState<Record<FieldKey, number>>({ name: -1, phone: -1, email: -1, birthDate: -1, notes: -1 });
+  const [map, setMap] = useState<Record<FieldKey, number>>({ name: -1, lastName: -1, phone: -1, email: -1, birthDate: -1, notes: -1 });
   const [result, setResult] = useState<ImportResult | null>(null);
   const { busy, error, run, setError } = useAction();
 
@@ -144,7 +145,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
       const first = t[0];
       const looksHeader = !first.some((c) => /^\+?\d[\d\s.-]{7,}$/.test(c.trim()));
       setHeader(looksHeader);
-      const m = { name: -1, phone: -1, email: -1, birthDate: -1, notes: -1 } as Record<FieldKey, number>;
+      const m = { name: -1, lastName: -1, phone: -1, email: -1, birthDate: -1, notes: -1 } as Record<FieldKey, number>;
       if (looksHeader) for (const fd of FIELDS) m[fd.key] = first.findIndex((c, i) => fd.match.test(c.trim()) && !Object.values(m).includes(i));
       else {
         m.phone = first.findIndex((c) => /^\+?\d[\d\s.-]{7,}$/.test(c.trim()));
@@ -163,16 +164,31 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   const colName = (i: number) => (header && rows?.[0][i]?.trim()) || `Coloana ${String.fromCharCode(65 + (i % 26))}`;
   const cell = (r: string[], k: FieldKey) => (map[k] >= 0 ? (r[map[k]] ?? '').trim() : '');
   const out = data.map((r) => ({
-    name: cell(r, 'name'),
+    name: [cell(r, 'name'), cell(r, 'lastName')].filter(Boolean).join(' '),
     phone: cell(r, 'phone'),
     email: cell(r, 'email'),
     birthDate: excelDate(cell(r, 'birthDate')),
     notes: cell(r, 'notes'),
   }));
 
+  // Trimitem pe bucăți, ca serverul să nu depășească limita de interogări pe cerere; rezultatele se adună.
+  const [done, setDone] = useState(0);
   const submit = () =>
     run(async () => {
-      setResult(await api<ImportResult>('POST', '/admin/clients/import', { rows: out }));
+      const total: ImportResult = { created: 0, updated: 0, unchanged: 0, skipped: [], skippedCount: 0 };
+      const CHUNK = 40;
+      setDone(0);
+      for (let i = 0; i < out.length; i += CHUNK) {
+        const r = await api<ImportResult>('POST', '/admin/clients/import', { rows: out.slice(i, i + CHUNK), offset: i });
+        total.created += r.created;
+        total.updated += r.updated;
+        total.unchanged += r.unchanged;
+        total.skippedCount += r.skippedCount;
+        total.skipped.push(...r.skipped);
+        setDone(Math.min(out.length, i + CHUNK));
+      }
+      total.skipped = total.skipped.slice(0, 200);
+      setResult(total);
       onDone();
     });
 
@@ -258,7 +274,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
           </button>
           {rows && !result ? (
             <button disabled={busy || map.phone < 0 || !data.length} onClick={submit}>
-              {busy ? 'Se importă…' : `Importă ${data.length} clienți`}
+              {busy ? `Se importă… ${done} din ${data.length}` : `Importă ${data.length} clienți`}
             </button>
           ) : null}
         </div>
