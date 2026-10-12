@@ -326,6 +326,9 @@ export function App() {
           </span>
           <span className="row" style={{ gap: 12, marginLeft: 'auto' }}>
             <RequestsBell me={me} />
+            <a className="top-icon" href={me.owner ? '#/settings' : '#/settings/parola'} title="Setări" aria-label="Setări">
+              <Icon name="settings" size={20} />
+            </a>
             <span className="muted small crumb">{me.name || me.email}</span>
           </span>
         </div>

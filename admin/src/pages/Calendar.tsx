@@ -10,11 +10,6 @@ const PX = 2; // pixeli pe minut: un rând de 15 minute = 30 px, cu ora pe fieca
 export const BARBER_PALETTE = ['#F28C28', '#E5484D', '#3E7BFA', '#30A46C', '#8E4EC6', '#12A594', '#D6409F', '#AD7F58'];
 export const barberColor = (b: Pick<Barber, 'color'>, i: number) => b.color || BARBER_PALETTE[i % BARBER_PALETTE.length];
 
-type Stats = {
-  upcoming: number;
-  last30: { bookings: number; revenue: number | null; subscriptionsSold?: number; cancelled: number; noShow: number; newClients: number | null };
-};
-
 export function CalendarPage({ me }: { me: Me }) {
   const [day, setDay] = useState(today());
   const [open, setOpen] = useState<Booking | null>(null);
@@ -33,7 +28,6 @@ export function CalendarPage({ me }: { me: Me }) {
   const locs = useLoad(() => api<Location[]>('GET', '/admin/locations'));
   const [loc, setLoc] = useState('');
   const activeLocs = (locs.data ?? []).filter((l) => l.active);
-  const stats = useLoad(() => api<Stats>('GET', '/admin/stats'));
   const from = localToIso(day, '00:00');
   const to = localToIso(addDays(day, 1), '00:00');
   const bookings = useLoad(() => api<Booking[]>('GET', `/admin/bookings?from=${from}&to=${to}`), [day]);
@@ -75,7 +69,6 @@ export function CalendarPage({ me }: { me: Me }) {
   const nowMin = day === today() ? minutesOf(new Date().toISOString()) : -1;
   const reload = () => {
     bookings.reload();
-    stats.reload();
     unclosed.reload();
   };
   // Clopoțelul anunță cererile noi și răspunsurile date din listă: calendarul se reîncarcă singur.
@@ -90,19 +83,7 @@ export function CalendarPage({ me }: { me: Me }) {
     <>
       <div className="head">
         <h1>Calendar</h1>
-        {me.permissions.bookings_create ? <button onClick={() => setCreate({})}>+ Programare nouă</button> : null}
       </div>
-
-      {stats.data ? (
-        <div className="grid stats">
-          <Stat v={stats.data.upcoming} l="programări viitoare" />
-          <Stat v={stats.data.last30.bookings} l="programări, ultimele 30 de zile" />
-          {stats.data.last30.revenue !== null ? <Stat v={lei(stats.data.last30.revenue)} l="încasări (tunsori + abonamente), 30 de zile" /> : null}
-          {stats.data.last30.subscriptionsSold ? <Stat v={stats.data.last30.subscriptionsSold} l="abonamente vândute, 30 de zile" /> : null}
-          {stats.data.last30.newClients !== null ? <Stat v={stats.data.last30.newClients} l="clienți noi, 30 de zile" /> : null}
-          <Stat v={stats.data.last30.cancelled + stats.data.last30.noShow} l="anulări și neprezentări" />
-        </div>
-      ) : null}
 
       {unclosed.data?.length ? (
         <div className="card" style={{ borderColor: 'var(--danger)', marginBottom: 12 }}>
@@ -425,15 +406,6 @@ export function CalendarPage({ me }: { me: Me }) {
         />
       ) : null}
     </>
-  );
-}
-
-function Stat({ v, l }: { v: string | number; l: string }) {
-  return (
-    <div className="card stat">
-      <div className="v">{v}</div>
-      <div className="l">{l}</div>
-    </div>
   );
 }
 
