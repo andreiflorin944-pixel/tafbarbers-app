@@ -473,3 +473,10 @@ clientRoutes.post('/push-tokens', async (c) => {
     .run();
   return c.json({ ok: true });
 });
+
+/** La ieșirea din cont: telefonul nu mai primește notificările acestui client. */
+clientRoutes.delete('/push-tokens', async (c) => {
+  const b = await c.req.json<{ token?: string }>().catch(() => ({}) as { token?: string });
+  if (b.token) await c.env.DB.prepare('DELETE FROM push_tokens WHERE token = ? AND client_id = ?').bind(b.token, c.get('client').clientId).run();
+  return c.json({ ok: true });
+});

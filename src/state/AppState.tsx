@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { api, ApiError } from '@/api';
 import type { Barber, Booking, Business, Location, Me, Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
+import { unregisterPush } from '@/lib/push';
 import { storage } from '@/lib/storage';
 import { LOOK_KEY, normalizeLook, readSavedLook, type SavedLook } from '@/theme';
 import { Platform } from 'react-native';
@@ -157,6 +158,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setUser(me);
       },
       signOut: async () => {
+        if (token) await unregisterPush(token);
         if (token) await api.logout(token);
         await storage.set(TOKEN_KEY, null);
         setToken(null);

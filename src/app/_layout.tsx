@@ -1,6 +1,7 @@
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PushLink } from '@/components/PushLink';
 import { QrLink } from '@/components/QrLink';
 import { I18nProvider, useT } from '@/i18n';
 import { AppStateProvider } from '@/state/AppState';
@@ -23,6 +24,7 @@ export default function RootLayout() {
         <ThemeProvider value={theme}>
           <StatusBar style="light" />
           <QrLink />
+          <PushLink />
           <RootStack />
         </ThemeProvider>
       </CartProvider>

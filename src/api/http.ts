@@ -116,6 +116,9 @@ export function httpApi(baseUrl: string): BookingApi {
     registerPushToken: async (token, pushToken, platform) => {
       await call('POST', '/push-tokens', { token, body: { token: pushToken, platform } });
     },
+    unregisterPushToken: async (token, pushToken) => {
+      await call('DELETE', '/push-tokens', { token, body: { token: pushToken } }).catch(() => undefined);
+    },
 
     getProducts: () => call('GET', '/products'),
     listOrders: (token) => call('GET', '/me/orders', { token }),

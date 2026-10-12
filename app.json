@@ -47,7 +47,14 @@
           "microphonePermission": "Aplicația folosește microfonul doar când vorbești cu asistentul TAF."
         }
       ],
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#F9A11B"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

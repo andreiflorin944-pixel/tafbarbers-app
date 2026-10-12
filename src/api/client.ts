@@ -82,6 +82,8 @@ export interface BookingApi {
   joinWaitlist(token: string, input: { serviceId: string; barberId: string | null; locationId?: string | null; day: string; part: DayPart }): Promise<WaitlistEntry>;
   leaveWaitlist(token: string, id: string): Promise<void>;
   registerPushToken(token: string, pushToken: string, platform: string): Promise<void>;
+  /** La ieșirea din cont: telefonul nu mai primește notificările clientului. */
+  unregisterPushToken(token: string, pushToken: string): Promise<void>;
 
   // Magazin: plata la ridicare din salon.
   getProducts(): Promise<Product[]>;
