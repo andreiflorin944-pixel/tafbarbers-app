@@ -21,7 +21,7 @@ export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'cli
 export type StaffRole = 'org_admin' | 'location_admin' | 'barber';
 export const ROLE_LABELS: Record<StaffRole, Key> = { org_admin: 'role.orgAdmin', location_admin: 'role.locationAdmin', barber: 'role.barber' };
 // `onlinePayments`: plata cu cardul din aplicație e pornită pe server (altfel „Cere plata în aplicație” nu se poate folosi).
-export type StaffMe = { id: string; email: string; name: string; barberId: string | null; role?: StaffRole; owner: boolean; permissions: Record<Perm, boolean>; onlinePayments?: boolean };
+export type StaffMe = { id: string; email: string; name: string; barberId: string | null; barberPhotoUrl?: string | null; role?: StaffRole; owner: boolean; permissions: Record<Perm, boolean>; onlinePayments?: boolean };
 export type StaffBooking = {
   id: string;
   clientId: string;
@@ -172,6 +172,21 @@ export const staffApi = {
     return json as IdentityPhoto;
   },
   /** Urcă o poză înainte/după; întoarce id-ul ei, apoi `saveBeforeAfter` leagă perechea de client. */
+  /** Poza de profil a frizerului legat de cont (o poză deja decupată pătrat). */
+  setMyPhoto: async (t: string, uri: string): Promise<{ photoUrl: string }> => {
+    if (!apiUrl) throw new ApiError('no_server', 0);
+    let res: Response;
+    try {
+      const blob = await (await fetch(uri)).blob();
+      res = await fetch(`${apiUrl}/v1/admin/me/photo`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${t}` }, body: blob });
+    } catch {
+      throw new ApiError('network', 0);
+    }
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+    return json as { photoUrl: string };
+  },
+  removeMyPhoto: (t: string) => call<{ ok: true }>('DELETE', '/admin/me/photo', t),
   uploadBeforeAfter: async (t: string, id: string, uri: string): Promise<{ mediaId: string }> => {
     if (!apiUrl) throw new ApiError('no_server', 0);
     let res: Response;

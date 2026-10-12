@@ -11,6 +11,8 @@ type StaffState = {
   staffReady: boolean;
   staffSignIn: (email: string, password: string) => Promise<void>;
   staffSignOut: () => Promise<void>;
+  /** Actualizează local datele contului (de ex. poza nouă), fără o cerere în plus. */
+  staffPatch: (patch: Partial<StaffMe>) => void;
 };
 
 const KEY = 'taf.staff';
@@ -52,6 +54,7 @@ export function StaffProvider({ children }: { children: ReactNode }) {
         setToken(null);
         setStaff(null);
       },
+      staffPatch: (patch) => setStaff((s) => (s ? { ...s, ...patch } : s)),
     }),
     [staff, token, ready],
   );

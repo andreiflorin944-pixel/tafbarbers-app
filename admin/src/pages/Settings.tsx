@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, setToken, PERM_LABELS, ROLE_HELP, ROLE_LABELS, type Barber, type Business, type Location, type Me, type Perm, type Role } from '../api';
+import { api, errorText, setToken, uploadImageTo, PERM_LABELS, ROLE_HELP, ROLE_LABELS, type Barber, type Business, type Location, type Me, type Perm, type Role } from '../api';
 import { emptyTr, Field, ImagePicker, Loading, TranslationFields, useAction, useLoad, useSub } from '../ui';
 import { date, lei, time } from '../util';
 
@@ -39,6 +39,7 @@ export function SettingsPage({ me }: { me: Me }) {
         {me.owner ? <TranslateAll /> : null}
         {me.owner ? <HairAdvisor /> : null}
         {me.owner ? <Team me={me} /> : null}
+        {me.barberId ? <MyPhoto me={me} /> : null}
         <Password />
         <Sessions />
         {me.owner ? <MessageLog /> : null}
@@ -737,6 +738,65 @@ function Team({ me }: { me: Me }) {
           Adaugă cont
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Poza de profil a frizerului legat de cont: o vede clientul când alege frizerul, și apare în calendar. */
+function MyPhoto({ me }: { me: Me }) {
+  const [url, setUrl] = useState<string | null>(me.barberPhotoUrl ?? null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const upload = async (f: File) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = (await uploadImageTo('/v1/admin/me/photo', f, { maxPx: 600 })) as { photoUrl: string };
+      setUrl(r.photoUrl);
+      setMsg({ ok: true, text: 'Gata, poza nouă apare în aplicație și în calendar.' });
+    } catch (e) {
+      setMsg({ ok: false, text: errorText(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async () => {
+    if (!confirm('Scoți poza de profil?')) return;
+    try {
+      await api('DELETE', '/admin/me/photo');
+      setUrl(null);
+      setMsg({ ok: true, text: 'Poza a fost scoasă.' });
+    } catch (e) {
+      setMsg({ ok: false, text: errorText(e) });
+    }
+  };
+  return (
+    <div className="card grid">
+      <h2 id="set-poza" style={{ margin: 0, scrollMarginTop: 16 }}>Poza mea de profil</h2>
+      <div className="muted small">Clienții o văd când își aleg frizerul în aplicație. O poză cu fața, luminoasă, arată cel mai bine.</div>
+      <div className="row" style={{ alignItems: 'center', gap: 14 }}>
+        <div className="thumb round" style={{ width: 88, height: 88 }}>{url ? <img src={url} alt="" /> : <span className="muted small">fără poză</span>}</div>
+        <label className={`btn ghost sm${busy ? ' disabled' : ''}`}>
+          {busy ? 'Se urcă…' : url ? 'Schimbă poza' : 'Încarcă poză'}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            hidden
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) upload(f);
+            }}
+          />
+        </label>
+        {url ? (
+          <button className="ghost sm" onClick={remove} disabled={busy}>
+            Scoate
+          </button>
+        ) : null}
+      </div>
+      {msg ? <div className={msg.ok ? 'small' : 'err small'} style={msg.ok ? { color: 'var(--success)' } : undefined}>{msg.text}</div> : null}
     </div>
   );
 }

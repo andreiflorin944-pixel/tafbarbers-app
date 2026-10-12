@@ -58,6 +58,7 @@ const MESSAGES: Record<string, string> = {
   already_set_up: 'Contul de administrator există deja. Intră cu e-mailul și parola.',
   password_too_short: 'Parola trebuie să aibă cel puțin 10 caractere.',
   invalid_email: 'Adresa de e-mail nu e corectă.',
+  no_barber: 'Contul tău nu e legat de un frizer, deci nu are poză de profil.',
   client_exists: 'Există deja un client cu acest număr de telefon. Caută-l în listă.',
   client_deleted: 'Clientul cu acest număr și-a șters contul.',
   email_taken: 'Există deja un cont cu acest e-mail.',
@@ -494,7 +495,7 @@ export const ROLE_HELP: Record<Role, string> = {
 };
 // `onlinePayments`: plata cu cardul în aplicație (Stripe) e pornită; altfel „Cere plata în aplicație” nu apare.
 // `locationId`: locația administratorului de locație (null = toate).
-export type Me = { id: string; email: string; name: string; barberId: string | null; role?: Role; owner: boolean; permissions: Record<Perm, boolean>; locationId?: string | null; onlinePayments?: boolean };
+export type Me = { id: string; email: string; name: string; barberId: string | null; barberPhotoUrl?: string | null; role?: Role; owner: boolean; permissions: Record<Perm, boolean>; locationId?: string | null; onlinePayments?: boolean };
 export const PERM_LABELS: Record<Perm, string> = {
   bookings_all: 'Vede programările tuturor frizerilor',
   bookings_create: 'Adaugă programări',

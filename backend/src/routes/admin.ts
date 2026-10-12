@@ -143,12 +143,37 @@ adminRoutes.post('/logout', async (c) => {
 });
 
 adminRoutes.get('/me', async (c) => {
-  const a = await c.env.DB.prepare('SELECT id, email, name, barber_id FROM admins WHERE id = ?')
+  const a = await c.env.DB.prepare('SELECT a.id, a.email, a.name, a.barber_id, b.photo_url FROM admins a LEFT JOIN barbers b ON b.id = a.barber_id WHERE a.id = ?')
     .bind(c.get('admin').adminId)
-    .first<{ id: string; email: string; name: string; barber_id: string | null }>();
+    .first<{ id: string; email: string; name: string; barber_id: string | null; photo_url: string | null }>();
   const s = c.get('admin');
   // `onlinePayments`: plata cu cardul din aplicație e pornită (altfel acțiunea „Cere plata în aplicație” nu apare).
-  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, role: s.role, owner: s.owner, permissions: s.perms, locationId: s.locationId, onlinePayments: onlinePaymentsOn(c.env) });
+  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, barberPhotoUrl: a!.photo_url ?? null, role: s.role, owner: s.owner, permissions: s.perms, locationId: s.locationId, onlinePayments: onlinePaymentsOn(c.env) });
+});
+
+// Frizerul își schimbă singur poza de profil (corpul cererii = poza). Doar pe a lui; patronul o poate schimba din fișa frizerului.
+adminRoutes.post('/me/photo', async (c) => {
+  const barberId = c.get('admin').barberId;
+  if (!barberId) throw new HttpError(403, 'no_barber');
+  const mime = (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  if (!MEDIA_TYPES[mime]) throw new HttpError(400, 'unsupported_image');
+  const buf = await c.req.arrayBuffer();
+  if (!buf.byteLength) throw new HttpError(400, 'empty_file');
+  if (buf.byteLength > MEDIA_MAX) throw new HttpError(400, 'image_too_large');
+  const id = newId('m');
+  const url = `/v1/media/${id}`;
+  await c.env.DB.batch([
+    c.env.DB.prepare('INSERT INTO media (id, mime, data, size, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, mime, buf, buf.byteLength, iso(new Date())),
+    c.env.DB.prepare('UPDATE barbers SET photo_url = ? WHERE id = ?').bind(url, barberId),
+  ]);
+  return c.json({ photoUrl: url });
+});
+
+adminRoutes.delete('/me/photo', async (c) => {
+  const barberId = c.get('admin').barberId;
+  if (!barberId) throw new HttpError(403, 'no_barber');
+  await c.env.DB.prepare('UPDATE barbers SET photo_url = NULL WHERE id = ?').bind(barberId).run();
+  return c.json({ ok: true });
 });
 
 /** Catalogul, campaniile și setările sunt doar pentru proprietar. */
