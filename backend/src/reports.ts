@@ -90,7 +90,8 @@ type SRow = {
   day: string;
 };
 
-export type Scope = { session: AdminSession; barberId: string | null };
+// `locationId`: administratorul de locație vede doar unitatea lui.
+export type Scope = { session: AdminSession; barberId: string | null; locationId?: string | null };
 
 const dayKey = (t: string | Date) => roLocal(t).day;
 const lei = (bani: number | null | undefined) => Math.round(bani ?? 0) / 100;
@@ -114,6 +115,7 @@ async function loadBookings(env: Env, scope: Scope, from: string, to: string, f:
   const vals: unknown[] = [start, end];
   const barber = scope.barberId ?? f.barberId;
   if (barber) where.push('b.barber_id = ?'), vals.push(barber);
+  if (scope.locationId) where.push('b.location_id = ?'), vals.push(scope.locationId);
   if (f.serviceId) where.push('b.service_id = ?'), vals.push(f.serviceId);
   const r = await env.DB.prepare(
     `SELECT b.id, b.client_id, b.barber_id, b.service_id, b.starts_at, b.created_at, b.price_bani, b.status, b.source, b.payment, b.paid_bani,
@@ -133,8 +135,10 @@ async function loadBookings(env: Env, scope: Scope, from: string, to: string, f:
 /** Abonamentele și cardurile cadou vândute în perioadă (cardul se numără la încasare). Un cont fără „toate programările” vede doar ce a încasat el. */
 async function loadSubscriptions(env: Env, scope: Scope, from: string, to: string) {
   const { start, end } = range(from, to);
-  const own = scope.barberId ? 'AND s.created_by = ?' : '';
-  const ownG = scope.barberId ? 'AND g.paid_by = ?' : '';
+  // Pe locație: ce au vândut frizerii de acolo (sau contul însuși).
+  const loc = scope.locationId ?? null;
+  const own = scope.barberId ? 'AND s.created_by = ?' : loc ? 'AND (br.location_id = ? OR s.created_by = ?)' : '';
+  const ownG = scope.barberId ? 'AND g.paid_by = ?' : loc ? 'AND (br.location_id = ? OR g.paid_by = ?)' : '';
   const r = await env.DB.prepare(
     `SELECT * FROM (
        SELECT s.id, s.client_id, s.name, s.price_bani, s.created_at, s.created_by, coalesce(nullif(a.name, ''), a.email) AS admin_name,
@@ -148,7 +152,13 @@ async function loadSubscriptions(env: Env, scope: Scope, from: string, to: strin
        WHERE g.paid_at IS NOT NULL AND g.status != 'cancelled' AND g.paid_at >= ? AND g.paid_at < ? ${ownG}
      ) ORDER BY created_at`,
   )
-    .bind(...(scope.barberId ? [start, end, scope.session.adminId, start, end, scope.session.adminId] : [start, end, start, end]))
+    .bind(
+      ...(scope.barberId
+        ? [start, end, scope.session.adminId, start, end, scope.session.adminId]
+        : loc
+          ? [start, end, loc, scope.session.adminId, start, end, loc, scope.session.adminId]
+          : [start, end, start, end]),
+    )
     .all<SRow>();
   for (const x of r.results) x.day = dayKey(x.created_at);
   return r.results;
@@ -635,7 +645,11 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
     case 'online-payments': {
       // Plățile online cu cardul (Stripe), pe ziua plății: păstrate, returnate pe card sau de returnat de mână.
       const { start, end } = range(from, to);
-      const own = scope.barberId ? `AND p.kind = 'booking' AND b.barber_id = ?` : '';
+      const own = scope.barberId
+        ? `AND p.kind = 'booking' AND b.barber_id = ?`
+        : scope.locationId
+          ? `AND p.kind = 'booking' AND b.location_id = ?`
+          : '';
       const r = await env.DB.prepare(
         `SELECT p.kind, p.ref, p.amount_bani, p.status, p.note, p.created_at, p.payment_intent, p.session_id, p.renewal, c.name AS client_name, s.name AS service_name, sb.name AS sub_name
          FROM online_payments p LEFT JOIN clients c ON c.id = p.client_id
@@ -643,7 +657,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
          LEFT JOIN subscriptions sb ON p.kind = 'sub' AND sb.id = p.ref
          WHERE p.created_at >= ? AND p.created_at < ? ${own} ORDER BY p.created_at LIMIT 30000`,
       )
-        .bind(...(scope.barberId ? [start, end, scope.barberId] : [start, end]))
+        .bind(...(scope.barberId ? [start, end, scope.barberId] : scope.locationId ? [start, end, scope.locationId] : [start, end]))
         .all<{ kind: string; ref: string; amount_bani: number; status: string; note: string; created_at: string; payment_intent: string | null; session_id: string; renewal: number; client_name: string | null; service_name: string | null; sub_name: string | null }>();
       const KIND: Record<string, string> = { booking: 'Programare', order: 'Comandă magazin', gift: 'Card cadou', sub: 'Abonament' };
       const ST: Record<string, string> = { paid: 'Plătită', refunded: 'Returnată', to_refund: 'De returnat' };

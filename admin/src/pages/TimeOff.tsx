@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { barberColor } from './Calendar';
 import { api, BLOCK_KINDS, blockKind, type Barber, type Block, type BlockKind, type Me, type TimeOff } from '../api';
 import { Field, Loading, useAction, useLoad } from '../ui';
-import { date, time, today, WEEKDAYS } from '../util';
+import { addDays, date, dayOf, time, today, WEEKDAYS } from '../util';
 
 /**
  * Cine poate șterge o perioadă liberă sau un bloc, după regula serverului (aceeași și în aplicația echipei): proprietarul orice;
@@ -30,12 +31,18 @@ function TimeOffSection({ me }: { me: Me }) {
   const [toDay, setToDay] = useState(today());
   const [reason, setReason] = useState('');
   const { busy, error, run } = useAction();
+  // Condica se reîncarcă după fiecare adăugare sau ștergere.
+  const [ver, setVer] = useState(0);
+  const reload = () => {
+    data.reload();
+    setVer((v) => v + 1);
+  };
 
   const add = () =>
     run(async () => {
       await api('POST', '/admin/time-off', { barberId: barberId || null, fromDay, toDay, reason });
       setReason('');
-      data.reload();
+      reload();
     });
 
   const nameOf = (id: string | null) => (id ? (barbers.find((b) => b.id === id)?.name ?? '?') : 'Tot salonul');
@@ -87,6 +94,8 @@ function TimeOffSection({ me }: { me: Me }) {
         </div>
       </div>
 
+      {me.owner || me.permissions.bookings_all ? <LeavePlanner barbers={barbers} ver={ver} /> : null}
+
       {!data.data ? (
         <Loading error={data.error} />
       ) : list.length === 0 ? (
@@ -118,7 +127,7 @@ function TimeOffSection({ me }: { me: Me }) {
                         className="danger sm"
                         onClick={() =>
                           confirm('Ștergi perioada liberă?') &&
-                          api('DELETE', `/admin/time-off/${t.id}`).then(data.reload)
+                          api('DELETE', `/admin/time-off/${t.id}`).then(reload)
                         }
                       >
                         Șterge
@@ -132,6 +141,130 @@ function TimeOffSection({ me }: { me: Me }) {
         </div>
       )}
     </>
+  );
+}
+
+const MONTHS = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'];
+const STICKY = { position: 'sticky', left: 0, background: 'var(--card)', zIndex: 1, whiteSpace: 'nowrap' } as const;
+
+/**
+ * Condica de concedii pe o lună: un rând pe frizer, o coloană pe zi; zilele libere colorate (cu perioada și motivul la mouse),
+ * zilele cu tot salonul închis hașurate pe toate rândurile. O văd proprietarul și cine vede programările tuturor.
+ */
+function LeavePlanner({ barbers, ver }: { barbers: Barber[]; ver: number }) {
+  const [month, setMonth] = useState(today().slice(0, 7));
+  const [y, m] = month.split('-').map(Number);
+  const first = `${month}-01`;
+  const days = Array.from({ length: new Date(Date.UTC(y, m, 0)).getUTCDate() }, (_, i) => addDays(first, i));
+  const last = days[days.length - 1];
+  // Tot ce se termină după începutul lunii (cu o zi în plus, pentru fusul orar); ce începe după ea se sare mai jos.
+  const data = useLoad(() => api<TimeOff[]>('GET', `/admin/time-off?from=${encodeURIComponent(new Date(Date.UTC(y, m - 1, 0)).toISOString())}`), [month, ver]);
+  const shift = (n: number) => setMonth(new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7));
+
+  // Pentru fiecare perioadă: zilele locale pe care le acoperă (zi întreagă sau doar câteva ore din ea).
+  type Mark = { full: boolean; title: string };
+  const marks = new Map<string, Map<string, Mark>>();
+  for (const t of data.data ?? []) {
+    const full = time(t.start) === '00:00' && time(t.end) === '00:00';
+    const endAt = new Date(Date.parse(t.end) - 60_000);
+    const s = dayOf(t.start);
+    const e = dayOf(endAt);
+    if (e < first || s > last) continue;
+    const period = full ? (s === e ? date(t.start) : `${date(t.start)} – ${date(endAt)}`) : `${date(t.start)}, ${time(t.start)}–${time(t.end)}`;
+    const title = t.reason ? `${period} · ${t.reason}` : period;
+    const key = t.barberId ?? '';
+    if (!marks.has(key)) marks.set(key, new Map());
+    for (let d = s < first ? first : s; d <= e && d <= last; d = addDays(d, 1)) marks.get(key)!.set(d, { full, title });
+  }
+  const salon = marks.get('') ?? new Map<string, Mark>();
+  const rows = barbers.filter((b) => b.active || marks.has(b.id));
+  const weekend = (d: string) => [0, 6].includes(new Date(d + 'T12:00:00Z').getUTCDay());
+  const now = today();
+
+  const cell = (d: string, mk: Mark | undefined, color: string) => (
+    <td
+      key={d}
+      title={mk?.title}
+      style={{
+        padding: 0,
+        height: 30,
+        minWidth: 26,
+        borderLeft: '1px solid rgba(127,127,127,.15)',
+        background: mk
+          ? mk.full
+            ? color
+            : `linear-gradient(to top, ${color} 45%, transparent 45%)`
+          : salon.has(d)
+            ? 'repeating-linear-gradient(45deg, rgba(127,127,127,.3), rgba(127,127,127,.3) 4px, transparent 4px, transparent 8px)'
+            : weekend(d)
+              ? 'rgba(127,127,127,.08)'
+              : undefined,
+      }}
+    />
+  );
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+        <b>Condica de concedii</b>
+        <span className="row" style={{ gap: 6 }}>
+          <button className="ghost sm" onClick={() => shift(-1)} aria-label="Luna trecută">
+            ‹
+          </button>
+          <span style={{ minWidth: 130, textAlign: 'center' }}>
+            {MONTHS[m - 1]} {y}
+          </span>
+          <button className="ghost sm" onClick={() => shift(1)} aria-label="Luna următoare">
+            ›
+          </button>
+        </span>
+      </div>
+      {!data.data ? (
+        <Loading error={data.error} />
+      ) : (
+        <div className="table-wrap">
+          <table style={{ borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={STICKY} />
+                {days.map((d) => (
+                  <th key={d} className="small" style={{ padding: '2px 0', textAlign: 'center', fontWeight: d === now ? 800 : 500, opacity: weekend(d) ? 0.6 : 1 }}>
+                    {Number(d.slice(8))}
+                  </th>
+                ))}
+                <th className="small" title="Zile libere întregi în luna asta">
+                  Zile
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {salon.size ? (
+                <tr>
+                  <td style={STICKY} className="muted">
+                    Tot salonul
+                  </td>
+                  {days.map((d) => cell(d, salon.get(d), 'rgba(127,127,127,.45)'))}
+                  <td className="small muted">{[...salon.values()].filter((x) => x.full).length || ''}</td>
+                </tr>
+              ) : null}
+              {rows.map((b) => {
+                const own = marks.get(b.id);
+                return (
+                  <tr key={b.id}>
+                    <td style={STICKY}>{b.name}</td>
+                    {days.map((d) => cell(d, own?.get(d), barberColor(b, barbers.indexOf(b))))}
+                    <td className="small muted">{own ? [...own.values()].filter((x) => x.full).length || '' : ''}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="muted small" style={{ margin: '8px 0 0' }}>
+        Plin = zi liberă întreagă, jumătate = doar câteva ore, hașurat = salonul e închis. Ține mouse-ul pe o zi ca să vezi perioada și motivul.
+      </p>
+    </div>
   );
 }
 

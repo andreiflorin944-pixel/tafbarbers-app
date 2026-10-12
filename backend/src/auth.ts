@@ -118,13 +118,15 @@ export async function requireClient(c: Context<AppEnv>, next: Next) {
 export async function requireAdmin(c: Context<AppEnv>, next: Next) {
   const s = await lookup(c, 'admin');
   if (!s) throw new HttpError(401, 'unauthorized');
-  const a = await c.env.DB.prepare('SELECT id, barber_id, permissions, role FROM admins WHERE id = ?')
+  // SELECT *: merge și înainte de migrarea care adaugă location_id.
+  const a = await c.env.DB.prepare('SELECT * FROM admins WHERE id = ?')
     .bind(s.subject_id)
-    .first<{ id: string; barber_id: string | null; permissions: string; role: string }>();
+    .first<{ id: string; barber_id: string | null; permissions: string; role: string; location_id?: string | null }>();
   if (!a) throw new HttpError(401, 'unauthorized');
   const role = isRole(a.role) ? a.role : 'barber';
   const owner = role === 'org_admin';
-  c.set('admin', { kind: 'admin', adminId: a.id, barberId: a.barber_id, role, owner, perms: parsePerms(a.permissions, role) });
+  const locationId = role === 'location_admin' ? (a.location_id ?? null) : null;
+  c.set('admin', { kind: 'admin', adminId: a.id, barberId: a.barber_id, role, owner, perms: parsePerms(a.permissions, role), locationId });
   await next();
 }
 

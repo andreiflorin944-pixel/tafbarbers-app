@@ -86,7 +86,8 @@ export function parsePerms(raw: string | null | undefined, role: Role): Perms {
   return Object.fromEntries(PERMS.map((p) => [p, typeof saved[p] === 'boolean' ? saved[p] : base[p]])) as Perms;
 }
 
-export type AdminSession = { kind: 'admin'; adminId: string; barberId: string | null; role: Role; owner: boolean; perms: Perms };
+// `locationId`: unitatea pe care e repartizat un administrator de locație (null = toate, sau alt rol).
+export type AdminSession = { kind: 'admin'; adminId: string; barberId: string | null; role: Role; owner: boolean; perms: Perms; locationId: string | null };
 
 export type AppEnv = {
   Bindings: Env;

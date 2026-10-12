@@ -482,11 +482,12 @@ export const ROLE_LABELS: Record<Role, string> = {
 };
 export const ROLE_HELP: Record<Role, string> = {
   org_admin: 'Vede și schimbă tot, inclusiv setările, serviciile și echipa.',
-  location_admin: 'Vede toate programările și datele de contact ale clienților. Nu schimbă setările afacerii.',
+  location_admin: 'Vede programările, concediile, statisticile și rapoartele locației lui, cu datele de contact ale clienților. Nu importă și nu exportă clienții și nu schimbă setările afacerii.',
   barber: 'Își vede programările, caută clienți și le completează fișa. Fără telefon și e-mail, dacă nu bifezi.',
 };
 // `onlinePayments`: plata cu cardul în aplicație (Stripe) e pornită; altfel „Cere plata în aplicație” nu apare.
-export type Me = { id: string; email: string; name: string; barberId: string | null; role?: Role; owner: boolean; permissions: Record<Perm, boolean>; onlinePayments?: boolean };
+// `locationId`: locația administratorului de locație (null = toate).
+export type Me = { id: string; email: string; name: string; barberId: string | null; role?: Role; owner: boolean; permissions: Record<Perm, boolean>; locationId?: string | null; onlinePayments?: boolean };
 export const PERM_LABELS: Record<Perm, string> = {
   bookings_all: 'Vede programările tuturor frizerilor',
   bookings_create: 'Adaugă programări',

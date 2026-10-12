@@ -585,17 +585,19 @@ function HairAdvisor() {
   );
 }
 
-type TeamMember = { id: string; email: string; name: string; barberId: string | null; role: Role; permissions: Record<Perm, boolean>; sessions?: number };
+type TeamMember = { id: string; email: string; name: string; barberId: string | null; role: Role; locationId?: string | null; permissions: Record<Perm, boolean>; sessions?: number };
 
 function Team({ me }: { me: Me }) {
-  const data = useLoad(() => Promise.all([api<TeamMember[]>('GET', '/admin/admins'), api<Barber[]>('GET', '/admin/barbers')]));
+  const data = useLoad(() =>
+    Promise.all([api<TeamMember[]>('GET', '/admin/admins'), api<Barber[]>('GET', '/admin/barbers'), api<Location[]>('GET', '/admin/locations')]),
+  );
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>('barber');
   const [barberId, setBarberId] = useState('');
   const { busy, error, run } = useAction();
-  const [admins, barbers] = data.data ?? [[], []];
+  const [admins, barbers, locations] = data.data ?? [[], [], []];
   const patch = (id: string, body: object) => run(async () => (await api('PATCH', `/admin/admins/${id}`, body), data.reload()));
 
   return (
@@ -654,6 +656,18 @@ function Team({ me }: { me: Me }) {
                 ))}
               </select>
             </Field>
+            {a.role === 'location_admin' ? (
+              <Field label="Locația lui">
+                <select value={a.locationId ?? ''} disabled={busy} onChange={(e) => patch(a.id, { locationId: e.target.value || null })}>
+                  <option value="">Toate locațiile</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : null}
           </div>
           <div className="muted small">{ROLE_HELP[a.role]}</div>
           {a.role !== 'org_admin' ? (
