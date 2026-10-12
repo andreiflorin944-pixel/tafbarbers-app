@@ -213,6 +213,15 @@ function ClientAccount() {
     }
   };
 
+  // Google cere ca, înainte de cererea de locație în fundal, aplicația să spună clar ce face cu ea.
+  const askNearby = (on: boolean) => {
+    if (!on) return void toggleNearby(false);
+    Alert.alert(t('account.nearby'), t('account.nearbyDisclosure'), [
+      { text: t('account.cancel'), style: 'cancel' },
+      { text: t('account.nearbyContinue'), onPress: () => void toggleNearby(true) },
+    ]);
+  };
+
   const toggleNearby = async (on: boolean) => {
     setNearby((n) => ({ ...n, busy: true, msg: null }));
     if (!on) {
@@ -343,7 +352,7 @@ function ClientAccount() {
             {nearby.busy ? (
               <ActivityIndicator color={colors.gold} />
             ) : (
-              <Switch value={nearby.on} onValueChange={toggleNearby} trackColor={{ true: colors.gold, false: colors.border }} thumbColor={colors.text} />
+              <Switch value={nearby.on} onValueChange={askNearby} trackColor={{ true: colors.gold, false: colors.border }} thumbColor={colors.text} />
             )}
           </View>
           {nearby.msg ? <Text style={{ color: nearby.msg.ok ? colors.success : colors.danger, marginTop: space.sm, fontSize: 13 }}>{nearby.msg.text}</Text> : null}

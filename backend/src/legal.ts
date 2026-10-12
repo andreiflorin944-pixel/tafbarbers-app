@@ -89,15 +89,17 @@ Această politică explică ce date personale prelucrăm când folosești aplica
 • Cumpărături: comenzi din magazin, carduri cadou, abonamente, bonusuri și recomandări (cine te-a recomandat și pe cine ai recomandat).
 • Plăți online: identificatorul tranzacției și suma. Datele cardului sunt prelucrate direct de Stripe; noi nu le vedem.
 • Comunicări: acordul pentru oferte (cu data), identificatorul dispozitivului pentru notificări push, jurnalul mesajelor trimise (tip, dată, stare).
+• Locația (opțional, doar dacă pornești în Aplicație „Anunță-mă când sunt lângă salon”): telefonul verifică singur dacă ai intrat în zona din jurul unei locații a salonului, inclusiv când Aplicația e închisă. Nu primim și nu păstrăm poziția ta; telefonul ne anunță doar locația salonului lângă care ești, iar noi păstrăm data ultimului anunț trimis, ca să nu îți trimitem prea des. Oprești oricând din Cont sau din setările telefonului.
 • Date tehnice: date necesare funcționării (de exemplu sesiunea de conectare, adresa IP în jurnalele serverului, pentru securitate). Când accepți termenii și politica de confidențialitate sau îți dai ori îți retragi acordul pentru oferte, păstrăm dovada: data și ora, versiunea documentelor, adresa IP, tipul dispozitivului (browser sau aplicație) și limba. Nu folosim cookie-uri de urmărire sau publicitate și nu folosim instrumente de analiză care te urmăresc între aplicații.
 
 3. De ce și pe ce temei
 • Crearea contului, programările, comenzile, cardurile cadou și abonamentele: executarea contractului cu tine (art. 6 alin. 1 lit. b GDPR).
 • Mesajele de serviciu (cod de intrare, confirmare, reamintire, anulare, comandă gata): executarea contractului și interesul nostru legitim de a reduce neprezentările.
-• Oferte, noutăți, „Ne e dor de tine”, anunțuri cu ore libere: doar cu acordul tău (art. 6 alin. 1 lit. a GDPR și Legea 506/2004), pe care îl retragi oricând din Cont, fără să afecteze ce s-a trimis înainte.
+• Oferte, noutăți, „Ne e dor de tine”, anunțuri cu ore libere (inclusiv cel când ești lângă salon): doar cu acordul tău (art. 6 alin. 1 lit. a GDPR și Legea 506/2004), pe care îl retragi oricând din Cont, fără să afecteze ce s-a trimis înainte.
 • Urarea și bonusul de ziua ta: executarea contractului (programul de bonusuri din Aplicație); poți renunța scriindu-ne.
 • Pozele „înainte și după” și arătarea lor ca exemplu altor clienți: acordul tău, pe care îl retragi oricând.
 • Analiza pozei în consilierul AI de tunsori: acordul tău, dat în Aplicație înainte de fiecare analiză.
+• Locația pentru anunțul „ești lângă salon”: acordul tău, dat în Aplicație și în permisiunea telefonului, pe care îl retragi oricând.
 • Evidența financiar-contabilă (încasări, bonuri, NIR): obligație legală (art. 6 alin. 1 lit. c GDPR).
 • Securitatea Aplicației și prevenirea fraudelor (de exemplu limitarea codurilor trimise): interesul nostru legitim.
 • Dovada acordurilor tale (termeni, confidențialitate, oferte): obligația legală de a putea demonstra acordul (art. 7 alin. 1 și art. 6 alin. 1 lit. c GDPR).
@@ -136,7 +138,7 @@ Putem actualiza această politică; versiunea curentă e mereu în Aplicație, c
 Contact pentru date personale: {company} · {email} · {phone}`;
 
 /** Data ultimei schimbări a fiecărui model de mai sus (apare ca „Ultima actualizare” cât timp nu e editat în panou). */
-const TEMPLATE_DATE: Record<Doc, string> = { terms: '2026-10-09', privacy: '2026-10-10' };
+const TEMPLATE_DATE: Record<Doc, string> = { terms: '2026-10-09', privacy: '2026-10-12' };
 
 const DEFAULTS: Record<Doc, Version> = {
   terms: { title: 'Termeni și condiții', body: TERMS_RO },
