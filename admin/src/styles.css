@@ -37,6 +37,7 @@
 :root[data-theme='light'] button.danger { border-color: #f1c4c2; }
 :root[data-theme='light'] .card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
 :root[data-theme='light'] .cal-line { border-top-color: #efeff2; }
+:root[data-theme='light'] .cal-line.hour { border-top-color: #dcdce2; }
 :root[data-theme='light'] .cal-off { background: repeating-linear-gradient(45deg, #f6f6f8, #f6f6f8 6px, #ececf0 6px, #ececf0 12px); }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
@@ -148,6 +149,7 @@ tr.click:hover td { background: var(--card-alt); }
 .cal-times span { position: absolute; right: 6px; font-size: 11px; color: var(--muted); transform: translateY(-50%); }
 .cal-col { position: relative; border-left: 1px solid var(--border); }
 .cal-line { position: absolute; left: 0; right: 0; border-top: 1px solid #1c1c1e; }
+.cal-line.hour { border-top-color: #2c2c30; }
 .cal-off { position: absolute; left: 0; right: 0; background: repeating-linear-gradient(45deg, #0a0a0a, #0a0a0a 6px, #121212 6px, #121212 12px); }
 .cal-ev {
   --c: var(--gold);

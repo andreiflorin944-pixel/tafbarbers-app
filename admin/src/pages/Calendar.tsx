@@ -26,6 +26,9 @@ export function CalendarPage({ me }: { me: Me }) {
   const [create, setCreate] = useState<{ barberId?: string; time?: string } | null>(null);
 
   const meta = useLoad(() => Promise.all([api<Barber[]>('GET', '/admin/barbers'), api<Service[]>('GET', '/admin/services')]));
+  // Pasul din Setări → Reguli de programare (la fel ca orele libere și calendarul din aplicație).
+  const biz = useLoad(() => api<{ slotStepMin?: number }>('GET', '/business'));
+  const step = biz.data?.slotStepMin || 15;
   // Filtrul pe locație apare doar când salonul are mai multe locații active ('' = toate).
   const locs = useLoad(() => api<Location[]>('GET', '/admin/locations'));
   const [loc, setLoc] = useState('');
@@ -231,13 +234,13 @@ export function CalendarPage({ me }: { me: Me }) {
                       const cl = (e.target as HTMLElement).classList;
                       if (e.target !== e.currentTarget && !cl.contains('cal-off') && !cl.contains('cal-line') && !cl.contains('cal-block')) return;
                       const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
-                      const m = Math.floor((startMin + y / PX) / 15) * 15;
+                      const m = Math.floor((startMin + y / PX) / step) * step;
                       if (me.permissions.bookings_create) setCreate({ barberId: b.id, time: hm(m) });
                     }}
                     title="Click pe o zonă liberă pentru programare nouă"
                   >
-                    {Array.from({ length: (endMin - startMin) / 30 }, (_, i) => (
-                      <div key={i} className="cal-line" style={{ top: i * 30 * PX }} />
+                    {Array.from({ length: Math.ceil((endMin - startMin) / step) }, (_, i) => (
+                      <div key={i} className={(i * step) % 60 ? 'cal-line' : 'cal-line hour'} style={{ top: i * step * PX }} />
                     ))}
                     {gaps.map(([s, e], i) => (
                       <div key={i} className="cal-off" style={{ top: (s - startMin) * PX, height: (e - s) * PX }} />
