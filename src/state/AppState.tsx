@@ -3,7 +3,7 @@ import { api, ApiError } from '@/api';
 import type { Barber, Booking, Business, Location, Me, Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
 import { unregisterPush } from '@/lib/push';
-import { storage } from '@/lib/storage';
+import { SESSION_KEY, storage } from '@/lib/storage';
 import { LOOK_KEY, normalizeLook, readSavedLook, type SavedLook } from '@/theme';
 import { Platform } from 'react-native';
 
@@ -47,7 +47,7 @@ type AppState = {
   locationById: (id: string | null | undefined) => Location | undefined;
 };
 
-const TOKEN_KEY = 'taf.session';
+const TOKEN_KEY = SESSION_KEY;
 const emptyDraft: Draft = { locationId: null, serviceId: null, presetService: false, barberId: null, start: null, slotBarberId: null };
 const Ctx = createContext<AppState | null>(null);
 

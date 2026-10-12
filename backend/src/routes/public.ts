@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getAutomations } from '../growth';
+import { getAutomations, nearbyConfig } from '../growth';
 import { attributeQr, ipHash } from '../qr';
 import { accessFor, availability } from '../availability';
 import { createSession, deleteSession, hashPassword, normalizePhone, optionalSession, newId, tokenFrom, verifyPassword } from '../auth';
@@ -23,6 +23,9 @@ import { advisorAvailable } from '../advisor';
 import { linkTicket, readTicket, socialConfig, socialSignIn, verifyIdToken, type Provider } from '../socialLogin';
 
 export const publicRoutes = new Hono<AppEnv>();
+
+/** „Ești lângă salon”: zonele pe care le urmărește aplicația (doar la clienții care au pornit opțiunea). */
+publicRoutes.get('/nearby', async (c) => c.json(await nearbyConfig(c.env)));
 
 publicRoutes.get('/business', async (c) => {
   const [biz, appearance, auto, advisor] = await Promise.all([getBusiness(c.env), getAppearance(c.env), getAutomations(c.env), advisorAvailable(c.env)]);

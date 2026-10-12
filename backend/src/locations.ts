@@ -11,6 +11,8 @@ export type LocationRow = {
   address: string;
   phone: string;
   photo_url: string | null;
+  lat?: number | null;
+  lng?: number | null;
   active: number;
   sort: number;
   barbers?: number;
@@ -23,6 +25,9 @@ export const location = (r: LocationRow) => ({
   address: r.address,
   phone: r.phone,
   photoUrl: r.photo_url,
+  // Coordonatele (din Google Maps) pentru „Ești lângă salon”; null = nesetate.
+  lat: r.lat ?? null,
+  lng: r.lng ?? null,
   active: !!r.active,
   sort: r.sort,
   ...(r.barbers !== undefined && { barbers: r.barbers }),
@@ -76,7 +81,18 @@ export async function activeLocationId(env: Env, id: unknown): Promise<string | 
   return id;
 }
 
-type LocationInput = { name?: unknown; address?: unknown; phone?: unknown; photoUrl?: unknown; active?: unknown; sort?: unknown };
+type LocationInput = { name?: unknown; address?: unknown; phone?: unknown; photoUrl?: unknown; active?: unknown; sort?: unknown; coords?: unknown };
+
+/** „47.1585, 27.6014” (copiat din Google Maps) → [lat, lng]; gol = șterse. */
+function parseCoords(v: unknown): [number, number] | null {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const m = /^(-?\d{1,2}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(s);
+  const lat = m ? Number(m[1]) : NaN;
+  const lng = m ? Number(m[2]) : NaN;
+  if (!(Math.abs(lat) <= 90 && Math.abs(lng) <= 180)) throw new HttpError(400, 'invalid_coords');
+  return [Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6];
+}
 
 function values(b: LocationInput, create: boolean) {
   const v: Record<string, unknown> = {};
@@ -93,6 +109,11 @@ function values(b: LocationInput, create: boolean) {
   }
   if (b.sort !== undefined) v.sort = Math.round(Number(b.sort)) || 0;
   if (b.active !== undefined) v.active = b.active === false ? 0 : 1;
+  if (b.coords !== undefined) {
+    const c = parseCoords(b.coords);
+    v.lat = c ? c[0] : null;
+    v.lng = c ? c[1] : null;
+  }
   return v;
 }
 
@@ -103,6 +124,7 @@ export async function createLocation(env: Env, b: LocationInput) {
   await env.DB.prepare('INSERT INTO locations (id, name, address, phone, photo_url, active, sort) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind(id, v.name, v.address ?? '', v.phone ?? '', v.photo_url ?? null, v.active ?? 1, sort)
     .run();
+  if (v.lat !== undefined) await env.DB.prepare('UPDATE locations SET lat = ?, lng = ? WHERE id = ?').bind(v.lat, v.lng, id).run();
   return id;
 }
 

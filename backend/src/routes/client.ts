@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { hashPassword, newId, normalizePhone, requireClient, sha256, tokenFrom, verifyPassword } from '../auth';
 import { clearFailures, lockedAny, loginKeys, recordFailure, validClientPassword } from '../clientPassword';
 import { checkCode, issueCode, useCode } from '../otp';
-import { createGiftCard, getAutomations, giftCard, type GiftCardRow } from '../growth';
+import { createGiftCard, getAutomations, giftCard, sendNearby, type GiftCardRow } from '../growth';
 import { BOOKING_SELECT, cancelBooking, createBooking } from '../bookings';
 import { booking, client, emailTaken, getBusiness, type BookingRow, type ClientRow } from '../db';
 import { createCheckout, publicBase } from '../payments';
@@ -131,6 +131,12 @@ clientRoutes.delete('/me/identity/photos/:pid', async (c) => {
 });
 
 // Titlurile bonusurilor, abonamentele și produsele comandate vin în limba aplicației (`?lang=en`), unde au fost traduse.
+/** Telefonul a intrat în zona unei locații (opțiunea „Anunță-mă când sunt lângă salon”); serverul decide dacă trimite. */
+clientRoutes.post('/me/nearby', async (c) => {
+  const b = await c.req.json<{ locationId?: unknown }>().catch(() => ({}) as { locationId?: unknown });
+  return c.json({ sent: await sendNearby(c.env, c.get('client').clientId, b.locationId) });
+});
+
 clientRoutes.get('/me/referrals', async (c) => {
   const lang = c.req.query('lang');
   const r = await myReferrals(c.env, c.get('client').clientId);

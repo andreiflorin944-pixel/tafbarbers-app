@@ -3,6 +3,8 @@ import type { BeforeAfter, DayPart, WaitlistEntry, GiftCards, Barber, Location, 
 // Singura legătură dintre interfață și server. `http.ts` vorbește cu serverul nostru
 // (Cloudflare Worker); `mock.ts` e varianta de test, folosită cât timp aplicația nu are
 // adresa serverului configurată.
+export type NearbyConfig = { enabled: boolean; radius: number; locations: Array<{ id: string; lat: number; lng: number }> };
+
 export interface BookingApi {
   getBusiness(): Promise<Business>;
   getServices(): Promise<Service[]>;
@@ -84,6 +86,9 @@ export interface BookingApi {
   registerPushToken(token: string, pushToken: string, platform: string): Promise<void>;
   /** La ieșirea din cont: telefonul nu mai primește notificările clientului. */
   unregisterPushToken(token: string, pushToken: string): Promise<void>;
+  /** „Ești lângă salon”: zonele urmărite (locațiile cu coordonate) și anunțul că telefonul a intrat într-una. */
+  getNearby(): Promise<NearbyConfig>;
+  nearbyEnter(token: string, locationId: string): Promise<{ sent: boolean }>;
 
   // Magazin: plata la ridicare din salon.
   getProducts(): Promise<Product[]>;

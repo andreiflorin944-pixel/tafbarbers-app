@@ -229,12 +229,12 @@ function OnlinePayments() {
  */
 function Locations() {
   const list = useLoad(() => api<Location[]>('GET', '/admin/locations'));
-  const [edit, setEdit] = useState<Partial<Location> | null>(null);
+  const [edit, setEdit] = useState<(Partial<Location> & { coords?: string }) | null>(null);
   const { busy, error, run } = useAction();
   const save = () =>
     run(async () => {
       if (!edit) return;
-      const body = { name: edit.name ?? '', address: edit.address ?? '', phone: edit.phone ?? '', photoUrl: edit.photoUrl ?? null, sort: edit.sort ?? 0 };
+      const body = { name: edit.name ?? '', address: edit.address ?? '', phone: edit.phone ?? '', photoUrl: edit.photoUrl ?? null, sort: edit.sort ?? 0, coords: edit.coords ?? '' };
       if (edit.id) await api('PATCH', `/admin/locations/${edit.id}`, body);
       else await api('POST', '/admin/locations', body);
       setEdit(null);
@@ -249,7 +249,7 @@ function Locations() {
       await api('PATCH', `/admin/locations/${l.id}`, { active: !l.active });
       list.reload();
     });
-  const set = (patch: Partial<Location>) => setEdit((e) => ({ ...e, ...patch }));
+  const set = (patch: Partial<Location> & { coords?: string }) => setEdit((e) => ({ ...e, ...patch }));
   return (
     <div className="card grid">
       <h2 id="set-locatii" style={{ margin: 0, scrollMarginTop: 16 }}>Locații</h2>
@@ -270,7 +270,7 @@ function Locations() {
               {l.active && !l.barbers ? <div className="muted small">Nu apare încă în aplicație: adaugă cel puțin un frizer în ea (Afaceri → Frizeri).</div> : null}
             </span>
             <span className="row" style={{ gap: 6 }}>
-              <button className="ghost sm" disabled={busy} onClick={() => setEdit(l)}>
+              <button className="ghost sm" disabled={busy} onClick={() => setEdit({ ...l, coords: l.lat != null && l.lng != null ? `${l.lat}, ${l.lng}` : '' })}>
                 Editează
               </button>
               <button className="ghost sm" disabled={busy} onClick={() => toggle(l)}>
@@ -296,6 +296,12 @@ function Locations() {
             <Field label="Ordine în aplicație">
               <input type="number" value={edit.sort ?? 0} onChange={(e) => set({ sort: Number(e.target.value) })} />
             </Field>
+          </div>
+          <Field label="Coordonate (din Google Maps: clic dreapta pe salon, apoi clic pe numerele de sus)">
+            <input value={edit.coords ?? ''} onChange={(e) => set({ coords: e.target.value })} placeholder="47.1585, 27.6014" />
+          </Field>
+          <div className="muted small" style={{ marginTop: -6 }}>
+            Folosite doar pentru notificarea „ești lângă salon” (Notificări → Lângă salon). Gol = locația nu trimite notificarea.
           </div>
           <Field label="Poză (opțional)">
             <ImagePicker value={edit.photoUrl ?? null} onChange={(u) => set({ photoUrl: u })} maxPx={1200} />

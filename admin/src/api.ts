@@ -138,6 +138,8 @@ const MESSAGES: Record<string, string> = {
   invalid_weeks: 'Numărul de săptămâni trebuie să fie între 2 și 52.',
   invalid_window: 'Intervalul trebuie să fie între 1 și 10 ore.',
   invalid_max: 'Maxim de câte ori pe săptămână: între 1 și 7.',
+  invalid_radius: 'Raza trebuie să fie între 100 și 1000 de metri.',
+  invalid_coords: 'Coordonatele nu sunt corecte. Copiază-le din Google Maps, de forma 47.1585, 27.6014.',
   invalid_months: 'Valabilitatea trebuie să fie între 1 și 36 de luni.',
   not_pending: 'Cardul a fost deja încasat sau anulat.',
   supplier_required: 'Scrie furnizorul.',
@@ -305,6 +307,9 @@ export type Location = {
   photoUrl: string | null;
   active: boolean;
   sort: number;
+  /** Coordonatele salonului, pentru notificarea „ești lângă salon”. */
+  lat: number | null;
+  lng: number | null;
   /** Câți frizeri activi lucrează aici. */
   barbers?: number;
   /** Câte programări viitoare (confirmate sau cereri) are (pentru avertismentul la dezactivare). */

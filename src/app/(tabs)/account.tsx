@@ -1,13 +1,14 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Alert, Platform, Pressable, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { api, ApiError } from '@/api';
 import { formatBirth, parseBirth } from '@/lib/dates';
 import { pickImage } from '@/lib/pickImage';
 import { PasswordSettings } from '@/components/PasswordSettings';
 import { Avatar, Button, Card, Icon, Screen, Segmented, Title, styles } from '@/components/ui';
 import { errorMessage } from '@/lib/errors';
+import { nearbyAvailable, nearbyOn, startNearby, stopNearby } from '@/lib/nearby';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
 import { useT } from '@/i18n';
@@ -83,11 +84,18 @@ function ClientAccount() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [offersMsg, setOffersMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [nearby, setNearby] = useState<{ shown: boolean; on: boolean; busy: boolean; msg: { ok: boolean; text: string } | null }>({ shown: false, on: false, busy: false, msg: null });
 
   useEffect(() => {
     setName(user?.name ?? '');
     setEmail(user?.email ?? '');
     setBirth(formatBirth(user?.birthDate));
+  }, [user?.id]);
+
+  // Opțiunea apare doar dacă salonul a pornit-o în panou (și nu pe web).
+  useEffect(() => {
+    if (!user) return;
+    Promise.all([nearbyAvailable(), nearbyOn()]).then(([shown, on]) => setNearby((n) => ({ ...n, shown: shown || on, on })));
   }, [user?.id]);
 
   if (!user) {
@@ -205,6 +213,27 @@ function ClientAccount() {
     }
   };
 
+  const toggleNearby = async (on: boolean) => {
+    setNearby((n) => ({ ...n, busy: true, msg: null }));
+    if (!on) {
+      await stopNearby();
+      return setNearby((n) => ({ ...n, on: false, busy: false, msg: { ok: true, text: t('account.nearbyStopped') } }));
+    }
+    const r = await startNearby().catch(() => 'off' as const);
+    setNearby((n) => ({
+      ...n,
+      on: r === 'ok',
+      busy: false,
+      msg: { ok: r === 'ok', text: t(r === 'ok' ? 'account.nearbyStarted' : r === 'denied' ? 'account.nearbyDenied' : 'account.nearbyOff') },
+    }));
+    if (r === 'denied') {
+      Alert.alert(t('account.nearby'), t('account.nearbyDeniedAsk'), [
+        { text: t('account.cancel'), style: 'cancel' },
+        { text: t('account.nearbySettings'), onPress: () => Linking.openSettings() },
+      ]);
+    }
+  };
+
   return (
     <>
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
@@ -303,6 +332,23 @@ function ClientAccount() {
       {msg ? <Text style={{ color: msg.ok ? colors.success : colors.danger, marginTop: space.sm }}>{msg.text}</Text> : null}
 
       <PasswordSettings />
+
+      {nearby.shown ? (
+        <Card style={{ marginTop: space.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>{t('account.nearby')}</Text>
+              <Text style={[styles.muted, { fontSize: 13, marginTop: 2 }]}>{t('account.nearbyHint')}</Text>
+            </View>
+            {nearby.busy ? (
+              <ActivityIndicator color={colors.gold} />
+            ) : (
+              <Switch value={nearby.on} onValueChange={toggleNearby} trackColor={{ true: colors.gold, false: colors.border }} thumbColor={colors.text} />
+            )}
+          </View>
+          {nearby.msg ? <Text style={{ color: nearby.msg.ok ? colors.success : colors.danger, marginTop: space.sm, fontSize: 13 }}>{nearby.msg.text}</Text> : null}
+        </Card>
+      ) : null}
 
       <View style={{ marginTop: space.md }}>
         <Button title={t('account.myOrders')} variant="ghost" onPress={() => router.push('/shop/orders')} />

@@ -28,7 +28,8 @@
       "googleServicesFile": "./google-services.json",
       "blockedPermissions": [
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
@@ -58,6 +59,16 @@
         {
           "icon": "./assets/android-icon-monochrome.png",
           "color": "#F9A11B"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Aplicația folosește locația doar ca să te anunțe când ești lângă salon, dacă pornești opțiunea din Contul meu.",
+          "locationAlwaysAndWhenInUsePermission": "Aplicația folosește locația doar ca să te anunțe când ești lângă salon, dacă pornești opțiunea din Contul meu. Poziția ta nu e trimisă nicăieri.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": false,
+          "isIosBackgroundLocationEnabled": false
         }
       ]
     ],

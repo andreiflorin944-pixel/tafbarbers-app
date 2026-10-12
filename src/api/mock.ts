@@ -278,6 +278,8 @@ export const mockApi: BookingApi = {
   },
   registerPushToken: () => delay(undefined),
   unregisterPushToken: () => delay(undefined),
+  getNearby: () => delay({ enabled: false, radius: 200, locations: [] }),
+  nearbyEnter: () => delay({ sent: false }),
 
   // Magazinul există doar cu serverul real; în modul de test lista e goală și secțiunea nu apare.
   getProducts: () => delay([]),

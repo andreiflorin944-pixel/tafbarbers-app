@@ -1,9 +1,12 @@
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PushLink } from '@/components/PushLink';
 import { QrLink } from '@/components/QrLink';
 import { I18nProvider, useT } from '@/i18n';
+// Importat aici ca sarcina de fundal să fie definită și când sistemul pornește aplicația doar pentru ea.
+import { syncNearby } from '@/lib/nearby';
 import { AppStateProvider } from '@/state/AppState';
 import { CartProvider } from '@/state/Cart';
 import { StaffProvider } from '@/state/Staff';
@@ -15,6 +18,9 @@ const theme = {
 };
 
 export default function RootLayout() {
+  useEffect(() => {
+    syncNearby();
+  }, []);
   return (
     <SafeAreaProvider>
       <I18nProvider>

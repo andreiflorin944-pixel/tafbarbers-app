@@ -119,6 +119,8 @@ export function httpApi(baseUrl: string): BookingApi {
     unregisterPushToken: async (token, pushToken) => {
       await call('DELETE', '/push-tokens', { token, body: { token: pushToken } }).catch(() => undefined);
     },
+    getNearby: () => call('GET', '/nearby'),
+    nearbyEnter: (token, locationId) => call('POST', '/me/nearby', { token, body: { locationId } }),
 
     getProducts: () => call('GET', '/products'),
     listOrders: (token) => call('GET', '/me/orders', { token }),

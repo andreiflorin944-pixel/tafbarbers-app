@@ -36,6 +36,18 @@ export type LastMinuteSettings = {
   title: Texts;
   message: Texts; // {nume}, {salon}, {ore}
 };
+/**
+ * „Ești lângă salon”: clientul care a pornit opțiunea în aplicație trece prin zona din jurul unei locații, iar dacă
+ * acolo sunt ore libere în curând primește un push. Cel mult de N ori pe săptămână, niciodată cine are deja programare.
+ */
+export type NearbySettings = {
+  enabled: boolean;
+  radius: number; // metri în jurul locației
+  window: number; // golurile din următoarele N ore
+  maxPerWeek: number;
+  title: Texts;
+  message: Texts; // {nume}, {salon}, {locatie}, {ore}
+};
 export type GiftCardSettings = {
   enabled: boolean;
   amounts: number[]; // sumele propuse în aplicație (lei)
@@ -51,6 +63,7 @@ export const CHANNEL_EVENTS: ChannelEvent[] = ['confirm', 'cancel', 'booking_mov
 export type Automations = {
   winback: WinbackSettings;
   lastMinute: LastMinuteSettings;
+  nearby: NearbySettings;
   giftCard: GiftCardSettings;
   links: LinkSettings;
   channels: Record<ChannelEvent, Channel>;
@@ -88,6 +101,18 @@ export const DEFAULT_AUTOMATIONS: Automations = {
       ro: '{nume}, s-au eliberat ore azi la {salon}: {ore}. Rezervă din aplicație până nu le ia altcineva.',
       en: '{nume}, spots opened up today at {salon}: {ore}. Book in the app before they’re gone.',
       fr: '{nume}, des créneaux se sont libérés aujourd’hui chez {salon} : {ore}. Réservez dans l’application.',
+    },
+  },
+  nearby: {
+    enabled: false,
+    radius: 200,
+    window: 3,
+    maxPerWeek: 1,
+    title: { ro: 'Ești aproape de {salon}', en: "You're near {salon}", fr: 'Vous êtes près de {salon}' },
+    message: {
+      ro: '{nume}, avem loc liber azi: {ore}. Rezervă din aplicație și treci pe la noi.',
+      en: '{nume}, we have free spots today: {ore}. Book in the app and drop by.',
+      fr: '{nume}, nous avons des créneaux libres aujourd’hui : {ore}. Réservez dans l’application.',
     },
   },
   giftCard: {
@@ -141,6 +166,7 @@ export async function getAutomations(env: Env): Promise<Automations> {
   return {
     winback: { ...merge(d.winback, s.winback), reward: { ...d.winback.reward, ...s.winback?.reward } },
     lastMinute: merge(d.lastMinute, s.lastMinute),
+    nearby: merge(d.nearby, s.nearby),
     giftCard: merge(d.giftCard, s.giftCard),
     links: { ...d.links, ...s.links },
     channels: Object.fromEntries(CHANNEL_EVENTS.map((k) => [k, { ...d.channels[k], ...s.channels?.[k] }])) as Automations['channels'],
@@ -199,6 +225,7 @@ export async function saveAutomations(env: Env, b: Partial<Automations>) {
   const w: Partial<WinbackSettings> = b.winback ?? {};
   const l: Partial<LastMinuteSettings> = b.lastMinute ?? {};
   const g: Partial<GiftCardSettings> = b.giftCard ?? {};
+  const nb: Partial<NearbySettings> = b.nearby ?? {};
   const hours = l.hours === undefined ? cur.lastMinute.hours : [...new Set((Array.isArray(l.hours) ? l.hours : []).map(Number))].sort((x, y) => x - y);
   if (!hours.length || hours.length > 4 || hours.some((h) => !(Number.isInteger(h) && h >= 7 && h <= 20))) throw new HttpError(400, 'invalid_hour');
   const amounts =
@@ -228,6 +255,14 @@ export async function saveAutomations(env: Env, b: Partial<Automations>) {
       title: texts(l.title, cur.lastMinute.title, 80),
       message: texts(l.message, cur.lastMinute.message, 300),
     },
+    nearby: {
+      enabled: bool(nb.enabled, cur.nearby.enabled),
+      radius: int(nb.radius, cur.nearby.radius, 100, 1000, 'invalid_radius'),
+      window: int(nb.window, cur.nearby.window, 1, 10, 'invalid_window'),
+      maxPerWeek: int(nb.maxPerWeek, cur.nearby.maxPerWeek, 1, 7, 'invalid_max'),
+      title: texts(nb.title, cur.nearby.title, 80),
+      message: texts(nb.message, cur.nearby.message, 300),
+    },
     giftCard: {
       enabled: bool(g.enabled, cur.giftCard.enabled),
       amounts,
@@ -250,7 +285,7 @@ export async function saveAutomations(env: Env, b: Partial<Automations>) {
     otpSms: bool(b.otpSms, cur.otpSms),
   };
   // Engleza și franceza se completează singure din română.
-  for (const k of ['winback', 'lastMinute', 'giftCard'] as const) {
+  for (const k of ['winback', 'lastMinute', 'nearby', 'giftCard'] as const) {
     next[k].title = await autoTranslate(env, cur[k].title, next[k].title);
     next[k].message = await autoTranslate(env, cur[k].message, next[k].message);
   }
@@ -416,6 +451,58 @@ export async function sendLastMinute(env: Env, now = new Date()) {
     n++;
   }
   return n;
+}
+
+// --- „Ești lângă salon” ---
+
+/** Ce are nevoie aplicația ca să urmărească zonele (doar locațiile active cu coordonate). Nimic, cât e oprit. */
+export async function nearbyConfig(env: Env) {
+  const { nearby: s } = await getAutomations(env);
+  if (!s.enabled) return { enabled: false, radius: s.radius, locations: [] as Array<{ id: string; lat: number; lng: number }> };
+  const r = await env.DB.prepare('SELECT * FROM locations WHERE active = 1').all<{ id: string; lat?: number | null; lng?: number | null }>();
+  const locations = r.results.filter((l) => typeof l.lat === 'number' && typeof l.lng === 'number').map((l) => ({ id: l.id, lat: l.lat!, lng: l.lng! }));
+  return { enabled: locations.length > 0, radius: s.radius, locations };
+}
+
+/**
+ * Telefonul clientului a intrat în zona unei locații. Pleacă un push doar dacă: e pornit, clientul vrea oferte și are
+ * aplicația cu notificări, n-a mai primit mesajul de curând, n-are nimic programat și locația are ore libere în curând
+ * (deci e și deschisă). Răspunsul spune doar dacă a plecat, nu de ce nu.
+ */
+export async function sendNearby(env: Env, clientId: string, locationId: unknown, now = new Date()) {
+  const { nearby: s } = await getAutomations(env);
+  if (!s.enabled || typeof locationId !== 'string') return false;
+  const loc = await env.DB.prepare('SELECT id, name FROM locations WHERE id = ? AND active = 1').bind(locationId).first<{ id: string; name: string }>();
+  if (!loc) return false;
+  const nowIso = iso(now);
+  const since = iso(new Date(now.getTime() - (7 / s.maxPerWeek) * 86_400_000 + 3_600_000));
+  const c = await env.DB.prepare(
+    `SELECT c.id, c.name, c.lang FROM clients c
+     WHERE c.id = ? AND c.deleted_at IS NULL AND c.marketing_push = 1
+       AND (c.nearby_at IS NULL OR c.nearby_at < ?)
+       AND EXISTS (SELECT 1 FROM push_tokens p WHERE p.client_id = c.id)
+       AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.client_id = c.id AND b.status IN ('confirmed','requested') AND b.starts_at > ?)`,
+  )
+    .bind(clientId, since, nowIso)
+    .first<{ id: string; name: string; lang: string }>();
+  if (!c) return false;
+  const barbers = new Set(
+    (await env.DB.prepare('SELECT id FROM barbers WHERE location_id = ? AND active = 1').bind(loc.id).all<{ id: string }>()).results.map((b) => b.id),
+  );
+  const free = (await freeSlotsSoon(env, now, s.window)).filter((x) => barbers.has(x.barberId));
+  if (!free.length) return false;
+  const claimed = await env.DB.prepare('UPDATE clients SET nearby_at = ? WHERE id = ? AND (nearby_at IS NULL OR nearby_at < ?)').bind(nowIso, c.id, since).run();
+  if (!claimed.meta.changes) return false;
+  const lang = langOf(c.lang);
+  const ore = free
+    .slice(0, 3)
+    .map((x) => `${roLocal(x.start).hm}${x.barberName ? ` (${x.barberName})` : ''}`)
+    .join(', ');
+  const vars = { nume: firstName(c.name), salon: (await getBusiness(env)).name, locatie: loc.name, ore };
+  await sendPush(env, { kind: 'nearby' }, await pushTokens(env, c.id), fillText(s.title[lang] || s.title.ro, vars), fillText(s.message[lang] || s.message.ro, vars), {
+    screen: 'book',
+  });
+  return true;
 }
 
 // --- Carduri cadou ---

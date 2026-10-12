@@ -9,6 +9,7 @@ type Texts = Record<Lang, string>;
 type Automations = {
   winback: { enabled: boolean; weeks: number; hour: number; push: boolean; email: boolean; sms: boolean; title: Texts; message: Texts; bonus: boolean; reward: Reward };
   lastMinute: { enabled: boolean; hours: number[]; window: number; maxPerWeek: number; push: boolean; email: boolean; sms: boolean; title: Texts; message: Texts };
+  nearby: { enabled: boolean; radius: number; window: number; maxPerWeek: number; title: Texts; message: Texts };
   giftCard: { enabled: boolean; amounts: number[]; validMonths: number; title: Texts; message: Texts };
   links: { appStoreUrl: string; playStoreUrl: string; googleReviewUrl?: string };
   channels: Record<Ev, Channel>;
@@ -37,8 +38,8 @@ const EVENTS: Array<{ k: Ev; label: string }> = [
   { k: 'pay_request', label: 'Cerere de plată în aplicație (trimisă de echipă)' },
 ];
 type Slot = { start: string; barberName: string };
-const TAB_SUBS = ['canale', 'dor', 'ore-libere', 'card-cadou', 'linkuri'];
-const TABS = ['Ce se trimite și pe unde', 'Ne e dor de tine', 'Ore libere azi', 'Card cadou', 'Butonul „Programează”'] as const;
+const TAB_SUBS = ['canale', 'dor', 'ore-libere', 'card-cadou', 'linkuri', 'langa-salon'];
+const TABS = ['Ce se trimite și pe unde', 'Ne e dor de tine', 'Ore libere azi', 'Card cadou', 'Butonul „Programează”', 'Lângă salon'] as const;
 const SOURCES = [
   { src: 'google', label: 'Google Maps (profilul firmei)' },
   { src: 'instagram', label: 'Instagram (bio sau butonul de rezervare)' },
@@ -191,6 +192,35 @@ export function NotificationsPage() {
                 message={a.giftCard.message}
                 vars="{nume} = cine primește, {de_la} = cine îl face cadou, {suma}, {cod} = codul cardului, {mesaj} = urarea scrisă de cumpărător, {salon}"
                 onChange={(p) => set('giftCard', p)}
+              />
+            </>
+          ) : tab === 5 ? (
+            <>
+              <p className="muted small" style={{ margin: 0 }}>
+                Clientul care pornește în aplicație „Anunță-mă când sunt lângă salon” primește o notificare când trece pe lângă o locație, dacă sunt locuri
+                libere în următoarele ore și nu are deja o programare. Merge doar la clienții care au acceptat oferte și doar la locațiile cu coordonate
+                (Setări → Locații). Telefonul nu trimite poziția: anunță doar că a intrat în zona salonului.
+              </p>
+              <label className="check">
+                <input type="checkbox" checked={a.nearby.enabled} onChange={(e) => set('nearby', { enabled: e.target.checked })} /> Pornit (opțiunea apare în
+                aplicație, la Contul meu)
+              </label>
+              <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
+                <Field label="Raza zonei (metri)">
+                  <input type="number" min={100} max={1000} step={50} value={a.nearby.radius} onChange={(e) => set('nearby', { radius: Number(e.target.value) })} style={{ maxWidth: 100 }} />
+                </Field>
+                <Field label="Locurile din următoarele (ore)">
+                  <input type="number" min={1} max={10} value={a.nearby.window} onChange={(e) => set('nearby', { window: Number(e.target.value) })} style={{ maxWidth: 100 }} />
+                </Field>
+                <Field label="Același client, maxim de câte ori pe săptămână">
+                  <input type="number" min={1} max={7} value={a.nearby.maxPerWeek} onChange={(e) => set('nearby', { maxPerWeek: Number(e.target.value) })} style={{ maxWidth: 100 }} />
+                </Field>
+              </div>
+              <TextsEditor
+                title={a.nearby.title}
+                message={a.nearby.message}
+                vars="{nume} = prenumele, {salon} = numele salonului, {locatie} = numele locației, {ore} = orele libere (ex. 14:30, 15:00)"
+                onChange={(p) => set('nearby', p)}
               />
             </>
           ) : (
@@ -400,10 +430,12 @@ function Side({ tab, a }: { tab: number; a: Automations }): ReactNode {
   if (tab === 0) return null;
   if (tab === 2) return <FreeSlots window={a.lastMinute.window} />;
   if (tab === 4) return <LinkStats />;
-  const s = tab === 1 ? a.winback : a.giftCard;
+  const s = tab === 1 ? a.winback : tab === 5 ? a.nearby : a.giftCard;
   const sample =
     tab === 1
       ? { nume: 'Andrei', salon: 'TAF Barbers', saptamani: String(a.winback.weeks) }
+      : tab === 5
+      ? { nume: 'Andrei', salon: 'TAF Barbers', locatie: 'TAF Barbers', ore: '14:30, 15:00' }
       : { nume: 'Mihai', de_la: 'Andrei', suma: String(a.giftCard.amounts[1] ?? 100), cod: 'TAF-AB12-CD34', mesaj: 'La mulți ani!', salon: 'TAF Barbers' };
   const fill = (t: string) => t.replace(/\{(\w+)\}/g, (m, k: string) => (sample as unknown as Record<string, string>)[k] ?? m);
   return (
