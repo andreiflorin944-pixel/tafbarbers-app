@@ -65,7 +65,7 @@ export default function StaffTabs() {
           ),
         }}
       />
-      <Tabs.Screen name="clients" options={{ title: t('menu.clients'), tabBarIcon: icon('people-outline'), href: p.clients ? undefined : null }} />
+      <Tabs.Screen name="clients" options={{ title: t('menu.clients'), tabBarIcon: icon('people-outline'), href: p.clients && p.contacts ? undefined : null }} />
       <Tabs.Screen name="menu" options={{ title: t('menu.title'), tabBarIcon: icon('menu-outline') }} />
     </Tabs>
   );

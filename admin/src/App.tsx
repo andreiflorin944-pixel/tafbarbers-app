@@ -245,9 +245,18 @@ export function App() {
   const current = visible.find((p) => p.key === page) ?? visible[0];
   const Page = current.el;
   const allowed = new Set(visible.map((p) => p.key));
+  // În meniu apare doar ce are conținut pentru contul ăsta: din Setări, echipa vede doar parola și deconectarea,
+  // iar lista clienților doar cine vede datele de contact (fișa clientului se deschide în continuare din calendar).
+  const inMenu = (to: string) => {
+    const [base, sub] = to.split('/');
+    if (!allowed.has(base)) return false;
+    if (base === 'settings' && !me.owner) return sub === 'parola' || sub === 'sesiuni';
+    if (base === 'clients' && !me.owner) return me.permissions.contacts;
+    return true;
+  };
   const sections = NAV.map((s) => ({
     ...s,
-    groups: s.groups.map((g) => ({ ...g, items: g.items.filter((i) => allowed.has(i.to.split('/')[0])) })).filter((g) => g.items.length),
+    groups: s.groups.map((g) => ({ ...g, items: g.items.filter((i) => inMenu(i.to)) })).filter((g) => g.items.length),
   })).filter((s) => s.groups.length);
   // Secțiunea activă: cea care are exact adresa curentă, altfel prima care are pagina.
   const activeSection =

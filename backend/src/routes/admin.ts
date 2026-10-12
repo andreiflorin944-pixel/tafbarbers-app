@@ -1236,6 +1236,8 @@ adminRoutes.get('/clients', async (c) => {
   need(c, 'clients');
   const q = (c.req.query('q') ?? '').trim();
   const like = `%${q.replace(/[%_]/g, '')}%`;
+  // Fără dreptul „contacts” nu se vede lista clienților, doar potrivirile la ce scrii (de ex. la programare).
+  if (!c.get('admin').perms.contacts && q.length < 2) return c.json([]);
   if (q && !c.get('admin').perms.contacts) {
     // Fără dreptul „contacts”: după nume, sau după numărul de telefon complet (nu după bucăți din el).
     const digits = q.replace(/[^\d+]/g, '');

@@ -64,7 +64,7 @@ export function ClientsPage({ me }: { me: Me }) {
       {!list.data ? (
         <Loading error={list.error} />
       ) : list.data.length === 0 ? (
-        <p className="muted">{query ? 'Niciun client găsit.' : 'Încă nu există clienți. Apar aici după prima programare.'}</p>
+        <p className="muted">{query ? 'Niciun client găsit.' : me.permissions.contacts ? 'Încă nu există clienți. Apar aici după prima programare.' : 'Scrie numele clientului sau tot numărul lui de telefon.'}</p>
       ) : (
         <div className="card table-wrap" style={{ padding: 0 }}>
           <table>
