@@ -1781,6 +1781,8 @@ adminRoutes.patch('/clients/:id', async (c) => {
   const b = await c.req.json<{ name?: string; email?: string | null; notes?: string; birthDate?: string | null; clubMember?: boolean }>();
   // Fără dreptul „clients”, frizerul poate doar să scrie notițe despre clienții lui.
   if (!c.get('admin').perms.clients && (b.name !== undefined || b.email !== undefined || b.birthDate !== undefined)) throw new HttpError(403, 'no_permission');
+  // E-mailul îl schimbă doar cine îl și vede (dreptul „contacts”).
+  if (b.email !== undefined && !c.get('admin').perms.contacts) throw new HttpError(403, 'no_permission');
   // Membru TAF Club pus de mână: dă acces la orele „doar membri”, deci îl schimbă doar proprietarul.
   if (b.clubMember !== undefined && !c.get('admin').owner) throw new HttpError(403, 'owner_only');
   const v: Record<string, unknown> = {};
