@@ -146,7 +146,8 @@ tr.click:hover td { background: var(--card-alt); }
 .cal-head div:first-child { border-left: 0; }
 .cal-body { display: grid; position: relative; }
 .cal-times { position: relative; }
-.cal-times span { position: absolute; right: 6px; font-size: 11px; color: var(--muted); transform: translateY(-50%); }
+.cal-times span { position: absolute; right: 6px; font-size: 10.5px; color: var(--muted); opacity: 0.75; transform: translateY(-50%); }
+.cal-times span.hour { font-size: 12px; font-weight: 600; opacity: 1; }
 .cal-col { position: relative; border-left: 1px solid var(--border); }
 .cal-line { position: absolute; left: 0; right: 0; border-top: 1px solid #1c1c1e; }
 .cal-line.hour { border-top-color: #2c2c30; }

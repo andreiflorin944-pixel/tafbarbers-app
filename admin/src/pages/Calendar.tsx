@@ -5,7 +5,7 @@ import { BOOKINGS_CHANGED } from '../Requests';
 import { addDays, date, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
 import { BookingPanel, Icon } from './BookingPanel';
 
-const PX = 1.2; // pixeli pe minut
+const PX = 2; // pixeli pe minut: un rând de 15 minute = 30 px, cu ora pe fiecare linie și loc de oră, client și serviciu într-o programare de 30 de minute
 /** Culorile implicite, dacă frizerul nu are una aleasă în „Frizeri”. */
 export const BARBER_PALETTE = ['#F28C28', '#E5484D', '#3E7BFA', '#30A46C', '#8E4EC6', '#12A594', '#D6409F', '#AD7F58'];
 export const barberColor = (b: Pick<Barber, 'color'>, i: number) => b.color || BARBER_PALETTE[i % BARBER_PALETTE.length];
@@ -203,9 +203,10 @@ export function CalendarPage({ me }: { me: Me }) {
             </div>
             <div className="cal-body" style={{ gridTemplateColumns: `60px repeat(${cols.length}, 1fr)`, height }}>
               <div className="cal-times">
-                {Array.from({ length: (endMin - startMin) / 60 + 1 }, (_, i) => (
-                  <span key={i} style={{ top: i * 60 * PX }}>
-                    {hm(startMin + i * 60)}
+                {/* Ora pe fiecare linie a pasului (ca în aplicație); orele fixe mai vizibile. */}
+                {Array.from({ length: Math.floor((endMin - startMin) / step) + 1 }, (_, i) => (
+                  <span key={i} className={(i * step) % 60 ? '' : 'hour'} style={{ top: i * step * PX }}>
+                    {hm(startMin + i * step)}
                   </span>
                 ))}
               </div>
