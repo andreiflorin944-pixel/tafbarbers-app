@@ -105,7 +105,7 @@ export async function deleteClient(env: Env, id: string) {
     anonymizeConsents(env, id, now),
     env.DB.prepare(`UPDATE message_log SET recipient = 'sters' WHERE recipient = ? OR recipient = ?`).bind(c.phone, c.email ?? '\u0000'),
     env.DB.prepare(
-      `UPDATE clients SET phone = ?, name = '', email = NULL, notes = '', marketing_sms = 0, marketing_email = 0, marketing_push = 0, marketing_consent_at = NULL, password_hash = NULL, password_set_at = NULL, deleted_at = ? WHERE id = ?`,
+      `UPDATE clients SET phone = ?, name = '', email = NULL, notes = '', marketing_sms = 0, marketing_email = 0, marketing_push = 0, marketing_consent_at = NULL, password_hash = NULL, password_set_at = NULL, hist_visits = NULL, hist_spent_bani = NULL, hist_cancelled = NULL, hist_cancelled_bani = NULL, hist_noshows = NULL, hist_noshow_bani = NULL, hist_first_visit = NULL, hist_last_visit = NULL, preferred_barber_id = NULL, deleted_at = ? WHERE id = ?`,
     ).bind(`deleted:${id}`, now, id),
   ]);
   for (const b of future.results) {

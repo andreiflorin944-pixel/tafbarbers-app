@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { api, getToken, uploadImageTo, type Client, type ClientPhoto, type Me, type Service } from '../api';
+import { useEffect, useState, type ReactNode } from 'react';
+import { api, getToken, uploadImageTo, type Barber, type Client, type ClientPhoto, type Me, type Service } from '../api';
 import { Field, Loading, Modal, useAction, useLoad, useSub } from '../ui';
 import { excelDate, readTable } from '../sheet';
 import { date, lei, STATUS, time } from '../util';
@@ -17,85 +17,120 @@ async function download(ext: 'csv' | 'xlsx') {
   URL.revokeObjectURL(url);
 }
 
+type Seg = 'all' | 'new' | 'top' | 'risk' | 'expired' | 'booked' | 'birthday';
+type SortKey = 'rank' | 'spent' | 'last' | 'name' | 'visits' | 'newest';
+type Item = {
+  id: string;
+  rank: number | null;
+  name: string;
+  phone: string;
+  email: string | null;
+  birthDate: string | null;
+  photoUrl: string | null;
+  app: boolean;
+  barberId: string | null;
+  visits: number;
+  spent: number;
+  cancelled: number;
+  cancelledAmount: number;
+  noShows: number;
+  noShowAmount: number;
+  avg: number;
+  interval: number | null;
+  upcoming: number;
+  upcomingAmount: number;
+  firstVisit: string | null;
+  lastVisit: string | null;
+  nextVisit: string | null;
+  tags: Record<Exclude<Seg, 'all'>, boolean>;
+};
+type ListRes = { counts: Record<Seg, number>; total: number; rows: Item[] };
+
+const SEGS: Array<{ k: Seg; label: string; hint: string; dot?: string }> = [
+  { k: 'all', label: 'Toți clienții', hint: 'în baza ta' },
+  { k: 'new', label: 'Nou', hint: 'prima vizită în ultimele 30 de zile', dot: '#3fae5a' },
+  { k: 'top', label: 'Top 100', hint: 'după cât au cheltuit în total', dot: '#3b6fe0' },
+  { k: 'risk', label: 'În situație de risc', hint: 'neprezentări sau multe anulări', dot: '#e5625e' },
+  { k: 'expired', label: 'Expirat', hint: 'ar fi trebuit să revină de mult în vizită', dot: '#f0a020' },
+  { k: 'booked', label: 'Rezervat', hint: 'au o programare viitoare', dot: '#8a8a90' },
+  { k: 'birthday', label: 'Zi de naștere', hint: 'în următoarele 7 zile', dot: '#c45ad6' },
+];
+const SORT_LABEL: Record<SortKey, string> = {
+  rank: 'Clasament – primul loc',
+  spent: 'Suma cheltuită – de la cea mai mare',
+  last: 'Ultima vizită – cele mai recente',
+  name: 'Nume – de la A la Z',
+  visits: 'Vizite – cele mai multe',
+  newest: 'Cei mai noi clienți',
+};
+const PAGE = 50;
+const VIEW_KEY = 'taf-clients-view';
+const DAY_MS = 86_400_000;
+
+function readView(): { dense: boolean; table: boolean } {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}');
+    return { dense: !!v.dense, table: !!v.table };
+  } catch {
+    return { dense: false, table: false };
+  }
+}
+/** 37685 → „37,7k lei” (pe carduri); sub o mie, suma întreagă. */
+const kLei = (n: number) => (n >= 1000 ? `${(n / 1000).toLocaleString('ro-RO', { maximumFractionDigits: 1 })}k lei` : `${Math.round(n).toLocaleString('ro-RO')} lei`);
+const fullLei = (n: number) => `${n.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lei`;
+const daysSince = (iso: string) => Math.floor((Date.now() - Date.parse(iso)) / DAY_MS);
+function ago(iso: string) {
+  const d = daysSince(iso);
+  if (d < 1) return 'azi';
+  if (d < 30) return `acum ${d}z`;
+  if (d < 365) return `acum ${Math.floor(d / 30)}l`;
+  return `acum ${Math.floor(d / 365)}a`;
+}
+function until(iso: string) {
+  const d = Math.round((new Date(iso).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / DAY_MS);
+  return d <= 0 ? 'Azi' : d === 1 ? 'Mâine' : `în ${d}z`;
+}
+const bday = (b: string) => `${b.slice(8, 10)}.${b.slice(5, 7)}`;
+const dmy = (iso: string) => new Date(iso).toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Bucharest' });
+
 export function ClientsPage({ me }: { me: Me }) {
-  const [q, setQ] = useState('');
-  const [query, setQuery] = useState('');
   const [open, setOpen] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
-  const list = useLoad(() => api<Client[]>('GET', `/admin/clients?q=${encodeURIComponent(query)}`), [query]);
+  const [adding, setAdding] = useState(false);
+  const [reload, setReload] = useState(0);
   // #/clients/<id> deschide direct fișa (de ex. din calendar).
   const sub = useSub();
   useEffect(() => {
     if (sub) setOpen(sub);
   }, [sub]);
-
-  // Căutare după ce te oprești din scris.
-  useEffect(() => {
-    const t = setTimeout(() => setQuery(q), 300);
-    return () => clearTimeout(t);
-  }, [q]);
+  const refresh = () => setReload((n) => n + 1);
 
   return (
     <>
       <div className="head">
         <h1>Clienți</h1>
         <div className="row">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={me.permissions.contacts ? 'Caută după nume, telefon sau e-mail' : 'Caută după nume sau numărul complet'}
-            style={{ maxWidth: 320 }}
-          />
           {me.owner ? (
             <>
               <button className="ghost" onClick={() => setImporting(true)}>
-                Importă
+                ⤒ Import clienți
               </button>
-              <button className="ghost" onClick={() => download('xlsx')}>
-                Exportă Excel
+              <button className="ghost" onClick={() => download('xlsx')} title="Descarcă lista în Excel">
+                ⤓ Export
               </button>
-              <button className="ghost" onClick={() => download('csv')}>
-                Exportă CSV
+              <button className="ghost sm" onClick={() => download('csv')} title="Descarcă lista în CSV">
+                CSV
               </button>
             </>
           ) : null}
+          {me.permissions.contacts ? (
+            <button className="cl-add" onClick={() => setAdding(true)} title="Client nou" aria-label="Client nou">
+              +
+            </button>
+          ) : null}
         </div>
       </div>
-      {!list.data ? (
-        <Loading error={list.error} />
-      ) : list.data.length === 0 ? (
-        <p className="muted">{query ? 'Niciun client găsit.' : me.permissions.contacts ? 'Încă nu există clienți. Apar aici după prima programare.' : 'Scrie numele clientului sau tot numărul lui de telefon.'}</p>
-      ) : (
-        <div className="card table-wrap" style={{ padding: 0 }}>
-          <table>
-            <thead>
-              <tr>
-                <th>Nume</th>
-                <th>Telefon</th>
-                <th>Vizite</th>
-                <th>Ultima</th>
-                <th>Oferte</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.data.map((c) => (
-                <tr key={c.id} className="click" onClick={() => setOpen(c.id)}>
-                  <td>
-                    {c.name || <span className="muted">fără nume</span>}
-                    {c.email ? <div className="muted small">{c.email}</div> : null}
-                  </td>
-                  <td>{c.phone}</td>
-                  <td>{c.visits ?? 0}</td>
-                  <td>{c.lastVisit ? date(c.lastVisit) : '–'}</td>
-                  <td className="small muted">
-                    {[c.marketing.push && 'push', c.marketing.email && 'e-mail', c.marketing.sms && 'SMS'].filter(Boolean).join(', ') || '–'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {me.permissions.contacts ? <ClientList reload={reload} onOpen={setOpen} /> : <SearchOnly onOpen={setOpen} reload={reload} />}
       {open ? (
         <ClientModal
           id={open}
@@ -105,11 +140,351 @@ export function ClientsPage({ me }: { me: Me }) {
             setOpen(null);
             if (sub) location.hash = '#/clients';
           }}
-          onChange={list.reload}
+          onChange={refresh}
         />
       ) : null}
-      {importing ? <ImportModal onClose={() => setImporting(false)} onDone={list.reload} /> : null}
+      {importing ? <ImportModal onClose={() => setImporting(false)} onDone={refresh} /> : null}
+      {adding ? (
+        <NewClient
+          onClose={() => setAdding(false)}
+          onDone={(id) => {
+            setAdding(false);
+            refresh();
+            setOpen(id);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+/** Lista ca în Barberly: carduri de filtrare, căutare, frizer, sortare, compact/complet, carduri sau tabel. */
+function ClientList({ reload, onOpen }: { reload: number; onOpen: (id: string) => void }) {
+  const [seg, setSeg] = useState<Seg>('all');
+  const [barber, setBarber] = useState('');
+  const [sort, setSort] = useState<SortKey>('rank');
+  const [q, setQ] = useState('');
+  const [query, setQuery] = useState('');
+  const [view, setView] = useState(readView);
+  const [limit, setLimit] = useState(PAGE);
+  const barbers = useLoad(() => api<Barber[]>('GET', '/admin/barbers'));
+  const params = new URLSearchParams({ segment: seg, sort, q: query, barber, limit: String(limit) }).toString();
+  const list = useLoad(() => api<ListRes>('GET', `/admin/clients/list?${params}`), [params, reload]);
+  const data = list.data;
+  // Cât timp sosesc rândurile cerute cu „Arată încă”.
+  const loading = !!data && data.rows.length < Math.min(limit, data.total);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQuery(q.trim());
+      setLimit(PAGE);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q]);
+  const setV = (v: Partial<typeof view>) => {
+    const n = { ...view, ...v };
+    setView(n);
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify(n));
+    } catch {
+      /* fără memorare */
+    }
+  };
+  const byId = new Map((barbers.data ?? []).map((b) => [b.id, b]));
+
+  return (
+    <>
+      <div className="cl-segs">
+        {SEGS.map((x) => (
+          <button key={x.k} className={`cl-seg${seg === x.k ? ' on' : ''}`} onClick={() => (setSeg(x.k), setLimit(PAGE))}>
+            <span className="cl-seg-label">
+              {x.dot ? <i style={{ background: x.dot }} /> : null}
+              {x.label}
+            </span>
+            <b>{data ? data.counts[x.k].toLocaleString('ro-RO') : '…'}</b>
+            <span className="cl-seg-hint">{x.hint}</span>
+          </button>
+        ))}
+      </div>
+      <div className="card cl-bar">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Caută după nume, telefon sau e-mail" className="cl-search" />
+        <label className="cl-pick">
+          <span>Frizerul:</span>
+          <select value={barber} onChange={(e) => (setBarber(e.target.value), setLimit(PAGE))}>
+            <option value="">Oricare</option>
+            {(barbers.data ?? []).map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span style={{ flex: 1 }} />
+        <label className="cl-pick">
+          <span>Sortare:</span>
+          <select value={sort} onChange={(e) => (setSort(e.target.value as SortKey), setLimit(PAGE))} disabled={seg === 'birthday'} title={seg === 'birthday' ? 'La zile de naștere: cine își serbează primul' : undefined}>
+            {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+              <option key={k} value={k}>
+                {SORT_LABEL[k]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="cl-toggle">
+          <button className={view.dense ? 'on' : ''} onClick={() => setV({ dense: true })}>
+            Compact
+          </button>
+          <button className={view.dense ? '' : 'on'} onClick={() => setV({ dense: false })}>
+            Complet
+          </button>
+        </div>
+        <div className="cl-toggle">
+          <button className={view.table ? '' : 'on'} onClick={() => setV({ table: false })} title="Carduri" aria-label="Carduri">
+            ▦
+          </button>
+          <button className={view.table ? 'on' : ''} onClick={() => setV({ table: true })} title="Tabel" aria-label="Tabel">
+            ☰
+          </button>
+        </div>
+      </div>
+      {!data ? (
+        <Loading error={list.error} />
+      ) : data.rows.length === 0 ? (
+        <p className="muted">{query || seg !== 'all' || barber ? 'Niciun client găsit.' : 'Încă nu există clienți. Apar aici după prima programare sau după un import.'}</p>
+      ) : view.table ? (
+        <ClientTable rows={data.rows} onOpen={onOpen} />
+      ) : (
+        <div className="grid" style={{ gap: 10 }}>
+          {data.rows.map((c) => (
+            <ClientCard key={c.id} c={c} dense={view.dense} barber={c.barberId ? byId.get(c.barberId) : undefined} onOpen={() => onOpen(c.id)} />
+          ))}
+        </div>
+      )}
+      {data && data.total > data.rows.length ? (
+        <div className="row" style={{ justifyContent: 'center', marginTop: 14 }}>
+          <button className="ghost" disabled={loading} onClick={() => setLimit((n) => n + PAGE)}>
+            {loading ? 'Se încarcă…' : `Arată încă ${Math.min(PAGE, data.total - data.rows.length)} (din ${data.total.toLocaleString('ro-RO')})`}
+          </button>
+        </div>
+      ) : data && data.total ? (
+        <div className="muted small" style={{ textAlign: 'center', marginTop: 12 }}>
+          {data.total.toLocaleString('ro-RO')} {data.total === 1 ? 'client' : 'clienți'}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function Stat({ label, value, sub, danger }: { label: string; value: ReactNode; sub?: ReactNode; danger?: boolean }) {
+  return (
+    <div className="cl-stat">
+      <span className={danger ? 'cl-danger' : undefined}>{label}</span>
+      <b className={danger ? 'cl-danger' : undefined}>{value}</b>
+      {sub !== undefined ? <small className={danger ? 'cl-danger' : undefined}>{sub}</small> : null}
+    </div>
+  );
+}
+
+function ClientCard({ c, dense, barber, onOpen }: { c: Item; dense: boolean; barber?: Barber; onOpen: () => void }) {
+  const bd = c.birthDate && c.tags.birthday;
+  return (
+    <button className={`cl-card${dense ? ' dense' : ''}`} onClick={onOpen}>
+      <div className="cl-rank">
+        <b>{c.rank ? `#${c.rank}` : '–'}</b>
+        <span>loc</span>
+      </div>
+      <div className="cl-main">
+        <div className="cl-name">
+          <span>{c.name || <span className="muted">fără nume</span>}</span>
+          {c.tags.top ? <span className="cl-tag top">♛ Top 100</span> : null}
+          {c.tags.new ? <span className="cl-tag new">Nou</span> : null}
+          {c.tags.risk ? <span className="cl-tag risk">⚠ În situație de risc</span> : null}
+          {c.tags.expired ? <span className="cl-tag exp">◷ Expirat</span> : null}
+          {c.lastVisit ? <span className={`cl-when${c.tags.expired ? ' late' : ''}`}>↺ {ago(c.lastVisit)}</span> : null}
+          {c.nextVisit ? <span className="cl-when next">▣ {until(c.nextVisit)}</span> : null}
+        </div>
+        <div className="cl-line">
+          {c.phone ? <span>☏ {c.phone}</span> : null}
+          {c.email ? <span>✉ {c.email}</span> : null}
+          {c.birthDate ? <span className={bd ? 'cl-bday' : undefined}>🎂 {bday(c.birthDate)}</span> : null}
+          {c.app ? <span className="cl-app" title="Are cont în aplicație">📱 aplicație</span> : null}
+          {barber ? (
+            <span className="cl-barber">
+              {barber.photoUrl ? <img src={barber.photoUrl} alt="" /> : <i>{barber.initials}</i>}
+              {barber.name}
+            </span>
+          ) : null}
+        </div>
+        {dense ? null : (
+          <div className="cl-line muted">
+            <span>
+              Prima vizită <b>{c.firstVisit ? dmy(c.firstVisit) : '—'}</b>
+            </span>
+            <span>
+              Ultima <b>{c.lastVisit ? dmy(c.lastVisit) : '—'}</b>
+            </span>
+            <span>
+              Următoarea <b>{c.nextVisit ? dmy(c.nextVisit) : '—'}</b>
+            </span>
+          </div>
+        )}
+      </div>
+      <div className="cl-stats">
+        <Stat label="Finalizate" value={c.visits} sub={kLei(c.spent)} />
+        <Stat label="Anulate" value={c.cancelled} sub={kLei(c.cancelledAmount)} />
+        <Stat label="Neprezentări" value={c.noShows || '—'} sub={c.noShows ? kLei(c.noShowAmount) : ''} danger={c.noShows > 0} />
+        <Stat label="Cheltuiala medie" value={c.visits ? kLei(c.avg) : '—'} sub="pe vizită" />
+        {dense ? null : (
+          <>
+            <Stat label="Interval" value={c.interval ? `${c.interval}z` : '—'} sub="între vizite" />
+            <Stat label="Urmează" value={c.upcoming || '—'} sub={c.upcoming ? kLei(c.upcomingAmount) : ''} />
+          </>
+        )}
+      </div>
+      <span className="cl-chev">›</span>
+    </button>
+  );
+}
+
+function ClientTable({ rows, onOpen }: { rows: Item[]; onOpen: (id: string) => void }) {
+  return (
+    <div className="card table-wrap" style={{ padding: 0 }}>
+      <table className="cl-table">
+        <thead>
+          <tr>
+            <th>Loc</th>
+            <th>Nume</th>
+            <th>Telefon</th>
+            <th>E-mail</th>
+            <th>Zi de naștere</th>
+            <th className="num">Vizite</th>
+            <th className="num">Total</th>
+            <th className="num">Cheltuială medie</th>
+            <th className="num">Anulate</th>
+            <th className="num">Neprezentări</th>
+            <th>Ultima vizită</th>
+            <th className="num">Interval</th>
+            <th className="num">Urmează</th>
+            <th>Prima vizită</th>
+            <th>Următoarea</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((c) => (
+            <tr key={c.id} className="click" onClick={() => onOpen(c.id)}>
+              <td className="muted">{c.rank ? `#${c.rank}` : '–'}</td>
+              <td>
+                <b>{c.name || <span className="muted">fără nume</span>}</b>
+                {c.tags.top ? ' ♛' : ''}
+                {c.tags.risk ? <span className="cl-danger"> ⚠</span> : ''}
+              </td>
+              <td>{c.phone || '—'}</td>
+              <td>{c.email || '—'}</td>
+              <td>{c.birthDate ? dmy(c.birthDate + 'T12:00:00Z') : '—'}</td>
+              <td className="num">{c.visits}</td>
+              <td className="num">{fullLei(c.spent)}</td>
+              <td className="num">{c.visits ? fullLei(c.avg) : '—'}</td>
+              <td className="num">{c.cancelled ? `${c.cancelled} (${fullLei(c.cancelledAmount)})` : '—'}</td>
+              <td className={`num${c.noShows ? ' cl-danger' : ''}`}>{c.noShows ? `${c.noShows} (${fullLei(c.noShowAmount)})` : '—'}</td>
+              <td>{c.lastVisit ? dmy(c.lastVisit) : '—'}</td>
+              <td className="num">{c.interval ? `${c.interval}z` : '—'}</td>
+              <td className="num">{c.upcoming ? `${c.upcoming} (${fullLei(c.upcomingAmount)})` : '—'}</td>
+              <td>{c.firstVisit ? dmy(c.firstVisit) : '—'}</td>
+              <td>{c.nextVisit ? dmy(c.nextVisit) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Fără dreptul de a vedea contactele: doar căutare după nume sau după tot numărul de telefon. */
+function SearchOnly({ onOpen, reload }: { onOpen: (id: string) => void; reload: number }) {
+  const [q, setQ] = useState('');
+  const [query, setQuery] = useState('');
+  const list = useLoad(() => api<Client[]>('GET', `/admin/clients?q=${encodeURIComponent(query)}`), [query, reload]);
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(q), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+  return (
+    <>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Caută după nume sau numărul complet" style={{ maxWidth: 360, marginBottom: 14 }} />
+      {!list.data ? (
+        <Loading error={list.error} />
+      ) : list.data.length === 0 ? (
+        <p className="muted">{query ? 'Niciun client găsit.' : 'Scrie numele clientului sau tot numărul lui de telefon.'}</p>
+      ) : (
+        <div className="card table-wrap" style={{ padding: 0 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Nume</th>
+                <th>Telefon</th>
+                <th>Vizite</th>
+                <th>Ultima</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.data.map((c) => (
+                <tr key={c.id} className="click" onClick={() => onOpen(c.id)}>
+                  <td>{c.name || <span className="muted">fără nume</span>}</td>
+                  <td>{c.phone}</td>
+                  <td>{c.visits ?? 0}</td>
+                  <td>{c.lastVisit ? date(c.lastVisit) : '–'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Client nou adăugat de mână. */
+function NewClient({ onClose, onDone }: { onClose: () => void; onDone: (id: string) => void }) {
+  const [f, setF] = useState({ name: '', phone: '', email: '', birthDate: '', notes: '' });
+  const { busy, error, run } = useAction();
+  const save = () =>
+    run(async () => {
+      const r = await api<{ id: string }>('POST', '/admin/clients', { ...f, birthDate: f.birthDate || null });
+      onDone(r.id);
+    });
+  return (
+    <Modal title="Client nou" onClose={onClose}>
+      <div className="grid">
+        <div className="grid two">
+          <Field label="Nume">
+            <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus />
+          </Field>
+          <Field label="Telefon">
+            <input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="07xx xxx xxx" />
+          </Field>
+          <Field label="E-mail (opțional)">
+            <input value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
+          </Field>
+          <Field label="Data nașterii (opțional)">
+            <input type="date" value={f.birthDate} onChange={(e) => setF({ ...f, birthDate: e.target.value })} />
+          </Field>
+        </div>
+        <Field label="Notițe (opțional)">
+          <textarea rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
+        </Field>
+        <p className="muted small" style={{ margin: 0 }}>
+          Clientul nu primește oferte până nu își dă singur acordul, din aplicație.
+        </p>
+        {error ? <div className="err">{error}</div> : null}
+        <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <button className="ghost" onClick={onClose}>
+            Renunță
+          </button>
+          <button disabled={busy || !f.name.trim() || !f.phone.trim()} onClick={save}>
+            Adaugă clientul
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -120,8 +495,20 @@ const FIELDS = [
   { key: 'email', label: 'E-mail', match: /(e-?mail|mail)/i },
   { key: 'birthDate', label: 'Data nașterii', match: /(na[șs]ter|birth|zi(ua)? de)/i },
   { key: 'notes', label: 'Notițe', match: /(noti[țt]|note|observa|comentari)/i },
+  // Istoricul din exportul Barberly (opțional): se vede în lista de clienți, adunat cu programările de la noi.
+  { key: 'visits', label: 'Vizite', match: /^(visits|vizite)$/i, hist: true },
+  { key: 'spent', label: 'Total cheltuit', match: /^(total spent|total cheltuit|suma total)/i, hist: true },
+  { key: 'cancelled', label: 'Anulări', match: /^(cancell?ed|anulat[ei]?|anulări)$/i, hist: true },
+  { key: 'cancelledAmount', label: 'Suma anulărilor', match: /^(cancell?ed amount|suma anul)/i, hist: true },
+  { key: 'noShows', label: 'Neprezentări', match: /^(no-?shows?|neprezentări)$/i, hist: true },
+  { key: 'noShowAmount', label: 'Suma neprezentărilor', match: /^(no-?show amount|suma neprezent)/i, hist: true },
+  { key: 'firstVisit', label: 'Prima vizită', match: /^(first visit|prima vizit)/i, hist: true },
+  { key: 'lastVisit', label: 'Ultima vizită', match: /^(last visit|ultima vizit)/i, hist: true },
+  { key: 'barber', label: 'Frizerul', match: /^(barber|frizer|bărbier)/i, hist: true },
 ] as const;
 type FieldKey = (typeof FIELDS)[number]['key'];
+const HIST = FIELDS.filter((f) => 'hist' in f).map((f) => f.key);
+const noMap = () => Object.fromEntries(FIELDS.map((f) => [f.key, -1])) as Record<FieldKey, number>;
 type ImportResult = { created: number; updated: number; unchanged: number; skipped: Array<{ row: number; reason: string }>; skippedCount: number };
 
 /** Import de clienți din Excel sau CSV: alegi fișierul, verifici coloanele, apoi îi adaugi. Telefonul nu se dublează. */
@@ -129,7 +516,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   const [rows, setRows] = useState<string[][] | null>(null);
   const [fileName, setFileName] = useState('');
   const [header, setHeader] = useState(true);
-  const [map, setMap] = useState<Record<FieldKey, number>>({ name: -1, lastName: -1, phone: -1, email: -1, birthDate: -1, notes: -1 });
+  const [map, setMap] = useState<Record<FieldKey, number>>(noMap);
   const [result, setResult] = useState<ImportResult | null>(null);
   const { busy, error, run, setError } = useAction();
 
@@ -145,7 +532,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
       const first = t[0];
       const looksHeader = !first.some((c) => /^\+?\d[\d\s.-]{7,}$/.test(c.trim()));
       setHeader(looksHeader);
-      const m = { name: -1, lastName: -1, phone: -1, email: -1, birthDate: -1, notes: -1 } as Record<FieldKey, number>;
+      const m = noMap();
       if (looksHeader) for (const fd of FIELDS) m[fd.key] = first.findIndex((c, i) => fd.match.test(c.trim()) && !Object.values(m).includes(i));
       else {
         m.phone = first.findIndex((c) => /^\+?\d[\d\s.-]{7,}$/.test(c.trim()));
@@ -169,6 +556,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
     email: cell(r, 'email'),
     birthDate: excelDate(cell(r, 'birthDate')),
     notes: cell(r, 'notes'),
+    ...(HIST.some((k) => map[k] >= 0) && { history: Object.fromEntries(HIST.map((k) => [k, cell(r, k)])) }),
   }));
 
   // Trimitem pe bucăți, ca serverul să nu depășească limita de interogări pe cerere; rezultatele se adună.
@@ -197,7 +585,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
       <div className="grid">
         <p className="muted small" style={{ margin: 0 }}>
           Alege un fișier Excel (.xlsx) sau CSV cu clienții, de exemplu exportul din Barberly. Ai nevoie cel puțin de telefon. Un număr care există deja nu se dublează: se
-          completează doar ce lipsea. Clienții importați nu primesc oferte până nu își dau singuri acordul (GDPR).
+          completează doar ce lipsea, iar istoricul din Barberly (vizite, sume) se actualizează. Clienții importați nu primesc oferte până nu își dau singuri acordul (GDPR).
         </p>
         <label className="btn ghost" style={{ justifySelf: 'start' }}>
           {fileName ? `Fișier: ${fileName} (alege altul)` : 'Alege fișierul'}
@@ -209,7 +597,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
               <input type="checkbox" checked={header} onChange={(e) => setHeader(e.target.checked)} /> Primul rând e antetul (numele coloanelor)
             </label>
             <div className="grid two">
-              {FIELDS.map((fd) => (
+              {FIELDS.filter((fd) => !('hist' in fd)).map((fd) => (
                 <Field key={fd.key} label={fd.label + (fd.key === 'phone' ? ' (obligatoriu)' : '')}>
                   <select value={map[fd.key]} onChange={(e) => setMap({ ...map, [fd.key]: Number(e.target.value) })}>
                     <option value={-1}>nu importa</option>
@@ -222,6 +610,26 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
                 </Field>
               ))}
             </div>
+            <details open={HIST.some((k) => map[k] >= 0)}>
+              <summary className="small">Istoricul din Barberly (vizite, sume, anulări){HIST.some((k) => map[k] >= 0) ? ' – găsit în fișier' : ''}</summary>
+              <div className="grid two" style={{ marginTop: 8 }}>
+                {FIELDS.filter((fd) => 'hist' in fd).map((fd) => (
+                  <Field key={fd.key} label={fd.label}>
+                    <select value={map[fd.key]} onChange={(e) => setMap({ ...map, [fd.key]: Number(e.target.value) })}>
+                      <option value={-1}>nu importa</option>
+                      {Array.from({ length: cols }, (_, i) => (
+                        <option key={i} value={i}>
+                          {colName(i)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ))}
+              </div>
+              <div className="muted small" style={{ marginTop: 6 }}>
+                La reimport, istoricul clienților existenți se actualizează cu cel din fișier.
+              </div>
+            </details>
             <div className="table-wrap card" style={{ padding: 0 }}>
               <table>
                 <thead>
@@ -253,7 +661,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
           <div className="card grid" style={{ gap: 4 }}>
             <b>Gata.</b>
             <div>{result.created} clienți noi adăugați.</div>
-            {result.updated ? <div>{result.updated} clienți existenți completați (nume, e-mail sau zi de naștere care lipseau).</div> : null}
+            {result.updated ? <div>{result.updated} clienți existenți actualizați (istoricul din fișier sau nume, e-mail, zi de naștere care lipseau).</div> : null}
             {result.unchanged ? <div className="muted">{result.unchanged} existau deja, neschimbați.</div> : null}
             {result.skippedCount ? (
               <details>

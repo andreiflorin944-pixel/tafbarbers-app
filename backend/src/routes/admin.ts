@@ -37,6 +37,7 @@ import { HttpError, PERMS, isRole, parsePerms, type AppEnv, type Env, type Perm,
 import { runCampaign } from '../campaigns';
 import { addDays, iso, isBirthdayOn, isDay, localDay, localToUtc } from '../time';
 import { clientsCells, clientsCsv, deleteClient } from '../gdpr';
+import { clientStats, filterClients, SEGMENTS, SORTS, type Segment, type Sort } from '../clientList';
 import { DOCS, getLegal, legalBase, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, notifyOrder, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
 import { sendTemplate } from '../sendTemplate';
@@ -1286,6 +1287,51 @@ adminRoutes.get('/clients', async (c) => {
   return c.json(r.results.map((x) => ({ ...client(x), visits: x.visits, lastVisit: x.last_visit })));
 });
 
+// Lista de clienți ca în Barberly (clasament, etichete, statistici). Doar cu dreptul de a vedea datele de contact:
+// fără el, frizerul caută clientul doar la programare.
+adminRoutes.get('/clients/list', async (c) => {
+  need(c, 'clients');
+  need(c, 'contacts');
+  const qs = (k: string) => c.req.query(k) ?? '';
+  const segment = (SEGMENTS as readonly string[]).includes(qs('segment')) ? (qs('segment') as Segment) : 'all';
+  const sort = (SORTS as readonly string[]).includes(qs('sort')) ? (qs('sort') as Sort) : 'rank';
+  const now = new Date();
+  const items = await clientStats(c.env, now, ownLocation(c));
+  const res = filterClients(
+    items,
+    {
+      segment,
+      sort,
+      barberId: qs('barber') || null,
+      q: qs('q').trim().slice(0, 80),
+      offset: Math.max(0, Math.floor(Number(qs('offset')) || 0)),
+      limit: Math.min(200, Math.max(1, Math.floor(Number(qs('limit')) || 50))),
+    },
+    localDay(c.env.TIMEZONE || 'Europe/Bucharest', now),
+  );
+  return c.json(res);
+});
+
+// Client nou adăugat de mână din panou (butonul „+”). Ofertele rămân oprite până își dă singur acordul.
+adminRoutes.post('/clients', async (c) => {
+  need(c, 'clients');
+  need(c, 'contacts');
+  const b = await c.req.json<{ name?: unknown; phone?: unknown; email?: unknown; birthDate?: unknown; notes?: unknown }>();
+  const phone = normalizePhone(String(b.phone ?? ''));
+  const name = String(b.name ?? '').trim().slice(0, 80);
+  if (!name) throw new HttpError(400, 'name_required');
+  let email: string | null = String(b.email ?? '').trim().toLowerCase().slice(0, 120) || null;
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'invalid_email');
+  const birth = b.birthDate ? parseBirthDate(String(b.birthDate)) : null;
+  const ex = await c.env.DB.prepare('SELECT id, deleted_at FROM clients WHERE phone = ?').bind(phone).first<{ id: string; deleted_at: string | null }>();
+  if (ex) throw new HttpError(409, ex.deleted_at ? 'client_deleted' : 'client_exists');
+  const id = newId('cl');
+  await c.env.DB.prepare('INSERT INTO clients (id, phone, name, email, birth_date, notes, marketing_push, marketing_email, marketing_sms) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0)')
+    .bind(id, phone, name, email, birth, String(b.notes ?? '').trim().slice(0, 2000))
+    .run();
+  return c.json({ id }, 201);
+});
+
 // Importul și exportul bazei de clienți: doar proprietarul (nici administratorul de locație).
 adminRoutes.get('/clients.csv', ownerOnly, async (c) => {
   return c.body(await clientsCsv(c.env), 200, {
@@ -1312,7 +1358,7 @@ adminRoutes.get('/clients.xlsx', ownerOnly, async (c) => {
  */
 // Importul și exportul bazei de clienți: doar proprietarul (nici administratorul de locație).
 adminRoutes.post('/clients/import', ownerOnly, async (c) => {
-  const b = await c.req.json<{ rows?: Array<{ name?: unknown; phone?: unknown; email?: unknown; birthDate?: unknown; notes?: unknown }>; offset?: unknown }>();
+  const b = await c.req.json<{ rows?: Array<{ name?: unknown; phone?: unknown; email?: unknown; birthDate?: unknown; notes?: unknown; history?: Record<string, unknown> }>; offset?: unknown }>();
   const rows = Array.isArray(b.rows) ? b.rows : [];
   if (!rows.length) throw new HttpError(400, 'import_empty');
   // Panoul trimite fișierul pe bucăți (D1 are o limită de interogări pe cerere); `offset` = rândul de la care începe bucata.
@@ -1339,6 +1385,34 @@ adminRoutes.post('/clients/import', ownerOnly, async (c) => {
   }
   const seen = new Set<string>();
   const stmts: D1PreparedStatement[] = [];
+  // Istoricul din Barberly (vizite, sume, anulări...): se scrie peste cel importat înainte, ca reimportul să-l actualizeze.
+  const barbers = (await c.env.DB.prepare('SELECT id, name FROM barbers').all<{ id: string; name: string }>()).results;
+  const num = (v: unknown) => {
+    const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  const day = (v: unknown) => {
+    const t = str(v, 30).replace(/[/.]/g, '-');
+    const dmy = /^(\d{1,2})-(\d{1,2})-(\d{4})/.exec(t);
+    const ymd = dmy ? `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}` : /^\d{4}-\d{2}-\d{2}/.exec(t)?.[0];
+    return ymd && !Number.isNaN(Date.parse(ymd)) ? `${ymd}T10:00:00Z` : null;
+  };
+  const history = (h: Record<string, unknown> | undefined) => {
+    if (!h || typeof h !== 'object') return null;
+    const bn = str(h.barber, 80).toLowerCase();
+    const barber = bn ? barbers.find((x) => x.name.toLowerCase() === bn || x.name.toLowerCase().split(' ')[0] === bn) : undefined;
+    return {
+      hist_visits: Math.round(num(h.visits)),
+      hist_spent_bani: Math.round(num(h.spent) * 100),
+      hist_cancelled: Math.round(num(h.cancelled)),
+      hist_cancelled_bani: Math.round(num(h.cancelledAmount) * 100),
+      hist_noshows: Math.round(num(h.noShows)),
+      hist_noshow_bani: Math.round(num(h.noShowAmount) * 100),
+      hist_first_visit: day(h.firstVisit),
+      hist_last_visit: day(h.lastVisit),
+      ...(barber && { preferred_barber_id: barber.id }),
+    };
+  };
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i] ?? {};
     const row = offset + i + 1;
@@ -1365,16 +1439,14 @@ adminRoutes.post('/clients/import', ownerOnly, async (c) => {
     const name = str(r.name, 80);
     const notes = str(r.notes, 2000);
     const ex = existing.get(phone);
+    const hist = history(r.history);
     if (!ex) {
+      const extra = { ...hist } as Record<string, unknown>;
+      const ek = Object.keys(extra);
       stmts.push(
-        c.env.DB.prepare('INSERT INTO clients (id, phone, name, email, birth_date, notes, marketing_push, marketing_email, marketing_sms) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0)').bind(
-          newId('cl'),
-          phone,
-          name,
-          email,
-          birth,
-          notes,
-        ),
+        c.env.DB.prepare(
+          `INSERT INTO clients (id, phone, name, email, birth_date, notes, marketing_push, marketing_email, marketing_sms${ek.map((k) => `, ${k}`).join('')}) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0${ek.map(() => ', ?').join('')})`,
+        ).bind(newId('cl'), phone, name, email, birth, notes, ...ek.map((k) => extra[k] ?? null)),
       );
       res.created++;
       continue;
@@ -1388,6 +1460,7 @@ adminRoutes.post('/clients/import', ownerOnly, async (c) => {
     if (!ex.email && email) v.email = email;
     if (!ex.birth_date && birth) v.birth_date = birth;
     if (!ex.notes && notes) v.notes = notes;
+    if (hist) Object.assign(v, hist);
     if (!Object.keys(v).length) {
       res.unchanged++;
       continue;

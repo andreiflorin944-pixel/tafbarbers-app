@@ -58,6 +58,8 @@ const MESSAGES: Record<string, string> = {
   already_set_up: 'Contul de administrator există deja. Intră cu e-mailul și parola.',
   password_too_short: 'Parola trebuie să aibă cel puțin 10 caractere.',
   invalid_email: 'Adresa de e-mail nu e corectă.',
+  client_exists: 'Există deja un client cu acest număr de telefon. Caută-l în listă.',
+  client_deleted: 'Clientul cu acest număr și-a șters contul.',
   email_taken: 'Există deja un cont cu acest e-mail.',
   slot_unavailable: 'Ora nu mai e liberă la frizerul ales.',
   booking_not_editable: 'Programarea nu se mai poate modifica: doar cele confirmate se mută sau se schimbă.',

@@ -353,3 +353,59 @@ button.bk-row:disabled { opacity: 1; cursor: default; }
 .bk-menu-back { position: absolute; inset: 0; background: var(--backdrop); z-index: 5; display: flex; align-items: flex-end; }
 .bk-menu { width: 100%; max-height: 92%; overflow-y: auto; background: var(--card); border-radius: 18px 18px 0 0; padding: 16px 18px 22px; display: grid; gap: 10px; }
 .bk-menu h3 { margin: 6px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
+
+/* Clienți: lista ca în Barberly */
+.cl-add { display: inline-grid; place-items: center; width: 40px; height: 40px; padding: 0 0 2px; border-radius: 50%; background: #3fae5a; border-color: #3fae5a; color: #fff; font-size: 24px; line-height: 1; }
+.cl-segs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.cl-seg { display: grid; gap: 4px; text-align: left; align-content: start; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; font-weight: 400; }
+.cl-seg:hover { border-color: var(--muted); }
+.cl-seg.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.cl-seg-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.cl-seg-label i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.cl-seg b { font-size: 28px; line-height: 1.1; }
+.cl-seg-hint { font-size: 12px; color: var(--muted); }
+.cl-seg.on .cl-seg-hint { color: inherit; opacity: 0.7; }
+.cl-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px; margin-bottom: 14px; }
+.cl-search { flex: 1 1 240px; max-width: 360px; }
+.cl-pick { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 10px; padding: 0 0 0 10px; }
+.cl-pick span { color: var(--muted); font-size: 14px; white-space: nowrap; }
+.cl-pick select { border: 0; font-weight: 700; background: transparent; padding-left: 4px; }
+.cl-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.cl-toggle button { border: 0; border-radius: 0; background: transparent; color: var(--muted); padding: 8px 12px; font-weight: 600; }
+.cl-toggle button.on { background: var(--text); color: var(--bg); }
+.cl-card { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto 20px; align-items: center; gap: 16px; width: 100%; text-align: left; background: var(--card); color: var(--text); border: 1px solid var(--border); border-left: 4px solid #3b6fe0; border-radius: var(--radius); padding: 14px 16px; font-weight: 400; }
+.cl-card:hover { border-color: var(--muted); border-left-color: #3b6fe0; }
+.cl-rank { display: grid; }
+.cl-rank b { color: #3b6fe0; font-size: 18px; }
+.cl-rank span { color: var(--muted); font-size: 13px; }
+.cl-main { display: grid; gap: 6px; min-width: 0; }
+.cl-name { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.cl-name > span:first-child { font-size: 18px; font-weight: 800; }
+.cl-tag { font-size: 12px; font-weight: 600; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+.cl-tag.top { color: var(--text); }
+.cl-tag.new { color: #3fae5a; border-color: #3fae5a; }
+.cl-tag.risk { color: var(--danger); border-color: var(--danger); }
+.cl-tag.exp { color: #f0a020; border-color: #f0a020; }
+.cl-when { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.cl-when.late { color: var(--danger); font-weight: 600; }
+.cl-when.next { color: #3b6fe0; font-weight: 600; }
+.cl-line { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; align-items: center; }
+.cl-line b { color: var(--text); font-weight: 600; }
+.cl-bday { color: #c45ad6; font-weight: 700; }
+.cl-app { color: #3b6fe0; }
+.cl-barber { display: inline-flex; align-items: center; gap: 6px; }
+.cl-barber img, .cl-barber i { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; border: 2px solid var(--gold); font-style: normal; font-size: 10px; display: inline-grid; place-items: center; background: var(--card-alt); }
+.cl-stats { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(84px, auto); gap: 18px; }
+.cl-stat { display: grid; gap: 2px; }
+.cl-stat span { font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.cl-stat b { font-size: 20px; }
+.cl-stat small { font-size: 13px; color: var(--muted); white-space: nowrap; min-height: 1em; }
+.cl-danger, .cl-stat .cl-danger { color: var(--danger); }
+.cl-chev { color: var(--muted); font-size: 26px; }
+.cl-table td, .cl-table th { white-space: nowrap; }
+.cl-table .num { text-align: right; }
+@media (max-width: 1100px) {
+  .cl-card { grid-template-columns: 52px minmax(0, 1fr) 16px; }
+  .cl-stats { grid-column: 2 / 3; grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+  .cl-chev { grid-row: 1; grid-column: 3; }
+}
