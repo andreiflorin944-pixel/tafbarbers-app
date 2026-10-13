@@ -8,6 +8,7 @@ import { MIN_BANI, refundBooking } from './payments';
 import type { TplEvent } from './templates';
 import { checkWaitlist, closeOnBooking } from './waitlist';
 import { locationVars } from './locations';
+import { notifyStaff } from './staffNotify';
 
 /** Stările care țin ora ocupată: programările confirmate și cererile încă fără răspuns. */
 export const HOLDS_SLOT = `('confirmed','requested')`;
@@ -51,6 +52,7 @@ export async function createBooking(
     skipAvailabilityCheck?: boolean; // adminul poate pune peste program (ex. după ore)
     notify?: boolean;
     maxActive?: number; // din aplicație: câte programări viitoare poate avea clientul (verificat odată cu inserarea)
+    adminId?: string | null; // cine a făcut-o din panou (nu primește el anunțul pentru echipă)
   },
 ) {
   const start = new Date(input.start);
@@ -133,6 +135,7 @@ export async function createBooking(
   // O cerere încă neconfirmată nu-l scoate: dacă e refuzată, expiră sau o retrage, rămâne pe listă (se închide la acceptare).
   if (!requested) await closeOnBooking(env, input.clientId, service.id, iso(start));
   if (input.notify !== false) await notifyBooking(env, created, requested ? 'booking_request' : 'confirm');
+  await notifyStaff(env, created, requested ? 'request' : 'new', input.adminId ?? null);
   return created;
 }
 
@@ -158,6 +161,7 @@ export async function cancelBooking(env: Env, id: string, by: 'client' | 'admin'
   }
   const updated = (await getBooking(env, id))!;
   if (by === 'admin') await notifyBooking(env, updated, 'cancel');
+  await notifyStaff(env, updated, 'cancelled', by === 'admin' ? (adminId ?? null) : null);
   await freedSlot(env, updated.start);
   return updated;
 }
@@ -271,6 +275,7 @@ export async function editBooking(env: Env, id: string, input: BookingEdit, admi
   }
   if (moved) {
     if (input.notify !== false) await notifyBooking(env, updated, 'booking_moved');
+    await notifyStaff(env, updated, 'moved', adminId, { fromStart: cur.start, fromBarberId: cur.barberId });
     // Ora veche s-a eliberat: poate o vrea cineva de pe lista de așteptare.
     await freedSlot(env, cur.start);
   }

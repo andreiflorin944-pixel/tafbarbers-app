@@ -21,7 +21,7 @@ export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'cli
 export type StaffRole = 'org_admin' | 'location_admin' | 'barber';
 export const ROLE_LABELS: Record<StaffRole, Key> = { org_admin: 'role.orgAdmin', location_admin: 'role.locationAdmin', barber: 'role.barber' };
 // `onlinePayments`: plata cu cardul din aplicație e pornită pe server (altfel „Cere plata în aplicație” nu se poate folosi).
-export type StaffMe = { id: string; email: string; name: string; barberId: string | null; barberPhotoUrl?: string | null; role?: StaffRole; owner: boolean; permissions: Record<Perm, boolean>; onlinePayments?: boolean };
+export type StaffMe = { id: string; email: string; name: string; barberId: string | null; barberPhotoUrl?: string | null; role?: StaffRole; owner: boolean; permissions: Record<Perm, boolean>; onlinePayments?: boolean; notifyBookings?: boolean };
 export type StaffBooking = {
   id: string;
   clientId: string;
@@ -104,6 +104,10 @@ export const staffApi = {
   login: (email: string, password: string) => call<{ token: string }>('POST', '/admin/login', null, { email, password }),
   logout: (t: string) => call('POST', '/admin/logout', t).catch(() => undefined),
   me: (t: string) => call<StaffMe>('GET', '/admin/me', t),
+  /** Telefonul ăsta primește anunțurile despre programări (nouă, anulată, mutată). */
+  registerPush: (t: string, token: string, platform: string) => call('POST', '/admin/me/push', t, { token, platform }),
+  unregisterPush: (t: string, token: string) => call('DELETE', '/admin/me/push', t, { token }),
+  setNotifyBookings: (t: string, on: boolean) => call<{ ok: true; notifyBookings: boolean }>('PATCH', '/admin/me/notify', t, { bookings: on }),
   /** Catalogul pentru echipă: toate serviciile active, inclusiv cele „doar membri”. */
   services: (t: string) => call<Service[]>('GET', '/services', t),
   logoutOthers: (t: string) => call<{ loggedOut: number }>('POST', '/admin/me/logout-others', t),

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { useState, type ComponentProps } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiUrl, panelUrl, ROLE_LABELS, staffApi } from '@/api/staff';
 import { useT } from '@/i18n';
@@ -93,6 +93,19 @@ export default function StaffMenu() {
     ]);
   };
 
+  // Anunțurile pe telefon despre programări (nouă, anulată, mutată); pe web nu există notificări.
+  const notifyOn = staff.notifyBookings !== false;
+  const toggleNotify = async (on: boolean) => {
+    if (!staffToken) return;
+    staffPatch({ notifyBookings: on });
+    try {
+      await staffApi.setNotifyBookings(staffToken, on);
+    } catch (e) {
+      staffPatch({ notifyBookings: !on });
+      tellErr(e);
+    }
+  };
+
   const signOutOthers = async () => {
     if (!staffToken) return;
     const tell = (m: string) => (Platform.OS === 'web' ? window.alert(m) : Alert.alert(m));
@@ -121,6 +134,18 @@ export default function StaffMenu() {
               <Ionicons name="chevron-forward" size={18} color={colors.muted} />
             </View>
           </Pressable>
+        ) : null}
+        {Platform.OS !== 'web' ? (
+          <View style={s.row}>
+            <Ionicons name="notifications-circle-outline" size={26} color={colors.gold} style={{ width: 34 }} />
+            <View style={s.rowBody}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>{t('menu.bookingAlerts')}</Text>
+                <Text style={[ui.muted, { fontSize: 12 }]}>{t(staff.role === 'barber' ? 'menu.bookingAlertsSubMine' : 'menu.bookingAlertsSubAll')}</Text>
+              </View>
+              <Switch value={notifyOn} onValueChange={toggleNotify} trackColor={{ true: colors.gold, false: colors.border }} thumbColor={colors.text} />
+            </View>
+          </View>
         ) : null}
         {items
           .filter((i) => i.show)

@@ -143,12 +143,40 @@ adminRoutes.post('/logout', async (c) => {
 });
 
 adminRoutes.get('/me', async (c) => {
-  const a = await c.env.DB.prepare('SELECT a.id, a.email, a.name, a.barber_id, b.photo_url, b.bio, b.nickname, b.role AS rank FROM admins a LEFT JOIN barbers b ON b.id = a.barber_id WHERE a.id = ?')
+  const a = await c.env.DB.prepare('SELECT a.id, a.email, a.name, a.barber_id, a.notify_bookings, b.photo_url, b.bio, b.nickname, b.role AS rank FROM admins a LEFT JOIN barbers b ON b.id = a.barber_id WHERE a.id = ?')
     .bind(c.get('admin').adminId)
-    .first<{ id: string; email: string; name: string; barber_id: string | null; photo_url: string | null; bio: string | null; nickname: string | null; rank: string | null }>();
+    .first<{ id: string; email: string; name: string; barber_id: string | null; notify_bookings: number; photo_url: string | null; bio: string | null; nickname: string | null; rank: string | null }>();
   const s = c.get('admin');
   // `onlinePayments`: plata cu cardul din aplicație e pornită (altfel acțiunea „Cere plata în aplicație” nu apare).
-  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, barberPhotoUrl: a!.photo_url ?? null, barberProfile: a!.barber_id ? { bio: a!.bio ?? '', nickname: a!.nickname ?? '', rank: a!.rank ?? '' } : null, role: s.role, owner: s.owner, permissions: s.perms, locationId: s.locationId, onlinePayments: onlinePaymentsOn(c.env) });
+  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, barberPhotoUrl: a!.photo_url ?? null, barberProfile: a!.barber_id ? { bio: a!.bio ?? '', nickname: a!.nickname ?? '', rank: a!.rank ?? '' } : null, role: s.role, owner: s.owner, permissions: s.perms, locationId: s.locationId, notifyBookings: !!a!.notify_bookings, onlinePayments: onlinePaymentsOn(c.env) });
+});
+
+// Telefonul din aplicația echipei primește anunțurile despre programări (programare nouă, anulare, mutare).
+adminRoutes.post('/me/push', async (c) => {
+  const b = await c.req.json<{ token?: unknown; platform?: unknown }>();
+  const token = String(b.token ?? '');
+  if (!/^Expo(nent)?PushToken\[[^\]]{1,200}\]$/.test(token)) throw new HttpError(400, 'invalid_token');
+  await c.env.DB.prepare(
+    `INSERT INTO staff_push_tokens (token, admin_id, platform, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(token) DO UPDATE SET admin_id = excluded.admin_id, platform = excluded.platform, updated_at = excluded.updated_at`,
+  )
+    .bind(token, c.get('admin').adminId, String(b.platform ?? '').slice(0, 20), iso(new Date()))
+    .run();
+  return c.json({ ok: true });
+});
+
+adminRoutes.delete('/me/push', async (c) => {
+  const b = await c.req.json<{ token?: unknown }>().catch(() => ({ token: undefined }));
+  if (b.token) await c.env.DB.prepare('DELETE FROM staff_push_tokens WHERE token = ? AND admin_id = ?').bind(String(b.token), c.get('admin').adminId).run();
+  return c.json({ ok: true });
+});
+
+// Pornește sau oprește anunțurile despre programări pentru contul ăsta.
+adminRoutes.patch('/me/notify', async (c) => {
+  const b = await c.req.json<{ bookings?: unknown }>();
+  if (typeof b.bookings !== 'boolean') throw new HttpError(400, 'invalid_body');
+  await c.env.DB.prepare('UPDATE admins SET notify_bookings = ? WHERE id = ?').bind(b.bookings ? 1 : 0, c.get('admin').adminId).run();
+  return c.json({ ok: true, notifyBookings: b.bookings });
 });
 
 // Frizerul își schimbă singur poza de profil (corpul cererii = poza). Doar pe a lui; patronul o poate schimba din fișa frizerului.
@@ -290,6 +318,8 @@ adminRoutes.post('/me/logout-others', async (c) => {
 async function logoutAdmin(db: D1Database, adminId: string, keepToken: string | null): Promise<number> {
   const keep = keepToken ? await sha256(keepToken) : '';
   const r = await db.prepare(`DELETE FROM sessions WHERE kind = 'admin' AND subject_id = ? AND token_hash != ?`).bind(adminId, keep).run();
+  // Scos din toate dispozitivele (de patron): telefoanele lui nu mai primesc anunțurile echipei.
+  if (!keepToken) await db.prepare('DELETE FROM staff_push_tokens WHERE admin_id = ?').bind(adminId).run();
   return r.meta.changes ?? 0;
 }
 
@@ -312,6 +342,7 @@ adminRoutes.delete('/admins/:id', ownerOnly, async (c) => {
   if (c.req.param('id')! === c.get('admin').adminId) throw new HttpError(400, 'cannot_delete_self');
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM sessions WHERE kind = 'admin' AND subject_id = ?`).bind(c.req.param('id')!),
+    c.env.DB.prepare('DELETE FROM staff_push_tokens WHERE admin_id = ?').bind(c.req.param('id')!),
     c.env.DB.prepare('DELETE FROM admins WHERE id = ?').bind(c.req.param('id')!),
   ]);
   return c.json({ ok: true });
@@ -932,6 +963,7 @@ adminRoutes.post('/bookings', async (c) => {
     source: 'admin',
     skipAvailabilityCheck: !!b.force && !!barberId,
     notify: b.notify !== false,
+    adminId: c.get('admin').adminId,
   });
   return c.json(created, 201);
 });

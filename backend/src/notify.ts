@@ -152,7 +152,10 @@ export async function sendPush(
         await log(env, { ...l, channel: 'push', recipient: batch[k] }, ok, ok ? undefined : r.details?.error);
         // Token-uri dezinstalate: le scoatem ca să nu mai încercăm.
         if (r.details?.error === 'DeviceNotRegistered') {
-          await env.DB.prepare('DELETE FROM push_tokens WHERE token = ?').bind(batch[k]).run();
+          await env.DB.batch([
+            env.DB.prepare('DELETE FROM push_tokens WHERE token = ?').bind(batch[k]),
+            env.DB.prepare('DELETE FROM staff_push_tokens WHERE token = ?').bind(batch[k]),
+          ]);
         }
       }
     } catch (e) {

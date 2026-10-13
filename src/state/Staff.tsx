@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ApiError } from '@/api/client';
 import { staffApi, type StaffMe } from '@/api/staff';
+import { registerStaffPush, unregisterStaffPush } from '@/lib/push';
 import { storage } from '@/lib/storage';
 
 // Sesiunea de echipă (proprietar / frizer), separată de contul de client.
@@ -29,6 +30,7 @@ export function StaffProvider({ children }: { children: ReactNode }) {
       try {
         setStaff(await staffApi.me(t));
         setToken(t);
+        void registerStaffPush(t);
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) await storage.set(KEY, null);
       }
@@ -47,9 +49,13 @@ export function StaffProvider({ children }: { children: ReactNode }) {
         await storage.set(KEY, t);
         setToken(t);
         setStaff(me);
+        void registerStaffPush(t);
       },
       staffSignOut: async () => {
-        if (token) await staffApi.logout(token);
+        if (token) {
+          await unregisterStaffPush(token);
+          await staffApi.logout(token);
+        }
         await storage.set(KEY, null);
         setToken(null);
         setStaff(null);
