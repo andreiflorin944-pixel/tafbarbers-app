@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { api, type Me, type Promo, type Service } from '../api';
+import { api, type Me, type Product, type Promo, type Service } from '../api';
 import { Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 
 const ICONS: Record<string, string> = { pricetag: 'Etichetă (ofertă)', flame: 'Flacără (popular)', 'bag-handle': 'Sacoșă (produs)', school: 'Academie' };
 type Texts = { kicker: string; title: string; text: string; cta: string };
 
 export function PromosPage(_: { me: Me }) {
-  const data = useLoad(() => Promise.all([api<Promo[]>('GET', '/admin/promos'), api<Service[]>('GET', '/admin/services')]));
+  const data = useLoad(() => Promise.all([api<Promo[]>('GET', '/admin/promos'), api<Service[]>('GET', '/admin/services'), api<Product[]>('GET', '/admin/products')]));
   const [edit, setEdit] = useState<Partial<Promo> | null>(null);
-  const [promos, services] = data.data ?? [[], []];
+  const [promos, services, products] = data.data ?? [[], [], []];
 
   return (
     <>
@@ -36,7 +36,11 @@ export function PromosPage(_: { me: Me }) {
               <div style={{ fontSize: 22, fontWeight: 800, margin: '4px 0' }}>{p.title}</div>
               <div className="small">{p.text}</div>
               <div className="small" style={{ marginTop: 10, fontWeight: 700 }}>
-                {p.cta} → {p.action.type === 'service' ? services.find((s) => s.id === (p.action as { serviceId: string }).serviceId)?.name : p.action.type === 'url' ? (p.action as { url: string }).url : 'programare'}
+                {p.cta} → {p.action.type === 'service' ? services.find((s) => s.id === (p.action as { serviceId: string }).serviceId)?.name : p.action.type === 'url'
+                    ? (p.action as { url: string }).url
+                    : p.action.type === 'shop'
+                      ? `magazin${p.action.productId ? ` (${products.find((x) => x.id === (p.action as { productId: string }).productId)?.name ?? 'produs șters'})` : ''}`
+                      : 'programare'}
               </div>
               <div className="small" style={{ marginTop: 6, opacity: 0.7 }}>
                 {!p.active ? 'Ascuns · ' : ''}
@@ -51,6 +55,7 @@ export function PromosPage(_: { me: Me }) {
         <PromoModal
           p={edit}
           services={services}
+          products={products}
           onClose={() => setEdit(null)}
           onDone={() => {
             setEdit(null);
@@ -62,7 +67,7 @@ export function PromosPage(_: { me: Me }) {
   );
 }
 
-function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; services: Service[]; onClose: () => void; onDone: () => void }) {
+function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Promo>; services: Service[]; products: Product[]; onClose: () => void; onDone: () => void }) {
   const lang = 'ro';
   const [texts, setTexts] = useState<Record<string, Texts>>({
     ro: { kicker: p.kicker ?? '', title: p.title ?? '', text: p.text ?? '', cta: p.cta ?? '' },
@@ -75,6 +80,7 @@ function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; servi
   const [actionType, setActionType] = useState(p.action?.type ?? 'book');
   const [serviceId, setServiceId] = useState(p.action?.type === 'service' ? p.action.serviceId : (services[0]?.id ?? ''));
   const [url, setUrl] = useState(p.action?.type === 'url' ? p.action.url : 'https://');
+  const [productId, setProductId] = useState(p.action?.type === 'shop' ? (p.action.productId ?? '') : '');
   const [startsAt, setStartsAt] = useState(p.startsAt?.slice(0, 10) ?? '');
   const [endsAt, setEndsAt] = useState(p.endsAt?.slice(0, 10) ?? '');
   const [active, setActive] = useState(p.active !== false);
@@ -92,7 +98,14 @@ function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; servi
         icon,
         imageUrl,
         color,
-        action: actionType === 'service' ? { type: 'service', serviceId } : actionType === 'url' ? { type: 'url', url } : { type: 'book' },
+        action:
+          actionType === 'service'
+            ? { type: 'service', serviceId }
+            : actionType === 'url'
+              ? { type: 'url', url }
+              : actionType === 'shop'
+                ? { type: 'shop', productId: productId || null }
+                : { type: 'book' },
         translations: { en: clean(texts.en), fr: clean(texts.fr) },
         startsAt: startsAt ? new Date(startsAt + 'T00:00:00').toISOString() : null,
         endsAt: endsAt ? new Date(endsAt + 'T23:59:59').toISOString() : null,
@@ -160,6 +173,7 @@ function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; servi
             <select value={actionType} onChange={(e) => setActionType(e.target.value as 'book')}>
               <option value="book">Programare (alegi serviciul)</option>
               <option value="service">Programare la un serviciu anume</option>
+              <option value="shop">Magazinul din aplicație (un produs)</option>
               <option value="url">Un link (site, Instagram…)</option>
             </select>
           </Field>
@@ -172,6 +186,19 @@ function PromoModal({ p, services, onClose, onDone }: { p: Partial<Promo>; servi
                   {s.name}
                 </option>
               ))}
+            </select>
+          </Field>
+        ) : actionType === 'shop' ? (
+          <Field label="Produsul (apare primul în magazin)">
+            <select value={productId} onChange={(e) => setProductId(e.target.value)}>
+              <option value="">Tot magazinul</option>
+              {products
+                .filter((x) => x.active && x.forSale)
+                .map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
             </select>
           </Field>
         ) : actionType === 'url' ? (

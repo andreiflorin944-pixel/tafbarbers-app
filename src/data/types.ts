@@ -195,7 +195,7 @@ export type Promo = {
   imageUrl?: string | null; // poză de fundal a bannerului
   color?: string | null; // culoarea bannerului; null = alternativ culoarea principală / închis
   // ce face butonul
-  action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'book' };
+  action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'shop'; productId: string | null } | { type: 'book' };
 };
 
 export type Product = {

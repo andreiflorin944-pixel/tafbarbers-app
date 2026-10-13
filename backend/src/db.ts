@@ -286,7 +286,7 @@ export type PromoRow = {
   text: string;
   cta: string;
   icon: string;
-  action_type: 'service' | 'url' | 'book';
+  action_type: 'service' | 'url' | 'book' | 'shop';
   action_value: string | null;
   translations: string;
   starts_at: string | null;
@@ -306,7 +306,9 @@ export const promo = (r: PromoRow, lang?: string) => {
       ? { type: 'service' as const, serviceId: r.action_value ?? '' }
       : r.action_type === 'url'
         ? { type: 'url' as const, url: r.action_value ?? '' }
-        : { type: 'book' as const };
+        : r.action_type === 'shop'
+          ? { type: 'shop' as const, productId: r.action_value || null }
+          : { type: 'book' as const };
   return {
     id: r.id,
     kicker: tr?.kicker || r.kicker,

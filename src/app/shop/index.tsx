@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { Backdrop } from '@/components/Backdrop';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -15,6 +16,9 @@ export default function Shop() {
   const { t } = useT();
   const { business } = useApp();
   const insets = useSafeAreaInsets();
+  // Venit dintr-un banner cu un produs anume: produsul acela apare primul, evidențiat.
+  const { product: featured } = useLocalSearchParams<{ product?: string }>();
+  const list = featured ? [...products.filter((p) => p.id === featured), ...products.filter((p) => p.id !== featured)] : products;
   // Stocul se schimbă: la fiecare intrare în magazin luăm lista din nou.
   useEffect(reloadProducts, []);
 
@@ -25,8 +29,8 @@ export default function Shop() {
         <Text style={[styles.muted, { marginBottom: space.sm }]}>{t(business?.onlinePayments ? 'shop.introOnline' : 'shop.intro')}</Text>
         {products.length === 0 ? <Text style={styles.muted}>{t('shop.empty')}</Text> : null}
         <View style={s.grid}>
-          {products.map((p) => (
-            <View key={p.id} style={s.card}>
+          {list.map((p) => (
+            <View key={p.id} style={[s.card, p.id === featured && { borderColor: colors.gold }]}>
               <ProductImage product={p} size="100%" />
               <Text style={s.name} numberOfLines={2}>
                 {p.name}

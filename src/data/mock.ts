@@ -118,9 +118,9 @@ export const promos: Promo[] = [
     kicker: 'PRODUSUL SĂPTĂMÂNII',
     title: 'Ceară de păr mată',
     text: 'Fixare puternică, aspect natural. O găsești în salon.',
-    cta: 'Întreabă frizerul',
+    cta: 'Vezi în magazin',
     icon: 'bag-handle',
-    action: { type: 'book' },
+    action: { type: 'shop', productId: null },
   },
   {
     id: 'promo-academy',
@@ -129,6 +129,6 @@ export const promos: Promo[] = [
     text: 'Curs pentru începători, grupă nouă în curând. Rezervă-ți locul.',
     cta: 'Află mai mult',
     icon: 'school',
-    action: { type: 'url', url: 'https://www.tafbarbers.ro' },
+    action: { type: 'url', url: 'https://tafacademy.ro' },
   },
 ];

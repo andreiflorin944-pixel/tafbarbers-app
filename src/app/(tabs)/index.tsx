@@ -68,6 +68,8 @@ export default function Home() {
   const openPromo = (p: Promo) => {
     if (p.action.type === 'service') return startBooking(serviceById(p.action.serviceId));
     if (p.action.type === 'url') return Linking.openURL(p.action.url);
+    // Ofertă de produs: magazinul, cu produsul ales primul.
+    if (p.action.type === 'shop') return router.push(p.action.productId ? { pathname: '/shop', params: { product: p.action.productId } } : '/shop');
     startBooking();
   };
 

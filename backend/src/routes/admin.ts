@@ -2034,7 +2034,7 @@ type PromoInput = {
   icon?: string;
   imageUrl?: string | null;
   color?: string | null;
-  action?: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'book' };
+  action?: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'shop'; productId?: string | null } | { type: 'book' };
   translations?: Record<string, Record<string, string>>;
   startsAt?: string | null;
   endsAt?: string | null;
@@ -2061,8 +2061,9 @@ function promoValues(b: PromoInput, create: boolean) {
   if (b.icon !== undefined) v.icon = ['pricetag', 'flame', 'school', 'bag-handle'].includes(b.icon) ? b.icon : 'pricetag';
   if (b.action !== undefined || create) {
     const a = b.action ?? { type: 'book' };
+    if (!['service', 'url', 'shop', 'book'].includes(a.type)) throw new HttpError(400, 'invalid_action');
     v.action_type = a.type;
-    v.action_value = a.type === 'service' ? a.serviceId : a.type === 'url' ? a.url : null;
+    v.action_value = a.type === 'service' ? a.serviceId : a.type === 'url' ? a.url : a.type === 'shop' ? a.productId || null : null;
   }
   if (b.translations !== undefined) v.translations = JSON.stringify(b.translations ?? {});
   if (b.startsAt !== undefined) v.starts_at = b.startsAt;
