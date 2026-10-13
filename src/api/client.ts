@@ -112,8 +112,6 @@ export interface BookingApi {
   assistantVoice(uri: string, lang: string, token?: string | null): Promise<{ text: string }>;
   /** Consilierul de tunsori: poza (fișier local, nu se păstrează pe server) → 2-3 servicii potrivite ale salonului. */
   advisor(uri: string, lang: string, token: string): Promise<AdvisorResult>;
-  /** „Vezi-o pe tine”: poza clientului (fișier local, sub 512 px) cu tunsoarea aleasă, ca previzualizare; nu se păstrează pe server. */
-  advisorTryOn(uri: string, key: string, token: string): Promise<{ image: string; left: number }>;
 }
 
 /** Eroare de la server, cu codul lui (ex. `slot_unavailable`). */

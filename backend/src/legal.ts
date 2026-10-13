@@ -85,7 +85,7 @@ Această politică explică ce date personale prelucrăm când folosești aplica
 • Date de cont: nume, număr de telefon, adresă de e-mail, data nașterii, limba aleasă.
 • Programări: serviciul, frizerul, data și ora, starea (încheiată, neprezentare, anulată), plata la salon (sumă, metodă, bacșiș) și notițele interne ale echipei despre serviciu.
 • TAF Identity (opțional): poza de profil și preferințele pe care le completezi tu; pozele făcute de echipă la salon pentru fișa ta și, doar cu acordul tău, poze „înainte și după”. Tot doar cu acordul tău (păstrăm data și cine din echipă l-a înregistrat), o pereche „înainte și după” poate fi arătată altor clienți, ca exemplu, în consilierul AI de tunsori; vezi asta în Aplicație (Cont → Tunsorile mele) și o poți opri oricând de acolo.
-• Consilierul AI de tunsori (opțional): poza pe care o faci pentru analiză e trimisă serviciului Workers AI (Cloudflare), care descrie fața și părul ca să îți propună servicii ale salonului. Dacă alegi „Vezi-o pe tine”, aceeași poză e trimisă din nou la Workers AI, care face o previzualizare cu tunsoarea aleasă pe fața ta. Nici poza, nici previzualizarea nu se salvează nicăieri și nu sunt văzute de echipă; păstrăm doar numărul de analize și de previzualizări pe zi.
+• Consilierul AI de tunsori (opțional): poza pe care o faci pentru analiză e trimisă serviciului Workers AI (Cloudflare), care descrie fața și părul ca să îți propună servicii ale salonului. Poza nu se salvează nicăieri și nu e văzută de echipă; păstrăm doar numărul de analize pe zi.
 • Cumpărături: comenzi din magazin, carduri cadou, abonamente, bonusuri și recomandări (cine te-a recomandat și pe cine ai recomandat).
 • Plăți online: identificatorul tranzacției și suma. Datele cardului sunt prelucrate direct de Stripe; noi nu le vedem.
 • Comunicări: acordul pentru oferte (cu data), identificatorul dispozitivului pentru notificări push, jurnalul mesajelor trimise (tip, dată, stare).
@@ -98,7 +98,7 @@ Această politică explică ce date personale prelucrăm când folosești aplica
 • Oferte, noutăți, „Ne e dor de tine”, anunțuri cu ore libere (inclusiv cel când ești lângă salon): doar cu acordul tău (art. 6 alin. 1 lit. a GDPR și Legea 506/2004), pe care îl retragi oricând din Cont, fără să afecteze ce s-a trimis înainte.
 • Urarea și bonusul de ziua ta: executarea contractului (programul de bonusuri din Aplicație); poți renunța scriindu-ne.
 • Pozele „înainte și după” și arătarea lor ca exemplu altor clienți: acordul tău, pe care îl retragi oricând.
-• Analiza pozei și previzualizarea tunsorii pe fața ta în consilierul AI de tunsori: acordul tău, dat în Aplicație înainte de fiecare analiză.
+• Analiza pozei în consilierul AI de tunsori: acordul tău, dat în Aplicație înainte de fiecare analiză.
 • Locația pentru anunțul „ești lângă salon”: acordul tău, dat în Aplicație și în permisiunea telefonului, pe care îl retragi oricând.
 • Evidența financiar-contabilă (încasări, bonuri, NIR): obligație legală (art. 6 alin. 1 lit. c GDPR).
 • Securitatea Aplicației și prevenirea fraudelor (de exemplu limitarea codurilor trimise): interesul nostru legitim.

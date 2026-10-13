@@ -295,5 +295,4 @@ export const mockApi: BookingApi = {
   assistant: () => Promise.resolve({ reply: tr('mock.assistant') }),
   assistantVoice: () => Promise.reject(new ApiError('assistant_off', 409)),
   advisor: () => Promise.reject(new ApiError('advisor_off', 409)),
-  advisorTryOn: () => Promise.reject(new ApiError('advisor_off', 409)),
 };
