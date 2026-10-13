@@ -19,7 +19,7 @@ import { parseBirthDate } from '../identity';
 import { applyReferral } from '../referrals';
 import { noteWebhook, onlinePaymentsOn, publicBase, verifyStripeSignature } from '../payments';
 import { handleAnyStripeEvent } from '../recurring';
-import { advisorAvailable } from '../advisor';
+import { advisorAvailable, getStylePhotos } from '../advisor';
 import { linkTicket, readTicket, socialConfig, socialSignIn, verifyIdToken, type Provider } from '../socialLogin';
 
 export const publicRoutes = new Hono<AppEnv>();
@@ -28,7 +28,7 @@ export const publicRoutes = new Hono<AppEnv>();
 publicRoutes.get('/nearby', async (c) => c.json(await nearbyConfig(c.env)));
 
 publicRoutes.get('/business', async (c) => {
-  const [biz, appearance, auto, advisor] = await Promise.all([getBusiness(c.env), getAppearance(c.env), getAutomations(c.env), advisorAvailable(c.env)]);
+  const [biz, appearance, auto, advisor, stylePhotos] = await Promise.all([getBusiness(c.env), getAppearance(c.env), getAutomations(c.env), advisorAvailable(c.env), getStylePhotos(c.env)]);
   // Programul salonului = reuniunea programului frizerilor, pe zile (0 = duminică).
   const rows = await c.env.DB.prepare(
     `SELECT h.weekday, MIN(h.start_min) AS s, MAX(h.end_min) AS e
@@ -41,7 +41,7 @@ publicRoutes.get('/business', async (c) => {
   });
   // Textele despre salon în limba aplicației (`?lang=en`), unde au fost traduse.
   const [texts] = await localize(c.env, c.req.query('lang'), [biz], ['tagline', 'description', 'cancellationPolicy']);
-  return c.json({ ...texts, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env), advisor });
+  return c.json({ ...texts, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env), advisor, styleV: stylePhotos.v });
 });
 
 // Stripe ne anunță aici plățile. Semnătura se verifică pe corpul exact, cu secretul webhook-ului.

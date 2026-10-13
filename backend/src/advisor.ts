@@ -23,6 +23,10 @@ const GLOBAL_DAILY_TRIES = 600; // încercări pe zi la tot salonul
 const MAX_BYTES = 4_000_000;
 
 export type AdvisorSettings = { on: boolean };
+/** Pozele proprii puse din panou în locul celor făcute cu AI (cheie → adresa pozei) și versiunea lor (pentru cache). */
+export type StylePhotos = { photos: Record<string, string>; v: number };
+export const getStylePhotos = (env: Env) => getSetting<StylePhotos>(env, 'advisorPhotos', { photos: {}, v: 0 });
+export const setStylePhotos = (env: Env, v: StylePhotos) => setSetting(env, 'advisorPhotos', v);
 export const getAdvisor = (env: Env) => getSetting<AdvisorSettings>(env, 'advisor', { on: true });
 export const setAdvisor = (env: Env, v: AdvisorSettings) => setSetting(env, 'advisor', { on: !!v.on });
 
@@ -333,6 +337,7 @@ advisorRoutes.post('/advisor', requireClient, async (c) => {
     examples.set(id, ex.results.map((p) => ({ before: mediaUrl(p.before_media), after: mediaUrl(p.after_media) })));
   }
   const name = (key: string) => hairstyle(key)!.name[lang === 'en' ? 'en' : lang === 'fr' ? 'fr' : 'ro'];
+  const styleV = (await getStylePhotos(env)).v;
   const styles = picked!.chosen.map((x) => {
     const s = x.serviceId ? shown.find((y) => y.id === x.serviceId) : undefined;
     return {
@@ -340,7 +345,7 @@ advisorRoutes.post('/advisor', requireClient, async (c) => {
       name: name(x.key),
       reason: x.reason,
       ask: x.ask,
-      imageUrl: `/v1/advisor/style/${x.key}`,
+      imageUrl: `/v1/advisor/style/${x.key}?v=${styleV}`,
       service: s ? { id: s.id, name: s.name, price: s.price, durationMin: s.durationMin } : null,
       examples: (s && examples.get(s.id)) || [],
     };
@@ -361,11 +366,15 @@ advisorRoutes.get('/advisor/style/:key', async (c) => {
   const h = hairstyle(c.req.param('key'));
   if (!h) throw new HttpError(404, 'not_found');
   const bw = c.req.query('bw') === '1';
-  const id = bw ? `style-bw-${h.key}` : `style-${h.key}`;
+  // O poză proprie pusă din panou are întâietate (aceeași și pentru varianta alb-negru).
+  const own = (await getStylePhotos(env)).photos[h.key]?.match(/^\/v1\/media\/([\w-]+)$/)?.[1];
+  const id = own ?? (bw ? `style-bw-${h.key}` : `style-${h.key}`);
+  // Aplicația cere poza cu `?v=<versiune>`, care se schimbă la orice modificare din panou, deci poate sta mult în cache.
   const send = (body: ArrayBuffer | Uint8Array, mime: string) =>
     c.body(body as ArrayBuffer, 200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=604800', 'X-Content-Type-Options': 'nosniff' });
   const r = await env.DB.prepare('SELECT mime, data FROM media WHERE id = ?').bind(id).first<{ mime: string; data: ArrayBuffer | number[] }>();
   if (r) return send(r.data instanceof ArrayBuffer ? r.data : new Uint8Array(r.data), r.mime);
+  if (own) throw new HttpError(404, 'not_found');
   const ai = aiOf(env);
   if (!ai) throw new HttpError(404, 'not_found');
   // Dacă generarea tot cade, nu o mai încercăm la nesfârșit în aceeași zi (fiecare încercare e un apel la AI).

@@ -29,6 +29,9 @@ export const HAIRSTYLES: Hairstyle[] = [
 
 export const hairstyle = (key: string) => HAIRSTYLES.find((h) => h.key === key);
 
+/** Tunsorile din cardul TAF Identity de pe Acasă (aceleași ca în aplicație, src/app/(tabs)/index.tsx). */
+export const HOME_STYLES = ['textured_crop', 'skin_fade', 'quiff'];
+
 /** Textul pentru poza de exemplu: o poză de portofoliu de frizerie, fără text sau logo-uri. */
 export const stylePrompt = (h: Hairstyle) =>
   `Professional barbershop portfolio photo of a young man with ${h.look}. Three-quarter view of the head, soft studio lighting, plain dark background, photorealistic, sharp focus on the haircut, no text, no logo.`;

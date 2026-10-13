@@ -216,7 +216,7 @@ export default function Home() {
               ) : (
                 <Image
                   key={key}
-                  source={{ uri: mediaUrl(`/v1/advisor/style/${key}?bw=1`)! }}
+                  source={{ uri: mediaUrl(`/v1/advisor/style/${key}?bw=1&v=${business?.styleV ?? 0}`)! }}
                   style={s.photo}
                   resizeMode="cover"
                   onError={() => setBrokenStyles((b) => (b.includes(key) ? b : [...b, key]))}

@@ -164,6 +164,8 @@ export type Business = {
   onlinePayments?: boolean; // plata cu cardul în aplicație (Stripe) e pornită
   /** Consilierul AI de tunsori e pornit în panou (cardul „Ce tunsoare mi se potrivește?”). */
   advisor?: boolean;
+  /** Versiunea pozelor de tunsori (se schimbă când sunt refăcute sau înlocuite din panou). */
+  styleV?: number;
   otpSms?: boolean; // codul de intrare poate fi cerut și prin SMS
   // Logare cu Apple / Google (Google apare doar cu id-urile de client OAuth puse pe server).
   social?: { apple: boolean; google: { iosClientId: string | null; androidClientId: string | null; webClientId: string | null } | null };

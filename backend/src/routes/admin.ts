@@ -42,7 +42,7 @@ import { DOCS, getLegal, legalBase, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, notifyOrder, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
 import { sendTemplate } from '../sendTemplate';
 import { listTemplates, saveTemplate, TEMPLATE_EVENTS, WILDCARDS, type TplEvent, type TplField } from '../templates';
-import { addPhoto, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
+import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
 import { getBonuses, getReferralSettings, giveBonus, parseReward, saveReferralSettings, type Reward } from '../referrals';
 import {
   activateSubscription,
@@ -70,7 +70,8 @@ import { autoTranslate } from '../translate';
 import { ensureTranslated, langOf, localize, lookup, saveTranslations, withTranslations, type ManualTr } from '../contentI18n';
 import { translateAll } from '../translateAll';
 import { listConsents } from '../consents';
-import { advisorStats, getAdvisor, setAdvisor } from '../advisor';
+import { advisorStats, getAdvisor, getStylePhotos, setAdvisor, setStylePhotos } from '../advisor';
+import { HAIRSTYLES, HOME_STYLES, hairstyle } from '../hairstyles';
 import { aiOf } from '../translate';
 import { allLocations, checkLocationId, createLocation, defaultLocationId, updateLocation } from '../locations';
 import { adminWaitlist, checkWaitlist, removeWaitlist } from '../waitlist';
@@ -1707,6 +1708,43 @@ adminRoutes.put('/advisor', ownerOnly, async (c) => {
   if (typeof b.on !== 'boolean') throw new HttpError(400, 'invalid_body');
   await setAdvisor(c.env, { on: b.on });
   return c.json({ ...(await getAdvisor(c.env)), aiReady: !!aiOf(c.env), ...(await advisorStats(c.env)) });
+});
+
+/** Pozele tunsorilor din consilier și din cardul TAF Identity: făcute cu AI sau puse din panou. */
+const stylesList = async (env: Env) => {
+  const sp = await getStylePhotos(env);
+  return {
+    v: sp.v,
+    styles: HAIRSTYLES.map((h) => ({ key: h.key, name: h.name.ro, photo: sp.photos[h.key] ?? null, onHome: HOME_STYLES.includes(h.key) })),
+  };
+};
+adminRoutes.get('/advisor/styles', ownerOnly, async (c) => c.json(await stylesList(c.env)));
+
+/** „Refă cu AI”: se șterg pozele făcute până acum (color și alb-negru); la următoarea cerere se fac altele. */
+adminRoutes.post('/advisor/styles/:key/regenerate', ownerOnly, async (c) => {
+  const h = hairstyle(c.req.param('key') ?? '');
+  if (!h) throw new HttpError(404, 'not_found');
+  await c.env.DB.prepare('DELETE FROM media WHERE id IN (?, ?)').bind(`style-${h.key}`, `style-bw-${h.key}`).run();
+  const sp = await getStylePhotos(c.env);
+  await setStylePhotos(c.env, { ...sp, v: sp.v + 1 });
+  return c.json(await stylesList(c.env));
+});
+
+/** Poza proprie a unei tunsori (urcată înainte prin /media), sau null ca să revină poza făcută cu AI. */
+adminRoutes.put('/advisor/styles/:key', ownerOnly, async (c) => {
+  const h = hairstyle(c.req.param('key') ?? '');
+  if (!h) throw new HttpError(404, 'not_found');
+  const b = await c.req.json<{ photo?: unknown }>().catch(() => ({}) as { photo?: unknown });
+  const photo = b.photo === null ? null : typeof b.photo === 'string' && /^\/v1\/media\/[\w-]+$/.test(b.photo) ? b.photo : undefined;
+  if (photo === undefined) throw new HttpError(400, 'invalid_body');
+  const sp = await getStylePhotos(c.env);
+  const old = sp.photos[h.key] ?? null;
+  const photos = { ...sp.photos };
+  if (photo) photos[h.key] = photo;
+  else delete photos[h.key];
+  await setStylePhotos(c.env, { photos, v: sp.v + 1 });
+  if (old && old !== photo) await deleteMediaUrl(c.env, old);
+  return c.json(await stylesList(c.env));
 });
 
 adminRoutes.delete('/before-after/:id', async (c) => {

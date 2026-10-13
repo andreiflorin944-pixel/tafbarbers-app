@@ -588,6 +588,59 @@ function HairAdvisor() {
         </>
       )}
       {error ? <div className="err">{error}</div> : null}
+      <StylePhotos />
+    </div>
+  );
+}
+
+type StyleRow = { key: string; name: string; photo: string | null; onHome: boolean };
+
+/**
+ * Pozele tunsorilor: cele 3 din cardul TAF Identity de pe Acasă (alb-negru) și cele din recomandările consilierului.
+ * Le face AI-ul o dată; aici le poți reface sau pune în locul lor o poză reală de la salon.
+ */
+function StylePhotos() {
+  const list = useLoad(() => api<{ v: number; styles: StyleRow[] }>('GET', '/admin/advisor/styles'));
+  const { busy, error, run } = useAction();
+  const [all, setAll] = useState(false);
+  const d = list.data;
+  const rows = d ? d.styles.filter((x) => all || x.onHome).sort((a, b) => Number(b.onHome) - Number(a.onHome)) : [];
+  return (
+    <div className="grid" style={{ marginTop: 8 }}>
+      <h3 style={{ margin: 0 }}>Pozele tunsorilor</h3>
+      <div className="muted small">
+        Primele 3 apar alb-negru pe prima pagină a aplicației, în cardul TAF Identity; toate apar la recomandările consilierului. „Refă cu AI” face o poză nouă. O poză
+        proprie (de la salon) apare în locul celei făcute cu AI, la fel și pe prima pagină. Pe telefoane se vede după ce clientul redeschide aplicația.
+      </div>
+      {!d ? (
+        <Loading error={list.error} />
+      ) : (
+        rows.map((x) => (
+          <div key={x.key} className="row" style={{ alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 170 }}>
+              <b>{x.name}</b>
+              {x.onHome ? <div className="muted small">pe prima pagină</div> : null}
+            </div>
+            {!x.photo ? (
+              <>
+                <div className="thumb">
+                  <img src={`/v1/advisor/style/${x.key}${x.onHome ? '?bw=1&' : '?'}v=${d.v}`} alt="" />
+                </div>
+                <button className="ghost sm" disabled={busy} onClick={() => run(async () => list.setData(await api('POST', `/admin/advisor/styles/${x.key}/regenerate`)))}>
+                  Refă cu AI
+                </button>
+              </>
+            ) : null}
+            <ImagePicker value={x.photo} maxPx={1200} onChange={(photo) => run(async () => list.setData(await api('PUT', `/admin/advisor/styles/${x.key}`, { photo })))} />
+          </div>
+        ))
+      )}
+      {d ? (
+        <button className="ghost sm" style={{ justifySelf: 'start' }} onClick={() => setAll((v) => !v)}>
+          {all ? 'Arată doar cele de pe prima pagină' : `Arată toate cele ${d.styles.length} tunsori`}
+        </button>
+      ) : null}
+      {error ? <div className="err">{error}</div> : null}
     </div>
   );
 }
