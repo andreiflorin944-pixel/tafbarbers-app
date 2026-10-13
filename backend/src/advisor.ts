@@ -370,8 +370,10 @@ advisorRoutes.get('/advisor/style/:key', async (c) => {
   const own = (await getStylePhotos(env)).photos[h.key]?.match(/^\/v1\/media\/([\w-]+)$/)?.[1];
   const id = own ?? (bw ? `style-bw-${h.key}` : `style-${h.key}`);
   // Aplicația cere poza cu `?v=<versiune>`, care se schimbă la orice modificare din panou, deci poate sta mult în cache.
+  // Fără `v` (aplicațiile mai vechi), cache scurt, ca o poză schimbată să ajungă și la ele.
+  const maxAge = c.req.query('v') ? 604800 : 3600;
   const send = (body: ArrayBuffer | Uint8Array, mime: string) =>
-    c.body(body as ArrayBuffer, 200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=604800', 'X-Content-Type-Options': 'nosniff' });
+    c.body(body as ArrayBuffer, 200, { 'Content-Type': mime, 'Cache-Control': `public, max-age=${maxAge}`, 'X-Content-Type-Options': 'nosniff' });
   const r = await env.DB.prepare('SELECT mime, data FROM media WHERE id = ?').bind(id).first<{ mime: string; data: ArrayBuffer | number[] }>();
   if (r) return send(r.data instanceof ArrayBuffer ? r.data : new Uint8Array(r.data), r.mime);
   if (own) throw new HttpError(404, 'not_found');
