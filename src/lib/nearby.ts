@@ -19,7 +19,8 @@ if (Platform.OS !== 'web') {
   });
 }
 
-export const nearbySupported = Platform.OS !== 'web';
+// Pe Android e oprită deocamdată: Google verifică strict locația în fundal, așa că prima versiune din Play iese fără ea.
+export const nearbySupported = Platform.OS === 'ios';
 
 /** Opțiunea e pornită pe telefonul ăsta. */
 export async function nearbyOn(): Promise<boolean> {
