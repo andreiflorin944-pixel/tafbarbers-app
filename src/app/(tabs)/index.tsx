@@ -15,7 +15,7 @@ import { Button, styles as ui } from '@/components/ui';
 import type { Promo, Service } from '@/data/types';
 import { whatsappUrl } from '@/lib/contact';
 import { useT } from '@/i18n';
-import { formatDate, formatTime } from '@/lib/dates';
+import { formatDayLong, formatTime } from '@/lib/dates';
 import { barberDuration, barberPrice, lei } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
@@ -172,7 +172,7 @@ export default function Home() {
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={[s.kicker, { color: colors.gold }]}>{t('home.next')}</Text>
               <Text style={s.nextTime}>{formatTime(new Date(next.start))}</Text>
-              <Text style={s.cardTitle}>{capital(formatDate(new Date(next.start)))}</Text>
+              <Text style={s.cardTitle}>{capital(formatDayLong(new Date(next.start)))}</Text>
               <Text style={s.meta} numberOfLines={1}>
                 {barberById(next.barberId)?.name} · {serviceById(next.serviceId)?.name}
               </Text>
@@ -191,7 +191,7 @@ export default function Home() {
           <View style={s.card}>
             <Text style={s.kicker}>{t('home.firstFree')}</Text>
             <Text style={s.freeTime}>{formatTime(new Date(free.start))}</Text>
-            <Text style={s.freeDate}>{capital(formatDate(new Date(free.start)))}</Text>
+            <Text style={s.freeDate}>{capital(formatDayLong(new Date(free.start)))}</Text>
             <Text style={s.freeMeta} numberOfLines={1}>
               {[freeBarber?.name, freeService?.name].filter(Boolean).join('  ·  ')}
             </Text>
@@ -237,7 +237,7 @@ export default function Home() {
               ) : (
                 <Image
                   key={key}
-                  source={{ uri: mediaUrl(`/v1/advisor/style/${key}`)! }}
+                  source={{ uri: mediaUrl(`/v1/advisor/style/${key}?bw=1`)! }}
                   style={s.photo}
                   resizeMode="cover"
                   onError={() => setBrokenStyles((b) => (b.includes(key) ? b : [...b, key]))}

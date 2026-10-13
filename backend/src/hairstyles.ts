@@ -32,3 +32,7 @@ export const hairstyle = (key: string) => HAIRSTYLES.find((h) => h.key === key);
 /** Textul pentru poza de exemplu: o poză de portofoliu de frizerie, fără text sau logo-uri. */
 export const stylePrompt = (h: Hairstyle) =>
   `Professional barbershop portfolio photo of a young man with ${h.look}. Three-quarter view of the head, soft studio lighting, plain dark background, photorealistic, sharp focus on the haircut, no text, no logo.`;
+
+/** Varianta alb-negru, din profil, pentru cardul TAF Identity de pe Acasă. */
+export const stylePromptBw = (h: Hairstyle) =>
+  `Black and white barbershop portrait photo of a young man with ${h.look}. Side profile view of the head, dramatic studio lighting, dark background, monochrome, photorealistic, sharp focus on the haircut, no text, no logo.`;

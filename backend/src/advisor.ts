@@ -6,7 +6,7 @@ import { HttpError, type AppEnv, type Env } from './env';
 import { mediaUrl } from './identity';
 import { iso } from './time';
 import { aiOf } from './translate';
-import { hairstyle, HAIRSTYLES, stylePrompt } from './hairstyles';
+import { hairstyle, HAIRSTYLES, stylePrompt, stylePromptBw } from './hairstyles';
 
 // Consilierul AI de tunsori („Ce tunsoare mi se potrivește?”): clientul face o poză, modelul cu vedere descrie fața și
 // părul, apoi asistentul recomandă 2-4 tunsori concrete (din lista fixă din hairstyles.ts), fiecare cu o poză de exemplu,
@@ -354,12 +354,14 @@ const STYLE_FAILS_PER_DAY = 40;
 /**
  * GET /advisor/style/:key — poza de exemplu a unei tunsori din listă. Se generează cu AI la prima cerere și se păstrează
  * în media (id fix „style-<cheie>”), deci fiecare tunsoare costă un singur apel. Publică (aplicația o încarcă direct).
+ * Cu `?bw=1`: varianta alb-negru din profil („style-bw-<cheie>”), pentru cardul TAF Identity de pe Acasă.
  */
 advisorRoutes.get('/advisor/style/:key', async (c) => {
   const env = c.env;
   const h = hairstyle(c.req.param('key'));
   if (!h) throw new HttpError(404, 'not_found');
-  const id = `style-${h.key}`;
+  const bw = c.req.query('bw') === '1';
+  const id = bw ? `style-bw-${h.key}` : `style-${h.key}`;
   const send = (body: ArrayBuffer | Uint8Array, mime: string) =>
     c.body(body as ArrayBuffer, 200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=604800', 'X-Content-Type-Options': 'nosniff' });
   const r = await env.DB.prepare('SELECT mime, data FROM media WHERE id = ?').bind(id).first<{ mime: string; data: ArrayBuffer | number[] }>();
@@ -372,7 +374,7 @@ advisorRoutes.get('/advisor/style/:key', async (c) => {
   if ((fails?.n ?? 0) >= STYLE_FAILS_PER_DAY) throw new HttpError(404, 'not_found');
   let bytes: Uint8Array | null = null;
   try {
-    const out = (await ai.run(STYLE_IMAGE, { prompt: stylePrompt(h), steps: 6 })) as { image?: string };
+    const out = (await ai.run(STYLE_IMAGE, { prompt: bw ? stylePromptBw(h) : stylePrompt(h), steps: 6 })) as { image?: string };
     if (typeof out?.image === 'string') bytes = Uint8Array.from(atob(out.image), (ch) => ch.charCodeAt(0));
   } catch (e) {
     console.error('advisor style image', e instanceof Error ? e.message.slice(0, 200) : 'error');

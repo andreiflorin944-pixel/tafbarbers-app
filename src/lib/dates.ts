@@ -91,6 +91,13 @@ export const formatDate = (d: Date) => {
   return tr('date.full', { weekday: longDay(d), day: w.d, month: shortMonth(d), year: w.y });
 };
 
+/** „miercuri, 14 octombrie” (luna întreagă; anul doar dacă nu e anul curent). */
+export const formatDayLong = (d: Date) => {
+  const w = wall(d);
+  const s = tr('date.dayMonth', { weekday: longDay(d), day: w.d, month: tr('date.monthsLong').split(',')[w.mo - 1] });
+  return w.y === wall(new Date()).y ? s : `${s} ${w.y}`;
+};
+
 export function parseHM(base: Date, hm: string) {
   const [h, m] = hm.split(':').map(Number);
   const c = new Date(base);
