@@ -29,10 +29,7 @@
       "blockedPermissions": [
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "android.permission.FOREGROUND_SERVICE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
@@ -69,7 +66,7 @@
         {
           "locationWhenInUsePermission": "Aplicația folosește locația doar ca să te anunțe când ești lângă salon, dacă pornești opțiunea din Contul meu.",
           "locationAlwaysAndWhenInUsePermission": "Aplicația folosește locația doar ca să te anunțe când ești lângă salon, dacă pornești opțiunea din Contul meu. Poziția ta nu e trimisă nicăieri.",
-          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": false,
           "isIosBackgroundLocationEnabled": false
         }
