@@ -11,9 +11,10 @@ export function LangButton() {
 
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} style={s.btn} accessibilityLabel={t('lang.title')}>
-        <Text style={s.flag}>{current.flag}</Text>
+      {/* Pastila din antet: „RO ⌄”; steagurile apar în lista de limbi. */}
+      <Pressable onPress={() => setOpen(true)} style={({ pressed }) => [s.btn, pressed && { opacity: 0.8 }]} accessibilityLabel={t('lang.title')}>
         <Text style={s.code}>{current.code.toUpperCase()}</Text>
+        <Ionicons name="chevron-down" size={14} color={colors.text} />
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
@@ -41,7 +42,7 @@ export function LangButton() {
 }
 
 const s = StyleSheet.create({
-  btn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 44, paddingHorizontal: 12, borderRadius: 22, backgroundColor: colors.cardAlt },
+  btn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border },
   flag: { fontSize: 20 },
   code: { color: colors.text, fontSize: 13, fontWeight: '700' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: space.lg },

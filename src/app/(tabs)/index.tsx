@@ -1,8 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import type { NextFree } from '@/api/client';
 import { mediaUrl } from '@/api/staff';
@@ -10,28 +10,43 @@ import { Backdrop } from '@/components/Backdrop';
 import { LangButton } from '@/components/LangButton';
 import { PayDueBanner } from '@/components/PayDue';
 import { PromoCarousel } from '@/components/PromoCarousel';
-import { ProductImage } from '@/components/Shop';
 import { useCart } from '@/state/Cart';
-import { Avatar, Button, SectionTitle, TAB_BAR_HEIGHT, tabBarBottom, styles as ui } from '@/components/ui';
+import { Button, styles as ui } from '@/components/ui';
 import type { Promo, Service } from '@/data/types';
 import { whatsappUrl } from '@/lib/contact';
 import { useT } from '@/i18n';
 import { formatDate, formatTime } from '@/lib/dates';
-import { lei, usePriceLabel } from '@/lib/price';
+import { barberDuration, barberPrice, lei } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
 import { colors, radius, space } from '@/theme';
 
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
+// Pozele de exemplu din cardul TAF Identity: tunsorile generate cu AI pe care serverul le servește deja consilierului.
+const IDENTITY_STYLES = ['textured_crop', 'skin_fade', 'quiff'];
+
+// Beneficiile clientului, în grila 2×2.
+const PERKS: Array<[IconName, 'home.q.rewards' | 'home.q.gift' | 'home.q.subs' | 'home.q.shop', '/rewards' | '/gift-cards' | '/subscriptions' | '/shop']> = [
+  ['gift-outline', 'home.q.rewards', '/rewards'],
+  ['card-outline', 'home.q.gift', '/gift-cards'],
+  ['calendar-number-outline', 'home.q.subs', '/subscriptions'],
+  ['bag-handle-outline', 'home.q.shop', '/shop'],
+];
+
+/** Prima literă mare: „miercuri, 14 oct” → „Miercuri, 14 oct”. */
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export default function Home() {
-  const { business, loading, loadError, reload, user, token, bookings, services, barbers, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
+  const { business, loading, loadError, reload, user, token, bookings, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
   const { t, lang } = useT();
-  const priceText = usePriceLabel();
   const { staff } = useStaff();
   const { products, count: cartCount } = useCart();
-  const insets = useSafeAreaInsets();
   const look = business?.appearance;
   const logo = mediaUrl(look?.logoUrl);
   const welcome = look?.welcome?.[lang as 'ro' | 'en' | 'fr'];
+  // Pozele de exemplu care nu s-au putut încărca (ex. încă negenerate): în locul lor, un chenar cu iconiță.
+  const [brokenStyles, setBrokenStyles] = useState<string[]>([]);
 
   const next = bookings
     .filter((b) => (b.status === 'confirmed' || b.status === 'requested') && new Date(b.start).getTime() > Date.now())
@@ -50,6 +65,7 @@ export default function Home() {
     }, [token, bookingsKey]),
   );
   const freeBarber = free ? barberById(free.barberId) : undefined;
+  const freeService = free ? serviceById(free.serviceId) : undefined;
   const bookFree = () => {
     if (!free) return;
     // Ora e deja aleasă: direct la confirmare (frizerul și locația vin din oră).
@@ -73,6 +89,13 @@ export default function Home() {
     startBooking();
   };
 
+  // Bannerele cu produs din magazin devin „Recomandarea TAF” (primul dintre ele); celelalte rămân în carusel.
+  const pick = promos.find((p) => p.action.type === 'shop');
+  const carousel = promos.filter((p) => p.action.type !== 'shop');
+  const pickProductId = pick?.action.type === 'shop' ? pick.action.productId : null;
+  const pickProduct = pickProductId ? products.find((x) => x.id === pickProductId) : undefined;
+  const pickImage = mediaUrl(pick?.imageUrl) ?? mediaUrl(pickProduct?.imageUrl);
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -91,312 +114,316 @@ export default function Home() {
     );
   }
 
+  // „Salut, Florin.”: numele în culoarea principală, restul alb (ordinea vine din traducere).
+  const firstName = user ? (user.name || user.phone).split(' ')[0] : '';
+  const [hiBefore, hiAfter = ''] = t('home.hi', { name: '\u0001' }).split('\u0001');
+  const brandName = look?.title || business?.name || 'TAF Barber’s';
+  const openAddress = () => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${business?.name ?? ''} ${business?.address ?? ''}`)}`);
+
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <Backdrop />
-      <ScrollView contentContainerStyle={[s.content, { paddingBottom: 176 + insets.bottom }]}>
+      <ScrollView contentContainerStyle={s.content}>
         <View style={s.topBar}>
-          <View>
-            <Text style={ui.muted}>{user ? t('home.hi', { name: (user.name || user.phone).split(' ')[0] }) : welcome || t('home.welcome')}</Text>
-            {logo ? (
-              <Image source={{ uri: logo }} style={s.logo} resizeMode="contain" accessibilityLabel={look?.title} />
-            ) : look?.title && look.title !== 'TAF Barber’s' ? (
-              <Text style={s.brand}>{look.title}</Text>
-            ) : (
-              <Text style={s.brand}>
-                TAF <Text style={s.brandItalic}>Barber’s</Text>
-              </Text>
-            )}
-          </View>
-          <View style={{ flexDirection: 'row', gap: space.sm }}>
+          {logo ? (
+            <Image source={{ uri: logo }} style={s.logo} resizeMode="contain" accessibilityLabel={look?.title} />
+          ) : look?.title && look.title !== 'TAF Barber’s' ? (
+            <Text style={s.brand}>{look.title}</Text>
+          ) : (
+            <Text style={s.brand}>
+              TAF <Text style={s.brandItalic}>Barber’s</Text>
+            </Text>
+          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
             {staff ? (
-              <Pressable onPress={() => router.push('/staff')} hitSlop={10} accessibilityLabel={t('home.teamAgenda')} style={s.iconBtn}>
-                <Ionicons name="calendar-outline" size={20} color={colors.gold} />
+              <Pressable onPress={() => router.push('/staff')} hitSlop={6} accessibilityLabel={t('home.teamAgenda')} style={s.iconBtn}>
+                <Ionicons name="calendar-outline" size={24} color={colors.gold} />
               </Pressable>
             ) : null}
             <LangButton />
-            <Pressable onPress={() => router.push('/account')} hitSlop={10} accessibilityLabel={t('tab.account')} style={s.iconBtn}>
-              <Ionicons name="person-outline" size={20} color={colors.text} />
+            <Pressable onPress={() => router.push('/account')} hitSlop={6} accessibilityLabel={t('tab.account')} style={s.iconBtn}>
+              <Ionicons name="person-outline" size={26} color={colors.text} />
             </Pressable>
           </View>
+        </View>
+
+        <View style={s.greeting}>
+          {user ? (
+            <Text style={s.hello}>
+              {hiBefore}
+              <Text style={{ color: colors.gold }}>{firstName}</Text>
+              {hiAfter}
+            </Text>
+          ) : welcome ? (
+            <Text style={s.hello}>{welcome}</Text>
+          ) : (
+            <Text style={s.hello}>
+              {t('home.welcome')} <Text style={{ color: colors.gold }}>{brandName}</Text>
+            </Text>
+          )}
+          <Text style={s.helloSub}>{t('home.sub')}</Text>
         </View>
 
         {/* Salonul a cerut plata în aplicație: „Ai de plătit X lei · Plătește acum”. */}
         {user ? <PayDueBanner refresh /> : null}
 
-        {promos.length ? <PromoCarousel promos={promos} onPress={openPromo} /> : null}
+        {next ? (
+          <Pressable onPress={() => router.push('/bookings')} style={({ pressed }) => [s.card, s.nextCard, pressed && { opacity: 0.85 }]} accessibilityRole="button">
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[s.kicker, { color: colors.gold }]}>{t('home.next')}</Text>
+              <Text style={s.nextTime}>{formatTime(new Date(next.start))}</Text>
+              <Text style={s.cardTitle}>{capital(formatDate(new Date(next.start)))}</Text>
+              <Text style={s.meta} numberOfLines={1}>
+                {barberById(next.barberId)?.name} · {serviceById(next.serviceId)?.name}
+              </Text>
+              {next.status === 'requested' ? (
+                <View style={[s.row, { marginTop: 4 }]}>
+                  <Ionicons name="hourglass-outline" size={15} color={colors.gold} />
+                  <Text style={[s.meta, { color: colors.gold }]}>{t('bookings.pending')}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </Pressable>
+        ) : null}
 
         {free ? (
-          <Pressable onPress={bookFree} style={({ pressed }) => [s.freeCard, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-            <Text style={s.freeLabel}>{t('home.firstFree')}</Text>
-            <Text style={s.freeTitle}>{formatTime(new Date(free.start))}</Text>
-            <Text style={ui.text}>{formatDate(new Date(free.start))}</Text>
-            <View style={s.heroRow}>
-              <Ionicons name="cut-outline" size={16} color={colors.gold} />
-              <Text style={[ui.text, { flex: 1 }]} numberOfLines={1}>
-                {serviceById(free.serviceId)?.name} · {freeBarber?.name}
+          <View style={s.card}>
+            <Text style={s.kicker}>{t('home.firstFree')}</Text>
+            <Text style={s.freeTime}>{formatTime(new Date(free.start))}</Text>
+            <Text style={s.freeDate}>{capital(formatDate(new Date(free.start)))}</Text>
+            <Text style={s.freeMeta} numberOfLines={1}>
+              {[freeBarber?.name, freeService?.name].filter(Boolean).join('  ·  ')}
+            </Text>
+            {freeService ? (
+              <Text style={s.freeMeta}>
+                {lei(barberPrice(freeService, freeBarber))} · {t('common.min', { n: barberDuration(freeService, freeBarber) })}
               </Text>
-            </View>
-            <View style={[s.heroRow, { justifyContent: 'space-between', marginTop: space.sm }]}>
-              <Text style={s.freeCta}>{t('home.bookThis')}</Text>
-              <Text style={s.link} onPress={() => startBooking()}>
-                {t('home.otherTime')}
-              </Text>
-            </View>
-          </Pressable>
-        ) : null}
-
-        {next ? (
-          <Pressable onPress={() => router.push('/bookings')} style={s.hero}>
-            <Text style={s.heroLabel}>{t('home.next')}</Text>
-            <Text style={s.heroTitle}>{formatTime(new Date(next.start))}</Text>
-            <Text style={s.heroText}>{formatDate(new Date(next.start))}</Text>
-            <View style={s.heroRow}>
-              <Ionicons name="cut-outline" size={16} color={colors.onGold} />
-              <Text style={s.heroText} numberOfLines={1}>
-                {serviceById(next.serviceId)?.name} · {barberById(next.barberId)?.name}
-              </Text>
-            </View>
-            {next.status === 'requested' ? (
-              <View style={s.heroRow}>
-                <Ionicons name="hourglass-outline" size={16} color={colors.onGold} />
-                <Text style={s.heroText}>{t('bookings.pending')}</Text>
-              </View>
             ) : null}
-          </Pressable>
-        ) : free ? null : (
-          <Button title={t('home.book')} onPress={() => startBooking()} />
+            <Pressable onPress={bookFree} style={({ pressed }) => [s.bookBtn, pressed && { opacity: 0.85 }]} accessibilityRole="button">
+              <Text style={s.bookBtnText}>{t('home.bookAt', { time: formatTime(new Date(free.start)) })}</Text>
+            </Pressable>
+            <Text style={s.otherTime} onPress={() => startBooking()} accessibilityRole="link">
+              {t('home.otherTime')}
+            </Text>
+          </View>
+        ) : (
+          <Button title={next ? t('home.newBooking') : t('home.book')} onPress={() => startBooking()} />
         )}
 
-        <View style={s.quick}>
-          {(
-            [
-              ['gift-outline', 'home.q.rewards', '/rewards'],
-              ['card-outline', 'home.q.gift', '/gift-cards'],
-              ['ribbon-outline', 'home.q.subs', '/subscriptions'],
-              ['bag-handle-outline', 'home.q.shop', '/shop'],
-            ] as const
-          ).map(([icon, key, to]) => (
-            <Pressable key={key} onPress={() => router.push(to)} style={({ pressed }) => [s.quickItem, pressed && { opacity: 0.7 }]} accessibilityRole="button">
-              <View style={s.quickIcon}>
-                <Ionicons name={icon} size={22} color={colors.gold} />
-              </View>
-              <Text style={s.quickText} numberOfLines={1}>
-                {t(key)}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <Pressable onPress={() => router.push('/assistant')} style={({ pressed }) => [s.invite, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-          <View style={s.quickIcon}>
-            <Ionicons name="mic-outline" size={22} color={colors.gold} />
+        {/* Asistentul: spui când vrei să vii și te programează el. */}
+        <Pressable onPress={() => router.push('/assistant')} style={({ pressed }) => [s.card, s.rowCard, pressed && { opacity: 0.85 }]} accessibilityRole="button">
+          <MaterialCommunityIcons name="waveform" size={36} color={colors.gold} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={s.cardTitle}>{t('home.assistantTitle')}</Text>
+            <Text style={s.small}>{t('home.assistantSub')}</Text>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.svcName}>{t('home.assistant')}</Text>
-            <Text style={[ui.muted, { fontSize: 13 }]}>{t('home.assistantText')}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
         </Pressable>
 
-        {/* Consilierul AI de tunsori: doar când e pornit în panou. */}
-        {business?.advisor ? (
-          <Pressable onPress={() => router.push('/advisor')} style={({ pressed }) => [s.invite, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-            <View style={s.quickIcon}>
-              <Ionicons name="sparkles-outline" size={22} color={colors.gold} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.svcName}>{t('advisor.title')}</Text>
-              <Text style={[ui.muted, { fontSize: 13 }]}>{t('advisor.homeText')}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        {/* TAF Identity: pozele și dorințele clientului; pozele de exemplu duc la consilierul AI, când e pornit în panou. */}
+        <View style={s.card}>
+          <Pressable onPress={() => router.push('/identity')} style={({ pressed }) => [{ gap: 2 }, pressed && { opacity: 0.8 }]} accessibilityRole="button">
+            <Text style={s.kicker}>{t('home.identityKicker')}</Text>
+            <Text style={s.identityTitle}>{t('home.identityTitle')}</Text>
+            <Text style={s.body}>{business?.advisor ? t('home.identityText') : t('home.identityTextNoAi')}</Text>
           </Pressable>
-        ) : null}
-
-        <View style={s.sectionHead}>
-          <SectionTitle>{t('home.services')}</SectionTitle>
-          <Text style={s.link} onPress={() => router.push('/services')}>
-            {t('home.seeAll')}
-          </Text>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingRight: space.md }}>
-          {services.map((sv) => (
-            <Pressable key={sv.id} onPress={() => startBooking(sv)} style={({ pressed }) => [s.svcCard, pressed && { opacity: 0.85 }]}>
-              {sv.imageUrl ? (
-                <Image source={{ uri: mediaUrl(sv.imageUrl)! }} style={s.svcImg} />
+          <Pressable onPress={() => router.push(business?.advisor ? '/advisor' : '/identity')} style={s.photos} accessibilityRole="button" accessibilityLabel={business?.advisor ? t('advisor.title') : t('home.identityCta')}>
+            {IDENTITY_STYLES.map((key) =>
+              brokenStyles.includes(key) ? (
+                <View key={key} style={[s.photo, s.photoEmpty]}>
+                  <Ionicons name="cut-outline" size={26} color={colors.goldDark} />
+                </View>
               ) : (
-                <View style={[s.svcIcon, { backgroundColor: sv.color + '26' }]}>
-                  <Ionicons name="cut" size={20} color={sv.color} />
+                <Image
+                  key={key}
+                  source={{ uri: mediaUrl(`/v1/advisor/style/${key}`)! }}
+                  style={s.photo}
+                  resizeMode="cover"
+                  onError={() => setBrokenStyles((b) => (b.includes(key) ? b : [...b, key]))}
+                />
+              ),
+            )}
+          </Pressable>
+          <Pressable onPress={() => router.push('/identity')} style={({ pressed }) => [s.row, { marginTop: space.xs, alignSelf: 'flex-start', paddingVertical: 4 }, pressed && { opacity: 0.7 }]} accessibilityRole="link">
+            <Text style={s.accentLink}>{t('home.identityCta')}</Text>
+            <Ionicons name="arrow-forward" size={18} color={colors.gold} />
+          </Pressable>
+        </View>
+
+        {/* Bannerele din panou (fără cele cu produs, care apar mai jos ca recomandare). */}
+        {carousel.length ? <PromoCarousel promos={carousel} onPress={openPromo} /> : null}
+
+        {pick ? (
+          <>
+            <Text style={s.section}>{t('home.recommended')}</Text>
+            <Pressable onPress={() => openPromo(pick)} style={({ pressed }) => [s.card, s.pick, pressed && { opacity: 0.85 }]} accessibilityRole="button">
+              {pickImage ? (
+                <Image source={{ uri: pickImage }} style={s.pickImg} resizeMode="cover" accessibilityLabel={pickProduct?.name ?? pick.title} />
+              ) : (
+                <View style={[s.pickImg, s.photoEmpty]}>
+                  <Ionicons name={`${pick.icon}-outline` as IconName} size={40} color={colors.goldDark} />
                 </View>
               )}
-              <Text style={s.svcName} numberOfLines={2}>
-                {sv.name}
-              </Text>
-              <View style={s.svcFoot}>
-                <Text style={s.svcPrice}>{priceText(sv)}</Text>
-                <Text style={ui.muted}>{sv.durationMin} min</Text>
+              <View style={s.pickBody}>
+                {pick.kicker ? (
+                  <Text style={s.kicker} numberOfLines={1}>
+                    {pick.kicker}
+                  </Text>
+                ) : null}
+                <Text style={s.cardTitle} numberOfLines={2}>
+                  {pick.title}
+                </Text>
+                {pick.text ? (
+                  <Text style={s.small} numberOfLines={3}>
+                    {pick.text}
+                  </Text>
+                ) : null}
+                <View style={[s.row, { marginTop: space.sm }]}>
+                  <Text style={s.accentLink} numberOfLines={1}>
+                    {pick.cta}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={18} color={colors.gold} />
+                </View>
               </View>
             </Pressable>
-          ))}
-        </ScrollView>
-
-        {barbers.length ? (
-          <>
-            <View style={s.sectionHead}>
-              <SectionTitle>{t('home.team')}</SectionTitle>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingRight: space.md }}>
-              {barbers.map((b) => (
-                <Pressable
-                  key={b.id}
-                  onPress={() => {
-                    // Frizerul ales: locația lui e știută, urmează serviciul.
-                    resetDraft();
-                    setDraft({ barberId: b.id, locationId: b.locationId ?? null });
-                    router.push('/book/service');
-                  }}
-                  style={({ pressed }) => [s.barberCard, pressed && { opacity: 0.85 }]}
-                >
-                  <Avatar barber={b} size={64} />
-                  <Text style={s.svcName} numberOfLines={1}>
-                    {b.name}
-                  </Text>
-                  <Text style={[ui.muted, { fontSize: 12 }]} numberOfLines={1}>
-                    {b.role}
-                  </Text>
-                  <Text style={s.barberCta}>{t('home.bookWith')} ›</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
           </>
         ) : null}
 
+        <Text style={s.section}>{t('home.perks')}</Text>
+        <View style={s.perks}>
+          {PERKS.map(([icon, key, to]) => (
+            <Pressable key={key} onPress={() => router.push(to)} style={({ pressed }) => [s.perk, pressed && { opacity: 0.8 }]} accessibilityRole="button">
+              <Ionicons name={icon} size={24} color={colors.gold} />
+              <Text style={s.perkText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                {t(key)}
+              </Text>
+              {to === '/shop' && cartCount ? (
+                <View style={s.badge}>
+                  <Text style={s.badgeText}>{cartCount}</Text>
+                </View>
+              ) : null}
+              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+            </Pressable>
+          ))}
+        </View>
+
         {user ? (
-          <Pressable onPress={() => router.push('/rewards')} style={({ pressed }) => [s.invite, pressed && { opacity: 0.85 }]}>
-            <View style={s.quickIcon}>
-              <Ionicons name="people-outline" size={22} color={colors.gold} />
+          <Pressable onPress={() => router.push('/rewards')} style={({ pressed }) => [s.card, s.rowCard, pressed && { opacity: 0.85 }]} accessibilityRole="button">
+            <Ionicons name="people-outline" size={32} color={colors.text} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={s.cardTitle}>{t('home.invite')}</Text>
+              <Text style={s.small}>{t('home.inviteText')}</Text>
+              <View style={[s.row, { marginTop: 4 }]}>
+                <Text style={[s.accentLink, { fontSize: 14 }]}>{t('home.inviteCta')}</Text>
+                <Ionicons name="arrow-forward" size={16} color={colors.gold} />
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.svcName}>{t('home.invite')}</Text>
-              <Text style={[ui.muted, { fontSize: 13 }]}>{t('home.inviteText')}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
           </Pressable>
         ) : null}
 
-        {products.length ? (
-          <>
-            <View style={s.sectionHead}>
-              <SectionTitle>{t('home.shop')}</SectionTitle>
-              <Text style={s.link} onPress={() => router.push(cartCount ? '/shop/cart' : '/shop')}>
-                {cartCount ? t('home.cart', { n: cartCount }) : t('home.seeAll')}
-              </Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingRight: space.md }}>
-              {products.slice(0, 8).map((p) => (
-                <Pressable key={p.id} onPress={() => router.push('/shop')} style={({ pressed }) => [s.prodCard, pressed && { opacity: 0.85 }]}>
-                  <ProductImage product={p} size={112} />
-                  <Text style={s.prodName} numberOfLines={2}>
-                    {p.name}
-                  </Text>
-                  <Text style={s.svcPrice}>{lei(p.price)}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </>
-        ) : null}
-
-        {!next ? null : (
-          <View style={{ marginTop: space.lg }}>
-            <Button title={t('home.newBooking')} onPress={() => startBooking()} />
-          </View>
-        )}
-
         {business?.address || business?.phone ? (
-          <View style={s.visit}>
-            <Text style={s.visitLabel}>{t('home.visit')}</Text>
-            {business.address ? <Text style={[ui.text, { fontSize: 15 }]}>{business.address}</Text> : null}
-            <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.sm }}>
+          <>
+            <Text style={s.section}>{t('home.visit')}</Text>
+            {business.address ? (
+              <Pressable onPress={openAddress} style={[s.row, { gap: space.sm, paddingVertical: space.xs }]} accessibilityRole="link">
+                <Ionicons name="location" size={20} color={colors.text} />
+                <Text style={[ui.text, { flex: 1, fontSize: 16 }]}>{business.address}</Text>
+              </Pressable>
+            ) : null}
+            <View style={s.pills}>
+              {business.address ? (
+                <Pressable onPress={openAddress} style={({ pressed }) => [s.pill, pressed && { opacity: 0.8 }]} accessibilityRole="button">
+                  <Ionicons name="navigate" size={16} color={colors.text} />
+                  <Text style={s.pillText}>{t('home.directions')}</Text>
+                </Pressable>
+              ) : null}
               {business.phone ? (
-                <Pressable onPress={() => Linking.openURL(`tel:${business.phone}`)} style={s.pill} accessibilityRole="button">
-                  <Ionicons name="call-outline" size={16} color={colors.gold} />
+                <Pressable onPress={() => Linking.openURL(`tel:${business.phone}`)} style={({ pressed }) => [s.pill, pressed && { opacity: 0.8 }]} accessibilityRole="button">
+                  <Ionicons name="call" size={16} color={colors.text} />
                   <Text style={s.pillText}>{t('home.call')}</Text>
                 </Pressable>
               ) : null}
               {business.phone && whatsappUrl(business.phone) ? (
-                <Pressable onPress={() => Linking.openURL(whatsappUrl(business.phone)!)} style={s.pill} accessibilityRole="button">
-                  <Ionicons name="logo-whatsapp" size={16} color={colors.gold} />
+                <Pressable onPress={() => Linking.openURL(whatsappUrl(business.phone)!)} style={({ pressed }) => [s.pill, pressed && { opacity: 0.8 }]} accessibilityRole="button">
+                  <Ionicons name="logo-whatsapp" size={16} color={colors.text} />
                   <Text style={s.pillText}>{t('home.whatsapp')}</Text>
                 </Pressable>
               ) : null}
-              {business.address ? (
-                <Pressable
-                  onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${business.name} ${business.address}`)}`)}
-                  style={s.pill}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="navigate-outline" size={16} color={colors.gold} />
-                  <Text style={s.pillText}>{t('home.directions')}</Text>
-                </Pressable>
-              ) : null}
             </View>
-          </View>
+          </>
         ) : null}
       </ScrollView>
 
-      {/* Asistentul la îndemână, deasupra barei de taburi, oricât derulezi. */}
-      <Pressable
-        onPress={() => router.push('/assistant')}
-        style={({ pressed }) => [s.askChip, { bottom: tabBarBottom(insets.bottom) + TAB_BAR_HEIGHT + 12 }, pressed && { opacity: 0.85 }]}
-        accessibilityRole="button"
-      >
-        <View style={s.askMic}>
-          <Ionicons name="mic" size={16} color={colors.onGold} />
-        </View>
-        <Text style={s.askText}>{t('home.assistant')}</Text>
-      </Pressable>
+      {/* Asistentul la îndemână, deasupra barei de taburi (ecranul se termină deasupra ei), oricât derulezi. */}
+      <View style={s.fab} pointerEvents="box-none">
+        <Pressable onPress={() => router.push('/assistant')} style={s.fabTip} accessibilityElementsHidden importantForAccessibility="no">
+          <Text style={s.fabTipText}>{t('home.talk')}</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push('/assistant')}
+          style={({ pressed }) => [s.fabMic, pressed && { opacity: 0.85 }]}
+          accessibilityRole="button"
+          accessibilityLabel={t('home.talk')}
+        >
+          <Ionicons name="mic" size={26} color={colors.onGold} />
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
 
+// Butonul rotund al asistentului: cât e de mare și cât stă deasupra barei de taburi.
+const FAB = 56;
+const FAB_GAP = space.md;
+
 const s = StyleSheet.create({
-  freeCard: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.gold, padding: space.lg, gap: 4 },
-  freeLabel: { color: colors.gold, fontSize: 12, fontWeight: '800', letterSpacing: 2 },
-  freeTitle: { color: colors.text, fontSize: 40, fontWeight: '800', letterSpacing: -1 },
-  freeCta: { color: colors.gold, fontSize: 15, fontWeight: '800' },
-  content: { padding: space.md, paddingBottom: 120, gap: space.sm, width: '100%', maxWidth: 720, alignSelf: 'center' },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm },
-  brand: { color: colors.text, fontSize: 26, fontWeight: '800', letterSpacing: 1 },
+  // Jos lăsăm loc pentru butonul asistentului și eticheta lui, ca ultimul rând să nu rămână sub ele.
+  content: { padding: space.md, paddingBottom: FAB + FAB_GAP + space.xl + space.md, gap: 12, width: '100%', maxWidth: 720, alignSelf: 'center' },
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 44 },
+  brand: { color: colors.text, fontSize: 22, fontWeight: '800', letterSpacing: 0.5 },
   brandItalic: { fontStyle: 'italic', fontFamily: 'Georgia', fontWeight: '700', color: colors.gold },
-  iconBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center' },
-  hero: { backgroundColor: colors.gold, borderRadius: radius.lg, padding: space.lg, gap: 4 },
-  heroLabel: { color: colors.onGold, opacity: 0.7, fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
-  heroTitle: { color: colors.onGold, fontSize: 30, fontWeight: '800', marginVertical: 2 },
-  heroText: { color: colors.onGold, fontSize: 15, flexShrink: 1 },
-  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: space.sm },
-  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  link: { color: colors.gold, fontSize: 13, fontWeight: '600', marginBottom: space.xs },
-  svcCard: { width: 168, height: 150, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.border, justifyContent: 'space-between' },
-  svcIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  quick: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: space.sm },
-  quickItem: { alignItems: 'center', gap: 6, flex: 1 },
-  quickIcon: { width: 52, height: 52, borderRadius: 18, backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  quickText: { color: colors.text, fontSize: 12, fontWeight: '600' },
-  barberCard: { width: 132, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, gap: 4, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-  barberCta: { color: colors.gold, fontSize: 13, fontWeight: '700', marginTop: 4 },
-  invite: { flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.goldDark, marginTop: space.sm },
-  visit: { backgroundColor: colors.card, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.border, marginTop: space.lg, gap: 4 },
-  visitLabel: { color: colors.gold, fontSize: 12, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase' },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+  logo: { width: 150, height: 36 },
+  iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  greeting: { marginTop: space.xs, marginBottom: space.xs },
+  hello: { color: colors.text, fontSize: 32, fontWeight: '800', letterSpacing: -0.5 },
+  helloSub: { color: colors.text, opacity: 0.85, fontSize: 18, marginTop: 2 },
+  card: { backgroundColor: colors.card, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 18, gap: 2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  rowCard: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
+  kicker: { color: colors.muted, fontSize: 12, fontWeight: '600', letterSpacing: 1.5, textTransform: 'uppercase' },
+  cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  small: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  body: { color: colors.text, opacity: 0.85, fontSize: 15, lineHeight: 21 },
+  meta: { color: colors.muted, fontSize: 14 },
+  nextCard: { flexDirection: 'row', alignItems: 'center', gap: space.md, borderColor: colors.goldDark },
+  nextTime: { color: colors.text, fontSize: 34, fontWeight: '800', letterSpacing: -0.5 },
+  freeTime: { color: colors.text, fontSize: 60, lineHeight: 68, fontWeight: '800', letterSpacing: -1.5, marginTop: 2 },
+  freeDate: { color: colors.text, fontSize: 20, fontWeight: '700' },
+  freeMeta: { color: colors.text, opacity: 0.8, fontSize: 16, marginTop: 2 },
+  bookBtn: { height: 50, borderRadius: 12, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginTop: space.md },
+  bookBtnText: { color: colors.onGold, fontSize: 17, fontWeight: '800' },
+  otherTime: { color: colors.muted, fontSize: 14, textDecorationLine: 'underline', alignSelf: 'center', marginTop: space.sm, padding: space.xs },
+  identityTitle: { color: colors.text, fontSize: 21, fontWeight: '800', marginTop: 2, marginBottom: 2 },
+  photos: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
+  photo: { flex: 1, aspectRatio: 1.05, borderRadius: 12, backgroundColor: colors.cardAlt },
+  photoEmpty: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
+  accentLink: { color: colors.gold, fontSize: 16, fontWeight: '600' },
+  section: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: space.md },
+  pick: { flexDirection: 'row', padding: 0, overflow: 'hidden' },
+  pickImg: { width: '42%', minHeight: 150, backgroundColor: colors.cardAlt },
+  pickBody: { flex: 1, padding: space.md, gap: 4, justifyContent: 'center' },
+  perks: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  perk: { flexGrow: 1, flexBasis: '45%', flexDirection: 'row', alignItems: 'center', gap: 10, height: 56, paddingHorizontal: 12, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  perkText: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '600' },
+  badge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { color: colors.onGold, fontSize: 12, fontWeight: '800' },
+  pills: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 12, backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border },
   pillText: { color: colors.text, fontWeight: '700', fontSize: 14 },
-  prodCard: { width: 136, backgroundColor: colors.card, borderRadius: radius.lg, padding: space.sm + 4, gap: 6, borderWidth: 1, borderColor: colors.border },
-  prodName: { color: colors.text, fontSize: 14, fontWeight: '700', minHeight: 36 },
-  svcImg: { width: 44, height: 44, borderRadius: radius.sm },
-  logo: { width: 170, height: 40, marginTop: 2 },
-  svcName: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  svcFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  svcPrice: { color: colors.gold, fontSize: 16, fontWeight: '800' },
-  askChip: { position: 'absolute', right: space.md, height: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingLeft: 6, paddingRight: space.md, borderRadius: radius.pill, backgroundColor: colors.text, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6 },
-  askMic: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
-  askText: { color: colors.bgSolid, fontSize: 14, fontWeight: '800' },
+  fab: { position: 'absolute', right: space.md, bottom: FAB_GAP, alignItems: 'flex-end', gap: 6 },
+  fabTip: { backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 5, paddingHorizontal: 10, marginRight: FAB / 2 },
+  fabTipText: { color: colors.text, fontSize: 12, fontWeight: '600' },
+  fabMic: { width: FAB, height: FAB, borderRadius: FAB / 2, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
 });

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps, ReactNode } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Barber, Service } from '@/data/types';
 import { mediaUrl } from '@/api/staff';
 import { usePriceLabel } from '@/lib/price';
@@ -9,14 +9,16 @@ import { useT } from '@/i18n';
 import { Backdrop } from '@/components/Backdrop';
 import { colors, radius, space } from '@/theme';
 
-// Bara de taburi plutitoare: înălțimea ei și distanța de jos, deasupra barei de navigare a telefonului (butoane sau gesturi).
-export const TAB_BAR_HEIGHT = 68;
-export const tabBarBottom = (inset: number) => Math.max(inset, 8) + 8;
+// Bara de taburi e lipită de marginea de jos, pe toată lățimea: înălțimea rândului cu butoane, plus spațiul de sub el
+// pentru bara de navigare a telefonului (3 butoane sau gesturi), ca butoanele să nu ajungă sub ea (ex. pe Samsung).
+export const TAB_BAR_HEIGHT = 60;
+export const tabBarInset = (inset: number) => Math.max(inset, 8);
+/** Cât ocupă bara de taburi de jos, cu tot cu spațiul pentru bara de navigare a telefonului. */
+export const tabBarSpace = (inset: number) => TAB_BAR_HEIGHT + tabBarInset(inset);
 
-// `tab` leaves room for the floating tab bar (plus the phone's navigation bar).
+// `tab`: ecranele din taburi se termină deasupra barei (nu mai plutește peste conținut); lăsăm doar puțin aer la final.
 export function Screen({ children, scroll = true, edges, tab }: { children: ReactNode; scroll?: boolean; edges?: Array<'top' | 'bottom'>; tab?: boolean }) {
-  const insets = useSafeAreaInsets();
-  const pad = tab ? { paddingBottom: 120 + insets.bottom } : null;
+  const pad = tab ? { paddingBottom: space.xl + space.md } : null;
   return (
     <SafeAreaView style={styles.screen} edges={edges ?? ['top']}>
       <Backdrop />
