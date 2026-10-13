@@ -386,3 +386,78 @@ advisorRoutes.get('/advisor/style/:key', async (c) => {
   await env.DB.prepare('INSERT OR IGNORE INTO media (id, mime, data, size, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, mime, bytes, bytes.byteLength, iso(new Date())).run();
   return send(bytes, mime);
 });
+
+const TRYON_IMAGE = '@cf/black-forest-labs/flux-2-klein-9b';
+const TRYON_DAILY = 6; // previzualizări pe zi pentru un client
+const TRYON_GLOBAL_DAILY = 120; // previzualizări pe zi la tot salonul (≈ 8 bani bucata)
+const TRYON_MAX_BYTES = 1_000_000;
+
+/** Prompt pentru editare: aceeași persoană din poză, doar cu altă tunsoare. */
+const tryOnPrompt = (look: string) =>
+  `Edit image 0: change only the hairstyle of the person to ${look}. Keep exactly the same person: same face, facial features, skin tone, eyes, eyebrows, facial hair, expression, head position, clothing, lighting and background. Photorealistic photo, natural hairline, no text, no logo.`;
+
+/** Imaginea întoarsă de model: base64 în `image`, sau direct octeții. */
+async function imageBytes(out: unknown): Promise<Uint8Array | null> {
+  const img = (out as { image?: unknown } | null)?.image ?? out;
+  if (typeof img === 'string') return Uint8Array.from(atob(img), (ch) => ch.charCodeAt(0));
+  if (img instanceof ArrayBuffer) return new Uint8Array(img);
+  if (img instanceof Uint8Array) return img;
+  if (img instanceof ReadableStream) return new Uint8Array(await new Response(img).arrayBuffer());
+  return null;
+}
+
+/**
+ * POST /advisor/tryon?key=<tunsoare>&consent=1, cu poza clientului în corp (micșorată pe telefon sub 512 px).
+ * Întoarce poza lui cu tunsoarea aleasă (base64), ca previzualizare. Nici poza trimisă, nici rezultatul nu se păstrează.
+ */
+advisorRoutes.post('/advisor/tryon', requireClient, async (c) => {
+  const env = c.env;
+  if (!(await getAdvisor(env)).on) throw new HttpError(409, 'advisor_off');
+  if (c.req.query('consent') !== '1') throw new HttpError(400, 'consent_required');
+  const ai = aiOf(env);
+  if (!ai) throw new HttpError(409, 'advisor_off');
+  const h = hairstyle(c.req.query('key') ?? '');
+  if (!h) throw new HttpError(404, 'not_found');
+  const buf = await c.req.arrayBuffer();
+  if (!buf.byteLength) throw new HttpError(400, 'empty_file');
+  if (buf.byteLength > TRYON_MAX_BYTES) throw new HttpError(400, 'image_too_large');
+  const bytes = new Uint8Array(buf);
+  const kind = imageKind(bytes);
+  if (!kind) throw new HttpError(400, 'unsupported_image');
+
+  // Fiecare încercare costă un apel la AI, deci se numără și cele nereușite.
+  const clientId = c.get('client').clientId;
+  const day = iso(new Date()).slice(0, 10);
+  const inc = async (k: string) =>
+    (await env.DB.prepare(`INSERT INTO assistant_usage (day, key, n) VALUES (?, ?, 1) ON CONFLICT (day, key) DO UPDATE SET n = n + 1 RETURNING n`).bind(day, k).first<{ n: number }>())?.n ?? 0;
+  const dec = (keys: string[]) =>
+    env.DB.batch(keys.map((k) => env.DB.prepare('UPDATE assistant_usage SET n = MAX(n - 1, 0) WHERE day = ? AND key = ?').bind(day, k)));
+  const mine = await inc(`tryon:${clientId}`);
+  if (mine > TRYON_DAILY) {
+    await dec([`tryon:${clientId}`]);
+    throw new HttpError(429, 'tryon_limit');
+  }
+  if ((await inc('tryon:*')) > TRYON_GLOBAL_DAILY) {
+    await dec([`tryon:${clientId}`, 'tryon:*']);
+    throw new HttpError(429, 'advisor_busy');
+  }
+
+  let out: Uint8Array | null = null;
+  try {
+    const form = new FormData();
+    form.append('prompt', tryOnPrompt(h.look));
+    form.append('input_image_0', new Blob([bytes], { type: `image/${kind}` }));
+    form.append('width', '768');
+    form.append('height', '1024');
+    const req = new Response(form);
+    out = await imageBytes(await ai.run(TRYON_IMAGE, { multipart: { body: req.body, contentType: req.headers.get('content-type') } }));
+  } catch (e) {
+    console.error('advisor tryon', e instanceof Error ? e.message.slice(0, 200) : 'error');
+  }
+  const outKind = out && imageKind(out);
+  if (!out || !outKind) throw new HttpError(500, 'tryon_failed');
+  let b64 = '';
+  for (let i = 0; i < out.length; i += 0x8000) b64 += String.fromCharCode(...out.subarray(i, i + 0x8000));
+  c.header('Cache-Control', 'no-store');
+  return c.json({ image: `data:image/${outKind};base64,${btoa(b64)}`, left: Math.max(TRYON_DAILY - mine, 0) });
+});

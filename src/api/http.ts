@@ -166,5 +166,22 @@ export function httpApi(baseUrl: string): BookingApi {
       if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
       return json as AdvisorResult;
     },
+    advisorTryOn: async (uri, key, token) => {
+      let res: Response;
+      try {
+        const blob = await (await fetch(uri)).blob();
+        // consent=1: același acord ca la analiză (poza e folosită doar acum și nu se păstrează).
+        res = await fetch(`${base}/advisor/tryon?key=${encodeURIComponent(key)}&consent=1`, {
+          method: 'POST',
+          headers: { 'Content-Type': blob.type || 'image/jpeg', Authorization: `Bearer ${token}` },
+          body: blob,
+        });
+      } catch {
+        throw new ApiError('network', 0);
+      }
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+      return json as { image: string; left: number };
+    },
   };
 }

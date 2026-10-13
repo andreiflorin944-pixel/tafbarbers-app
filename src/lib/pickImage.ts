@@ -20,3 +20,12 @@ export async function pickImage(opts: { camera?: boolean; square?: boolean; maxP
   const out = await manipulateAsync(a.uri, resize, { compress: 0.75, format: SaveFormat.JPEG });
   return out.uri;
 }
+
+/** O copie mai mică a unei poze locale, cu latura mare de cel mult `maxPx` (pentru modelele care cer poze mici). */
+export async function shrinkImage(uri: string, maxPx: number): Promise<string> {
+  const info = await manipulateAsync(uri, []);
+  const big = Math.max(info.width, info.height);
+  if (big <= maxPx) return uri;
+  const resize = info.width >= info.height ? { width: maxPx } : { height: maxPx };
+  return (await manipulateAsync(uri, [{ resize }], { compress: 0.85, format: SaveFormat.JPEG })).uri;
+}
