@@ -274,7 +274,7 @@ export function App() {
     <div className="shell">
       <aside className="rail" aria-label="Meniu">
         <a className="rail-brand" href="#/calendar" title="TAF Barber’s">
-          T<i>B</i>
+          <img src="/logo-taf.png" alt="TAF Barber’s" />
         </a>
         <nav className="rail-nav">
           {sections.map((s) => (
