@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
 import type { ComponentProps } from 'react';
-import { Pressable, Text, View, type ColorValue } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tabBarInset, tabBarSpace } from '@/components/ui';
 import { useT } from '@/i18n';
@@ -20,6 +20,8 @@ export default function TabsLayout() {
   const { t } = useT();
   // Bara stă lipită jos, pe toată lățimea, dar deasupra barei de navigare a telefonului (butoane sau gesturi), nu sub ea.
   const insets = useSafeAreaInsets();
+  // Pe telefoanele înguste, etichetele puțin mai mici, ca „Programări” să încapă întreg.
+  const labelSize = useWindowDimensions().width < 400 ? 10 : 11;
 
   return (
     <Tabs
@@ -27,7 +29,8 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.gold,
         tabBarInactiveTintColor: colors.text,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: labelSize, fontWeight: '600' },
+        tabBarItemStyle: { paddingHorizontal: 0 },
         tabBarStyle: {
           height: tabBarSpace(insets.bottom),
           paddingTop: 6,
@@ -60,7 +63,7 @@ export default function TabsLayout() {
               <View style={{ width: 46, height: 32, borderRadius: 10, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="add" size={26} color={colors.onGold} />
               </View>
-              <Text style={{ color: colors.text, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
+              <Text style={{ color: colors.text, fontSize: labelSize, fontWeight: '600' }} numberOfLines={1}>
                 {t('tab.book')}
               </Text>
             </Pressable>

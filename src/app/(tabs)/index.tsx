@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState, type ComponentProps } from 'react';
-import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
+import { ActivityIndicator, Animated, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import type { NextFree } from '@/api/client';
@@ -9,10 +9,9 @@ import { mediaUrl } from '@/api/staff';
 import { Backdrop } from '@/components/Backdrop';
 import { LangButton } from '@/components/LangButton';
 import { PayDueBanner } from '@/components/PayDue';
-import { PromoCarousel } from '@/components/PromoCarousel';
 import { useCart } from '@/state/Cart';
 import { Button, styles as ui } from '@/components/ui';
-import type { Promo, Service } from '@/data/types';
+import type { Product, Promo, Service } from '@/data/types';
 import { whatsappUrl } from '@/lib/contact';
 import { useT } from '@/i18n';
 import { formatDayLong, formatTime } from '@/lib/dates';
@@ -47,6 +46,18 @@ export default function Home() {
   const welcome = look?.welcome?.[lang as 'ro' | 'en' | 'fr'];
   // Pozele de exemplu care nu s-au putut încărca (ex. încă negenerate): în locul lor, un chenar cu iconiță.
   const [brokenStyles, setBrokenStyles] = useState<string[]>([]);
+  // Pe telefoanele înguste, etichetele din „Beneficiile tale” puțin mai mici, ca să nu fie tăiate.
+  const narrow = useWindowDimensions().width < 380;
+
+  // Eticheta „Vorbește cu TAF” apare câteva secunde când se deschide pagina, apoi dispare încet; butonul rămâne.
+  const tipOpacity = useRef(new Animated.Value(1)).current;
+  const [tipShown, setTipShown] = useState(true);
+  useEffect(() => {
+    if (loading) return;
+    const anim = Animated.timing(tipOpacity, { toValue: 0, duration: 500, delay: TIP_MS, useNativeDriver: Platform.OS !== 'web' });
+    anim.start(({ finished }) => finished && setTipShown(false));
+    return () => anim.stop();
+  }, [loading, tipOpacity]);
 
   const next = bookings
     .filter((b) => (b.status === 'confirmed' || b.status === 'requested') && new Date(b.start).getTime() > Date.now())
@@ -89,12 +100,8 @@ export default function Home() {
     startBooking();
   };
 
-  // Bannerele cu produs din magazin devin „Recomandarea TAF” (primul dintre ele); celelalte rămân în carusel.
-  const pick = promos.find((p) => p.action.type === 'shop');
-  const carousel = promos.filter((p) => p.action.type !== 'shop');
-  const pickProductId = pick?.action.type === 'shop' ? pick.action.productId : null;
-  const pickProduct = pickProductId ? products.find((x) => x.id === pickProductId) : undefined;
-  const pickImage = mediaUrl(pick?.imageUrl) ?? mediaUrl(pickProduct?.imageUrl);
+  // „Recomandarea TAF”: toate bannerele active din panou, întâi cele cu produs din magazin, apoi celelalte în ordinea lor.
+  const picks = [...promos.filter((p) => p.action.type === 'shop'), ...promos.filter((p) => p.action.type !== 'shop')];
 
   if (loading) {
     return (
@@ -117,7 +124,6 @@ export default function Home() {
   // „Salut, Florin.”: numele în culoarea principală, restul alb (ordinea vine din traducere).
   const firstName = user ? (user.name || user.phone).split(' ')[0] : '';
   const [hiBefore, hiAfter = ''] = t('home.hi', { name: '\u0001' }).split('\u0001');
-  const brandName = look?.title || business?.name || 'TAF Barber’s';
   const openAddress = () => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${business?.name ?? ''} ${business?.address ?? ''}`)}`);
 
   return (
@@ -154,14 +160,11 @@ export default function Home() {
               <Text style={{ color: colors.gold }}>{firstName}</Text>
               {hiAfter}
             </Text>
-          ) : welcome ? (
-            <Text style={s.hello}>{welcome}</Text>
           ) : (
-            <Text style={s.hello}>
-              {t('home.welcome')} <Text style={{ color: colors.gold }}>{brandName}</Text>
-            </Text>
+            <Text style={s.hello}>{t('home.welcome')}</Text>
           )}
-          <Text style={s.helloSub}>{t('home.sub')}</Text>
+          {/* Fără cont: textul de bun venit din panou (dacă e scris), sub salut. */}
+          <Text style={s.helloSub}>{!user && welcome ? welcome : t('home.sub')}</Text>
         </View>
 
         {/* Salonul a cerut plata în aplicație: „Ai de plătit X lei · Plătește acum”. */}
@@ -251,42 +254,10 @@ export default function Home() {
           </Pressable>
         </View>
 
-        {/* Bannerele din panou (fără cele cu produs, care apar mai jos ca recomandare). */}
-        {carousel.length ? <PromoCarousel promos={carousel} onPress={openPromo} /> : null}
-
-        {pick ? (
+        {picks.length ? (
           <>
             <Text style={s.section}>{t('home.recommended')}</Text>
-            <Pressable onPress={() => openPromo(pick)} style={({ pressed }) => [s.card, s.pick, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-              {pickImage ? (
-                <Image source={{ uri: pickImage }} style={s.pickImg} resizeMode="cover" accessibilityLabel={pickProduct?.name ?? pick.title} />
-              ) : (
-                <View style={[s.pickImg, s.photoEmpty]}>
-                  <Ionicons name={`${pick.icon}-outline` as IconName} size={40} color={colors.goldDark} />
-                </View>
-              )}
-              <View style={s.pickBody}>
-                {pick.kicker ? (
-                  <Text style={s.kicker} numberOfLines={1}>
-                    {pick.kicker}
-                  </Text>
-                ) : null}
-                <Text style={s.cardTitle} numberOfLines={2}>
-                  {pick.title}
-                </Text>
-                {pick.text ? (
-                  <Text style={s.small} numberOfLines={3}>
-                    {pick.text}
-                  </Text>
-                ) : null}
-                <View style={[s.row, { marginTop: space.sm }]}>
-                  <Text style={s.accentLink} numberOfLines={1}>
-                    {pick.cta}
-                  </Text>
-                  <Ionicons name="arrow-forward" size={18} color={colors.gold} />
-                </View>
-              </View>
-            </Pressable>
+            <PromoPager promos={picks} products={products} onPress={openPromo} />
           </>
         ) : null}
 
@@ -294,8 +265,8 @@ export default function Home() {
         <View style={s.perks}>
           {PERKS.map(([icon, key, to]) => (
             <Pressable key={key} onPress={() => router.push(to)} style={({ pressed }) => [s.perk, pressed && { opacity: 0.8 }]} accessibilityRole="button">
-              <Ionicons name={icon} size={24} color={colors.gold} />
-              <Text style={s.perkText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              <Ionicons name={icon} size={22} color={colors.gold} />
+              <Text style={[s.perkText, narrow && { fontSize: 13 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                 {t(key)}
               </Text>
               {to === '/shop' && cartCount ? (
@@ -308,20 +279,23 @@ export default function Home() {
           ))}
         </View>
 
-        {user ? (
-          <Pressable onPress={() => router.push('/rewards')} style={({ pressed }) => [s.card, s.rowCard, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-            <Ionicons name="people-outline" size={32} color={colors.text} />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={s.cardTitle}>{t('home.invite')}</Text>
-              <Text style={s.small}>{t('home.inviteText')}</Text>
-              <View style={[s.row, { marginTop: 4 }]}>
-                <Text style={[s.accentLink, { fontSize: 14 }]}>{t('home.inviteCta')}</Text>
-                <Ionicons name="arrow-forward" size={16} color={colors.gold} />
-              </View>
+        {/* Fără cont, „Adu un prieten” duce întâi la intrare / cont nou, apoi la recomandări. */}
+        <Pressable
+          onPress={() => (user ? router.push('/rewards') : router.push({ pathname: '/login', params: { next: '/rewards' } }))}
+          style={({ pressed }) => [s.card, s.rowCard, pressed && { opacity: 0.85 }]}
+          accessibilityRole="button"
+        >
+          <Ionicons name="people-outline" size={32} color={colors.text} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={s.cardTitle}>{t('home.invite')}</Text>
+            <Text style={s.small}>{t('home.inviteText')}</Text>
+            <View style={[s.row, { marginTop: 4 }]}>
+              <Text style={[s.accentLink, { fontSize: 14 }]}>{t('home.inviteCta')}</Text>
+              <Ionicons name="arrow-forward" size={16} color={colors.gold} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </Pressable>
-        ) : null}
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </Pressable>
 
         {business?.address || business?.phone ? (
           <>
@@ -336,19 +310,19 @@ export default function Home() {
               {business.address ? (
                 <Pressable onPress={openAddress} style={({ pressed }) => [s.pill, pressed && { opacity: 0.8 }]} accessibilityRole="button">
                   <Ionicons name="navigate" size={16} color={colors.text} />
-                  <Text style={s.pillText}>{t('home.directions')}</Text>
+                  <Text style={[s.pillText, narrow && { fontSize: 13 }]}>{t('home.directions')}</Text>
                 </Pressable>
               ) : null}
               {business.phone ? (
                 <Pressable onPress={() => Linking.openURL(`tel:${business.phone}`)} style={({ pressed }) => [s.pill, pressed && { opacity: 0.8 }]} accessibilityRole="button">
                   <Ionicons name="call" size={16} color={colors.text} />
-                  <Text style={s.pillText}>{t('home.call')}</Text>
+                  <Text style={[s.pillText, narrow && { fontSize: 13 }]}>{t('home.call')}</Text>
                 </Pressable>
               ) : null}
               {business.phone && whatsappUrl(business.phone) ? (
                 <Pressable onPress={() => Linking.openURL(whatsappUrl(business.phone)!)} style={({ pressed }) => [s.pill, pressed && { opacity: 0.8 }]} accessibilityRole="button">
                   <Ionicons name="logo-whatsapp" size={16} color={colors.text} />
-                  <Text style={s.pillText}>{t('home.whatsapp')}</Text>
+                  <Text style={[s.pillText, narrow && { fontSize: 13 }]}>{t('home.whatsapp')}</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -358,9 +332,13 @@ export default function Home() {
 
       {/* Asistentul la îndemână, deasupra barei de taburi (ecranul se termină deasupra ei), oricât derulezi. */}
       <View style={s.fab} pointerEvents="box-none">
-        <Pressable onPress={() => router.push('/assistant')} style={s.fabTip} accessibilityElementsHidden importantForAccessibility="no">
-          <Text style={s.fabTipText}>{t('home.talk')}</Text>
-        </Pressable>
+        {tipShown ? (
+          <Animated.View style={{ opacity: tipOpacity }}>
+            <Pressable onPress={() => router.push('/assistant')} style={s.fabTip} accessibilityElementsHidden importantForAccessibility="no">
+              <Text style={s.fabTipText}>{t('home.talk')}</Text>
+            </Pressable>
+          </Animated.View>
+        ) : null}
         <Pressable
           onPress={() => router.push('/assistant')}
           style={({ pressed }) => [s.fabMic, pressed && { opacity: 0.85 }]}
@@ -374,13 +352,77 @@ export default function Home() {
   );
 }
 
+/**
+ * „Recomandarea TAF”: bannerele din panou ca un șir de carduri orizontale (poză în stânga, text în dreapta),
+ * câte unul pe toată lățimea; tragi spre stânga pentru următorul. Punctele apar doar când sunt mai multe.
+ */
+function PromoPager({ promos, products, onPress }: { promos: Promo[]; products: Product[]; onPress: (p: Promo) => void }) {
+  const { width: screen } = useWindowDimensions();
+  const width = Math.min(screen, 720) - space.md * 2;
+  const [index, setIndex] = useState(0);
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width));
+
+  return (
+    <View>
+      <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} onScroll={onScroll} scrollEventThrottle={32} style={{ width }}>
+        {promos.map((p) => {
+          // Poza bannerului; la un produs din magazin fără poză de banner, poza produsului.
+          const productId = p.action.type === 'shop' ? p.action.productId : null;
+          const product = productId ? products.find((x) => x.id === productId) : undefined;
+          const image = mediaUrl(p.imageUrl) ?? mediaUrl(product?.imageUrl);
+          return (
+            <Pressable key={p.id} onPress={() => onPress(p)} style={({ pressed }) => [s.card, s.pick, { width }, pressed && { opacity: 0.85 }]} accessibilityRole="button">
+              {image ? (
+                <Image source={{ uri: image }} style={s.pickImg} resizeMode="cover" accessibilityLabel={product?.name ?? p.title} />
+              ) : (
+                <View style={[s.pickImg, s.photoEmpty, { borderWidth: 0 }]}>
+                  <Ionicons name={`${p.icon}-outline` as IconName} size={40} color={colors.goldDark} />
+                </View>
+              )}
+              <View style={s.pickBody}>
+                {p.kicker ? (
+                  <Text style={[s.kicker, s.pickKicker]} numberOfLines={2}>
+                    {p.kicker}
+                  </Text>
+                ) : null}
+                <Text style={s.cardTitle} numberOfLines={2}>
+                  {p.title}
+                </Text>
+                {p.text ? (
+                  <Text style={s.small} numberOfLines={3}>
+                    {p.text}
+                  </Text>
+                ) : null}
+                <View style={[s.row, { marginTop: space.sm }]}>
+                  <Text style={[s.accentLink, { flexShrink: 1 }]} numberOfLines={1}>
+                    {p.cta}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={18} color={colors.gold} />
+                </View>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      {promos.length > 1 ? (
+        <View style={s.dots}>
+          {promos.map((p, i) => (
+            <View key={p.id} style={[s.dot, i === index && { backgroundColor: colors.gold, width: 16 }]} />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 // Butonul rotund al asistentului: cât e de mare și cât stă deasupra barei de taburi.
 const FAB = 56;
 const FAB_GAP = space.md;
+const TIP_MS = 4000;
 
 const s = StyleSheet.create({
-  // Jos lăsăm loc pentru butonul asistentului și eticheta lui, ca ultimul rând să nu rămână sub ele.
-  content: { padding: space.md, paddingBottom: FAB + FAB_GAP + space.xl + space.md, gap: 12, width: '100%', maxWidth: 720, alignSelf: 'center' },
+  // Jos lăsăm loc pentru butonul asistentului și eticheta lui, ca ultimul rând (butoanele de contact) să rămână deasupra lor.
+  content: { padding: space.md, paddingBottom: FAB + FAB_GAP + 32 + space.xl + space.md, gap: 12, width: '100%', maxWidth: 720, alignSelf: 'center' },
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 44 },
   brand: { color: colors.text, fontSize: 22, fontWeight: '800', letterSpacing: 0.5 },
   brandItalic: { fontStyle: 'italic', fontFamily: 'Georgia', fontWeight: '700', color: colors.gold },
@@ -392,7 +434,7 @@ const s = StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 18, gap: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   rowCard: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
-  kicker: { color: colors.muted, fontSize: 12, fontWeight: '600', letterSpacing: 1.5, textTransform: 'uppercase' },
+  kicker: { color: colors.muted, fontSize: 12, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   small: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   body: { color: colors.text, opacity: 0.85, fontSize: 15, lineHeight: 21 },
@@ -412,15 +454,18 @@ const s = StyleSheet.create({
   accentLink: { color: colors.gold, fontSize: 16, fontWeight: '600' },
   section: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: space.md },
   pick: { flexDirection: 'row', padding: 0, overflow: 'hidden' },
-  pickImg: { width: '42%', minHeight: 150, backgroundColor: colors.cardAlt },
+  pickImg: { width: '40%', minHeight: 156, backgroundColor: colors.cardAlt },
   pickBody: { flex: 1, padding: space.md, gap: 4, justifyContent: 'center' },
+  pickKicker: { letterSpacing: 0.8, fontSize: 11 },
+  dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: space.sm },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
   perks: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  perk: { flexGrow: 1, flexBasis: '45%', flexDirection: 'row', alignItems: 'center', gap: 10, height: 56, paddingHorizontal: 12, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  perk: { flexGrow: 1, flexBasis: '45%', flexDirection: 'row', alignItems: 'center', gap: 8, height: 56, paddingHorizontal: 12, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   perkText: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '600' },
   badge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: colors.onGold, fontSize: 12, fontWeight: '800' },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 12, backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 40, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border },
   pillText: { color: colors.text, fontWeight: '700', fontSize: 14 },
   fab: { position: 'absolute', right: space.md, bottom: FAB_GAP, alignItems: 'flex-end', gap: 6 },
   fabTip: { backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 5, paddingHorizontal: 10, marginRight: FAB / 2 },
