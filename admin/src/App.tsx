@@ -180,7 +180,7 @@ const NAV: NavSection[] = [
     icon: 'settings',
     groups: [
       { items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Locații', to: 'settings/locatii' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }, { label: 'Plăți online (Stripe)', to: 'settings/plati' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }, { label: 'Traduceri (engleză, franceză)', to: 'settings/traduceri' }, { label: 'Consilier AI de tunsori', to: 'settings/consilier' }] },
-      { title: 'Contul meu', items: [{ label: 'Poza mea de profil', to: 'settings/poza' }, { label: 'Schimbă parola', to: 'settings/parola' }, { label: 'Deconectare de pe alte dispozitive', to: 'settings/sesiuni' }] },
+      { title: 'Contul meu', items: [{ label: 'Profilul meu (poză, descriere)', to: 'settings/poza' }, { label: 'Schimbă parola', to: 'settings/parola' }, { label: 'Deconectare de pe alte dispozitive', to: 'settings/sesiuni' }] },
       { items: [{ label: 'Regulamente și GDPR', to: 'legal' }, { label: 'Mesaje trimise', to: 'settings/mesaje' }] },
     ],
   },

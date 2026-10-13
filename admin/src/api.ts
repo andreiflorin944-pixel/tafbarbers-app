@@ -279,6 +279,8 @@ export type Service = {
   imageUrl: string | null;
   sort: number;
   active: boolean;
+  /** Îl văd doar membrii TAF Club (sau cei cu abonament activ). */
+  membersOnly?: boolean;
 };
 export type Hours = { weekday: number; start: number; end: number };
 export type Barber = {
@@ -287,6 +289,8 @@ export type Barber = {
   name: string;
   role: string;
   bio: string;
+  /** Porecla, apare lângă nume în aplicație. */
+  nickname?: string;
   photoUrl: string | null;
   /** Culoarea frizerului în calendar (#RRGGBB); null = una din paleta implicită. */
   color: string | null;
@@ -495,7 +499,9 @@ export const ROLE_HELP: Record<Role, string> = {
 };
 // `onlinePayments`: plata cu cardul în aplicație (Stripe) e pornită; altfel „Cere plata în aplicație” nu apare.
 // `locationId`: locația administratorului de locație (null = toate).
-export type Me = { id: string; email: string; name: string; barberId: string | null; barberPhotoUrl?: string | null; role?: Role; owner: boolean; permissions: Record<Perm, boolean>; locationId?: string | null; onlinePayments?: boolean };
+export type Me = { id: string; email: string; name: string; barberId: string | null; barberPhotoUrl?: string | null; barberProfile?: { bio: string; nickname: string; rank: string } | null; role?: Role; owner: boolean; permissions: Record<Perm, boolean>; locationId?: string | null; onlinePayments?: boolean };
+/** Rangurile propuse pentru frizeri (se poate scrie și altul). */
+export const RANKS = ['Ucenic', 'Junior Barber', 'Barber', 'Senior Barber', 'Master Barber', 'Top Barber', 'Art Director'];
 export const PERM_LABELS: Record<Perm, string> = {
   bookings_all: 'Vede programările tuturor frizerilor',
   bookings_create: 'Adaugă programări',

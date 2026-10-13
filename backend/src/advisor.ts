@@ -290,7 +290,8 @@ advisorRoutes.post('/advisor', requireClient, async (c) => {
   if (!imageKind(bytes)) throw new HttpError(400, 'unsupported_image');
 
   const clientId = c.get('client').clientId;
-  const services = (await env.DB.prepare('SELECT * FROM services WHERE active = 1 ORDER BY sort, name').all<ServiceRow>()).results;
+  // Consilierul propune doar servicii pe care le vede oricine (fără cele „doar membri”).
+  const services = (await env.DB.prepare('SELECT * FROM services WHERE active = 1 AND members_only = 0 ORDER BY sort, name').all<ServiceRow>()).results;
   if (!services.length) throw new HttpError(409, 'advisor_off');
   const left = await takeSlot(env, clientId);
 

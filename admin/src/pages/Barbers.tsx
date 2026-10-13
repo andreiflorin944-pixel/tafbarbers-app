@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, ApiError, type Barber, type Hours, type Location, type Me, type Service } from '../api';
+import { api, ApiError, RANKS, type Barber, type Hours, type Location, type Me, type Service } from '../api';
 import { emptyTr, Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 import { hm, parseHm, WEEKDAYS } from '../util';
 import { BARBER_PALETTE, barberColor } from './Calendar';
@@ -46,7 +46,7 @@ export function BarbersPage(_: { me: Me }) {
                 <h2 style={{ margin: 0 }}>
                   <span className="dot" style={{ background: barberColor(b, i) }} /> {b.name}
                 </h2>
-                {b.active ? <span className="muted small">{b.role}</span> : <span className="pill off">inactiv</span>}
+                {b.active ? <span className="muted small">{[b.nickname && `„${b.nickname}”`, b.role].filter(Boolean).join(' · ')}</span> : <span className="pill off">inactiv</span>}
               </div>
               <div className="small" style={{ marginTop: 8 }}>
                 {ORDER.map((d) => {
@@ -100,6 +100,7 @@ function BarberModal({
   const [name, setName] = useState(b.name ?? '');
   const [role, setRole] = useState(b.role ?? 'Barber');
   const [bio, setBio] = useState(b.bio ?? '');
+  const [nickname, setNickname] = useState(b.nickname ?? '');
   const [tr, setTr] = useState(b.translations ?? emptyTr());
   const [photoUrl, setPhotoUrl] = useState(b.photoUrl ?? '');
   const [active, setActive] = useState(b.active !== false);
@@ -135,6 +136,7 @@ function BarberModal({
         name,
         role,
         bio,
+        nickname,
         translations: tr,
         photoUrl: photoUrl || null,
         color,
@@ -158,16 +160,31 @@ function BarberModal({
           <Field label="Nume">
             <input value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label="Rol (ex. Barber, Senior Barber)">
-            <input value={role} onChange={(e) => setRole(e.target.value)} />
+          <Field label="Poreclă (opțional, apare lângă nume)">
+            <input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="ex. Flo" maxLength={40} />
           </Field>
+          <Field label="Rang">
+            <select value={RANKS.includes(role) ? role : '__other'} onChange={(e) => setRole(e.target.value === '__other' ? '' : e.target.value)}>
+              {RANKS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+              <option value="__other">Altul (îl scrii tu)</option>
+            </select>
+          </Field>
+          {RANKS.includes(role) ? null : (
+            <Field label="Rangul (scris de tine)">
+              <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="ex. Barber & Proprietar" maxLength={60} />
+            </Field>
+          )}
         </div>
         <Field label="Despre (opțional)">
           <textarea value={bio} onChange={(e) => setBio(e.target.value)} style={{ minHeight: 60 }} />
         </Field>
         <TranslationFields
           fields={[
-            { key: 'role', label: 'Rol' },
+            { key: 'role', label: 'Rang' },
             { key: 'bio', label: 'Despre', multiline: true },
           ]}
           ro={{ role, bio }}

@@ -8,12 +8,17 @@ export type Service = {
   durationMin: number;
   color: string;
   imageUrl?: string | null;
+  /** Îl văd doar membrii TAF Club (serverul îl trimite doar lor). */
+  membersOnly?: boolean;
 };
 
 export type Barber = {
   id: string;
   name: string;
+  /** Rangul (Barber, Senior Barber, Master Barber...). */
   role: string;
+  nickname?: string;
+  bio?: string;
   initials: string;
   photoUrl?: string | null;
   serviceIds?: string[];

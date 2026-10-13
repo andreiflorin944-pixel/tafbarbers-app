@@ -7,7 +7,8 @@ export type NearbyConfig = { enabled: boolean; radius: number; locations: Array<
 
 export interface BookingApi {
   getBusiness(): Promise<Business>;
-  getServices(): Promise<Service[]>;
+  /** Cu token-ul unui membru TAF Club apar și serviciile „doar membri”. */
+  getServices(token?: string | null): Promise<Service[]>;
   getBarbers(): Promise<Barber[]>;
   /** Locațiile active (primul pas la programare). */
   getLocations(): Promise<Location[]>;

@@ -143,12 +143,12 @@ adminRoutes.post('/logout', async (c) => {
 });
 
 adminRoutes.get('/me', async (c) => {
-  const a = await c.env.DB.prepare('SELECT a.id, a.email, a.name, a.barber_id, b.photo_url FROM admins a LEFT JOIN barbers b ON b.id = a.barber_id WHERE a.id = ?')
+  const a = await c.env.DB.prepare('SELECT a.id, a.email, a.name, a.barber_id, b.photo_url, b.bio, b.nickname, b.role AS rank FROM admins a LEFT JOIN barbers b ON b.id = a.barber_id WHERE a.id = ?')
     .bind(c.get('admin').adminId)
-    .first<{ id: string; email: string; name: string; barber_id: string | null; photo_url: string | null }>();
+    .first<{ id: string; email: string; name: string; barber_id: string | null; photo_url: string | null; bio: string | null; nickname: string | null; rank: string | null }>();
   const s = c.get('admin');
   // `onlinePayments`: plata cu cardul din aplicație e pornită (altfel acțiunea „Cere plata în aplicație” nu apare).
-  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, barberPhotoUrl: a!.photo_url ?? null, role: s.role, owner: s.owner, permissions: s.perms, locationId: s.locationId, onlinePayments: onlinePaymentsOn(c.env) });
+  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, barberPhotoUrl: a!.photo_url ?? null, barberProfile: a!.barber_id ? { bio: a!.bio ?? '', nickname: a!.nickname ?? '', rank: a!.rank ?? '' } : null, role: s.role, owner: s.owner, permissions: s.perms, locationId: s.locationId, onlinePayments: onlinePaymentsOn(c.env) });
 });
 
 // Frizerul își schimbă singur poza de profil (corpul cererii = poza). Doar pe a lui; patronul o poate schimba din fișa frizerului.
@@ -167,6 +167,18 @@ adminRoutes.post('/me/photo', async (c) => {
     c.env.DB.prepare('UPDATE barbers SET photo_url = ? WHERE id = ?').bind(url, barberId),
   ]);
   return c.json({ photoUrl: url });
+});
+
+// Frizerul își scrie singur descrierea și porecla (rangul îl alege patronul).
+adminRoutes.patch('/me/profile', async (c) => {
+  const barberId = c.get('admin').barberId;
+  if (!barberId) throw new HttpError(403, 'no_barber');
+  const b = await c.req.json<{ bio?: unknown; nickname?: unknown }>();
+  const v: Record<string, unknown> = {};
+  if (b.bio !== undefined) v.bio = String(b.bio ?? '').slice(0, 1000);
+  if (b.nickname !== undefined) v.nickname = String(b.nickname ?? '').trim().slice(0, 40);
+  if (Object.keys(v).length) await update(c.env.DB, 'barbers', barberId, v);
+  return c.json({ ok: true });
 });
 
 adminRoutes.delete('/me/photo', async (c) => {
@@ -515,9 +527,9 @@ adminRoutes.post('/services', ownerOnly, async (c) => {
   const id = newId('svc');
   const v = serviceValues(b, true);
   await c.env.DB.prepare(
-    'INSERT INTO services (id, name, description, duration_min, price_bani, color, image_url, sort, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO services (id, name, description, duration_min, price_bani, color, image_url, sort, active, members_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
-    .bind(id, v.name, v.description ?? '', v.duration_min, v.price_bani, v.color ?? '#3B3FE0', v.image_url ?? null, v.sort ?? 0, v.active ?? 1)
+    .bind(id, v.name, v.description ?? '', v.duration_min, v.price_bani, v.color ?? '#3B3FE0', v.image_url ?? null, v.sort ?? 0, v.active ?? 1, v.members_only ?? 0)
     .run();
   // Serviciu nou: implicit îl fac toți frizerii.
   await c.env.DB.prepare('INSERT INTO barber_services (barber_id, service_id) SELECT id, ? FROM barbers').bind(id).run();
@@ -555,6 +567,7 @@ type ServiceInput = {
   imageUrl?: string | null;
   sort?: number;
   active?: boolean;
+  membersOnly?: boolean;
 };
 function serviceValues(b: ServiceInput, create: boolean) {
   const v: Record<string, unknown> = {};
@@ -578,7 +591,8 @@ function serviceValues(b: ServiceInput, create: boolean) {
   }
   if (b.sort !== undefined) v.sort = Number(b.sort) || 0;
   if (b.active !== undefined) v.active = b.active ? 1 : 0;
-  return v as { name: string; description?: string; duration_min: number; price_bani: number; color?: string; image_url?: string | null; sort?: number; active?: number };
+  if (b.membersOnly !== undefined) v.members_only = b.membersOnly ? 1 : 0;
+  return v as { name: string; description?: string; duration_min: number; price_bani: number; color?: string; image_url?: string | null; sort?: number; active?: number; members_only?: number };
 }
 
 // --- Frizeri, programul și serviciile lor ---
@@ -615,6 +629,7 @@ type BarberInput = {
   name?: string;
   role?: string;
   bio?: string;
+  nickname?: string;
   photoUrl?: string | null;
   color?: string | null;
   sort?: number;
@@ -642,8 +657,8 @@ adminRoutes.post('/barbers', ownerOnly, async (c) => {
   const id = newId('br');
   // Fără locație aleasă: prima locație activă (cât timp salonul are o singură locație, nu trebuie aleasă).
   const locationId = b.locationId ? await checkLocationId(c.env, b.locationId) : await defaultLocationId(c.env);
-  await c.env.DB.prepare('INSERT INTO barbers (id, name, role, bio, photo_url, color, sort, location_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, b.name.trim().slice(0, 80), (b.role ?? 'Barber').slice(0, 60), (b.bio ?? '').slice(0, 1000), b.photoUrl ?? null, barberColor(b.color), b.sort ?? 0, locationId)
+  await c.env.DB.prepare('INSERT INTO barbers (id, name, role, bio, nickname, photo_url, color, sort, location_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, b.name.trim().slice(0, 80), (b.role ?? 'Barber').slice(0, 60), (b.bio ?? '').slice(0, 1000), String(b.nickname ?? '').trim().slice(0, 40), b.photoUrl ?? null, barberColor(b.color), b.sort ?? 0, locationId)
     .run();
   await saveBarberRelations(c.env.DB, id, {
     prices: b.prices,
@@ -662,6 +677,7 @@ adminRoutes.patch('/barbers/:id', ownerOnly, async (c) => {
   if (b.name !== undefined) v.name = String(b.name).trim().slice(0, 80);
   if (b.role !== undefined) v.role = String(b.role).slice(0, 60);
   if (b.bio !== undefined) v.bio = String(b.bio).slice(0, 1000);
+  if (b.nickname !== undefined) v.nickname = String(b.nickname).trim().slice(0, 40);
   if (b.photoUrl !== undefined) {
     if (b.photoUrl && !isImageUrl(b.photoUrl)) throw new HttpError(400, 'invalid_url');
     v.photo_url = b.photoUrl || null;

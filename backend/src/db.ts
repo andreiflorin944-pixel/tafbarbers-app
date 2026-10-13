@@ -92,6 +92,7 @@ export type ServiceRow = {
   image_url: string | null;
   sort: number;
   active: number;
+  members_only?: number;
 };
 export const service = (r: ServiceRow) => ({
   id: r.id,
@@ -103,6 +104,8 @@ export const service = (r: ServiceRow) => ({
   imageUrl: r.image_url,
   sort: r.sort,
   active: !!r.active,
+  // Doar pentru membrii TAF Club: ceilalți clienți nu văd serviciul.
+  membersOnly: !!r.members_only,
 });
 
 export type BarberRow = {
@@ -110,6 +113,7 @@ export type BarberRow = {
   name: string;
   role: string;
   bio: string;
+  nickname?: string;
   photo_url: string | null;
   color?: string | null;
   sort: number;
@@ -124,6 +128,7 @@ export const barber = (r: BarberRow) => ({
   name: r.name,
   role: r.role,
   bio: r.bio,
+  nickname: r.nickname ?? '',
   photoUrl: r.photo_url,
   color: r.color ?? null,
   initials: r.name

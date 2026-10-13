@@ -770,10 +770,23 @@ function MyPhoto({ me }: { me: Me }) {
       setMsg({ ok: false, text: errorText(e) });
     }
   };
+  const [bio, setBio] = useState(me.barberProfile?.bio ?? '');
+  const [nickname, setNickname] = useState(me.barberProfile?.nickname ?? '');
+  const save = useAction();
+  const [saved, setSaved] = useState(false);
+  const saveText = () =>
+    save.run(async () => {
+      setSaved(false);
+      await api('PATCH', '/admin/me/profile', { bio, nickname });
+      setSaved(true);
+    });
   return (
     <div className="card grid">
-      <h2 id="set-poza" style={{ margin: 0, scrollMarginTop: 16 }}>Poza mea de profil</h2>
-      <div className="muted small">Clienții o văd când își aleg frizerul în aplicație. O poză cu fața, luminoasă, arată cel mai bine.</div>
+      <h2 id="set-poza" style={{ margin: 0, scrollMarginTop: 16 }}>Profilul meu</h2>
+      <div className="muted small">
+        Clienții îl văd când își aleg frizerul în aplicație. O poză cu fața, luminoasă, arată cel mai bine.
+        {me.barberProfile?.rank ? ` Rangul tău: ${me.barberProfile.rank} (îl schimbă patronul).` : ''}
+      </div>
       <div className="row" style={{ alignItems: 'center', gap: 14 }}>
         <div className="thumb round" style={{ width: 88, height: 88 }}>{url ? <img src={url} alt="" /> : <span className="muted small">fără poză</span>}</div>
         <label className={`btn ghost sm${busy ? ' disabled' : ''}`}>
@@ -797,6 +810,25 @@ function MyPhoto({ me }: { me: Me }) {
         ) : null}
       </div>
       {msg ? <div className={msg.ok ? 'small' : 'err small'} style={msg.ok ? { color: 'var(--success)' } : undefined}>{msg.text}</div> : null}
+      <Field label="Poreclă (opțional, apare lângă nume)">
+        <input value={nickname} onChange={(e) => (setNickname(e.target.value), setSaved(false))} placeholder="ex. Flo" maxLength={40} style={{ maxWidth: 260 }} />
+      </Field>
+      <Field label="Despre mine">
+        <textarea
+          value={bio}
+          onChange={(e) => (setBio(e.target.value), setSaved(false))}
+          maxLength={1000}
+          style={{ minHeight: 80 }}
+          placeholder="ex. 8 ani de experiență, specializat pe fade și barbă."
+        />
+      </Field>
+      <div className="row">
+        <button disabled={save.busy} onClick={saveText}>
+          Salvează
+        </button>
+        {saved ? <span className="small" style={{ color: 'var(--success)' }}>Salvat.</span> : null}
+        {save.error ? <span className="err small">{save.error}</span> : null}
+      </div>
     </div>
   );
 }

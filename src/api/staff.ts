@@ -1,4 +1,4 @@
-import type { Bonus, Identity, IdentityPhoto, Plan, Subscription } from '@/data/types';
+import type { Bonus, Identity, IdentityPhoto, Plan, Service, Subscription } from '@/data/types';
 import Constants from 'expo-constants';
 import { tr, type Key } from '@/i18n';
 import { ApiError } from './client';
@@ -104,6 +104,8 @@ export const staffApi = {
   login: (email: string, password: string) => call<{ token: string }>('POST', '/admin/login', null, { email, password }),
   logout: (t: string) => call('POST', '/admin/logout', t).catch(() => undefined),
   me: (t: string) => call<StaffMe>('GET', '/admin/me', t),
+  /** Catalogul pentru echipă: toate serviciile active, inclusiv cele „doar membri”. */
+  services: (t: string) => call<Service[]>('GET', '/services', t),
   logoutOthers: (t: string) => call<{ loggedOut: number }>('POST', '/admin/me/logout-others', t),
   bookings: (t: string, from: string, to: string) => call<StaffBooking[]>('GET', `/admin/bookings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, t),
   setStatus: (t: string, id: string, status: string) => call<StaffBooking>('PATCH', `/admin/bookings/${id}`, t, { status }),

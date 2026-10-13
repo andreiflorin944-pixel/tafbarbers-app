@@ -55,9 +55,10 @@ type Ctx = {
   own: Array<{ barber_id: string; service_id: string; price_bani: number | null; duration_min: number | null }>;
 };
 
-async function loadCtx(env: Env): Promise<Ctx> {
+async function loadCtx(env: Env, access: Access = 'public'): Promise<Ctx> {
   const [s, b, o, l] = await Promise.all([
-    env.DB.prepare('SELECT id, name, duration_min, price_bani, description FROM services WHERE active = 1 ORDER BY sort, name').all<Ctx['services'][number]>(),
+    // Serviciile „doar membri” le vede (și le propune) asistentul doar pentru membrii TAF Club.
+    env.DB.prepare(`SELECT id, name, duration_min, price_bani, description FROM services WHERE active = 1${access === 'public' ? ' AND members_only = 0' : ''} ORDER BY sort, name`).all<Ctx['services'][number]>(),
     // Frizerii dintr-o locație dezactivată nu mai primesc programări, deci asistentul nu-i mai propune.
     env.DB.prepare(
       `SELECT b.id, b.name, b.role, b.location_id FROM barbers b LEFT JOIN locations l ON l.id = b.location_id
@@ -228,7 +229,7 @@ const fmtWhen = (env: Env, iso: string, lang: string) =>
 export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boolean, access: Access = 'public', clientId: string | null = null): Promise<{ reply: string; proposal?: Proposal }> {
   const ai = aiOf(env);
   if (!ai) throw new HttpError(409, 'assistant_off');
-  const ctx = await loadCtx(env);
+  const ctx = await loadCtx(env, access);
   const messages: Array<{ role: string; content: string }> = [{ role: 'system', content: await systemPrompt(env, ctx, lang, loggedIn) }, ...history];
   const svcOf = (id?: string) => ctx.services.find((s) => s.id === id) ?? null;
   const barberOf = (id?: string) => (id ? (ctx.barbers.find((b) => b.id === id || b.name.toLowerCase() === id.toLowerCase()) ?? null) : null);

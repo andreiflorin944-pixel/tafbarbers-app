@@ -56,8 +56,16 @@ export default function ChooseBarber() {
         <Card key={b.id} onPress={() => pick(b.id)} selected={draft.barberId === b.id} style={rowStyle}>
           <Avatar barber={b} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>{b.name}</Text>
+            <Text style={styles.cardTitle}>
+              {b.name}
+              {b.nickname ? <Text style={styles.muted}> „{b.nickname}”</Text> : null}
+            </Text>
             <Text style={styles.muted}>{b.role}</Text>
+            {b.bio ? (
+              <Text style={[styles.muted, { fontSize: 13, marginTop: 2 }]} numberOfLines={2}>
+                {b.bio}
+              </Text>
+            ) : null}
           </View>
           {service ? <Text style={styles.price}>{lei(barberPrice(service, b))}</Text> : null}
         </Card>

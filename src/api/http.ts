@@ -43,7 +43,7 @@ export function httpApi(baseUrl: string): BookingApi {
 
   return {
     getBusiness: () => call('GET', '/business'),
-    getServices: () => call('GET', '/services'),
+    getServices: (token) => call('GET', '/services', { token: token ?? undefined }),
     getBarbers: () => call('GET', '/barbers'),
     getLocations: () => call('GET', '/locations'),
     getPromos: (lang) => call('GET', `/promos?lang=${encodeURIComponent(lang)}`),

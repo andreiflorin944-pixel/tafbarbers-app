@@ -10,6 +10,7 @@ import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
 import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
+import { useStaffServices } from '@/lib/useStaffServices';
 import { colors, radius, space } from '@/theme';
 
 export default function StaffNewBooking() {
@@ -17,7 +18,8 @@ export default function StaffNewBooking() {
   const params = useLocalSearchParams<{ day?: string; time?: string; barberId?: string; clientId?: string; clientName?: string }>();
   const { staff, staffToken } = useStaff();
   const { t } = useT();
-  const { services, barbers } = useApp();
+  const { barbers } = useApp();
+  const services = useStaffServices();
   const canPickBarber = !!staff && (staff.permissions.bookings_all || !staff.barberId);
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');

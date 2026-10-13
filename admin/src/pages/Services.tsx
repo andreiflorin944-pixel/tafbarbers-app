@@ -40,7 +40,9 @@ export function ServicesPage(_: { me: Me }) {
                   <td>{s.durationMin} min</td>
                   <td>{lei(s.price)}</td>
                   <td>{s.sort}</td>
-                  <td>{s.active ? null : <span className="pill off">ascuns</span>}</td>
+                  <td>
+                    {s.active ? null : <span className="pill off">ascuns</span>} {s.membersOnly ? <span className="pill confirmed">TAF Club</span> : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -75,6 +77,7 @@ function ServiceModal({ s, onClose, onDone }: { s: Partial<Service>; onClose: ()
     imageUrl: v.imageUrl || null,
     sort: Number(v.sort) || 0,
     active: v.active !== false,
+    membersOnly: !!v.membersOnly,
     translations: tr,
   };
 
@@ -117,6 +120,14 @@ function ServiceModal({ s, onClose, onDone }: { s: Partial<Service>; onClose: ()
         <label className="check">
           <input type="checkbox" checked={v.active !== false} onChange={(e) => set({ active: e.target.checked })} /> Vizibil în aplicație
         </label>
+        <label className="check">
+          <input type="checkbox" checked={!!v.membersOnly} onChange={(e) => set({ membersOnly: e.target.checked })} /> Doar pentru membrii TAF Club
+        </label>
+        {v.membersOnly ? (
+          <div className="muted small" style={{ marginTop: -6 }}>
+            Serviciul apare în aplicație doar clienților cu abonament activ sau marcați ca membri TAF Club în fișa lor. În panou îl vedeți toți.
+          </div>
+        ) : null}
         {error ? <div className="err">{error}</div> : null}
         <div className="row">
           <button

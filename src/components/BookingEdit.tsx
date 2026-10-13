@@ -7,6 +7,7 @@ import { addDays, dayKey, dayOfMonth, formatDate, formatTime, fromDayKey, shortD
 import { errorMessage } from "@/lib/errors";
 import { useApp } from "@/state/AppState";
 import { useStaff } from "@/state/Staff";
+import { useStaffServices } from "@/lib/useStaffServices";
 import { colors, radius, space } from "@/theme";
 
 /**
@@ -15,7 +16,8 @@ import { colors, radius, space } from "@/theme";
  */
 export function BookingEdit({ booking: b, onCancel, onDone }: { booking: StaffBooking; onCancel: () => void; onDone: (b: StaffBooking, msg: string) => void }) {
   const { staff, staffToken } = useStaff();
-  const { services, barbers } = useApp();
+  const { barbers } = useApp();
+  const services = useStaffServices();
   const { t } = useT();
   const p = staff!.permissions;
   const canPickBarber = p.bookings_all || !staff!.barberId;

@@ -69,7 +69,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setLoadError(false);
-    Promise.all([api.getBusiness(), api.getServices(), api.getBarbers(), api.getLocations()])
+    Promise.all([api.getBusiness(), api.getServices(token), api.getBarbers(), api.getLocations()])
       .then(([b, s, br, loc]) => {
         setBusiness(b);
         rememberLook(b.appearance);
@@ -79,8 +79,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-    // Altă limbă: serviciile, frizerii și textele salonului se reîncarcă traduse.
-  }, [attempt, lang]);
+    // Altă limbă: serviciile, frizerii și textele salonului se reîncarcă traduse. Alt cont: membrii TAF Club văd și serviciile lor.
+  }, [attempt, lang, token]);
 
   useEffect(() => {
     api.getPromos(lang).then(setPromos, () => setPromos([]));

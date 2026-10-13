@@ -82,8 +82,11 @@ publicRoutes.get('/products', async (c) => {
   return c.json(await localize(c.env, c.req.query('lang'), r.results.map(product), ['name', 'description']));
 });
 
+// Serviciile „doar membri” apar doar pentru membrii TAF Club (sau abonament activ) și pentru echipă.
 publicRoutes.get('/services', async (c) => {
-  const r = await c.env.DB.prepare('SELECT * FROM services WHERE active = 1 ORDER BY sort, name').all<ServiceRow>();
+  const who = await optionalSession(c);
+  const all = who?.kind === 'admin' || (await accessFor(c.env, who?.kind === 'client' ? who.id : null)) === 'member';
+  const r = await c.env.DB.prepare(`SELECT * FROM services WHERE active = 1${all ? '' : ' AND members_only = 0'} ORDER BY sort, name`).all<ServiceRow>();
   return c.json(await localize(c.env, c.req.query('lang'), r.results.map(service), ['name', 'description']));
 });
 
@@ -102,13 +105,13 @@ publicRoutes.get('/next-free', async (c) => {
     serviceId =
       (
         await c.env.DB.prepare(
-          `SELECT b.service_id AS id FROM bookings b JOIN services s ON s.id = b.service_id AND s.active = 1 WHERE b.client_id = ? ORDER BY b.starts_at DESC LIMIT 1`,
+          `SELECT b.service_id AS id FROM bookings b JOIN services s ON s.id = b.service_id AND s.active = 1${access === 'public' ? ' AND s.members_only = 0' : ''} WHERE b.client_id = ? ORDER BY b.starts_at DESC LIMIT 1`,
         )
           .bind(who.id)
           .first<{ id: string }>()
       )?.id ?? null;
   }
-  if (!serviceId) serviceId = (await c.env.DB.prepare('SELECT id FROM services WHERE active = 1 ORDER BY sort, name LIMIT 1').first<{ id: string }>())?.id ?? null;
+  if (!serviceId) serviceId = (await c.env.DB.prepare('SELECT id FROM services WHERE active = 1 AND members_only = 0 ORDER BY sort, name LIMIT 1').first<{ id: string }>())?.id ?? null;
   if (!serviceId) return c.json(null);
   const biz = await getBusiness(c.env);
   const today = localDay(c.env.TIMEZONE, new Date());

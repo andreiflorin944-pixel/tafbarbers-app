@@ -48,10 +48,12 @@ export async function availability(
   const access = opts.access ?? 'public';
   const biz = await getBusiness(env);
   const tz = env.TIMEZONE;
-  const service = await env.DB.prepare('SELECT duration_min FROM services WHERE id = ? AND active = 1')
+  const service = await env.DB.prepare('SELECT duration_min, members_only FROM services WHERE id = ? AND active = 1')
     .bind(opts.serviceId)
-    .first<{ duration_min: number }>();
+    .first<{ duration_min: number; members_only: number }>();
   if (!service) throw new HttpError(404, 'service_not_found');
+  // Serviciu „doar membri”: fără TAF Club nu are ore (și nu se poate programa nici trimițând ora direct).
+  if (service.members_only && access === 'public') return [];
 
   const barbers = await eligibleBarbers(env, opts.serviceId, opts.barberId, opts.locationId ?? null);
   if (!barbers.length) return [];

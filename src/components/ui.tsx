@@ -109,6 +109,7 @@ export function ServiceRow({
       )}
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{service.name}</Text>
+        {service.membersOnly ? <Text style={styles.clubBadge}>TAF Club</Text> : null}
         <Text style={styles.muted} numberOfLines={2}>
           {service.description}
         </Text>
@@ -157,6 +158,7 @@ export const styles = StyleSheet.create({
   cardSelected: { borderColor: colors.gold, backgroundColor: colors.cardAlt },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '600', marginBottom: 2 },
   price: { color: colors.gold, fontSize: 16, fontWeight: '700' },
+  clubBadge: { alignSelf: 'flex-start', color: colors.onGold, backgroundColor: colors.gold, fontSize: 11, fontWeight: '800', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6, overflow: 'hidden', marginVertical: 2 },
   swatch: { width: 6, alignSelf: 'stretch', borderRadius: 3 },
   thumb: { width: 52, height: 52, borderRadius: radius.sm },
   button: { height: 52, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', borderWidth: 1, paddingHorizontal: space.lg },
