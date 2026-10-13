@@ -59,10 +59,6 @@ export default function Home() {
     return () => anim.stop();
   }, [loading, tipOpacity]);
 
-  const next = bookings
-    .filter((b) => (b.status === 'confirmed' || b.status === 'requested') && new Date(b.start).getTime() > Date.now())
-    .sort((a, b) => a.start.localeCompare(b.start))[0];
-
   // Prima oră liberă (la orice frizer): se reîncarcă de fiecare dată când revii pe prima pagină (ex. după o programare).
   const [free, setFree] = useState<NextFree | null>(null);
   const bookingsKey = bookings.map((b) => b.id + b.status).join();
@@ -170,26 +166,6 @@ export default function Home() {
         {/* Salonul a cerut plata în aplicație: „Ai de plătit X lei · Plătește acum”. */}
         {user ? <PayDueBanner refresh /> : null}
 
-        {next ? (
-          <Pressable onPress={() => router.push('/bookings')} style={({ pressed }) => [s.card, s.nextCard, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={[s.kicker, { color: colors.gold }]}>{t('home.next')}</Text>
-              <Text style={s.nextTime}>{formatTime(new Date(next.start))}</Text>
-              <Text style={s.cardTitle}>{capital(formatDayLong(new Date(next.start)))}</Text>
-              <Text style={s.meta} numberOfLines={1}>
-                {barberById(next.barberId)?.name} · {serviceById(next.serviceId)?.name}
-              </Text>
-              {next.status === 'requested' ? (
-                <View style={[s.row, { marginTop: 4 }]}>
-                  <Ionicons name="hourglass-outline" size={15} color={colors.gold} />
-                  <Text style={[s.meta, { color: colors.gold }]}>{t('bookings.pending')}</Text>
-                </View>
-              ) : null}
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </Pressable>
-        ) : null}
-
         {free ? (
           <View style={s.card}>
             <Text style={s.kicker}>{t('home.firstFree')}</Text>
@@ -211,7 +187,7 @@ export default function Home() {
             </Text>
           </View>
         ) : (
-          <Button title={next ? t('home.newBooking') : t('home.book')} onPress={() => startBooking()} />
+          <Button title={t('home.book')} onPress={() => startBooking()} />
         )}
 
         {/* Asistentul: spui când vrei să vii și te programează el. */}
@@ -439,8 +415,6 @@ const s = StyleSheet.create({
   small: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   body: { color: colors.text, opacity: 0.85, fontSize: 15, lineHeight: 21 },
   meta: { color: colors.muted, fontSize: 14 },
-  nextCard: { flexDirection: 'row', alignItems: 'center', gap: space.md, borderColor: colors.goldDark },
-  nextTime: { color: colors.text, fontSize: 34, fontWeight: '800', letterSpacing: -0.5 },
   freeTime: { color: colors.text, fontSize: 60, lineHeight: 68, fontWeight: '800', letterSpacing: -1.5, marginTop: 2 },
   freeDate: { color: colors.text, fontSize: 20, fontWeight: '700' },
   freeMeta: { color: colors.text, opacity: 0.8, fontSize: 16, marginTop: 2 },
