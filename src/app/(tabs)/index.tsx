@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import type { NextFree } from '@/api/client';
 import { mediaUrl } from '@/api/staff';
@@ -12,7 +12,7 @@ import { PayDueBanner } from '@/components/PayDue';
 import { PromoCarousel } from '@/components/PromoCarousel';
 import { ProductImage } from '@/components/Shop';
 import { useCart } from '@/state/Cart';
-import { Avatar, Button, SectionTitle, styles as ui } from '@/components/ui';
+import { Avatar, Button, SectionTitle, TAB_BAR_HEIGHT, tabBarBottom, styles as ui } from '@/components/ui';
 import type { Promo, Service } from '@/data/types';
 import { whatsappUrl } from '@/lib/contact';
 import { useT } from '@/i18n';
@@ -28,6 +28,7 @@ export default function Home() {
   const priceText = usePriceLabel();
   const { staff } = useStaff();
   const { products, count: cartCount } = useCart();
+  const insets = useSafeAreaInsets();
   const look = business?.appearance;
   const logo = mediaUrl(look?.logoUrl);
   const welcome = look?.welcome?.[lang as 'ro' | 'en' | 'fr'];
@@ -91,7 +92,7 @@ export default function Home() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <Backdrop />
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView contentContainerStyle={[s.content, { paddingBottom: 176 + insets.bottom }]}>
         <View style={s.topBar}>
           <View>
             <Text style={ui.muted}>{user ? t('home.hi', { name: (user.name || user.phone).split(' ')[0] }) : welcome || t('home.welcome')}</Text>
@@ -340,6 +341,18 @@ export default function Home() {
           </View>
         ) : null}
       </ScrollView>
+
+      {/* Asistentul la îndemână, deasupra barei de taburi, oricât derulezi. */}
+      <Pressable
+        onPress={() => router.push('/assistant')}
+        style={({ pressed }) => [s.askChip, { bottom: tabBarBottom(insets.bottom) + TAB_BAR_HEIGHT + 12 }, pressed && { opacity: 0.85 }]}
+        accessibilityRole="button"
+      >
+        <View style={s.askMic}>
+          <Ionicons name="mic" size={16} color={colors.onGold} />
+        </View>
+        <Text style={s.askText}>{t('home.assistant')}</Text>
+      </Pressable>
     </SafeAreaView>
   );
 }
@@ -381,4 +394,7 @@ const s = StyleSheet.create({
   svcName: { color: colors.text, fontSize: 15, fontWeight: '700' },
   svcFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   svcPrice: { color: colors.gold, fontSize: 16, fontWeight: '800' },
+  askChip: { position: 'absolute', right: space.md, height: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingLeft: 6, paddingRight: space.md, borderRadius: radius.pill, backgroundColor: colors.text, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6 },
+  askMic: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
+  askText: { color: colors.bgSolid, fontSize: 14, fontWeight: '800' },
 });

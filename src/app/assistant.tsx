@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/api';
 import type { AssistantMsg, AssistantProposal } from '@/api/client';
 import { Button } from '@/components/ui';
@@ -51,6 +52,17 @@ export default function Assistant() {
   };
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const scroll = useRef<ScrollView>(null);
+  // Bara de scris stă deasupra barei de navigare a telefonului; cu tastatura deschisă nu mai e nevoie.
+  const insets = useSafeAreaInsets();
+  const [keyboard, setKeyboard] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboard(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboard(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => stopSpeaking, []);
   // Altă limbă înainte de prima întrebare: salutul se schimbă și el.
@@ -195,7 +207,7 @@ export default function Assistant() {
           </Pressable>
         ))}
       </View>
-      <View style={s.bar}>
+      <View style={[s.bar, { paddingBottom: space.md + (keyboard ? 0 : insets.bottom) }]}>
         {business?.advisor && !recording ? (
           <Pressable onPress={() => router.push('/advisor')} style={s.camera} accessibilityRole="button" accessibilityLabel={t('advisor.title')} disabled={busy}>
             <Ionicons name="camera-outline" size={22} color={colors.gold} />

@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { mediaUrl } from '@/api/staff';
 import type { IdentityPhoto } from '@/data/types';
 import { useT } from '@/i18n';
@@ -20,6 +21,7 @@ export function PhotoViewer({
   onDelete?: (p: IdentityPhoto) => void;
 }) {
   const { t } = useT();
+  const insets = useSafeAreaInsets();
   if (index === null || !photos[index]) return null;
   const p = photos[index];
   return (
@@ -42,7 +44,7 @@ export function PhotoViewer({
           </View>
         </View>
         {p.caption || p.addedBy ? (
-          <Text style={s.caption}>
+          <Text style={[s.caption, { bottom: Math.max(48, insets.bottom + space.md) }]}>
             {p.caption}
             {p.addedBy ? `${p.caption ? ' · ' : ''}${t('photo.addedBy', { name: p.addedBy })}` : ''}
           </Text>

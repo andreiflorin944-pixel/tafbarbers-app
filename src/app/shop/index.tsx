@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Backdrop } from '@/components/Backdrop';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CartBar, ProductImage, QtyControl } from '@/components/Shop';
 import { styles } from '@/components/ui';
 import { useT } from '@/i18n';
@@ -13,13 +14,14 @@ export default function Shop() {
   const { products, reloadProducts } = useCart();
   const { t } = useT();
   const { business } = useApp();
+  const insets = useSafeAreaInsets();
   // Stocul se schimbă: la fiecare intrare în magazin luăm lista din nou.
   useEffect(reloadProducts, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Backdrop />
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView contentContainerStyle={[s.content, { paddingBottom: 120 + insets.bottom }]}>
         <Text style={[styles.muted, { marginBottom: space.sm }]}>{t(business?.onlinePayments ? 'shop.introOnline' : 'shop.intro')}</Text>
         {products.length === 0 ? <Text style={styles.muted}>{t('shop.empty')}</Text> : null}
         <View style={s.grid}>

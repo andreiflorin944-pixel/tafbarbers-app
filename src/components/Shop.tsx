@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { mediaUrl } from '@/api/staff';
 import type { Product } from '@/data/types';
 import { useT } from '@/i18n';
@@ -52,9 +53,11 @@ export function QtyControl({ product }: { product: Product }) {
 export function CartBar() {
   const { count, total } = useCart();
   const { t } = useT();
+  const insets = useSafeAreaInsets();
   if (!count) return null;
+  // Deasupra barei de navigare a telefonului.
   return (
-    <Pressable onPress={() => router.push('/shop/cart')} style={s.bar} accessibilityLabel={t('shop.viewCart')}>
+    <Pressable onPress={() => router.push('/shop/cart')} style={[s.bar, { bottom: space.lg + insets.bottom }]} accessibilityLabel={t('shop.viewCart')}>
       <View style={s.barCount}>
         <Text style={s.barCountText}>{count}</Text>
       </View>

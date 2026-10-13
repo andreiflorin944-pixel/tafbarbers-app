@@ -10,7 +10,7 @@ export default function Barbers() {
   const { t } = useT();
 
   return (
-    <Screen edges={[]}>
+    <Screen edges={['bottom']}>
       {barbers.map((b) => (
         <Card key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
           <Avatar barber={b} size={72} />

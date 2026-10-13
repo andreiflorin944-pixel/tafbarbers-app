@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
 import type { ComponentProps } from 'react';
 import { Pressable, View, type ColorValue } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TAB_BAR_HEIGHT, tabBarBottom } from '@/components/ui';
 import { useT } from '@/i18n';
 import { useApp } from '@/state/AppState';
 import { colors } from '@/theme';
@@ -15,6 +17,8 @@ const icon = (name: IconName) => ({ color, size }: { color: ColorValue; size: nu
 export default function TabsLayout() {
   const { resetDraft } = useApp();
   const { t } = useT();
+  // Bara plutește deasupra barei de navigare a telefonului (butoane sau gesturi), nu sub ea.
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -27,8 +31,8 @@ export default function TabsLayout() {
           position: 'absolute',
           left: 12,
           right: 12,
-          bottom: 16,
-          height: 68,
+          bottom: tabBarBottom(insets.bottom),
+          height: TAB_BAR_HEIGHT,
           paddingTop: 8,
           paddingBottom: 8,
           borderRadius: 24,

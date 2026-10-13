@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { staffApi, type PaySent, type StaffBooking, type StaffCheckout } from "@/api/staff";
 import { cutsText } from "@/components/SubscriptionRow";
 import { BookingEdit, BookingHistory } from "@/components/BookingEdit";
@@ -55,6 +56,8 @@ export function BookingSheet({
 }) {
   const { staff, staffToken } = useStaff();
   const { t } = useT();
+  // Fereastra se desenează și sub bara de navigare a telefonului: butoanele de jos rămân deasupra ei.
+  const insets = useSafeAreaInsets();
   const [checkout, setCheckout] = useState(false);
   // „Modifică programarea” și „Istoric” se deschid în aceeași fereastră, în locul butoanelor.
   const [mode, setMode] = useState<"view" | "edit" | "history">("view");
@@ -116,7 +119,7 @@ export function BookingSheet({
           onPress={onClose}
           accessibilityLabel={t("common.close")}
         />
-        <View style={s.sheet}>
+        <View style={[s.sheet, { paddingBottom: space.xl + insets.bottom }]}>
           <View style={s.handle} />
           <ScrollView keyboardShouldPersistTaps="handled">
           <View style={[ui.row, { justifyContent: "space-between" }]}>

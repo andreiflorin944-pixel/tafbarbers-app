@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { Image, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, styles } from '@/components/ui';
 import { mediaUrl } from '@/api/staff';
 import { usePriceLabel } from '@/lib/price';
@@ -13,12 +14,13 @@ export default function ServiceDetail() {
   const { serviceById, business, resetDraft, setDraft, loading } = useApp();
   const priceText = usePriceLabel();
   const { t } = useT();
+  const insets = useSafeAreaInsets();
   const service = serviceById(id ?? null);
   // Deschisă direct dintr-un link: așteptăm întâi serviciile de la server.
   if (!service) return loading ? <View style={{ flex: 1, backgroundColor: colors.bg }} /> : <Redirect href="/services" />;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: space.xl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: space.xl + insets.bottom }}>
       {/* Poza serviciului (din panou); fără poză rămâne foarfeca. */}
       <View style={{ height: 320, backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center' }}>
         {service.imageUrl ? (

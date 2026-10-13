@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps, ReactNode } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Barber, Service } from '@/data/types';
 import { mediaUrl } from '@/api/staff';
 import { usePriceLabel } from '@/lib/price';
@@ -9,9 +9,14 @@ import { useT } from '@/i18n';
 import { Backdrop } from '@/components/Backdrop';
 import { colors, radius, space } from '@/theme';
 
-// `tab` leaves room for the floating tab bar.
+// Bara de taburi plutitoare: înălțimea ei și distanța de jos, deasupra barei de navigare a telefonului (butoane sau gesturi).
+export const TAB_BAR_HEIGHT = 68;
+export const tabBarBottom = (inset: number) => Math.max(inset, 8) + 8;
+
+// `tab` leaves room for the floating tab bar (plus the phone's navigation bar).
 export function Screen({ children, scroll = true, edges, tab }: { children: ReactNode; scroll?: boolean; edges?: Array<'top' | 'bottom'>; tab?: boolean }) {
-  const pad = tab ? { paddingBottom: 120 } : null;
+  const insets = useSafeAreaInsets();
+  const pad = tab ? { paddingBottom: 120 + insets.bottom } : null;
   return (
     <SafeAreaView style={styles.screen} edges={edges ?? ['top']}>
       <Backdrop />

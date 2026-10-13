@@ -3,6 +3,7 @@ import { Redirect, router } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
 import type { ComponentProps } from 'react';
 import { ActivityIndicator, Pressable, View, type ColorValue } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useT } from '@/i18n';
 import { useStaff } from '@/state/Staff';
 import { colors } from '@/theme';
@@ -17,6 +18,7 @@ const icon = (name: IconName) => ({ color, size }: { color: ColorValue; size: nu
 export default function StaffTabs() {
   const { staff, staffReady } = useStaff();
   const { t } = useT();
+  const insets = useSafeAreaInsets();
   if (!staffReady)
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -33,7 +35,8 @@ export default function StaffTabs() {
         tabBarActiveTintColor: colors.gold,
         tabBarInactiveTintColor: colors.muted,
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
-        tabBarStyle: { height: 72, paddingTop: 8, paddingBottom: 10, borderTopColor: colors.border, backgroundColor: colors.card },
+        // Înălțimea fixă include și bara de navigare a telefonului, ca etichetele să nu stea sub ea.
+        tabBarStyle: { height: 72 + insets.bottom, paddingTop: 8, paddingBottom: 10 + insets.bottom, borderTopColor: colors.border, backgroundColor: colors.card },
       }}
     >
       <Tabs.Screen name="index" options={{ title: t('stab.home'), tabBarIcon: icon('home-outline') }} />
