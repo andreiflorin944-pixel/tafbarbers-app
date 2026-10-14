@@ -17,7 +17,7 @@ async function download(ext: 'csv' | 'xlsx') {
   URL.revokeObjectURL(url);
 }
 
-type Seg = 'all' | 'new' | 'top' | 'risk' | 'expired' | 'booked' | 'birthday';
+type Seg = 'all' | 'new' | 'top' | 'risk' | 'expired' | 'booked' | 'birthday' | 'club';
 type SortKey = 'rank' | 'spent' | 'last' | 'name' | 'visits' | 'newest';
 type Item = {
   id: string;
@@ -42,6 +42,7 @@ type Item = {
   firstVisit: string | null;
   lastVisit: string | null;
   nextVisit: string | null;
+  clubVia: 'sub' | 'manual' | null;
   tags: Record<Exclude<Seg, 'all'>, boolean>;
 };
 type ListRes = { counts: Record<Seg, number>; total: number; rows: Item[] };
@@ -54,7 +55,9 @@ const SEGS: Array<{ k: Seg; label: string; hint: string; dot?: string }> = [
   { k: 'expired', label: 'Expirat', hint: 'ar fi trebuit să revină de mult în vizită', dot: '#f0a020' },
   { k: 'booked', label: 'Rezervat', hint: 'au o programare viitoare', dot: '#8a8a90' },
   { k: 'birthday', label: 'Zi de naștere', hint: 'în următoarele 7 zile', dot: '#c45ad6' },
+  { k: 'club', label: 'Membri TAF Club', hint: 'abonament activ sau puși de mână', dot: '#F5C542' },
 ];
+const CLUB_VIA = { sub: 'abonament', manual: 'pus de mână' } as const;
 const SORT_LABEL: Record<SortKey, string> = {
   rank: 'Clasament – primul loc',
   spent: 'Suma cheltuită – de la cea mai mare',
@@ -299,6 +302,7 @@ function ClientCard({ c, dense, barber, onOpen }: { c: Item; dense: boolean; bar
           {c.tags.new ? <span className="cl-tag new">Nou</span> : null}
           {c.tags.risk ? <span className="cl-tag risk">⚠ În situație de risc</span> : null}
           {c.tags.expired ? <span className="cl-tag exp">◷ Expirat</span> : null}
+          {c.clubVia ? <span className="cl-tag club">★ TAF Club · {CLUB_VIA[c.clubVia]}</span> : null}
           {c.lastVisit ? <span className={`cl-when${c.tags.expired ? ' late' : ''}`}>↺ {ago(c.lastVisit)}</span> : null}
           {c.nextVisit ? <span className="cl-when next">▣ {until(c.nextVisit)}</span> : null}
         </div>
@@ -376,6 +380,7 @@ function ClientTable({ rows, onOpen }: { rows: Item[]; onOpen: (id: string) => v
                 <b>{c.name || <span className="muted">fără nume</span>}</b>
                 {c.tags.top ? ' ♛' : ''}
                 {c.tags.risk ? <span className="cl-danger"> ⚠</span> : ''}
+                {c.clubVia ? <span className="cl-club" title={`Membru TAF Club (${CLUB_VIA[c.clubVia]})`}> ★</span> : ''}
               </td>
               <td>{c.phone || '—'}</td>
               <td>{c.email || '—'}</td>

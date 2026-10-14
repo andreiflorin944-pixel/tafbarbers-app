@@ -2,10 +2,10 @@ import type { Env } from './env';
 import { addDays, localDay } from './time';
 
 // Lista de clienți din panou, ca în Barberly: clasament după cât au cheltuit, etichete (nou, top 100, în risc,
-// expirat, rezervat, zi de naștere) și statistici. Istoricul adus din Barberly la import (coloanele hist_*) se
+// expirat, rezervat, zi de naștere, membru TAF Club) și statistici. Istoricul adus din Barberly la import (coloanele hist_*) se
 // adună cu programările făcute la noi.
 
-export const SEGMENTS = ['all', 'new', 'top', 'risk', 'expired', 'booked', 'birthday'] as const;
+export const SEGMENTS = ['all', 'new', 'top', 'risk', 'expired', 'booked', 'birthday', 'club'] as const;
 export type Segment = (typeof SEGMENTS)[number];
 export const SORTS = ['rank', 'spent', 'last', 'name', 'visits', 'newest'] as const;
 export type Sort = (typeof SORTS)[number];
@@ -28,6 +28,8 @@ type Row = {
   hist_noshow_bani: number | null;
   hist_first_visit: string | null;
   hist_last_visit: string | null;
+  club_manual: number | null;
+  club_sub: number;
 };
 type Agg = {
   client_id: string;
@@ -68,7 +70,9 @@ export type ClientListItem = {
   lastVisit: string | null;
   nextVisit: string | null;
   createdAt: string;
-  tags: { new: boolean; top: boolean; risk: boolean; expired: boolean; booked: boolean; birthday: boolean };
+  /** De ce e membru TAF Club: abonament activ sau bifat de mână în fișă (abonamentul are întâietate). */
+  clubVia: 'sub' | 'manual' | null;
+  tags: { new: boolean; top: boolean; risk: boolean; expired: boolean; booked: boolean; birthday: boolean; club: boolean };
 };
 
 const DAY = 86_400_000;
@@ -97,9 +101,12 @@ export async function clientStats(env: Env, now: Date, locationId: string | null
     env.DB.prepare(
       `SELECT c.id, c.name, c.phone, c.email, c.birth_date, c.created_at, c.photo_url, c.preferred_barber_id,
          (c.terms_accepted_at IS NOT NULL OR c.password_hash IS NOT NULL) AS app,
-         c.hist_visits, c.hist_spent_bani, c.hist_cancelled, c.hist_cancelled_bani, c.hist_noshows, c.hist_noshow_bani, c.hist_first_visit, c.hist_last_visit
+         c.hist_visits, c.hist_spent_bani, c.hist_cancelled, c.hist_cancelled_bani, c.hist_noshows, c.hist_noshow_bani, c.hist_first_visit, c.hist_last_visit,
+         c.club_member AS club_manual,
+         EXISTS (SELECT 1 FROM subscriptions s WHERE s.client_id = c.id AND s.status = 'active' AND s.starts_at <= ? AND s.ends_at > ?
+                 AND (s.cuts_total IS NULL OR s.cuts_used < s.cuts_total)) AS club_sub
        FROM clients c WHERE c.deleted_at IS NULL`,
-    ),
+    ).bind(nowIso, nowIso),
     env.DB.prepare(
       `SELECT client_id,
          sum(status = 'completed') AS done,
@@ -138,6 +145,8 @@ export async function clientStats(env: Env, now: Date, locationId: string | null
     const upcoming = a?.up ?? 0;
     const since = lastVisit ? (now.getTime() - Date.parse(lastVisit)) / DAY : null;
     const bday = daysToBirthday(c.birth_date, today);
+    // Aceeași regulă ca isClubMember (subscriptions.ts).
+    const clubVia = c.club_sub ? 'sub' : c.club_manual ? 'manual' : null;
     const isNew = firstVisit ? now.getTime() - Date.parse(firstVisit) <= 30 * DAY : c.hist_visits === null && now.getTime() - Date.parse(c.created_at) <= 30 * DAY;
     return {
       id: c.id,
@@ -163,6 +172,7 @@ export async function clientStats(env: Env, now: Date, locationId: string | null
       lastVisit,
       nextVisit: a?.next ?? null,
       createdAt: c.created_at,
+      clubVia,
       tags: {
         new: isNew,
         top: false,
@@ -173,6 +183,7 @@ export async function clientStats(env: Env, now: Date, locationId: string | null
         expired: !upcoming && since !== null && interval !== null && since > Math.max(1.5 * interval, interval + 7),
         booked: upcoming > 0,
         birthday: bday !== null && bday <= 7,
+        club: clubVia !== null,
       },
     };
   });

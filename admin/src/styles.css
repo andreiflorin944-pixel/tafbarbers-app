@@ -525,6 +525,8 @@ button.bk-row:disabled { opacity: 1; cursor: default; }
 .cl-tag.new { color: #3fae5a; border-color: #3fae5a; }
 .cl-tag.risk { color: var(--danger); border-color: var(--danger); }
 .cl-tag.exp { color: #f0a020; border-color: #f0a020; }
+.cl-tag.club { color: #c9971a; border-color: #F5C542; }
+.cl-club { color: #c9971a; }
 .cl-when { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .cl-when.late { color: var(--danger); font-weight: 600; }
 .cl-when.next { color: #3b6fe0; font-weight: 600; }
