@@ -89,7 +89,11 @@ export default function Home() {
   };
 
   const openPromo = (p: Promo) => {
-    if (p.action.type === 'service') return startBooking(serviceById(p.action.serviceId));
+    // Banner cu un serviciu: pagina serviciului (ca din grila de servicii), de unde clientul apasă el „Programează”.
+    if (p.action.type === 'service') {
+      if (serviceById(p.action.serviceId)) return router.push({ pathname: '/service/[id]', params: { id: p.action.serviceId } });
+      return startBooking();
+    }
     if (p.action.type === 'url') return Linking.openURL(p.action.url);
     // Ofertă de produs: magazinul, cu produsul ales primul.
     if (p.action.type === 'shop') return router.push(p.action.productId ? { pathname: '/shop', params: { product: p.action.productId } } : '/shop');
