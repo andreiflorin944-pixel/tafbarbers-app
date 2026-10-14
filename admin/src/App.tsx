@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, getToken, setToken, setUnauthorizedHandler, type Me } from './api';
-import { Field, useAction } from './ui';
+import { Field, TopSlot, useAction } from './ui';
 import { CalendarPage } from './pages/Calendar';
 import { ClientsPage } from './pages/Clients';
 import { ServicesPage } from './pages/Services';
@@ -78,6 +78,7 @@ const ICONS: Record<string, string> = {
   logout: 'M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11',
   sun: 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4',
   moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
+  chevron: 'M6 9l6 6 6-6',
 };
 function Icon({ name, size = 22 }: { name: string; size?: number }) {
   return (
@@ -102,7 +103,7 @@ const NAV: NavSection[] = [
   },
   {
     key: 'work',
-    label: 'Muncă',
+    label: 'Calendar',
     icon: 'work',
     groups: [
       { items: [{ label: 'Calendar', to: 'calendar' }, { label: 'Notițe echipă', to: 'notes' }] },
@@ -186,6 +187,14 @@ const NAV: NavSection[] = [
   },
 ];
 
+// Bara laterală lată: domeniile grupate sub titluri mici, ca în machetă. „Afaceri” rămâne la Administrare
+// (tabloul de bord și serviciile nu apar în altă parte).
+const AREAS: Array<{ title: string; keys: string[] }> = [
+  { title: 'Activitate', keys: ['work', 'clients'] },
+  { title: 'Afacere', keys: ['pay', 'marketing', 'shop', 'reports'] },
+  { title: 'Administrare', keys: ['business', 'notify', 'apps', 'settings'] },
+];
+
 const THEME_KEY = 'taf-admin-theme';
 function readTheme(): 'light' | 'dark' {
   try {
@@ -202,6 +211,10 @@ export function App() {
   const [hash, setHash] = useState(hashNow());
   const [flyout, setFlyout] = useState<string | null>(null);
   const [theme, setTheme] = useState(readTheme);
+  // Cererile în așteptare (din clopoțel): bulina aurie de la Notificări.
+  const [requests, setRequests] = useState(0);
+  // Locul din bara de sus unde o pagină își pune titlul și comenzile (calendarul).
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -259,9 +272,10 @@ export function App() {
     ...s,
     groups: s.groups.map((g) => ({ ...g, items: g.items.filter((i) => inMenu(i.to)) })).filter((g) => g.items.length),
   })).filter((s) => s.groups.length);
-  // Secțiunea activă: cea care are exact adresa curentă, altfel prima care are pagina.
+  // Secțiunea activă: cea care are exact adresa curentă, apoi cea cu același nume ca pagina, altfel prima care are pagina.
   const activeSection =
     sections.find((s) => s.groups.some((g) => g.items.some((i) => i.to === hash))) ??
+    sections.find((s) => s.key === current.key && s.groups.some((g) => g.items.some((i) => i.to.split('/')[0] === current.key))) ??
     sections.find((s) => s.groups.some((g) => g.items.some((i) => i.to.split('/')[0] === current.key)));
   const open = sections.find((s) => s.key === flyout);
   const logout = async () => {
@@ -270,33 +284,51 @@ export function App() {
     setMe(null);
   };
 
+  const ordered = AREAS.map((a) => ({ ...a, items: a.keys.map((k) => sections.find((s) => s.key === k)).filter((s): s is (typeof sections)[number] => !!s) })).filter(
+    (a) => a.items.length,
+  );
+  const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
+
   return (
     <div className="shell">
       <aside className="rail" aria-label="Meniu">
-        <a className="rail-brand" href="#/calendar" title="TAF Barber’s">
-          <img src="/logo-taf.png" alt="TAF Barber’s" />
+        <a className="rail-brand" href="#/calendar" title="TAF Barbers">
+          <img src="/logo-taf.png" alt="" />
+          <span>TAF Barbers</span>
         </a>
         <nav className="rail-nav">
-          {sections.map((s) => (
-            <button
-              key={s.key}
-              className={`rail-btn${activeSection?.key === s.key ? ' on' : ''}${flyout === s.key ? ' open' : ''}`}
-              onClick={() => setFlyout(flyout === s.key ? null : s.key)}
-              aria-expanded={flyout === s.key}
-              title={s.label}
-            >
-              <Icon name={s.icon} />
-              <span>{s.label}</span>
-            </button>
+          {ordered.map((a) => (
+            <div key={a.title} className="rail-area">
+              <div className="rail-area-title">{a.title}</div>
+              {a.items.map((s) => (
+                <button
+                  key={s.key}
+                  className={`rail-btn${activeSection?.key === s.key ? ' on' : ''}${flyout === s.key ? ' open' : ''}`}
+                  onClick={() => setFlyout(flyout === s.key ? null : s.key)}
+                  aria-expanded={flyout === s.key}
+                  title={s.label}
+                >
+                  <span className="rail-ic">
+                    <Icon name={s.icon} />
+                    {s.key === 'notify' && requests ? <i className="rail-dot" aria-label={`${requests} cereri în așteptare`} /> : null}
+                  </span>
+                  <span>{s.label}</span>
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="rail-foot">
-          <button className="rail-btn" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title={theme === 'light' ? 'Temă închisă' : 'Temă deschisă'}>
-            <Icon name={theme === 'light' ? 'moon' : 'sun'} />
-            <span>{theme === 'light' ? 'Închis' : 'Deschis'}</span>
+          <button className="rail-btn" onClick={toggleTheme} title={theme === 'light' ? 'Temă întunecată' : 'Temă luminoasă'}>
+            <span className="rail-ic">
+              <Icon name={theme === 'light' ? 'moon' : 'sun'} />
+            </span>
+            <span>{theme === 'light' ? 'Întunecat' : 'Luminos'}</span>
           </button>
           <button className="rail-btn" onClick={logout} title={`Ieși din cont (${me.name || me.email})`}>
-            <Icon name="logout" />
+            <span className="rail-ic">
+              <Icon name="logout" />
+            </span>
             <span>Ieși</span>
           </button>
         </div>
@@ -321,21 +353,81 @@ export function App() {
       ) : null}
       <main className="main">
         <div className="topbar">
+          <div className="top-slot" ref={setSlot} />
           <span className="muted small crumb">
             {activeSection ? `${activeSection.label} · ` : ''}
             {current.label}
           </span>
-          <span className="row" style={{ gap: 12, marginLeft: 'auto' }}>
-            <RequestsBell me={me} />
-            <a className="top-icon" href={me.owner ? '#/settings' : '#/settings/parola'} title="Setări" aria-label="Setări">
-              <Icon name="settings" size={20} />
-            </a>
-            <span className="muted small crumb">{me.name || me.email}</span>
+          <span className="top-right">
+            <ThemeSwitch theme={theme} onChange={setTheme} />
+            <RequestsBell me={me} onCount={setRequests} />
+            <UserMenu me={me} theme={theme} onTheme={toggleTheme} onLogout={logout} />
           </span>
         </div>
-        <Page me={me} />
+        <div className="content">
+          <TopSlot.Provider value={slot}>
+            <Page me={me} />
+          </TopSlot.Provider>
+        </div>
       </main>
     </div>
+  );
+}
+
+/** Comutatorul de temă din bara de sus: Luminos / Întunecat. */
+function ThemeSwitch({ theme, onChange }: { theme: 'light' | 'dark'; onChange: (t: 'light' | 'dark') => void }) {
+  return (
+    <span className="seg theme-switch" role="group" aria-label="Tema panoului">
+      <button className={theme === 'light' ? 'on' : ''} onClick={() => onChange('light')} aria-pressed={theme === 'light'} title="Temă luminoasă">
+        <Icon name="sun" size={16} />
+        <span>Luminos</span>
+      </button>
+      <button className={theme === 'dark' ? 'on' : ''} onClick={() => onChange('dark')} aria-pressed={theme === 'dark'} title="Temă întunecată">
+        <Icon name="moon" size={16} />
+        <span>Întunecat</span>
+      </button>
+    </span>
+  );
+}
+
+/** Avatarul din dreapta sus, cu meniul mic: Setări, Temă, Ieși. */
+function UserMenu({ me, theme, onTheme, onLogout }: { me: Me; theme: 'light' | 'dark'; onTheme: () => void; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const out = (e: MouseEvent) => box.current && !box.current.contains(e.target as Node) && setOpen(false);
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', out);
+    window.addEventListener('keydown', k);
+    return () => {
+      document.removeEventListener('mousedown', out);
+      window.removeEventListener('keydown', k);
+    };
+  }, [open]);
+  const name = me.name || me.email;
+  return (
+    <span className="user" ref={box}>
+      <button className="user-btn" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" title={name}>
+        <span className="user-av">{name.trim().charAt(0).toUpperCase()}</span>
+        <span className="user-name">{name}</span>
+        <Icon name="chevron" size={16} />
+      </button>
+      {open ? (
+        <div className="user-menu" role="menu">
+          <a href={me.owner ? '#/settings' : '#/settings/parola'} role="menuitem" onClick={() => setOpen(false)}>
+            <Icon name="settings" size={18} /> Setări
+          </a>
+          <button role="menuitemcheckbox" aria-checked={theme === 'dark'} onClick={onTheme}>
+            <Icon name={theme === 'dark' ? 'moon' : 'sun'} size={18} /> Temă întunecată
+            <span className={`mini-switch${theme === 'dark' ? ' on' : ''}`} aria-hidden />
+          </button>
+          <button role="menuitem" onClick={onLogout}>
+            <Icon name="logout" size={18} /> Ieși
+          </button>
+        </div>
+      ) : null}
+    </span>
   );
 }
 

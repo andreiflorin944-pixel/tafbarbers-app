@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { errorText, uploadImage, type Translations } from './api';
+
+/** Locul din bara de sus în care o pagină își poate pune titlul și comenzile (ex. calendarul). */
+export const TopSlot = createContext<HTMLElement | null>(null);
+export function TopBar({ children }: { children: ReactNode }) {
+  const el = useContext(TopSlot);
+  return el ? createPortal(children, el) : null;
+}
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {

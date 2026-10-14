@@ -22,6 +22,9 @@ const ICONS: Record<string, string> = {
   tag: 'M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9Zm5-5h.01',
   pin: 'M12 21s-7-6.2-7-12a7 7 0 1 1 14 0c0 5.8-7 12-7 12Zm0-9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
   edit: 'M4 20h4L19 9l-4-4L4 16v4Zm10-14l4 4',
+  coffee: 'M5 9h11v4a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5V9Zm11 1h1.5a2.5 2.5 0 0 1 0 5H16M8 3v3m3-3v3m3-3v3',
+  chevL: 'M15 6l-6 6 6 6',
+  chevR: 'M9 6l6 6-6 6',
 };
 export function Icon({ name, size = 18 }: { name: keyof typeof ICONS | string; size?: number }) {
   return (

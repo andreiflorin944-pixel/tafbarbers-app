@@ -48,7 +48,7 @@ export function beep() {
 
 type Requests = { count: number; items: Booking[] };
 
-export function RequestsBell({ me }: { me: Me }) {
+export function RequestsBell({ me, onCount }: { me: Me; onCount?: (n: number) => void }) {
   const [data, setData] = useState<Requests | null>(null);
   const [open, setOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -115,6 +115,8 @@ export function RequestsBell({ me }: { me: Me }) {
   useEffect(() => {
     const base = document.title.replace(/^\(\d+\) /, '');
     document.title = data?.count ? `(${data.count}) ${base}` : base;
+    onCount?.(data?.count ?? 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.count]);
 
   if (!allowed) return null;

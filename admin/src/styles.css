@@ -1,44 +1,57 @@
+/* Tema întunecată, ca în machetă: negru adânc, carduri grafit și auriu. */
 :root {
-  --bg: #000;
-  --card: #0f0f10;
-  --card-alt: #1a1a1c;
-  --border: #262628;
-  --gold: #f9a11b;
-  --gold-dark: #b87410;
+  --bg: #0b0b0c;
+  --side: #0e0e10;
+  --panel: #121212;
+  --panel-border: #232323;
+  --card: #141417;
+  --card-alt: #1b1b1f;
+  --border: #26262b;
+  --gold: #f5c542;
+  --gold-dark: #c99a1e;
+  --gold-soft: rgba(245, 197, 66, 0.1);
+  --gold-line: rgba(245, 197, 66, 0.45);
   --text: #fff;
-  --muted: #a3a09a;
+  --muted: #9a9aa0;
   --danger: #e5625e;
   --success: #5c8a63;
   --radius: 14px;
-  --accent-text: #f9a11b;
+  --accent-text: #f5c542;
+  --hover: #1f1f23;
   --backdrop: rgba(0, 0, 0, 0.7);
+  --shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
-/* Tema deschisă (implicită), ca în Barberly: ecran alb, mai ușor de citit ziua. */
+/* Tema luminoasă (implicită): fundal alb, panouri calde și același auriu (textul auriu mai închis, ca să se citească). */
 :root[data-theme='light'] {
-  --bg: #f4f4f6;
+  --bg: #fff;
+  --side: #fff;
+  --panel: #f6f6f4;
+  --panel-border: #e8e8e4;
   --card: #fff;
-  --card-alt: #f1f1f4;
-  --border: #e2e2e6;
-  --gold-dark: #c98410;
+  --card-alt: #f1f1ee;
+  --border: #e3e3de;
+  --gold-dark: #c99a1e;
+  --gold-soft: #fdf4d6;
+  --gold-line: #ecd389;
   --text: #17171a;
   --muted: #6b6b72;
   --danger: #cf3a35;
   --success: #2f7d3a;
-  --accent-text: #9a5b00;
+  --accent-text: #8a6200;
+  --hover: #f1f1ee;
   --backdrop: rgba(20, 20, 24, 0.35);
+  --shadow: 0 12px 34px rgba(20, 20, 24, 0.14);
   color-scheme: light;
 }
-:root[data-theme='light'] .pill.confirmed, :root[data-theme='light'] .pill.new, :root[data-theme='light'] .pill.tag-top { background: #fff1d9; color: #8a5200; }
+:root[data-theme='light'] .pill.confirmed, :root[data-theme='light'] .pill.new, :root[data-theme='light'] .pill.tag-top { background: #fbefc8; color: #7a5600; }
 :root[data-theme='light'] .pill.completed, :root[data-theme='light'] .pill.picked_up, :root[data-theme='light'] .pill.tag-back { background: #e2f3e5; color: #276a31; }
 :root[data-theme='light'] .pill.cancelled, :root[data-theme='light'] .pill.no_show, :root[data-theme='light'] .pill.tag-risk { background: #fde6e5; color: #b3302b; }
 :root[data-theme='light'] .pill.ready, :root[data-theme='light'] .pill.tag-new { background: #e1eefa; color: #1f5f99; }
 :root[data-theme='light'] .pill.off { background: #ececef; color: #777; }
 :root[data-theme='light'] button.danger { border-color: #f1c4c2; }
 :root[data-theme='light'] .card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
-:root[data-theme='light'] .cal-line { border-top-color: #efeff2; }
-:root[data-theme='light'] .cal-line.hour { border-top-color: #dcdce2; }
-:root[data-theme='light'] .cal-off { background: repeating-linear-gradient(45deg, #f6f6f8, #f6f6f8 6px, #ececf0 6px, #ececf0 12px); }
+:root[data-theme='light'] .cal-off { background: repeating-linear-gradient(45deg, #f7f7f5, #f7f7f5 6px, #eeeeea 6px, #eeeeea 12px); }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 body {
@@ -56,44 +69,113 @@ h2 { font-size: 17px; margin: 0 0 10px; }
 .danger { color: var(--danger); }
 .success { color: var(--success); }
 
-/* Structură: bară îngustă cu iconițe (mereu închisă la culoare) și listă care se deschide alături. */
-.shell { display: grid; grid-template-columns: 76px 1fr; min-height: 100%; }
-.rail { background: #111113; border-right: 1px solid #222; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 12px 0; z-index: 30; overflow-y: auto; }
-.rail-brand { color: #fff; text-decoration: none; font-weight: 900; font-size: 20px; margin-bottom: 14px; }
-.rail-brand img { display: block; width: 52px; height: auto; }
-.rail-nav, .rail-foot { display: flex; flex-direction: column; gap: 2px; width: 100%; align-items: center; }
-.rail-foot { margin-top: auto; padding-top: 12px; }
-.rail-btn { background: none; border: 0; border-radius: 12px; color: #9a9aa0; width: 64px; padding: 7px 0 5px; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; }
-.rail-btn:hover { color: #fff; background: #1f1f22; }
-.rail-btn.on { color: #f9a11b; }
-.rail-btn.open { background: #f9a11b; color: #000; }
-.flyout-back { position: fixed; inset: 0; z-index: 25; background: rgba(0, 0, 0, 0.12); }
-.flyout { position: fixed; top: 0; left: 76px; bottom: 0; width: 270px; background: #fff; color: #17171a; z-index: 26; padding: 18px 12px; overflow-y: auto; box-shadow: 6px 0 24px rgba(0, 0, 0, 0.18); }
+/* Structură: bara laterală lată (titluri mici, iconiță + nume), panoul principal rotunjit și lista care se deschide alături. */
+.shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100%; }
+.rail { background: var(--side); position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: 20px 14px 14px; z-index: 30; overflow-y: auto; }
+.rail-brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 800; font-size: 21px; letter-spacing: -0.3px; padding: 0 8px; margin-bottom: 22px; }
+.rail-brand img { display: block; width: 46px; height: auto; }
+/* Sigla e albă: pe tema luminoasă stă pe o plăcuță neagră. */
+:root[data-theme='light'] .rail-brand img { background: #111113; border-radius: 9px; padding: 4px 5px; box-sizing: content-box; width: 40px; }
+.rail-nav { display: flex; flex-direction: column; gap: 18px; }
+.rail-area { display: flex; flex-direction: column; gap: 2px; }
+.rail-area-title { font-size: 13px; color: var(--muted); padding: 0 10px 6px; }
+.rail-foot { display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--panel-border); }
+.rail-btn { background: none; border: 1px solid transparent; border-radius: 10px; color: var(--text); width: 100%; padding: 9px 10px; display: flex; flex-direction: row; align-items: center; gap: 12px; font-size: 15px; font-weight: 500; text-align: left; }
+.rail-btn:hover { background: var(--hover); }
+.rail-btn.open { background: var(--hover); }
+.rail-btn.on { background: var(--gold-soft); border-color: var(--gold-line); color: var(--accent-text); font-weight: 600; }
+.rail-ic { position: relative; display: inline-flex; }
+.rail-dot { position: absolute; top: -2px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 2px var(--side); }
+.flyout-back { position: fixed; inset: 0; z-index: 25; background: rgba(0, 0, 0, 0.18); }
+.flyout { position: fixed; top: 0; left: 240px; bottom: 0; width: 280px; background: var(--card); color: var(--text); border-right: 1px solid var(--border); z-index: 26; padding: 22px 12px; overflow-y: auto; box-shadow: var(--shadow); }
 .flyout-title { font-size: 18px; font-weight: 800; padding: 0 10px 10px; }
-.flyout-group { border-top: 1px solid #ececef; padding: 8px 0; }
+.flyout-group { border-top: 1px solid var(--border); padding: 8px 0; }
 .flyout-group:first-of-type { border-top: 0; }
-.flyout-sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #8a8a90; font-weight: 700; padding: 4px 10px; }
-.flyout a { display: block; color: #17171a; text-decoration: none; padding: 7px 10px; border-radius: 8px; font-weight: 600; font-size: 14px; }
-.flyout a:hover { background: #f3f3f5; }
-.flyout a.on { background: #fff1d9; color: #8a5200; }
-.topbar { display: flex; justify-content: space-between; gap: 12px; margin: -8px 0 14px; }
-.main { padding: 24px 28px 60px; min-width: 0; }
+.flyout-sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); font-weight: 700; padding: 4px 10px; }
+.flyout a { display: block; color: var(--text); text-decoration: none; padding: 7px 10px; border: 1px solid transparent; border-radius: 8px; font-weight: 500; font-size: 14px; }
+.flyout a:hover { background: var(--hover); }
+.flyout a.on { background: var(--gold-soft); border-color: var(--gold-line); color: var(--accent-text); font-weight: 600; }
+
+.main { margin: 12px 12px 12px 0; min-width: 0; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; min-height: calc(100vh - 24px); display: flex; flex-direction: column; }
+.content { padding: 20px 22px 60px; min-width: 0; flex: 1; }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 12px 18px 12px 22px; min-height: 68px; border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; }
+.top-slot { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; flex-wrap: wrap; }
+.top-slot:empty { display: none; }
+.top-slot:not(:empty) + .crumb { display: none; }
+.top-title { font-size: 26px; font-weight: 800; margin-right: 10px; }
+.top-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.crumb { font-weight: 600; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .grid { display: grid; gap: 12px; }
 .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid.stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 18px; }
 
+/* Comutatoare cu două-trei variante (temă, zi/săptămână): cea aleasă are chenar și text auriu. */
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--card-alt); border: 1px solid var(--border); border-radius: 10px; flex: none; }
+.seg button { background: transparent; color: var(--muted); border: 1px solid transparent; border-radius: 7px; padding: 6px 14px; font-weight: 600; font-size: 14px; gap: 6px; }
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--gold-soft); border-color: var(--gold-line); color: var(--accent-text); }
+
+/* Avatarul din dreapta sus și meniul lui. */
+.user { position: relative; }
+.user-btn { background: transparent; color: var(--text); border: 0; padding: 4px 6px 4px 4px; border-radius: 999px; gap: 8px; font-weight: 600; }
+.user-btn:hover { background: var(--hover); }
+.user-av { width: 34px; height: 34px; border-radius: 50%; background: var(--card-alt); border: 1px solid var(--border); display: inline-grid; place-items: center; font-weight: 700; font-size: 14px; }
+.user-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 220px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 6px; box-shadow: var(--shadow); display: grid; gap: 2px; }
+.user-menu a, .user-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); text-decoration: none; font-weight: 500; font-size: 14px; text-align: left; }
+.user-menu a:hover, .user-menu button:hover { background: var(--hover); }
+.mini-switch { margin-left: auto; width: 32px; height: 18px; border-radius: 999px; background: var(--border); position: relative; flex: none; }
+.mini-switch::before { content: ''; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+.mini-switch.on { background: var(--gold); }
+.mini-switch.on::before { transform: translateX(14px); }
+
+@media (max-width: 1280px) {
+  .theme-switch span { display: none; }
+  .theme-switch button { padding: 6px 9px; }
+}
+/* Ecrane înguste: bara compactă cu iconițe, ca înainte. */
+@media (max-width: 999px) {
+  .shell { grid-template-columns: 76px minmax(0, 1fr); }
+  .rail { align-items: center; padding: 12px 0; }
+  .rail-brand { padding: 0; margin-bottom: 14px; }
+  .rail-brand img { width: 52px; }
+  .rail-brand span, .rail-area-title { display: none; }
+  .rail-nav { gap: 2px; width: 100%; align-items: center; }
+  .rail-area { align-items: center; width: 100%; }
+  .rail-foot { width: 100%; align-items: center; border-top: 0; padding-top: 12px; }
+  .rail-btn { width: 64px; padding: 7px 0 5px; flex-direction: column; gap: 3px; font-size: 10.5px; font-weight: 600; text-align: center; border-radius: 12px; color: var(--muted); }
+  .rail-btn:hover { color: var(--text); }
+  .rail-btn.on { font-weight: 600; }
+  .rail-btn.open { background: var(--gold); border-color: var(--gold); color: #000; }
+  .rail-btn > span:last-child { max-width: 62px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .flyout { left: 76px; }
+  .main { margin: 8px 8px 8px 0; }
+  .user-name { display: none; }
+  /* Bara de sus pe două rânduri: titlul și contul sus, navigarea calendarului dedesubt. */
+  .top-slot:not(:empty) { display: contents; }
+  .topbar:has(.top-slot:not(:empty))::after { content: ''; order: 1; flex-basis: 100%; }
+  .top-right { order: 1; }
+  .cal-nav, .cal-date, .cal-view { order: 2; }
+}
 @media (max-width: 820px) {
   .shell { grid-template-columns: 1fr; }
-  .rail { position: sticky; height: auto; flex-direction: row; padding: 6px 8px; border-right: 0; border-bottom: 1px solid #222; overflow-x: auto; overflow-y: hidden; }
+  .rail { position: sticky; height: auto; flex-direction: row; padding: 6px 8px; border-bottom: 1px solid var(--panel-border); overflow-x: auto; overflow-y: hidden; }
   .rail-brand { margin: 0 8px 0 4px; }
-  .rail-nav, .rail-foot { flex-direction: row; width: auto; }
-  .rail-foot { margin: 0 0 0 auto; padding: 0; }
+  .rail-brand img { width: 44px; }
+  .rail-nav, .rail-area { flex-direction: row; width: auto; }
+  .rail-foot { flex-direction: row; width: auto; margin: 0 0 0 auto; padding: 0; }
   .rail-btn { width: 62px; flex-shrink: 0; }
   .flyout { left: 0; right: 0; top: 64px; width: auto; }
-  .main { padding: 16px 16px 60px; }
-  .topbar { margin: 0 0 10px; }
+  .main { margin: 0; border: 0; border-radius: 0; min-height: 0; }
+  .topbar { padding: 10px 12px; min-height: 0; gap: 10px; }
+  .top-title { font-size: 22px; margin-right: 0; }
+  .top-right { gap: 8px; }
+  .cal-view { order: 3; }
+  .cal-date { order: 4; flex-basis: 100%; }
+  .cal-date button.link { font-size: 16px; }
+  .content { padding: 14px 12px 60px; }
   .topbar .crumb { display: none; }
   .grid.two { grid-template-columns: 1fr; }
 }
@@ -122,7 +204,7 @@ label.f { display: flex; flex-direction: column; gap: 5px; font-size: 13px; colo
 label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .err { color: var(--danger); font-size: 14px; }
 .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--card-alt); color: var(--muted); }
-.pill.confirmed { background: #3a2a0d; color: var(--gold); }
+.pill.confirmed { background: #2c2913; color: var(--gold); }
 .pill.completed { background: #1d2b1f; color: #8fc79a; }
 .pill.cancelled, .pill.no_show { background: #3a1a19; color: var(--danger); }
 .pill.off { background: #222; color: #777; }
@@ -139,41 +221,95 @@ tr.click:hover td { background: var(--card-alt); }
 .modal { background: var(--card); border: 1px solid var(--border); border-radius: 18px; width: 100%; max-width: 560px; padding: 20px; }
 .modal .head { margin-bottom: 14px; }
 
-/* Calendar */
+/* Calendar, ca în machetă: frizerii cu avatar sus, ora în stânga, programările ca niște carduri cu dungă aurie. */
+:root {
+  --ev-bg: #1b1b1f;
+  --ev-border: #2a2a30;
+  --pause-bg: #202024;
+  --line: #1f1f23;
+  --line-hour: #2a2a2f;
+}
+:root[data-theme='light'] {
+  --ev-bg: #fdf9ee;
+  --ev-border: #eee5c8;
+  --pause-bg: #f1f1ee;
+  --line: #ecece7;
+  --line-hour: #dcdcd6;
+}
+.cal-tools { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.cal-nav { display: inline-flex; gap: 6px; }
+.cal-nav button { border-radius: 10px; height: 36px; padding: 0 14px; font-weight: 600; font-size: 14px; background: var(--card-alt); }
+.cal-nav button.sq { width: 36px; padding: 0; justify-content: center; }
+.cal-nav button:hover { border-color: var(--muted); }
+.cal-date { position: relative; }
+.cal-date button.link { color: var(--text); font-size: 18px; font-weight: 700; }
+.cal-date button.link:hover { color: var(--accent-text); }
+.cal-date input { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.cal-view { margin-left: auto; }
+.cal-tools select { width: auto; min-width: 170px; padding: 6px 10px; font-size: 13px; border-radius: 999px; }
+.cal-wrap { border-radius: var(--radius); }
 .cal { display: grid; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--card); }
-.cal-head { display: grid; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--card); z-index: 2; }
-.cal-head div { padding: 10px; font-weight: 700; text-align: center; border-left: 1px solid var(--border); }
-.cal-head div:first-child { border-left: 0; }
+.cal-head { display: grid; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--card); z-index: 4; }
+.cal-head > * { padding: 12px 14px; border-left: 1px solid var(--border); min-width: 0; }
+.cal-head > :first-child { border-left: 0; }
+.cal-barber { display: flex; align-items: center; gap: 12px; }
+.cal-av { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; flex: none; border: 2px solid var(--border); background: var(--card-alt); display: inline-grid; place-items: center; font-weight: 700; font-size: 16px; color: var(--text); }
+.cal-barber-txt { display: grid; min-width: 0; }
+.cal-barber-txt b, .cal-dayhead b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-barber-txt .small, .cal-dayhead .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-dayhead { display: grid; gap: 1px; text-align: left; background: transparent; color: var(--text); border: 0; border-left: 1px solid var(--border); border-radius: 0; font-weight: 400; }
+.cal-dayhead:hover { background: var(--hover); }
+.cal-dayhead b { font-size: 15px; }
+.cal-dayhead b::first-letter { text-transform: uppercase; }
+.cal-dayhead.today b { color: var(--accent-text); }
 .cal-body { display: grid; position: relative; }
 .cal-times { position: relative; }
-.cal-times span { position: absolute; right: 6px; font-size: 10.5px; color: var(--muted); opacity: 0.75; transform: translateY(-50%); }
-.cal-times span.hour { font-size: 12px; font-weight: 600; opacity: 1; }
+.cal-times span { position: absolute; right: 10px; font-size: 10.5px; color: var(--muted); opacity: 0.6; transform: translateY(-50%); font-variant-numeric: tabular-nums; }
+.cal-times span.hour { font-size: 13px; font-weight: 600; opacity: 1; color: var(--text); }
+.cal-times span.cal-now-label { color: var(--accent-text); font-size: 11.5px; font-weight: 800; opacity: 1; background: var(--card); padding: 1px 0 1px 4px; z-index: 2; }
 .cal-col { position: relative; border-left: 1px solid var(--border); }
-.cal-line { position: absolute; left: 0; right: 0; border-top: 1px solid #1c1c1e; }
-.cal-line.hour { border-top-color: #2c2c30; }
-.cal-off { position: absolute; left: 0; right: 0; background: repeating-linear-gradient(45deg, #0a0a0a, #0a0a0a 6px, #121212 6px, #121212 12px); }
+.cal-col.today { background: color-mix(in srgb, var(--gold) 4%, transparent); }
+.cal-line { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--line); }
+.cal-line.hour { border-top: 1px solid var(--line-hour); }
+.cal-off { position: absolute; left: 0; right: 0; background: repeating-linear-gradient(45deg, #111113, #111113 6px, #17171a 6px, #17171a 12px); }
 .cal-ev {
   --c: var(--gold);
-  position: absolute; left: 4px; right: 4px; border-radius: 8px; padding: 4px 7px; font-size: 12px; overflow: hidden; cursor: pointer;
-  background: color-mix(in srgb, var(--c) 18%, var(--card)); border-left: 4px solid var(--c); color: var(--text); line-height: 1.3;
+  position: absolute; left: 5px; width: calc(100% - 10px); border-radius: 8px; padding: 6px 10px 6px 10px; font-size: 12px; overflow: hidden; cursor: pointer;
+  background: var(--ev-bg); border: 1px solid var(--ev-border); border-left: 4px solid var(--c); color: var(--text); line-height: 1.3;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto; column-gap: 8px; align-content: start;
+  container-type: inline-size; z-index: 1;
 }
-.cal-ev:hover { background: color-mix(in srgb, var(--c) 28%, var(--card)); }
+.cal-ev:hover { background: color-mix(in srgb, var(--c) 7%, var(--ev-bg)); border-color: color-mix(in srgb, var(--c) 35%, var(--ev-border)); border-left-color: var(--c); }
 .cal-ev.sel { box-shadow: 0 0 0 2px var(--c); }
-.cal-ev.completed { background: color-mix(in srgb, var(--c) 9%, var(--card)); }
-.cal-ev.no_show { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--danger) 10%, var(--card)), color-mix(in srgb, var(--danger) 10%, var(--card)) 6px, var(--card) 6px, var(--card) 12px); opacity: 0.8; }
+.cal-ev-time { grid-column: 1; grid-row: 1; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-ev b { grid-column: 1; grid-row: 2; display: block; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-ev-svc { grid-column: 1 / 3; grid-row: 3; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-ev .pill { grid-column: 2; grid-row: 1 / 3; align-self: start; font-size: 11px; padding: 3px 9px; white-space: nowrap; }
+.cal-ev.short { display: flex; align-items: center; gap: 6px; padding-top: 2px; padding-bottom: 2px; }
+.cal-ev.short .pill { display: none; }
+.cal-ev.short .cal-ev-time, .cal-ev.short b, .cal-ev.short .cal-ev-svc { flex: none; max-width: 100%; }
+.cal-ev.short .cal-ev-svc { flex: 1; min-width: 0; }
+.cal-ev.completed { --c: #30a46c; opacity: 0.85; }
+.cal-ev.no_show { --c: var(--danger); background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--danger) 10%, var(--ev-bg)), color-mix(in srgb, var(--danger) 10%, var(--ev-bg)) 6px, var(--ev-bg) 6px, var(--ev-bg) 12px); opacity: 0.8; }
 .cal-ev.no_show b { text-decoration: line-through; }
-.cal-ev b { display: block; }
-/* Blocurile din program: hașurate în culoarea tipului; „doar membri” e doar colorat (orele rămân de lucru). */
-.cal-block {
-  position: absolute; left: 0; right: 0; overflow: hidden;
-  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--c) 16%, transparent), color-mix(in srgb, var(--c) 16%, transparent) 6px, color-mix(in srgb, var(--c) 6%, transparent) 6px, color-mix(in srgb, var(--c) 6%, transparent) 12px);
-  border-top: 2px solid var(--c);
+@container (max-width: 170px) {
+  .cal-ev .pill { display: none; }
+  .cal-ev .cal-dot { display: block; }
 }
-.cal-block.members { background: color-mix(in srgb, var(--c) 9%, transparent); border-top: 2px dashed var(--c); }
-.cal-block span { position: absolute; top: 2px; right: 6px; font-size: 11px; font-weight: 700; color: var(--c); pointer-events: none; white-space: nowrap; }
-.cal-ev { z-index: 1; }
+/* Pauzele, liberele și concediile: carduri gri, cu ceașcă. */
+.cal-pause { position: absolute; left: 5px; right: 5px; border-radius: 8px; padding: 6px 10px; overflow: hidden; background: var(--pause-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; line-height: 1.3; z-index: 1; }
+.cal-pause > * { pointer-events: none; }
+.cal-pause .cal-ev-time { display: flex; align-items: center; gap: 8px; }
+.cal-pause .cal-ev-time svg { color: var(--c, var(--muted)); }
+.cal-pause b { display: block; font-size: 13px; }
+/* „Doar membri” rămâne o zonă colorată: orele sunt de lucru, doar că le văd membrii. */
+.cal-block.members { position: absolute; left: 0; right: 0; overflow: hidden; background: color-mix(in srgb, var(--c) 9%, transparent); border-top: 2px dashed var(--c); }
+.cal-block.members span { position: absolute; top: 2px; right: 6px; font-size: 11px; font-weight: 700; color: var(--c); pointer-events: none; white-space: nowrap; }
 .slots button.members { border-color: var(--gold); }
-.cal-now { position: absolute; left: 0; right: 0; border-top: 2px solid var(--danger); z-index: 1; }
+/* Linia orei curente: aurie, cu bulină și ora în stânga. */
+.cal-now { position: absolute; left: 0; right: 0; border-top: 2px solid var(--gold); z-index: 3; pointer-events: none; }
+.cal-now::before { content: ''; position: absolute; left: -5px; top: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--gold); }
+.cal-now.span { left: 64px; }
 .cal-empty { cursor: copy; }
 
 .slots { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -208,14 +344,14 @@ tr.click:hover td { background: var(--card-alt); }
 .phone .cta { border-radius: 999px; padding: 12px; text-align: center; font-weight: 800; }
 
 /* Magazin */
-.pill.new { background: #3a2a0d; color: var(--gold); }
+.pill.new { background: #2c2913; color: var(--gold); }
 .pill.ready { background: #13283a; color: #7fb6e6; }
 .pill.picked_up { background: #1d2b1f; color: #8fc79a; }
 .orders { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 
 /* Programare de ziua clientului: lumânare și chenar care pulsează. */
 .cal-ev.bday { animation: bday 1.4s ease-in-out infinite; }
-@keyframes bday { 0%, 100% { box-shadow: 0 0 0 1px rgba(249, 161, 27, 0.25); } 50% { box-shadow: 0 0 0 2px var(--gold), 0 0 12px rgba(249, 161, 27, 0.6); } }
+@keyframes bday { 0%, 100% { box-shadow: 0 0 0 1px rgba(245, 197, 66, 0.25); } 50% { box-shadow: 0 0 0 2px var(--gold), 0 0 12px rgba(245, 197, 66, 0.6); } }
 @media (prefers-reduced-motion: reduce) { .cal-ev.bday { animation: none; box-shadow: 0 0 0 2px var(--gold); } }
 .bday-note { border: 1px solid var(--gold); border-radius: 10px; padding: 8px 10px; }
 
@@ -232,7 +368,7 @@ tr.click:hover td { background: var(--card-alt); }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--gold); vertical-align: -1px; }
 .dot.alt { background: #7fb6e6; }
 .pill.tag-new { background: #13283a; color: #7fb6e6; }
-.pill.tag-top { background: #3a2a0d; color: var(--gold); }
+.pill.tag-top { background: #2c2913; color: var(--gold); }
 .pill.tag-risk { background: #3a1a19; color: var(--danger); }
 .pill.tag-back { background: #1d2b1f; color: #8fc79a; }
 .reports { display: grid; grid-template-columns: 240px 1fr; gap: 18px; align-items: start; }
@@ -245,8 +381,6 @@ table.report tr.total td { font-weight: 800; border-top: 2px solid var(--border)
 @media (max-width: 900px) { .reports { grid-template-columns: 1fr; } .report-list { position: static; flex-direction: row; flex-wrap: wrap; } }
 
 /* Calendar: antet cu frizerii, filtre și panoul din dreapta */
-.cal-barber { display: flex; align-items: center; justify-content: center; gap: 8px; }
-.cal-barber img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 2px solid; }
 .avatar { width: 44px; height: 44px; border-radius: 50%; color: #fff; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .avatar.sm { width: 30px; height: 30px; font-size: 12px; }
 .chip { background: var(--card); color: var(--muted); border: 1px solid var(--border); padding: 5px 12px; font-size: 13px; }
@@ -263,9 +397,11 @@ table.report tr.total td { font-weight: 800; border-top: 2px solid var(--border)
 .drawer .card { background: var(--card-alt); }
 
 /* Clopoțelul cererilor de programare și mesajul care apare când vine una nouă. */
-.bell { position: relative; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
-.bell.on { color: var(--accent-text); border-color: var(--gold); animation: ring 2.4s ease-in-out infinite; }
-.bell-n { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 800; line-height: 20px; text-align: center; }
+.bell { position: relative; background: transparent; color: var(--text); border: 1px solid transparent; border-radius: 999px; width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.bell:hover { background: var(--hover); }
+.bell.on { animation: ring 2.4s ease-in-out infinite; }
+/* Bulina aurie a clopoțelului, cu numărul cererilor. */
+.bell-n { position: absolute; top: 1px; right: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--gold); color: #000; font-size: 10.5px; font-weight: 800; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--panel); }
 .top-icon { color: var(--muted); border: 1px solid var(--border); border-radius: 999px; width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; }
 .top-icon:hover { color: var(--text); }
 @keyframes ring { 0%, 70%, 100% { transform: rotate(0); } 75% { transform: rotate(14deg); } 80% { transform: rotate(-12deg); } 85% { transform: rotate(8deg); } 90% { transform: rotate(-5deg); } }
@@ -274,7 +410,7 @@ table.report tr.total td { font-weight: 800; border-top: 2px solid var(--border)
 .pill.requested { background: #13283a; color: #7fb6e6; }
 :root[data-theme='light'] .pill.requested { background: #e1eefa; color: #1f5f99; }
 /* Cererea în calendar: chenar punctat și hașură, ca să se vadă că nu e încă confirmată. */
-.cal-ev.requested { border: 2px dashed var(--c); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 14%, var(--card)), color-mix(in srgb, var(--c) 14%, var(--card)) 6px, var(--card) 6px, var(--card) 12px); }
+.cal-ev.requested { border: 2px dashed var(--c); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 12%, var(--ev-bg)), color-mix(in srgb, var(--c) 12%, var(--ev-bg)) 6px, var(--ev-bg) 6px, var(--ev-bg) 12px); }
 .cal-ev.requested b::before { content: '⏳ '; }
 
 /* Sugestii de clienți la programarea din calendar. */
@@ -306,14 +442,14 @@ details.translations summary {
 .toast.saved { right: auto; left: 50%; transform: translateX(-50%); text-align: center; }
 
 /* Programarea în calendar: ✕ / ✓ la trecerea cu mouse-ul, bulina stării și fereastra mică (ca în Barberly). */
-.cal-dot { position: absolute; top: 6px; right: 6px; width: 9px; height: 9px; border-radius: 50%; background: color-mix(in srgb, var(--c) 70%, #888); box-shadow: 0 0 0 2px var(--card); }
+.cal-dot { display: none; position: absolute; top: 6px; right: 6px; width: 9px; height: 9px; border-radius: 50%; background: color-mix(in srgb, var(--c) 70%, #888); box-shadow: 0 0 0 2px var(--card); }
 .cal-dot.completed { background: #30a46c; }
 .cal-dot.no_show { background: var(--danger); }
 .cal-dot.requested { background: var(--gold); }
 .cal-quick { position: absolute; top: 3px; right: 3px; display: none; gap: 4px; }
 .cal-ev:hover .cal-quick { display: flex; }
 .cal-ev:hover .cal-dot { visibility: hidden; }
-.cal-ev:hover .cal-quick ~ b { padding-right: 52px; }
+.cal-ev:hover:has(.cal-quick) .pill { visibility: hidden; }
 .cal-quick button { width: 24px; height: 24px; padding: 0; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--card); color: #fff; }
 .cal-quick button.no { background: #e5484d; }
 .cal-quick button.ok { background: #30a46c; }

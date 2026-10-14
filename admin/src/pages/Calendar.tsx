@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, blockKind, errorText, type Barber, type BlockOccurrence, type Booking, type Client, type Location, type Me, type Service, type Slot, type TimeOff } from '../api';
-import { Field, Loading, Modal, useAction, useLoad } from '../ui';
+import { Field, Loading, Modal, TopBar, useAction, useLoad } from '../ui';
 import { BOOKINGS_CHANGED } from '../Requests';
 import { addDays, date, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
 import { BookingPanel, Icon } from './BookingPanel';
@@ -13,6 +13,57 @@ export const barberColor = (b: Pick<Barber, 'color'>, i: number) => b.color || B
 const WIDE_KEY = 'taf-cal-wide';
 const WIDE_FROM = 7 * 60;
 const WIDE_TO = 22 * 60;
+const VIEW_KEY = 'taf-cal-view';
+
+// Eticheta scurtă a stării, pentru bulina din colțul programării.
+const STATUS_SHORT: Record<string, string> = { requested: 'Cerere', confirmed: 'Confirmată', completed: 'Finalizată', no_show: 'Neprezentare' };
+const durText = (min: number) => {
+  const h = Math.floor(min / 60),
+    m = Math.round(min % 60);
+  return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+};
+const countText = (n: number) => (n === 1 ? '1 programare' : `${n} programări`);
+const weekdayOf = (d: string) => new Date(d + 'T12:00:00Z').getUTCDay();
+const dayHeadF = new Intl.DateTimeFormat('ro-RO', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+const rangeF = new Intl.DateTimeFormat('ro-RO', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' });
+/** Intervalele de program, unite (pentru săptămână, peste toți frizerii afișați). */
+function merge(list: Array<{ start: number; end: number }>) {
+  const out: Array<{ start: number; end: number }> = [];
+  for (const h of [...list].sort((x, y) => x.start - y.start)) {
+    const last = out[out.length - 1];
+    if (last && h.start <= last.end) last.end = Math.max(last.end, h.end);
+    else out.push({ ...h });
+  }
+  return out;
+}
+/** Programările suprapuse stau una lângă alta: banda fiecăreia și câte benzi are grupul. */
+function lanes(list: Booking[]) {
+  const out = new Map<string, { lane: number; n: number }>();
+  let group: string[] = [];
+  let ends: number[] = [];
+  let groupEnd = 0;
+  const flush = () => {
+    for (const id of group) out.get(id)!.n = ends.length;
+    group = [];
+    ends = [];
+    groupEnd = 0;
+  };
+  for (const b of [...list].sort((x, y) => Date.parse(x.start) - Date.parse(y.start))) {
+    const s = Date.parse(b.start),
+      e = Date.parse(b.end);
+    if (group.length && s >= groupEnd) flush();
+    let i = ends.findIndex((x) => x <= s);
+    if (i < 0) {
+      i = ends.length;
+      ends.push(e);
+    } else ends[i] = e;
+    out.set(b.id, { lane: i, n: 1 });
+    group.push(b.id);
+    groupEnd = Math.max(groupEnd, e);
+  }
+  flush();
+  return out;
+}
 
 export function CalendarPage({ me }: { me: Me }) {
   const [day, setDay] = useState(today());
@@ -22,7 +73,8 @@ export function CalendarPage({ me }: { me: Me }) {
   // Fereastra mică de la trecerea cu mouse-ul peste o programare.
   const [hover, setHover] = useState<{ b: Booking; x: number; y: number } | null>(null);
   const [quickErr, setQuickErr] = useState<string | null>(null);
-  const [create, setCreate] = useState<{ barberId?: string; time?: string; outside?: boolean } | null>(null);
+  const [create, setCreate] = useState<{ barberId?: string; time?: string; outside?: boolean; day?: string } | null>(null);
+  const datePick = useRef<HTMLInputElement>(null);
   // „Toată ziua”: calendarul se întinde 07:00–22:00, cu orele din afara programului hașurate (și programabile). Ținut minte în browser.
   const [wide, setWide] = useState(() => {
     try {
@@ -39,6 +91,22 @@ export function CalendarPage({ me }: { me: Me }) {
       // fără stocare: alegerea ține doar până la reîncărcare
     }
   };
+  // Zi sau săptămână (ținut minte în browser).
+  const [view, setView] = useState<'day' | 'week'>(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === 'week' ? 'week' : 'day';
+    } catch {
+      return 'day';
+    }
+  });
+  const pickView = (v: 'day' | 'week') => {
+    setView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      // fără stocare: alegerea ține doar până la reîncărcare
+    }
+  };
 
   const meta = useLoad(() => Promise.all([api<Barber[]>('GET', '/admin/barbers'), api<Service[]>('GET', '/admin/services')]));
   // Pasul din Setări → Reguli de programare (la fel ca orele libere și calendarul din aplicație).
@@ -48,15 +116,20 @@ export function CalendarPage({ me }: { me: Me }) {
   const locs = useLoad(() => api<Location[]>('GET', '/admin/locations'));
   const [loc, setLoc] = useState('');
   const activeLocs = (locs.data ?? []).filter((l) => l.active);
-  const from = localToIso(day, '00:00');
-  const to = localToIso(addDays(day, 1), '00:00');
-  const bookings = useLoad(() => api<Booking[]>('GET', `/admin/bookings?from=${from}&to=${to}`), [day]);
-  const off = useLoad(() => api<TimeOff[]>('GET', `/admin/time-off?from=${from}`), [day]);
-  // Blocurile din program (pauză, liber, curs, doar membri) în ziua afișată.
-  const blocks = useLoad(() => api<BlockOccurrence[]>('GET', `/admin/blocks/occurrences?from=${day}&to=${day}`), [day]);
+  const week = view === 'week';
+  // Săptămâna începe lunea.
+  const days = week ? Array.from({ length: 7 }, (_, i) => addDays(day, i - ((weekdayOf(day) + 6) % 7))) : [day];
+  const first = days[0];
+  const last = days[days.length - 1];
+  const from = localToIso(first, '00:00');
+  const to = localToIso(addDays(last, 1), '00:00');
+  const bookings = useLoad(() => api<Booking[]>('GET', `/admin/bookings?from=${from}&to=${to}`), [from, to]);
+  const off = useLoad(() => api<TimeOff[]>('GET', `/admin/time-off?from=${from}`), [from]);
+  // Blocurile din program (pauză, liber, curs, doar membri) în zilele afișate.
+  const blocks = useLoad(() => api<BlockOccurrence[]>('GET', `/admin/blocks/occurrences?from=${first}&to=${last}`), [first, last]);
   const unclosed = useLoad(() => api<Booking[]>('GET', '/admin/bookings/unclosed'));
-  // Câți clienți așteaptă un loc liber în ziua afișată (Listă de așteptare).
-  const waiting = useLoad(() => api<Array<{ active: boolean }>>('GET', `/admin/waitlist?from=${day}&to=${day}`), [day]);
+  // Câți clienți așteaptă un loc liber în zilele afișate (Listă de așteptare).
+  const waiting = useLoad(() => api<Array<{ active: boolean }>>('GET', `/admin/waitlist?from=${first}&to=${last}`), [first, last]);
 
   const [barbers, services] = meta.data ?? [[], []];
   const own = me.permissions.bookings_all ? null : me.barberId;
@@ -67,13 +140,16 @@ export function CalendarPage({ me }: { me: Me }) {
     const i = barbers.findIndex((b) => b.id === id);
     return i < 0 ? BARBER_PALETTE[0] : barberColor(barbers[i], i);
   };
-  const weekday = new Date(day + 'T12:00:00Z').getUTCDay();
+  const shown = (bookings.data ?? []).filter((b) => b.status !== 'cancelled' && cols.some((c) => c.id === b.barberId));
+  // În săptămână, concediile și blocurile unui singur frizer apar doar când e afișat doar el.
+  const single = cols.length === 1 ? cols[0].id : null;
 
   // Intervalul afișat: de la cea mai devreme oră de program până la cea mai târzie (+ programări în afara lui).
   const [startMin, endMin] = useMemo(() => {
     let s = 9 * 60,
       e = 20 * 60;
-    const hrs = cols.flatMap((b) => b.hours.filter((h) => h.weekday === weekday));
+    const wds = days.map(weekdayOf);
+    const hrs = cols.flatMap((b) => b.hours.filter((h) => wds.includes(h.weekday)));
     if (hrs.length) {
       s = Math.min(...hrs.map((h) => h.start));
       e = Math.max(...hrs.map((h) => h.end));
@@ -87,10 +163,12 @@ export function CalendarPage({ me }: { me: Me }) {
       e = Math.max(e, WIDE_TO);
     }
     return [Math.floor(s / 60) * 60, Math.ceil(e / 60) * 60];
-  }, [cols, bookings.data, weekday, wide]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cols, bookings.data, first, last, wide]);
 
   const height = (endMin - startMin) * PX;
-  const nowMin = day === today() ? minutesOf(new Date().toISOString()) : -1;
+  const nowMin = days.includes(today()) ? minutesOf(new Date().toISOString()) : -1;
+  const nowIn = nowMin >= startMin && nowMin <= endMin;
   const reload = () => {
     bookings.reload();
     unclosed.reload();
@@ -103,11 +181,223 @@ export function CalendarPage({ me }: { me: Me }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** O programare din calendar: ora, clientul, serviciul și starea în colț. */
+  const card = (x: Booking, lane: { lane: number; n: number }, color: string, withBarber: boolean) => {
+    const s = minutesOf(x.start);
+    const len = (Date.parse(x.end) - Date.parse(x.start)) / 60000;
+    const started = Date.parse(x.start) < Date.now();
+    const canQuick = me.permissions.bookings_manage && x.status === 'confirmed';
+    const h = Math.max(len * PX - 2, 22);
+    return (
+      <div
+        key={x.id}
+        className={`cal-ev ${x.status}${h < 54 ? ' short' : ''}${x.clientBirthday ? ' bday' : ''}${open?.id === x.id ? ' sel' : ''}`}
+        style={{
+          top: (s - startMin) * PX + 1,
+          height: h,
+          left: `calc(5px + (100% - 10px) * ${lane.lane / lane.n})`,
+          width: `calc((100% - 10px) / ${lane.n} - ${lane.n > 1 ? 3 : 0}px)`,
+          ['--c' as string]: color,
+        }}
+        onClick={() => {
+          setHover(null);
+          setOpenCheckout(false);
+          setOpen(x);
+        }}
+        onMouseEnter={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setHover({ b: x, x: r.right, y: r.top });
+        }}
+        onMouseLeave={() => setHover(null)}
+      >
+        <span className={`cal-dot ${x.status}`} aria-hidden="true" />
+        {STATUS_SHORT[x.status] ? <span className={`pill ${x.status}`}>{STATUS_SHORT[x.status]}</span> : null}
+        {canQuick ? (
+          <span className="cal-quick">
+            <button
+              type="button"
+              className="no"
+              title="Anulează programarea"
+              aria-label="Anulează programarea"
+              onClick={async (e) => {
+                e.stopPropagation();
+                setHover(null);
+                if (!confirm(`Anulezi programarea lui ${x.clientName || 'client'} de la ${time(x.start)}? Ora se eliberează și clientul primește mesaj.`)) return;
+                try {
+                  setQuickErr(null);
+                  await api('PATCH', `/admin/bookings/${x.id}`, { status: 'cancelled' });
+                  reload();
+                } catch (err) {
+                  setQuickErr(errorText(err));
+                }
+              }}
+            >
+              <Icon name="x" size={14} />
+            </button>
+            <button
+              type="button"
+              className="ok"
+              disabled={!started}
+              title={started ? 'Programare încheiată: încasează' : 'Se poate marca încheiată după ce începe'}
+              aria-label="Programare încheiată"
+              onClick={(e) => {
+                e.stopPropagation();
+                setHover(null);
+                setOpenCheckout(true);
+                setOpen(x);
+              }}
+            >
+              <Icon name="check" size={14} />
+            </button>
+          </span>
+        ) : null}
+        <span className="cal-ev-time">
+          {time(x.start)} – {time(x.end)}
+        </span>
+        <b>
+          {x.status === 'completed' ? '✓ ' : x.status === 'no_show' ? '✗ ' : ''}
+          {x.clientBirthday ? '🕯️ ' : ''}
+          {x.clientName || x.clientPhone}
+        </b>
+        <span className="cal-ev-svc">
+          {x.status === 'requested' ? 'Cerere · ' : ''}
+          {x.serviceName}
+          {withBarber ? ` · ${x.barberName}` : ''}
+        </span>
+      </div>
+    );
+  };
+
+  /** O coloană: un frizer (zi) sau o zi (săptămână), cu liniile, zonele hașurate, pauzele și programările. */
+  const column = (key: string, d: string, barberId: string | null, hrsAll: Array<{ start: number; end: number }>, list: Booking[], withBarber: boolean) => {
+    const hrs = merge(hrsAll);
+    const dFrom = Date.parse(localToIso(d, '00:00'));
+    const dTo = Date.parse(localToIso(addDays(d, 1), '00:00'));
+    // Zonele hașurate: în afara programului. Concediile apar ca un card gri, dar contează tot ca „în afara programului”.
+    const gaps: Array<[number, number]> = [];
+    let cur = startMin;
+    for (const h of hrs) {
+      if (h.start > cur) gaps.push([cur, h.start]);
+      cur = Math.max(cur, h.end);
+    }
+    if (cur < endMin) gaps.push([cur, endMin]);
+    const offs: Array<{ s: number; e: number; label: string }> = [];
+    for (const t of off.data ?? []) {
+      if (t.barberId && t.barberId !== barberId) continue;
+      const s = Date.parse(t.start),
+        e = Date.parse(t.end);
+      if (e <= dFrom || s >= dTo) continue;
+      offs.push({ s: s <= dFrom ? startMin : Math.max(minutesOf(t.start), startMin), e: e >= dTo ? endMin : Math.min(minutesOf(t.end), endMin), label: t.reason || 'Concediu' });
+    }
+    const all: Array<[number, number]> = [...gaps, ...offs.map((o): [number, number] => [o.s, o.e])];
+    const dayBlocks = (blocks.data ?? []).filter((o) => dayOf(o.start) === d && (!o.barberId || o.barberId === barberId));
+    const lane = lanes(list);
+    const isToday = d === today();
+    return (
+      <div
+        key={key}
+        className={`cal-col cal-empty${isToday && week ? ' today' : ''}`}
+        onClick={(e) => {
+          const cl = (e.target as HTMLElement).classList;
+          if (e.target !== e.currentTarget && !cl.contains('cal-off') && !cl.contains('cal-line') && !cl.contains('cal-block') && !cl.contains('cal-pause')) return;
+          const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+          const m = Math.floor((startMin + y / PX) / step) * step;
+          // Pe zona hașurată (în afara programului sau concediu): programarea se deschide direct „la altă oră”.
+          const outside = all.some(([gs, ge]) => m >= gs && m < ge);
+          if (me.permissions.bookings_create) setCreate({ barberId: barberId ?? undefined, time: hm(m), outside, day: d });
+        }}
+        title="Click pe o zonă liberă pentru programare nouă"
+      >
+        {Array.from({ length: Math.ceil((endMin - startMin) / step) }, (_, i) => (
+          <div key={i} className={(i * step) % 60 ? 'cal-line' : 'cal-line hour'} style={{ top: i * step * PX }} />
+        ))}
+        {gaps.map(([s, e], i) => (
+          <div key={i} className="cal-off" style={{ top: (s - startMin) * PX, height: (e - s) * PX }} />
+        ))}
+        {offs.map((o, i) =>
+          o.e > o.s ? (
+            <div key={'o' + i} className="cal-pause" style={{ top: (o.s - startMin) * PX + 1, height: Math.max((o.e - o.s) * PX - 2, 20) }} title={o.label}>
+              <span className="cal-ev-time">
+                {hm(o.s)} – {hm(o.e)} <Icon name="coffee" size={14} />
+              </span>
+              <b>{o.label}</b>
+            </div>
+          ) : null,
+        )}
+        {dayBlocks.map((o) => {
+          const s = Math.max(minutesOf(o.start), startMin);
+          const e = Math.min(minutesOf(o.end) || 1440, endMin);
+          if (e <= s) return null;
+          const title = `${o.label} · ${time(o.start)}–${time(o.end)}${o.repeat ? ' · în fiecare săptămână' : ''}${o.kind === 'members' ? ' · în aplicație orele le văd doar membrii' : ''}`;
+          // „Doar membri” rămâne o zonă colorată (orele sunt de lucru); pauzele și liberele sunt carduri gri.
+          return o.kind === 'members' ? (
+            <div key={o.blockId} className="cal-block members" style={{ top: (s - startMin) * PX, height: (e - s) * PX, ['--c' as string]: blockKind(o.kind).color }} title={title}>
+              <span>{o.label}</span>
+            </div>
+          ) : (
+            <div
+              key={o.blockId}
+              className="cal-block cal-pause"
+              style={{ top: (s - startMin) * PX + 1, height: Math.max((e - s) * PX - 2, 20), ['--c' as string]: blockKind(o.kind).color }}
+              title={title}
+            >
+              <span className="cal-ev-time">
+                {hm(s)} – {hm(e)} <Icon name="coffee" size={14} />
+              </span>
+              <b>{o.kind === 'lunch' ? 'Pauză' : o.label}</b>
+            </div>
+          );
+        })}
+        {week && isToday && nowIn ? <div className="cal-now" style={{ top: (nowMin - startMin) * PX }} /> : null}
+        {list.map((x) => card(x, lane.get(x.id) ?? { lane: 0, n: 1 }, week ? colorOf(x.barberId) : 'var(--gold)', withBarber))}
+      </div>
+    );
+  };
+
+  const colW = week ? 130 : 180;
+  const grid = `64px repeat(${week ? 7 : cols.length}, minmax(0, 1fr))`;
+  const dateText = week ? rangeF.formatRange(new Date(first + 'T12:00:00Z'), new Date(last + 'T12:00:00Z')) : longDate(day + 'T12:00:00Z');
+
   return (
     <>
-      <div className="head">
-        <h1>Calendar</h1>
-      </div>
+      <TopBar>
+        <h1 className="top-title">Calendar</h1>
+        <span className="cal-nav">
+          <button className="ghost sq" onClick={() => setDay(addDays(day, week ? -7 : -1))} aria-label={week ? 'Săptămâna anterioară' : 'Ziua anterioară'}>
+            <Icon name="chevL" size={18} />
+          </button>
+          <button className="ghost" onClick={() => setDay(today())}>
+            Azi
+          </button>
+          <button className="ghost sq" onClick={() => setDay(addDays(day, week ? 7 : 1))} aria-label={week ? 'Săptămâna următoare' : 'Ziua următoare'}>
+            <Icon name="chevR" size={18} />
+          </button>
+        </span>
+        <span className="cal-date">
+          <button
+            className="link"
+            onClick={() => {
+              try {
+                datePick.current?.showPicker();
+              } catch {
+                datePick.current?.focus();
+              }
+            }}
+            title="Alege ziua"
+          >
+            {dateText.charAt(0).toUpperCase() + dateText.slice(1)}
+          </button>
+          <input ref={datePick} type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} tabIndex={-1} aria-label="Alege ziua" />
+        </span>
+        <span className="seg cal-view" role="group" aria-label="Vizualizare">
+          <button className={week ? '' : 'on'} onClick={() => pickView('day')} aria-pressed={!week}>
+            Zi
+          </button>
+          <button className={week ? 'on' : ''} onClick={() => pickView('week')} aria-pressed={week}>
+            Săptămână
+          </button>
+        </span>
+      </TopBar>
 
       {unclosed.data?.length ? (
         <div className="card" style={{ borderColor: 'var(--danger)', marginBottom: 12 }}>
@@ -127,59 +417,47 @@ export function CalendarPage({ me }: { me: Me }) {
         </div>
       ) : null}
 
-      <div className="row" style={{ marginBottom: 12 }}>
-        <button className="ghost sm" onClick={() => setDay(addDays(day, -1))} aria-label="Ziua anterioară">
-          ←
-        </button>
-        <button className="ghost sm" onClick={() => setDay(today())}>
-          Azi
-        </button>
-        <button className="ghost sm" onClick={() => setDay(addDays(day, 1))} aria-label="Ziua următoare">
-          →
-        </button>
-        <input type="date" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} style={{ width: 170 }} />
-        <strong style={{ textTransform: 'capitalize' }}>{longDate(day + 'T12:00:00Z')}</strong>
-        <button className={`ghost sm${wide ? ' on' : ''}`} onClick={toggleWide} title="Arată și orele din afara programului (hașurate), ca să poți programa peste ele">
-          {wide ? 'Doar programul' : 'Arată toată ziua'}
-        </button>
-        {activeLocs.length > 1 && !own ? (
-          <select value={loc} onChange={(e) => setLoc(e.target.value)} style={{ width: 200 }} aria-label="Locația">
-            <option value="">Toate locațiile</option>
-            {activeLocs.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
+      <div className="cal-tools">
+        {activeBarbers.length > 1 ? (
+          <span className="row" style={{ gap: 6 }}>
+            {activeBarbers.map((b) => {
+              const on = !hidden.includes(b.id);
+              return (
+                <button
+                  key={b.id}
+                  className={`chip${on ? ' on' : ''}`}
+                  style={{ ['--c' as string]: colorOf(b.id) }}
+                  onClick={() => setHidden(on ? [...hidden, b.id] : hidden.filter((h) => h !== b.id))}
+                  aria-pressed={on}
+                >
+                  <span className="dot" style={{ background: colorOf(b.id) }} /> {b.name}
+                </button>
+              );
+            })}
+          </span>
         ) : null}
-        <span className="muted small">
-          {(bookings.data ?? []).filter((b) => b.status !== 'cancelled' && (!loc || activeBarbers.some((x) => x.id === b.barberId))).length} programări
-        </span>
+        <span className="muted small">{countText(shown.length)}</span>
         {waiting.data?.some((w) => w.active) ? (
           <a className="small" href="#/waitlist">
             {waiting.data.filter((w) => w.active).length} pe lista de așteptare
           </a>
         ) : null}
+        <span className="row" style={{ gap: 8, marginLeft: 'auto' }}>
+          {activeLocs.length > 1 && !own ? (
+            <select value={loc} onChange={(e) => setLoc(e.target.value)} aria-label="Locația">
+              <option value="">Toate locațiile</option>
+              {activeLocs.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <button className={`ghost sm${wide ? ' on' : ''}`} onClick={toggleWide} title="Arată și orele din afara programului (hașurate), ca să poți programa peste ele">
+            {wide ? 'Doar programul' : 'Arată toată ziua'}
+          </button>
+        </span>
       </div>
-
-      {activeBarbers.length > 1 ? (
-        <div className="row" style={{ gap: 6, marginBottom: 12 }}>
-          {activeBarbers.map((b) => {
-            const on = !hidden.includes(b.id);
-            return (
-              <button
-                key={b.id}
-                className={`chip${on ? ' on' : ''}`}
-                style={{ ['--c' as string]: colorOf(b.id) }}
-                onClick={() => setHidden(on ? [...hidden, b.id] : hidden.filter((h) => h !== b.id))}
-                aria-pressed={on}
-              >
-                <span className="dot" style={{ background: colorOf(b.id) }} /> {b.name}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
 
       {blocks.data?.length ? (
         <div className="row small muted" style={{ gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -197,159 +475,81 @@ export function CalendarPage({ me }: { me: Me }) {
       ) : !cols.length ? (
         <p className="muted">{activeBarbers.length ? 'Alege cel puțin un frizer de mai sus.' : 'Nu există frizeri activi. Adaugă unul în Afaceri → Frizeri.'}</p>
       ) : (
-        <div className="table-wrap">
-          <div className="cal" style={{ minWidth: 60 + cols.length * 160 }}>
-            <div className="cal-head" style={{ gridTemplateColumns: `60px repeat(${cols.length}, 1fr)` }}>
+        <div className="table-wrap cal-wrap">
+          <div className={`cal${week ? ' week' : ''}`} style={{ minWidth: 64 + (week ? 7 : cols.length) * colW }}>
+            <div className="cal-head" style={{ gridTemplateColumns: grid }}>
               <div />
-              {cols.map((b) => (
-                <div key={b.id} className="cal-barber">
-                  {b.photoUrl ? <img src={b.photoUrl} alt="" style={{ borderColor: colorOf(b.id) }} /> : <span className="avatar sm" style={{ background: colorOf(b.id) }}>{b.initials}</span>}
-                  <span>{b.name}</span>
-                  <span className="muted small">{(bookings.data ?? []).filter((x) => x.barberId === b.id && x.status !== 'cancelled').length}</span>
-                </div>
-              ))}
+              {week
+                ? days.map((d) => {
+                    const list = shown.filter((x) => dayOf(x.start) === d);
+                    const mins = list.reduce((a, x) => a + (Date.parse(x.end) - Date.parse(x.start)) / 60000, 0);
+                    return (
+                      <button key={d} className={`cal-dayhead${d === today() ? ' today' : ''}`} onClick={() => (setDay(d), pickView('day'))} title="Deschide ziua">
+                        <b>{dayHeadF.format(new Date(d + 'T12:00:00Z'))}</b>
+                        <span className="muted small">{list.length ? `${countText(list.length)} · ${durText(mins)}` : 'nicio programare'}</span>
+                      </button>
+                    );
+                  })
+                : cols.map((b) => {
+                    const list = shown.filter((x) => x.barberId === b.id);
+                    const mins = list.reduce((a, x) => a + (Date.parse(x.end) - Date.parse(x.start)) / 60000, 0);
+                    return (
+                      <div key={b.id} className="cal-barber">
+                        {b.photoUrl ? (
+                          <img className="cal-av" src={b.photoUrl} alt="" style={{ borderColor: colorOf(b.id) }} />
+                        ) : (
+                          <span className="cal-av" style={{ borderColor: colorOf(b.id) }}>
+                            {(b.name || b.initials).trim().charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                        <span className="cal-barber-txt">
+                          <b>{b.name}</b>
+                          <span className="muted small">{list.length ? `${countText(list.length)} · ${durText(mins)}` : 'nicio programare'}</span>
+                        </span>
+                      </div>
+                    );
+                  })}
             </div>
-            <div className="cal-body" style={{ gridTemplateColumns: `60px repeat(${cols.length}, 1fr)`, height }}>
+            <div className="cal-body" style={{ gridTemplateColumns: grid, height }}>
               <div className="cal-times">
                 {/* Ora pe fiecare linie a pasului (ca în aplicație); orele fixe mai vizibile. */}
-                {Array.from({ length: Math.floor((endMin - startMin) / step) + 1 }, (_, i) => (
-                  <span key={i} className={(i * step) % 60 ? '' : 'hour'} style={{ top: i * step * PX }}>
-                    {hm(startMin + i * step)}
+                {/* Ora de lângă linia de acum nu se mai scrie, ca să nu se suprapună. */}
+                {Array.from({ length: Math.floor((endMin - startMin) / step) + 1 }, (_, i) =>
+                  i > 0 && nowIn && Math.abs(startMin + i * step - nowMin) < 8 ? null : (
+                    <span key={i} className={(i * step) % 60 ? '' : 'hour'} style={{ top: i * step * PX }}>
+                      {hm(startMin + i * step)}
+                    </span>
+                  ),
+                )}
+                {nowIn ? (
+                  <span className="cal-now-label" style={{ top: (nowMin - startMin) * PX }}>
+                    {hm(nowMin)}
                   </span>
-                ))}
+                ) : null}
               </div>
-              {cols.map((b) => {
-                const hrs = b.hours.filter((h) => h.weekday === weekday).sort((x, y) => x.start - y.start);
-                // Zonele hașurate: în afara programului și concediile.
-                const gaps: Array<[number, number]> = [];
-                let cur = startMin;
-                for (const h of hrs) {
-                  if (h.start > cur) gaps.push([cur, h.start]);
-                  cur = Math.max(cur, h.end);
-                }
-                if (cur < endMin) gaps.push([cur, endMin]);
-                for (const t of off.data ?? []) {
-                  if (t.barberId && t.barberId !== b.id) continue;
-                  const s = Date.parse(t.start),
-                    e = Date.parse(t.end);
-                  if (e <= Date.parse(from) || s >= Date.parse(to)) continue;
-                  gaps.push([s <= Date.parse(from) ? startMin : minutesOf(t.start), e >= Date.parse(to) ? endMin : minutesOf(t.end)]);
-                }
-                return (
-                  <div
-                    key={b.id}
-                    className="cal-col cal-empty"
-                    onClick={(e) => {
-                      const cl = (e.target as HTMLElement).classList;
-                      if (e.target !== e.currentTarget && !cl.contains('cal-off') && !cl.contains('cal-line') && !cl.contains('cal-block')) return;
-                      const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
-                      const m = Math.floor((startMin + y / PX) / step) * step;
-                      // Pe zona hașurată (în afara programului sau concediu): programarea se deschide direct „la altă oră”.
-                      const outside = gaps.some(([gs, ge]) => m >= gs && m < ge);
-                      if (me.permissions.bookings_create) setCreate({ barberId: b.id, time: hm(m), outside });
-                    }}
-                    title="Click pe o zonă liberă pentru programare nouă"
-                  >
-                    {Array.from({ length: Math.ceil((endMin - startMin) / step) }, (_, i) => (
-                      <div key={i} className={(i * step) % 60 ? 'cal-line' : 'cal-line hour'} style={{ top: i * step * PX }} />
-                    ))}
-                    {gaps.map(([s, e], i) => (
-                      <div key={i} className="cal-off" style={{ top: (s - startMin) * PX, height: (e - s) * PX }} />
-                    ))}
-                    {(blocks.data ?? [])
-                      .filter((o) => !o.barberId || o.barberId === b.id)
-                      .map((o) => {
-                        const s = Math.max(minutesOf(o.start), startMin);
-                        const e = Math.min(minutesOf(o.end) || 1440, endMin);
-                        if (e <= s) return null;
-                        return (
-                          <div
-                            key={o.blockId}
-                            className={`cal-block ${o.kind}`}
-                            style={{ top: (s - startMin) * PX, height: (e - s) * PX, ['--c' as string]: blockKind(o.kind).color }}
-                            title={`${o.label} · ${time(o.start)}–${time(o.end)}${o.repeat ? ' · în fiecare săptămână' : ''}${o.kind === 'members' ? ' · în aplicație orele le văd doar membrii' : ''}`}
-                          >
-                            <span>{o.label}</span>
-                          </div>
-                        );
-                      })}
-                    {nowMin >= startMin && nowMin <= endMin ? <div className="cal-now" style={{ top: (nowMin - startMin) * PX }} /> : null}
-                    {(bookings.data ?? [])
-                      .filter((x) => x.barberId === b.id && x.status !== 'cancelled')
-                      .map((x) => {
-                        const s = minutesOf(x.start);
-                        const len = (Date.parse(x.end) - Date.parse(x.start)) / 60000;
-                        const started = Date.parse(x.start) < Date.now();
-                        const canQuick = me.permissions.bookings_manage && x.status === 'confirmed';
-                        return (
-                          <div
-                            key={x.id}
-                            className={`cal-ev ${x.status}${x.clientBirthday ? ' bday' : ''}${open?.id === x.id ? ' sel' : ''}`}
-                            style={{ top: (s - startMin) * PX + 1, height: Math.max(len * PX - 2, 22), ['--c' as string]: colorOf(b.id) }}
-                            onClick={() => {
-                              setHover(null);
-                              setOpenCheckout(false);
-                              setOpen(x);
-                            }}
-                            onMouseEnter={(e) => {
-                              const r = e.currentTarget.getBoundingClientRect();
-                              setHover({ b: x, x: r.right, y: r.top });
-                            }}
-                            onMouseLeave={() => setHover(null)}
-                          >
-                            <span className={`cal-dot ${x.status}`} aria-hidden="true" />
-                            {canQuick ? (
-                              <span className="cal-quick">
-                                <button
-                                  type="button"
-                                  className="no"
-                                  title="Anulează programarea"
-                                  aria-label="Anulează programarea"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    setHover(null);
-                                    if (!confirm(`Anulezi programarea lui ${x.clientName || 'client'} de la ${time(x.start)}? Ora se eliberează și clientul primește mesaj.`)) return;
-                                    try {
-                                      setQuickErr(null);
-                                      await api('PATCH', `/admin/bookings/${x.id}`, { status: 'cancelled' });
-                                      reload();
-                                    } catch (err) {
-                                      setQuickErr(errorText(err));
-                                    }
-                                  }}
-                                >
-                                  <Icon name="x" size={14} />
-                                </button>
-                                <button
-                                  type="button"
-                                  className="ok"
-                                  disabled={!started}
-                                  title={started ? 'Programare încheiată: încasează' : 'Se poate marca încheiată după ce începe'}
-                                  aria-label="Programare încheiată"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setHover(null);
-                                    setOpenCheckout(true);
-                                    setOpen(x);
-                                  }}
-                                >
-                                  <Icon name="check" size={14} />
-                                </button>
-                              </span>
-                            ) : null}
-                            <b>
-                              {time(x.start)}–{time(x.end)} {x.status === 'completed' ? '✓ ' : x.status === 'no_show' ? '✗ ' : ''}
-                              {x.clientBirthday ? '🕯️ ' : ''}
-                              {x.clientName || x.clientPhone}
-                            </b>
-                            {x.status === 'requested' ? 'Cerere · ' : ''}
-                            {x.serviceName}
-                          </div>
-                        );
-                      })}
-                  </div>
-                );
-              })}
+              {week
+                ? days.map((d) => {
+                    const wd = weekdayOf(d);
+                    return column(
+                      d,
+                      d,
+                      single,
+                      cols.flatMap((b) => b.hours.filter((h) => h.weekday === wd)),
+                      shown.filter((x) => dayOf(x.start) === d),
+                      cols.length > 1,
+                    );
+                  })
+                : cols.map((b) =>
+                    column(
+                      b.id,
+                      day,
+                      b.id,
+                      b.hours.filter((h) => h.weekday === weekdayOf(day)),
+                      shown.filter((x) => x.barberId === b.id),
+                      false,
+                    ),
+                  )}
+              {!week && nowIn ? <div className="cal-now span" style={{ top: (nowMin - startMin) * PX }} /> : null}
             </div>
           </div>
         </div>
@@ -357,11 +557,12 @@ export function CalendarPage({ me }: { me: Me }) {
 
       {(bookings.data ?? []).some((b) => b.status === 'cancelled') ? (
         <details style={{ marginTop: 14 }}>
-          <summary className="muted">Anulate în această zi</summary>
+          <summary className="muted">{week ? 'Anulate în această săptămână' : 'Anulate în această zi'}</summary>
           {(bookings.data ?? [])
             .filter((b) => b.status === 'cancelled')
             .map((b) => (
               <div key={b.id} className="small muted" style={{ padding: '4px 0' }}>
+                {week ? `${date(b.start)} ` : ''}
                 {time(b.start)} · {b.clientName || b.clientPhone} · {b.serviceName} · {b.barberName}
                 {b.requestOutcome === 'refused' ? ` · cerere refuzată${b.refuseReason ? `: ${b.refuseReason}` : ''}` : b.requestOutcome === 'expired' ? ' · cerere expirată (fără răspuns)' : ''}
               </div>
@@ -424,12 +625,12 @@ export function CalendarPage({ me }: { me: Me }) {
           me={me}
           barbers={cols}
           services={services.filter((s) => s.active)}
-          day={day}
+          day={create.day ?? day}
           initial={create}
           onClose={() => setCreate(null)}
           onDone={(d) => {
             setCreate(null);
-            if (d !== day) setDay(d);
+            if (!days.includes(d)) setDay(d);
             else reload();
           }}
         />
