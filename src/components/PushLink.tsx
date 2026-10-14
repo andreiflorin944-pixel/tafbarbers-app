@@ -1,7 +1,9 @@
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { useEffect } from 'react';
-import { Linking, Platform } from 'react-native';
+import { Alert, Linking, Platform } from 'react-native';
+import { useT } from '@/i18n';
+import { shouldOfferNearby, startNearby } from '@/lib/nearby';
 import { pushTarget, registerPush } from '@/lib/push';
 import { useApp } from '@/state/AppState';
 
@@ -10,10 +12,27 @@ import { useApp } from '@/state/AppState';
  * deschide ecranul potrivit: programările, plata, abonamentele, comenzile sau programarea.
  */
 export function PushLink() {
-  const { token } = useApp();
+  const { token, user } = useApp();
+  const { t } = useT();
+  const wantsOffers = !!user?.marketing?.push;
   useEffect(() => {
-    if (token) registerPush(token);
-  }, [token]);
+    if (!token) return;
+    // Întâi voia pentru notificări, apoi (o singură dată) întrebarea „Anunță-mă când sunt lângă salon”, cu explicația
+    // cerută de Google înainte de locația în fundal. Telefonul cere apoi voie la locație.
+    let live = true;
+    registerPush(token)
+      .then(() => shouldOfferNearby(wantsOffers))
+      .then((ask) => {
+        if (!ask || !live) return;
+        Alert.alert(t('nearby.offerTitle'), t('account.nearbyDisclosure'), [
+          { text: t('nearby.notNow'), style: 'cancel' },
+          { text: t('nearby.yes'), onPress: () => void startNearby().catch(() => undefined) },
+        ]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [token, wantsOffers]);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;

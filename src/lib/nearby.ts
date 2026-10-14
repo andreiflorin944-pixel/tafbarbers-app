@@ -10,6 +10,7 @@ import { SESSION_KEY, storage } from '@/lib/storage';
 
 const TASK = 'taf-nearby';
 const FLAG = 'taf.nearby';
+const ASKED = 'taf.nearby.asked';
 
 if (Platform.OS !== 'web') {
   TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Location.LocationRegion }>(TASK, async ({ data, error }) => {
@@ -62,6 +63,21 @@ export async function startNearby(): Promise<'ok' | 'denied' | 'off'> {
   if (!(await watch())) return 'off';
   await storage.set(FLAG, '1');
   return 'ok';
+}
+
+/**
+ * Întrebarea de după instalare: o singură dată pe telefon, doar dacă salonul a pornit opțiunea, clientul a acceptat
+ * ofertele pe telefon și n-a pornit-o deja. Marchează întrebarea ca pusă, ca să nu mai apară.
+ */
+export async function shouldOfferNearby(marketingPush: boolean): Promise<boolean> {
+  try {
+    if (!nearbySupported || !marketingPush || (await storage.get(ASKED)) === '1' || (await nearbyOn())) return false;
+    if (!(await nearbyAvailable())) return false;
+    await storage.set(ASKED, '1');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function stopNearby(): Promise<void> {
