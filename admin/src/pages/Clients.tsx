@@ -696,6 +696,7 @@ function ClientModal({ id, canDelete, canConsents, onClose, onChange }: { id: st
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const { busy, error, run } = useAction();
+  const [clubSaved, setClubSaved] = useState(false);
 
   useEffect(() => {
     if (c.data) {
@@ -745,6 +746,7 @@ function ClientModal({ id, canDelete, canConsents, onClose, onChange }: { id: st
                     const on = e.target.checked;
                     run(async () => {
                       await api('PATCH', `/admin/clients/${id}`, { clubMember: on });
+                      setClubSaved(true);
                       c.reload();
                     });
                   }}
@@ -752,6 +754,7 @@ function ClientModal({ id, canDelete, canConsents, onClose, onChange }: { id: st
                 Membru TAF Club și fără abonament (pus de mână)
               </label>
             ) : null}
+            {canDelete ? <span className={clubSaved ? 'success small' : 'muted small'}>{clubSaved ? 'Salvat.' : 'Se salvează singur, fără buton.'}</span> : null}
           </div>
           <ClientSubscriptions clientId={id} subs={c.data.subscriptions ?? []} owner={canDelete} onChange={c.reload} />
           <h2 style={{ margin: '6px 0 0' }}>TAF Identity (de la client)</h2>
