@@ -127,7 +127,6 @@ export function CalendarPage({ me }: { me: Me }) {
   const off = useLoad(() => api<TimeOff[]>('GET', `/admin/time-off?from=${from}`), [from]);
   // Blocurile din program (pauză, liber, curs, doar membri) în zilele afișate.
   const blocks = useLoad(() => api<BlockOccurrence[]>('GET', `/admin/blocks/occurrences?from=${first}&to=${last}`), [first, last]);
-  const unclosed = useLoad(() => api<Booking[]>('GET', '/admin/bookings/unclosed'));
   // Câți clienți așteaptă un loc liber în zilele afișate (Listă de așteptare).
   const waiting = useLoad(() => api<Array<{ active: boolean }>>('GET', `/admin/waitlist?from=${first}&to=${last}`), [first, last]);
 
@@ -171,7 +170,6 @@ export function CalendarPage({ me }: { me: Me }) {
   const nowIn = nowMin >= startMin && nowMin <= endMin;
   const reload = () => {
     bookings.reload();
-    unclosed.reload();
   };
   // Clopoțelul anunță cererile noi și răspunsurile date din listă: calendarul se reîncarcă singur.
   useEffect(() => {
@@ -398,24 +396,6 @@ export function CalendarPage({ me }: { me: Me }) {
           </button>
         </span>
       </TopBar>
-
-      {unclosed.data?.length ? (
-        <div className="card" style={{ borderColor: 'var(--danger)', marginBottom: 12 }}>
-          <b className="err" style={{ display: 'block' }}>
-            {unclosed.data.length === 1 ? 'O programare trecută nu e închisă' : `${unclosed.data.length} programări trecute nu sunt închise`}
-          </b>
-          <div className="muted small" style={{ marginBottom: 6 }}>
-            Fiecare tuns se închide: încheiată (cu plata), nu a venit sau anulată. Apasă pe una ca s-o închizi.
-          </div>
-          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-            {unclosed.data.slice(0, 12).map((b) => (
-              <button key={b.id} className="ghost sm" onClick={() => setOpen(b)}>
-                {date(b.start)} {time(b.start)} · {b.clientName || 'Client'} · {b.barberName}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
 
       <div className="cal-tools">
         {activeBarbers.length > 1 ? (
