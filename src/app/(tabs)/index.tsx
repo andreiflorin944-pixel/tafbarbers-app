@@ -228,7 +228,8 @@ export default function Home() {
               ),
             )}
           </Pressable>
-          <Pressable onPress={() => router.push('/identity')} style={({ pressed }) => [s.row, { marginTop: space.xs, alignSelf: 'flex-start', paddingVertical: 4 }, pressed && { opacity: 0.7 }]} accessibilityRole="link">
+          {/* „Pregătește-ți tunsoarea”: la consilierul AI (selfie sau poză din galerie → recomandarea), când e pornit. */}
+          <Pressable onPress={() => router.push(business?.advisor ? '/advisor' : '/identity')} style={({ pressed }) => [s.row, { marginTop: space.xs, alignSelf: 'flex-start', paddingVertical: 4 }, pressed && { opacity: 0.7 }]} accessibilityRole="link">
             <Text style={s.accentLink}>{t('home.identityCta')}</Text>
             <Ionicons name="arrow-forward" size={18} color={colors.gold} />
           </Pressable>
