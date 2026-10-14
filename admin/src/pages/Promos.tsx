@@ -2,7 +2,24 @@ import { useState } from 'react';
 import { api, type Me, type Product, type Promo, type Service } from '../api';
 import { Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 
-const ICONS: Record<string, string> = { pricetag: 'Etichetă (ofertă)', flame: 'Flacără (popular)', 'bag-handle': 'Sacoșă (produs)', school: 'Academie' };
+const ICONS: Record<string, string> = {
+  pricetag: 'Etichetă (ofertă, reducere)',
+  flame: 'Flacără (cel mai cerut)',
+  cut: 'Foarfecă (serviciu)',
+  sparkles: 'Scântei (nou)',
+  star: 'Stea (recomandat)',
+  diamond: 'Diamant (abonament, TAF Club)',
+  gift: 'Cadou (card cadou)',
+  'bag-handle': 'Sacoșă (produs)',
+  water: 'Picătură (ulei, ceară, îngrijire)',
+  hourglass: 'Clepsidră (doar azi, ofertă limitată)',
+  trophy: 'Trofeu (concurs, premiu)',
+  people: 'Prieteni (recomandă un prieten)',
+  ribbon: 'Panglică (fidelitate, bonus)',
+  flash: 'Fulger (rapid, last minute)',
+  heart: 'Inimă (preferatul clienților)',
+  school: 'Academie (devino barber)',
+};
 type Texts = { kicker: string; title: string; text: string; cta: string };
 
 export function PromosPage(_: { me: Me }) {

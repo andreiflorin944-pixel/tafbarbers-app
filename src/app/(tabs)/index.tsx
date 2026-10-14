@@ -352,7 +352,10 @@ function PromoPager({ promos, products, onPress }: { promos: Promo[]; products: 
                 <Image source={{ uri: image }} style={s.pickImg} resizeMode="cover" accessibilityLabel={product?.name ?? p.title} />
               ) : (
                 <View style={[s.pickImg, s.photoEmpty, { borderWidth: 0 }]}>
-                  <Ionicons name={`${p.icon}-outline` as IconName} size={40} color={colors.goldDark} />
+                  {/* Fără poză: iconița ca o insignă, cu linie aurie într-un cerc închis cu inel auriu. */}
+                  <View style={s.pickBadge}>
+                    <Ionicons name={`${p.icon}-outline` as IconName} size={34} color={colors.gold} />
+                  </View>
                 </View>
               )}
               <View style={s.pickBody}>
@@ -429,6 +432,7 @@ const s = StyleSheet.create({
   section: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: space.md },
   pick: { flexDirection: 'row', padding: 0, overflow: 'hidden' },
   pickImg: { width: '40%', minHeight: 156, backgroundColor: colors.cardAlt },
+  pickBadge: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgSolid, borderWidth: 1.5, borderColor: colors.gold },
   pickBody: { flex: 1, padding: space.md, gap: 4, justifyContent: 'center' },
   pickKicker: { letterSpacing: 0.8, fontSize: 11 },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: space.sm },

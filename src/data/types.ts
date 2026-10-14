@@ -193,7 +193,7 @@ export type Promo = {
   title: string;
   text: string;
   cta: string;
-  icon: 'pricetag' | 'flame' | 'school' | 'bag-handle';
+  icon: 'pricetag' | 'flame' | 'school' | 'bag-handle' | 'cut' | 'sparkles' | 'star' | 'diamond' | 'gift' | 'water' | 'hourglass' | 'trophy' | 'people' | 'ribbon' | 'flash' | 'heart';
   imageUrl?: string | null; // poză de fundal a bannerului
   color?: string | null; // culoarea bannerului; null = alternativ culoarea principală / închis
   // ce face butonul

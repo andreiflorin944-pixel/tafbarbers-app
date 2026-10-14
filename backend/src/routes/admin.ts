@@ -78,6 +78,9 @@ import { adminWaitlist, checkWaitlist, removeWaitlist } from '../waitlist';
 import { blockOccurrences, createBlock, deleteBlock, listBlocks, type BlockInput } from '../blocks';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 
+/** Iconițele pe care le poate avea un banner (nume din Ionicons; aplicația folosește varianta cu contur). */
+const PROMO_ICONS: string[] = ['pricetag', 'flame', 'school', 'bag-handle', 'cut', 'sparkles', 'star', 'diamond', 'gift', 'water', 'hourglass', 'trophy', 'people', 'ribbon', 'flash', 'heart'];
+
 export const adminRoutes = new Hono<AppEnv>();
 
 // --- Autentificare ---
@@ -2147,7 +2150,7 @@ function promoValues(b: PromoInput, create: boolean) {
     if (b.color && !/^#[0-9a-fA-F]{6}$/.test(b.color)) throw new HttpError(400, 'invalid_color');
     v.color = b.color ? b.color.toUpperCase() : null;
   }
-  if (b.icon !== undefined) v.icon = ['pricetag', 'flame', 'school', 'bag-handle'].includes(b.icon) ? b.icon : 'pricetag';
+  if (b.icon !== undefined) v.icon = PROMO_ICONS.includes(b.icon) ? b.icon : 'pricetag';
   if (b.action !== undefined || create) {
     const a = b.action ?? { type: 'book' };
     if (!['service', 'url', 'shop', 'book'].includes(a.type)) throw new HttpError(400, 'invalid_action');
