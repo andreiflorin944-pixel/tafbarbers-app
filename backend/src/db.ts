@@ -295,6 +295,7 @@ export type PromoRow = {
   active: number;
   image_url?: string | null;
   color?: string | null;
+  discount_percent?: number | null;
 };
 /** Cu `lang`, textele se înlocuiesc cu traducerea (unde există). */
 export const promo = (r: PromoRow, lang?: string) => {
@@ -319,6 +320,7 @@ export const promo = (r: PromoRow, lang?: string) => {
     imageUrl: r.image_url ?? null,
     color: r.color ?? null,
     action,
+    discountPercent: r.action_type === 'service' && r.discount_percent ? r.discount_percent : null,
     ...(lang === undefined && {
       translations: JSON.parse(r.translations || '{}'),
       startsAt: r.starts_at,

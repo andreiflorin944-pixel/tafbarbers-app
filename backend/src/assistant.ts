@@ -6,6 +6,7 @@ import { HttpError, type AppEnv, type Env } from './env';
 import { onlinePaymentsOn } from './payments';
 import { addDays, iso, localDay, weekdayOf } from './time';
 import { aiOf } from './translate';
+import { discounted, serviceOffers } from './offers';
 import { localizeText } from './contentI18n';
 
 // Asistentul din aplicație: clientul scrie sau vorbește („Când are Florin loc vineri?”), asistentul răspunde despre
@@ -56,7 +57,7 @@ type Ctx = {
 };
 
 async function loadCtx(env: Env, access: Access = 'public'): Promise<Ctx> {
-  const [s, b, o, l] = await Promise.all([
+  const [s, b, o, l, offers] = await Promise.all([
     // Serviciile „doar membri” le vede (și le propune) asistentul doar pentru membrii TAF Club.
     env.DB.prepare(`SELECT id, name, duration_min, price_bani, description FROM services WHERE active = 1${access === 'public' ? ' AND members_only = 0' : ''} ORDER BY sort, name`).all<Ctx['services'][number]>(),
     // Frizerii dintr-o locație dezactivată nu mai primesc programări, deci asistentul nu-i mai propune.
@@ -66,8 +67,16 @@ async function loadCtx(env: Env, access: Access = 'public'): Promise<Ctx> {
     ).all<Ctx['barbers'][number]>(),
     env.DB.prepare('SELECT barber_id, service_id, price_bani, duration_min FROM barber_services').all<Ctx['own'][number]>(),
     env.DB.prepare('SELECT id, name, address FROM locations WHERE active = 1 ORDER BY sort, name').all<Ctx['locations'][number]>(),
+    serviceOffers(env),
   ]);
-  return { services: s.results, barbers: b.results, own: o.results, locations: l.results };
+  // Prețurile cu reducerea din bannerul activ, ca asistentul să spună (și să propună) prețul real al programării.
+  const off = (id: string, bani: number | null) => (bani !== null && offers.has(id) ? discounted(bani, offers.get(id)!.percent) : bani);
+  return {
+    services: s.results.map((x) => ({ ...x, price_bani: off(x.id, x.price_bani)! })),
+    barbers: b.results,
+    own: o.results.map((x) => ({ ...x, price_bani: off(x.service_id, x.price_bani) })),
+    locations: l.results,
+  };
 }
 
 const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;

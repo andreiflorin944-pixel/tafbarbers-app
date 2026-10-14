@@ -10,6 +10,8 @@ export type Service = {
   imageUrl?: string | null;
   /** Îl văd doar membrii TAF Club (serverul îl trimite doar lor). */
   membersOnly?: boolean;
+  /** Reducerea din bannerul activ (ex. -15%); prețurile din aplicație o includ deja. */
+  offer?: { percent: number; until: string | null };
 };
 
 export type Barber = {

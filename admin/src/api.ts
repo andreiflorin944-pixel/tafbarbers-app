@@ -466,6 +466,8 @@ export type Promo = {
   endsAt: string | null;
   sort: number;
   active: boolean;
+  /** Reducerea la serviciul din banner, cât e afișat; null = doar anunț. */
+  discountPercent?: number | null;
 };
 export type Business = {
   translations?: Translations;

@@ -6,6 +6,7 @@ import { createSession, deleteSession, hashPassword, normalizePhone, optionalSes
 import { clearFailures, DUMMY_HASH, findAccounts, lockedAny, loginKeys, parseIdentifier, recordFailure, validClientPassword } from '../clientPassword';
 import { checkCode, issueCode, useCode } from '../otp';
 import { getPlans } from '../subscriptions';
+import { serviceOffers } from '../offers';
 import { barber, BARBER_SERVICE_COLS, emailTaken, getBusiness, promo, service, type BarberRow, type PromoRow, type ServiceRow } from '../db';
 import { HttpError, type AppEnv } from '../env';
 import { addDays, iso, isDay, localDay } from '../time';
@@ -109,8 +110,13 @@ publicRoutes.get('/products', async (c) => {
 publicRoutes.get('/services', async (c) => {
   const who = await optionalSession(c);
   const all = who?.kind === 'admin' || (await accessFor(c.env, who?.kind === 'client' ? who.id : null)) === 'member';
-  const r = await c.env.DB.prepare(`SELECT * FROM services WHERE active = 1${all ? '' : ' AND members_only = 0'} ORDER BY sort, name`).all<ServiceRow>();
-  return c.json(await localize(c.env, c.req.query('lang'), r.results.map(service), ['name', 'description']));
+  const [r, offers] = await Promise.all([
+    c.env.DB.prepare(`SELECT * FROM services WHERE active = 1${all ? '' : ' AND members_only = 0'} ORDER BY sort, name`).all<ServiceRow>(),
+    serviceOffers(c.env),
+  ]);
+  // `offer`: reducerea din bannerul activ; aplicația arată prețul redus, iar serverul îl pune la programare.
+  const list = r.results.map((x) => ({ ...service(x), ...(offers.has(x.id) && { offer: offers.get(x.id) }) }));
+  return c.json(await localize(c.env, c.req.query('lang'), list, ['name', 'description']));
 });
 
 /**

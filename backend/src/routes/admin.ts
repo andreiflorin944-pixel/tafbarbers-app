@@ -2132,6 +2132,7 @@ type PromoInput = {
   endsAt?: string | null;
   sort?: number;
   active?: boolean;
+  discountPercent?: number | null;
 };
 function promoValues(b: PromoInput, create: boolean) {
   const v: Record<string, unknown> = {};
@@ -2157,6 +2158,13 @@ function promoValues(b: PromoInput, create: boolean) {
     v.action_type = a.type;
     v.action_value = a.type === 'service' ? a.serviceId : a.type === 'url' ? a.url : a.type === 'shop' ? a.productId || null : null;
   }
+  if (b.discountPercent !== undefined) {
+    const n = b.discountPercent === null || (b.discountPercent as unknown) === '' ? 0 : Math.round(Number(b.discountPercent));
+    if (!(n >= 0 && n <= 90)) throw new HttpError(400, 'invalid_discount');
+    v.discount_percent = n || null;
+  }
+  // Reducerea are sens doar la un banner cu serviciu.
+  if (v.action_type !== undefined && v.action_type !== 'service') v.discount_percent = null;
   if (b.translations !== undefined) v.translations = JSON.stringify(b.translations ?? {});
   if (b.startsAt !== undefined) v.starts_at = b.startsAt;
   if (b.endsAt !== undefined) v.ends_at = b.endsAt;

@@ -101,6 +101,7 @@ function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Pro
   const [startsAt, setStartsAt] = useState(p.startsAt?.slice(0, 10) ?? '');
   const [endsAt, setEndsAt] = useState(p.endsAt?.slice(0, 10) ?? '');
   const [active, setActive] = useState(p.active !== false);
+  const [discount, setDiscount] = useState<number | ''>(p.discountPercent ?? '');
   const [sort, setSort] = useState(p.sort ?? 0);
   const { busy, error, run } = useAction();
 
@@ -128,6 +129,7 @@ function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Pro
         endsAt: endsAt ? new Date(endsAt + 'T23:59:59').toISOString() : null,
         active,
         sort,
+        discountPercent: actionType === 'service' && discount ? discount : null,
       };
       if (p.id) await api('PATCH', `/admin/promos/${p.id}`, body);
       else await api('POST', '/admin/promos', body);
@@ -196,15 +198,32 @@ function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Pro
           </Field>
         </div>
         {actionType === 'service' ? (
-          <Field label="Serviciul">
-            <select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <>
+            <Field label="Serviciul">
+              <select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Reducere la acest serviciu (%), opțional">
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="ex. 15"
+                style={{ maxWidth: 120 }}
+              />
+              <div className="muted small">
+                Cât e afișat bannerul (vezi „Afișat din” / „Până în”), serviciul apare în aplicație cu prețul redus și programările se fac la prețul
+                redus. Gol = bannerul e doar anunț, prețul rămâne întreg.
+              </div>
+            </Field>
+          </>
         ) : actionType === 'shop' ? (
           <Field label="Produsul (apare primul în magazin)">
             <select value={productId} onChange={(e) => setProductId(e.target.value)}>

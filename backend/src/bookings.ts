@@ -8,6 +8,7 @@ import { MIN_BANI, refundBooking } from './payments';
 import type { TplEvent } from './templates';
 import { checkWaitlist, closeOnBooking } from './waitlist';
 import { locationVars } from './locations';
+import { discounted, serviceOffers } from './offers';
 import { notifyStaff } from './staffNotify';
 
 /** Stările care țin ora ocupată: programările confirmate și cererile încă fără răspuns. */
@@ -90,7 +91,9 @@ export async function createBooking(
   const own = await env.DB.prepare('SELECT price_bani, duration_min FROM barber_services WHERE barber_id = ? AND service_id = ?')
     .bind(barberId, service.id)
     .first<{ price_bani: number | null; duration_min: number | null }>();
-  const price = own?.price_bani ?? service.price_bani;
+  // Reducerea din bannerul activ acum (ex. -15%), pe prețul frizerului sau pe cel standard.
+  const offer = (await serviceOffers(env)).get(service.id);
+  const price = offer ? discounted(own?.price_bani ?? service.price_bani, offer.percent) : (own?.price_bani ?? service.price_bani);
 
   const id = newId('bk');
   const end = new Date(start.getTime() + (own?.duration_min ?? service.duration_min) * 60_000);
