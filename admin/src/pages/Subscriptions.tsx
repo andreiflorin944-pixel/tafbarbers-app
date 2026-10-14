@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api, type Me, type Plan, type Service, type Subscription } from '../api';
-import { emptyTr, Field, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
+import { emptyTr, Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 import { date, lei } from '../util';
 
 const STATE: Record<Subscription['state'], string> = {
@@ -327,6 +327,7 @@ function PlanModal({ p, services, onClose, onDone }: { p: Partial<Plan>; service
     serviceIds: ids,
     sort: Number(v.sort) || 0,
     active: v.active !== false,
+    photoUrl: v.photoUrl ?? null,
     translations: tr,
   };
 
@@ -386,6 +387,9 @@ function PlanModal({ p, services, onClose, onDone }: { p: Partial<Plan>; service
               </label>
             ))}
           </div>
+        </Field>
+        <Field label="Poză (opțional; apare în aplicație deasupra abonamentului)">
+          <ImagePicker value={v.photoUrl ?? null} onChange={(u) => set({ photoUrl: u })} maxPx={1200} />
         </Field>
         <Field label="Ordine în listă">
           <input type="number" value={v.sort ?? 0} onChange={(e) => set({ sort: Number(e.target.value) })} style={{ maxWidth: 120 }} />

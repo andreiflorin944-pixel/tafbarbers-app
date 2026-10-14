@@ -1,5 +1,6 @@
 import { newId } from './auth';
 import { redeemGiftCard, refundGiftCard } from './growth';
+import { isImageUrl } from './appearance';
 import { HttpError, onlinePaymentsOn, type Env } from './env';
 import { iso } from './time';
 import { sendTemplate } from './sendTemplate';
@@ -18,6 +19,7 @@ export type PlanRow = {
   service_ids: string;
   sort: number;
   active: number;
+  photo_url?: string | null;
 };
 export const plan = (r: PlanRow) => ({
   id: r.id,
@@ -29,9 +31,10 @@ export const plan = (r: PlanRow) => ({
   serviceIds: r.service_ids ? r.service_ids.split(',') : [],
   sort: r.sort,
   active: !!r.active,
+  photoUrl: r.photo_url ?? null,
 });
 
-export type PlanInput = { name?: string; description?: string; price?: number; periodDays?: number; cuts?: number | null; serviceIds?: string[]; sort?: number; active?: boolean };
+export type PlanInput = { name?: string; description?: string; price?: number; periodDays?: number; cuts?: number | null; serviceIds?: string[]; sort?: number; active?: boolean; photoUrl?: string | null };
 
 /** Valorile unui plan, validate; `partial` pentru editare (doar câmpurile trimise). */
 export function planValues(b: PlanInput, partial: boolean) {
@@ -66,6 +69,10 @@ export function planValues(b: PlanInput, partial: boolean) {
   }
   if (b.sort !== undefined) v.sort = Math.round(Number(b.sort)) || 0;
   if (b.active !== undefined) v.active = b.active ? 1 : 0;
+  if (b.photoUrl !== undefined) {
+    if (b.photoUrl && !isImageUrl(b.photoUrl)) throw new HttpError(400, 'invalid_url');
+    v.photo_url = b.photoUrl || null;
+  }
   return v;
 }
 

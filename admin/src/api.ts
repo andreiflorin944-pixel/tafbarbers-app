@@ -375,6 +375,8 @@ export type Plan = {
   serviceIds: string[];
   sort: number;
   active: boolean;
+  /** Poza arătată clientului în aplicație; null = fără. */
+  photoUrl?: string | null;
   /** Câți clienți au reînnoirea automată cu cardul pornită pe acest plan. */
   renewing?: number;
 };

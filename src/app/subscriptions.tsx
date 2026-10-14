@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Linking, Platform, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Image, Linking, Platform, Text, View } from 'react-native';
 import { api } from '@/api';
 import { useLoginGate } from '@/components/LoginGate';
 import { cutsText, SubscriptionRow } from '@/components/SubscriptionRow';
@@ -141,7 +141,15 @@ export default function Subscriptions() {
       {data.plans.length === 0 ? <Text style={styles.muted}>{t('subs.none')}</Text> : null}
       <View style={{ gap: space.sm }}>
         {data.plans.map((p) => (
-          <Card key={p.id} style={{ gap: 4 }}>
+          <Card key={p.id} style={{ gap: 4, overflow: 'hidden' }}>
+            {p.photoUrl ? (
+              <Image
+                source={{ uri: p.photoUrl }}
+                style={{ marginTop: -space.md, marginHorizontal: -space.md, marginBottom: space.sm, aspectRatio: 16 / 9 }}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+              />
+            ) : null}
             <View style={[styles.row, { justifyContent: 'space-between' }]}>
               <Text style={[styles.cardTitle, { flex: 1 }]}>{p.name}</Text>
               <Text style={{ color: colors.gold, fontWeight: '800', fontSize: 18 }}>{lei(p.price)}</Text>

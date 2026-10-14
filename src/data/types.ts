@@ -120,7 +120,7 @@ export type Bonus = {
   usedAt: string | null;
   referralName?: string | null;
 };
-export type Plan = { id: string; name: string; description: string; price: number; periodDays: number; cuts: number | null; serviceIds: string[]; sort?: number; active?: boolean };
+export type Plan = { id: string; name: string; description: string; price: number; periodDays: number; cuts: number | null; serviceIds: string[]; sort?: number; active?: boolean; photoUrl?: string | null };
 export type Subscription = {
   id: string;
   planId: string | null;
