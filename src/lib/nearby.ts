@@ -20,11 +20,12 @@ if (Platform.OS !== 'web') {
   });
 }
 
-export const nearbySupported = Platform.OS !== 'web';
+// Pe Android, Google Play cere o declarație specială pentru locația în fundal; deocamdată opțiunea e doar pe iPhone.
+export const nearbySupported = Platform.OS === 'ios';
 
 /** Opțiunea e pornită pe telefonul ăsta. */
 export async function nearbyOn(): Promise<boolean> {
-  return (await storage.get(FLAG)) === '1';
+  return nearbySupported && (await storage.get(FLAG)) === '1';
 }
 
 /** Salonul are opțiunea pornită în panou și cel puțin o locație cu coordonate. */
@@ -92,7 +93,9 @@ export async function stopNearby(): Promise<void> {
 /** La pornirea aplicației: zonele urmează ce e în panou acum (locații noi, altă rază, oprit). Nu aruncă niciodată. */
 export async function syncNearby(): Promise<void> {
   try {
-    if (!nearbySupported || !(await nearbyOn())) return;
+    // Telefoanele care o porniseră înainte (Android): o oprim de tot.
+    if (!nearbySupported) return void (Platform.OS !== 'web' && (await storage.get(FLAG)) === '1' && (await stopNearby()));
+    if (!(await nearbyOn())) return;
     if ((await Location.getBackgroundPermissionsAsync()).status !== 'granted') return void (await stopNearby());
     await watch();
   } catch {
