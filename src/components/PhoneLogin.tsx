@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { api, usingMock } from "@/api";
 import { ApiError } from "@/api/client";
 import { SocialLogin, type SocialResult } from "@/components/SocialLogin";
@@ -130,6 +130,8 @@ export function PhoneLogin({
   };
 
   const finish = async (token: string) => {
+    // Tastatura și salvarea parolei se închid înainte să dispară ecranul de intrare.
+    Keyboard.dismiss();
     void clearQr();
     await signIn(token);
     await onDone(token);

@@ -414,6 +414,7 @@ clientRoutes.post('/bookings', async (c) => {
     start: b.start,
     note: b.note,
     source: 'app',
+    defer: (p) => c.executionCtx.waitUntil(p),
   });
   // Numele serviciului în limba aplicației (ca în lista programărilor).
   return c.json((await localize(c.env, c.req.query('lang'), [created], ['serviceName']))[0], 201);

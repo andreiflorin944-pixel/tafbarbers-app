@@ -1,8 +1,10 @@
-import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PushLink } from '@/components/PushLink';
+import { installCrashReporter, reportError } from '@/lib/crash';
 import { QrLink } from '@/components/QrLink';
 import { I18nProvider, useT } from '@/i18n';
 // Importat aici ca sarcina de fundal să fie definită și când sistemul pornește aplicația doar pentru ea.
@@ -11,6 +13,8 @@ import { AppStateProvider } from '@/state/AppState';
 import { CartProvider } from '@/state/Cart';
 import { StaffProvider } from '@/state/Staff';
 import { colors } from '@/theme';
+
+installCrashReporter();
 
 const theme = {
   ...DarkTheme,
@@ -38,6 +42,25 @@ export default function RootLayout() {
       </AppStateProvider>
       </I18nProvider>
     </SafeAreaProvider>
+  );
+}
+
+/**
+ * Un ecran care nu se poate afișa nu mai închide aplicația: apare mesajul ăsta, eroarea ajunge la noi,
+ * iar „Încearcă din nou” redesenează ecranul. Fără traduceri aici: și ele pot fi cauza.
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  useEffect(() => {
+    void reportError(error, true);
+  }, [error]);
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }}>
+      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Ceva nu a mers</Text>
+      <Text style={{ color: colors.muted, textAlign: 'center' }}>Am trimis eroarea echipei. Încearcă din nou.</Text>
+      <Pressable onPress={() => void retry()} style={{ backgroundColor: colors.gold, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 28 }}>
+        <Text style={{ color: colors.bg, fontWeight: '700' }}>Încearcă din nou</Text>
+      </Pressable>
+    </View>
   );
 }
 

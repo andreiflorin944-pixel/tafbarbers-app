@@ -53,6 +53,8 @@ export async function createBooking(
     notify?: boolean;
     maxActive?: number; // din aplicație: câte programări viitoare poate avea clientul (verificat odată cu inserarea)
     adminId?: string | null; // cine a făcut-o din panou (nu primește el anunțul pentru echipă)
+    /** Anunțurile (e-mail, SMS, push) pleacă după răspuns, ca butonul „Confirmă” să nu aștepte după ele. */
+    defer?: (p: Promise<unknown>) => void;
   },
 ) {
   const start = new Date(input.start);
@@ -134,8 +136,12 @@ export async function createBooking(
   // Clientul are acum programare confirmată în ziua aceea: iese de pe lista de așteptare pentru serviciul ăsta.
   // O cerere încă neconfirmată nu-l scoate: dacă e refuzată, expiră sau o retrage, rămâne pe listă (se închide la acceptare).
   if (!requested) await closeOnBooking(env, input.clientId, service.id, iso(start));
-  if (input.notify !== false) await notifyBooking(env, created, requested ? 'booking_request' : 'confirm');
-  await notifyStaff(env, created, requested ? 'request' : 'new', input.adminId ?? null);
+  const notify = async () => {
+    if (input.notify !== false) await notifyBooking(env, created, requested ? 'booking_request' : 'confirm');
+    await notifyStaff(env, created, requested ? 'request' : 'new', input.adminId ?? null);
+  };
+  if (input.defer) input.defer(notify().catch((e) => console.error('booking_notify', e)));
+  else await notify();
   return created;
 }
 

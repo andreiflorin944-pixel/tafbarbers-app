@@ -43,6 +43,7 @@ export function SettingsPage({ me }: { me: Me }) {
         <Password />
         <Sessions />
         {me.owner ? <MessageLog /> : null}
+        {me.owner ? <AppErrors /> : null}
       </div>
     </>
   );
@@ -1003,6 +1004,42 @@ function MessageLog() {
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+type AppError = { at: string; platform: string; version: string; fatal: boolean; message: string; stack: string; client: string | null };
+
+/** Erorile trimise de aplicația de pe telefoane (după o închidere neașteptată), ca să le putem repara. */
+function AppErrors() {
+  const list = useLoad(() => api<AppError[]>('GET', '/admin/app-errors'));
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <div className="card grid">
+      <h2 style={{ margin: 0 }}>Erori din aplicație</h2>
+      <p className="muted small" style={{ margin: 0 }}>
+        Când aplicația se închide neașteptat sau un ecran nu se poate afișa, eroarea apare aici (fără date personale, doar numele contului dacă era logat).
+      </p>
+      {!list.data ? (
+        <Loading error={list.error} />
+      ) : !list.data.length ? (
+        <div className="muted small">Nicio eroare.</div>
+      ) : (
+        list.data.map((e, i) => (
+          <div key={i} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+            <div className="small">
+              <b>{new Date(e.at).toLocaleString('ro-RO')}</b> · {e.platform} {e.version} {e.fatal ? '· a închis aplicația' : ''} {e.client ? `· ${e.client}` : ''}
+            </div>
+            <div style={{ wordBreak: 'break-word' }}>{e.message}</div>
+            {e.stack ? (
+              <button className="ghost sm" onClick={() => setOpen(open === i ? null : i)}>
+                {open === i ? 'Ascunde detaliile' : 'Detalii'}
+              </button>
+            ) : null}
+            {open === i ? <pre className="small" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{e.stack}</pre> : null}
+          </div>
+        ))
       )}
     </div>
   );

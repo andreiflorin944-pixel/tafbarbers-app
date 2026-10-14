@@ -965,6 +965,7 @@ adminRoutes.post('/bookings', async (c) => {
     skipAvailabilityCheck: !!b.force && !!barberId,
     notify: b.notify !== false,
     adminId: c.get('admin').adminId,
+    defer: (p) => c.executionCtx.waitUntil(p),
   });
   return c.json(created, 201);
 });
@@ -1718,6 +1719,15 @@ const stylesList = async (env: Env) => {
     styles: HAIRSTYLES.map((h) => ({ key: h.key, name: h.name.ro, photo: sp.photos[h.key] ?? null, onHome: HOME_STYLES.includes(h.key) })),
   };
 };
+/** Ultimele erori din aplicația de pe telefon (pentru depanare). */
+adminRoutes.get('/app-errors', ownerOnly, async (c) => {
+  const r = await c.env.DB.prepare(
+    `SELECT e.created_at AS at, e.platform, e.version, e.fatal, e.message, e.stack, cl.name AS client
+     FROM app_errors e LEFT JOIN clients cl ON cl.id = e.client_id ORDER BY e.created_at DESC LIMIT 50`,
+  ).all<{ at: string; platform: string; version: string; fatal: number; message: string; stack: string; client: string | null }>();
+  return c.json(r.results.map((e) => ({ ...e, fatal: !!e.fatal })));
+});
+
 adminRoutes.get('/advisor/styles', ownerOnly, async (c) => c.json(await stylesList(c.env)));
 
 /** „Refă cu AI”: se șterg pozele făcute până acum (color și alb-negru); la următoarea cerere se fac altele. */

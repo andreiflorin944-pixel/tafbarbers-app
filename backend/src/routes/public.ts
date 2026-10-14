@@ -24,6 +24,29 @@ import { linkTicket, readTicket, socialConfig, socialSignIn, verifyIdToken, type
 
 export const publicRoutes = new Hono<AppEnv>();
 
+/** O eroare din aplicația de pe telefon (trimisă la pornirea următoare, după o închidere neașteptată). Nu aruncă. */
+publicRoutes.post('/app-errors', async (c) => {
+  const b = await c.req.json<{ message?: unknown; stack?: unknown; fatal?: unknown; platform?: unknown; version?: unknown }>().catch(() => ({}) as Record<string, unknown>);
+  const str = (v: unknown, n: number) => (typeof v === 'string' ? v.slice(0, n) : '');
+  const message = str(b.message, 500);
+  if (!message) return c.json({ ok: true });
+  const who = await optionalSession(c).catch(() => null);
+  console.error('app_error', message);
+  await c.env.DB.batch([
+    c.env.DB.prepare('INSERT INTO app_errors (id, platform, version, fatal, message, stack, client_id) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(
+      newId('err'),
+      str(b.platform, 20),
+      str(b.version, 30),
+      b.fatal ? 1 : 0,
+      message,
+      str(b.stack, 4000),
+      who?.kind === 'client' ? who.id : null,
+    ),
+    c.env.DB.prepare('DELETE FROM app_errors WHERE id NOT IN (SELECT id FROM app_errors ORDER BY created_at DESC LIMIT 300)'),
+  ]);
+  return c.json({ ok: true });
+});
+
 /** „Ești lângă salon”: zonele pe care le urmărește aplicația (doar la clienții care au pornit opțiunea). */
 publicRoutes.get('/nearby', async (c) => c.json(await nearbyConfig(c.env)));
 
