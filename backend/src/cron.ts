@@ -95,12 +95,15 @@ async function reminders(
   // Reminder-ul oprit (Tablou de bord → Mesaje automate): nu pleacă nici pentru programările făcute deja.
   // Programările nu se marchează, așa că dacă îl repornește, cele încă în fereastră îl primesc.
   if (!(await channelsFor(env, kind))) return;
-  // Programările făcute deja în fereastră (ex. rezervate cu o oră înainte) primesc doar reminder-ul de 2h,
-  // iar cele create cu mai puțin de 30 de minute înainte nu mai primesc nimic (au primit confirmarea).
+  // Programările făcute deja în fereastra de 24h primesc doar reminder-ul de 2h (dacă au fost făcute cu cel puțin 2 ore
+  // înainte); cele create cu mai puțin de 30 de minute înainte nu mai primesc nimic (au primit confirmarea).
   // La o cerere acceptată contează momentul acceptării (atunci a plecat confirmarea), nu cel al cererii.
+  // Cel de 2h pleacă doar dacă programarea exista deja cu 2 ore înainte: una făcută mai târziu (ex. la 10:20 pentru 12:00)
+  // are confirmarea proaspătă, iar un reminder la o oră după ea ar fi un SMS în plus.
+  const lead = kind === 'reminder_2h' ? `AND coalesce(b.request_answered_at, b.created_at) <= strftime('%Y-%m-%dT%H:%M:%SZ', b.starts_at, '-2 hours')` : '';
   const rows = await env.DB.prepare(
     `${BOOKING_SELECT} WHERE b.status = 'confirmed' AND b.${col} IS NULL AND b.starts_at > ? AND b.starts_at <= ?
-     AND coalesce(b.request_answered_at, b.created_at) <= ?`,
+     AND coalesce(b.request_answered_at, b.created_at) <= ? ${lead}`,
   )
     .bind(iso(new Date(from)), iso(new Date(to)), iso(new Date(Date.now() - 30 * 60_000)))
     .all<BookingRow>();

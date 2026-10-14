@@ -42,7 +42,7 @@ import { DOCS, getLegal, legalBase, legalDoc, saveLegal } from '../legal';
 import { getOrder, getOrders, notifyOrder, product, setOrderStatus, type OrderStatus, type ProductRow } from '../shop';
 import { sendTemplate } from '../sendTemplate';
 import { listTemplates, saveTemplate, TEMPLATE_EVENTS, WILDCARDS, type TplEvent, type TplField } from '../templates';
-import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
+import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia, sniffImage } from '../identity';
 import { getBonuses, getReferralSettings, giveBonus, parseReward, refreshReferralBonuses, saveReferralSettings, type Reward } from '../referrals';
 import {
   activateSubscription,
@@ -184,9 +184,10 @@ adminRoutes.patch('/me/notify', async (c) => {
 adminRoutes.post('/me/photo', async (c) => {
   const barberId = c.get('admin').barberId;
   if (!barberId) throw new HttpError(403, 'no_barber');
-  const mime = (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
-  if (!MEDIA_TYPES[mime]) throw new HttpError(400, 'unsupported_image');
   const buf = await c.req.arrayBuffer();
+  // Tipul după conținut: aplicația de pe Android trimite uneori alt tip în antet.
+  const mime = sniffImage(buf) ?? (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  if (!MEDIA_TYPES[mime]) throw new HttpError(400, 'unsupported_image');
   if (!buf.byteLength) throw new HttpError(400, 'empty_file');
   if (buf.byteLength > MEDIA_MAX) throw new HttpError(400, 'image_too_large');
   const id = newId('m');
@@ -400,9 +401,10 @@ adminRoutes.put('/appearance', ownerOnly, async (c) => c.json(await saveAppearan
 
 /** Urcă o poză (corpul cererii = fișierul). Întoarce adresa ei, de pus la logo, serviciu sau frizer. */
 adminRoutes.post('/media', ownerOnly, async (c) => {
-  const mime = (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
-  if (!MEDIA_TYPES[mime]) throw new HttpError(400, 'unsupported_image');
   const buf = await c.req.arrayBuffer();
+  // Tipul după conținut: aplicația de pe Android trimite uneori alt tip în antet.
+  const mime = sniffImage(buf) ?? (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  if (!MEDIA_TYPES[mime]) throw new HttpError(400, 'unsupported_image');
   if (!buf.byteLength) throw new HttpError(400, 'empty_file');
   if (buf.byteLength > MEDIA_MAX) throw new HttpError(400, 'image_too_large');
   const id = newId('m');

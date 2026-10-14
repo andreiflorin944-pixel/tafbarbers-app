@@ -9,9 +9,28 @@ export const IDENTITY_MAX_PHOTOS = 10;
 const STAFF_MAX_PHOTOS = 30;
 const CLIENT_UPLOADS_PER_DAY = 30;
 
+/** Tipul pozei după primii octeți (JPEG, PNG, WebP), sau null. */
+export function sniffImage(buf: ArrayBuffer): string | null {
+  const u = new Uint8Array(buf.slice(0, 12));
+  if (u[0] === 0xff && u[1] === 0xd8 && u[2] === 0xff) return 'image/jpeg';
+  if (u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4e && u[3] === 0x47) return 'image/png';
+  if (u[0] === 0x52 && u[1] === 0x49 && u[2] === 0x46 && u[3] === 0x46 && u[8] === 0x57 && u[9] === 0x45 && u[10] === 0x42 && u[11] === 0x50) return 'image/webp';
+  return null;
+}
+
 /** Salvează o poză primită ca fișier în corpul cererii. Întoarce id-ul ei. */
-export async function saveMedia(env: Env, mime: string, buf: ArrayBuffer, clientId: string | null): Promise<string> {
-  if (!MEDIA_TYPES[mime]) throw new HttpError(400, 'unsupported_image');
+export async function saveMedia(env: Env, declared: string, buf: ArrayBuffer, clientId: string | null): Promise<string> {
+  // Contează ce e de fapt fișierul: unele telefoane Android trimit poza fără tip sau cu alt tip în antet.
+  const mime = sniffImage(buf) ?? declared;
+  if (!MEDIA_TYPES[mime]) {
+    // Ajunge în panou (Setări → Erori din aplicație), ca să vedem ce a trimis telefonul.
+    const head = [...new Uint8Array(buf.slice(0, 8))].map((x) => x.toString(16).padStart(2, '0')).join(' ');
+    await env.DB.prepare('INSERT INTO app_errors (id, platform, message, client_id) VALUES (?, ?, ?, ?)')
+      .bind(newId('err'), 'server', `Poză refuzată: tip „${declared.slice(0, 60) || 'fără'}”, ${buf.byteLength} octeți, început ${head || 'gol'}`, clientId)
+      .run()
+      .catch(() => undefined);
+    throw new HttpError(400, buf.byteLength ? 'unsupported_image' : 'empty_file');
+  }
   if (!buf.byteLength) throw new HttpError(400, 'empty_file');
   if (buf.byteLength > MEDIA_MAX) throw new HttpError(400, 'image_too_large');
   if (clientId) {
