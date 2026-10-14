@@ -142,7 +142,7 @@ export type Subscription = {
   /** Clientul poate porni reînnoirea automată (plata online pornită, planul încă de vânzare). */
   renewable?: boolean;
 };
-export type Referrals = { enabled: boolean; code: string; referred: number; reward: string | null; bonuses: Bonus[] };
+export type Referrals = { enabled: boolean; code: string; referred: number; reward: string | null; welcome?: string | null; bonuses: Bonus[] };
 export type Identity = { note: string; photos: IdentityPhoto[]; staffPhotos?: IdentityPhoto[] };
 
 export type Business = {

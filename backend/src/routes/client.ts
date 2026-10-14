@@ -140,7 +140,12 @@ clientRoutes.post('/me/nearby', async (c) => {
 clientRoutes.get('/me/referrals', async (c) => {
   const lang = c.req.query('lang');
   const r = await myReferrals(c.env, c.get('client').clientId);
-  return c.json({ ...r, reward: r.reward && (await localizeText(c.env, lang, r.reward)), bonuses: await localize(c.env, lang, r.bonuses, ['title']) });
+  return c.json({
+    ...r,
+    reward: r.reward && (await localizeText(c.env, lang, r.reward)),
+    welcome: r.welcome && (await localizeText(c.env, lang, r.welcome)),
+    bonuses: await localize(c.env, lang, r.bonuses, ['title']),
+  });
 });
 clientRoutes.get('/me/subscriptions', async (c) => {
   const lang = c.req.query('lang');

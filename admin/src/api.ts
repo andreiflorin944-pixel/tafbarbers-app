@@ -399,7 +399,7 @@ export type Subscription = {
 export type Checkout = { booking: Booking; subscription: Subscription | null; bonuses: Bonus[] };
 export type BonusKind = 'percent' | 'amount' | 'free' | 'other';
 export type Reward = { title: string; kind: BonusKind; value: number | null; validDays: number | null };
-export type ReferralSettings = { enabled: boolean; auto: boolean; standard: Reward };
+export type ReferralSettings = { enabled: boolean; auto: boolean; toReferrer: boolean; toNew: boolean; standard: Reward; welcome: Reward };
 export type Bonus = {
   id: string;
   title: string;
@@ -417,7 +417,11 @@ export type Referral = {
   referrer: { id: string; name: string; phone: string };
   createdAt: string;
   bonusTitle: string | null;
+  /** Bonusul celui care a recomandat și al clientului nou, pentru această recomandare (null = nedat sau șters). */
+  referrerBonus: ReferralBonus | null;
+  newBonus: ReferralBonus | null;
 };
+export type ReferralBonus = { id: string; used: boolean; title: string };
 export type ClientPhoto = { id: string; url: string; caption: string; createdAt?: string; addedBy?: string | null };
 export type Client = {
   id: string;

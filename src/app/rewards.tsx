@@ -52,6 +52,11 @@ export default function Rewards() {
               {t('rewards.perFriend')} <Text style={{ color: colors.text, fontWeight: '700' }}>{data.reward}</Text>
             </Text>
           ) : null}
+          {data.welcome ? (
+            <Text style={[styles.muted, { textAlign: 'center' }]}>
+              {t('rewards.friendGets')} <Text style={{ color: colors.text, fontWeight: '700' }}>{data.welcome}</Text>
+            </Text>
+          ) : null}
           <Text style={{ color: colors.gold, fontSize: 34, fontWeight: '800', letterSpacing: 6, marginVertical: space.xs }}>{data.code}</Text>
           <View style={{ alignSelf: 'stretch' }}>
             <Button title={Platform.OS === 'web' ? (copied ? t('rewards.copied') : t('rewards.copy')) : t('rewards.send')} onPress={share} />

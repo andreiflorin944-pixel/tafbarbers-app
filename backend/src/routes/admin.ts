@@ -43,7 +43,7 @@ import { getOrder, getOrders, notifyOrder, product, setOrderStatus, type OrderSt
 import { sendTemplate } from '../sendTemplate';
 import { listTemplates, saveTemplate, TEMPLATE_EVENTS, WILDCARDS, type TplEvent, type TplField } from '../templates';
 import { addPhoto, deleteMediaUrl, deletePhoto, getIdentity, mediaUrl, parseBirthDate, saveMedia } from '../identity';
-import { getBonuses, getReferralSettings, giveBonus, parseReward, saveReferralSettings, type Reward } from '../referrals';
+import { getBonuses, getReferralSettings, giveBonus, parseReward, refreshReferralBonuses, saveReferralSettings, type Reward } from '../referrals';
 import {
   activateSubscription,
   completeBooking,
@@ -1888,8 +1888,16 @@ adminRoutes.get('/birthdays', async (c) => {
 adminRoutes.get('/referral-settings', async (c) => c.json(await getReferralSettings(c.env)));
 adminRoutes.put('/referral-settings', ownerOnly, async (c) => {
   const s = await saveReferralSettings(c.env, await c.req.json());
-  await ensureTranslated(c.env, [s.standard.title]);
+  await ensureTranslated(c.env, [s.standard.title, s.welcome.title]);
   return c.json(s);
+});
+
+/** Bonusurile din recomandări încă nefolosite primesc beneficiul salvat acum (al celor care au recomandat sau al clienților noi). */
+adminRoutes.post('/referral-settings/refresh', ownerOnly, async (c) => {
+  const b = await c.req.json<{ side?: string }>().catch(() => ({}) as { side?: string });
+  const side = b.side === 'new' ? 'new' : 'referrer';
+  const s = await getReferralSettings(c.env);
+  return c.json({ updated: await refreshReferralBonuses(c.env, side, side === 'new' ? s.welcome : s.standard) });
 });
 
 /** Conturile create prin recomandare, cu cine i-a adus și dacă s-a dat deja beneficiul. */
@@ -1897,17 +1905,29 @@ adminRoutes.get('/referrals', async (c) => {
   need(c, 'clients');
   const r = await c.env.DB.prepare(
     `SELECT n.id AS new_id, n.name AS new_name, n.phone AS new_phone, n.created_at, p.id AS ref_id, p.name AS ref_name, p.phone AS ref_phone,
-       (SELECT b.title FROM bonuses b WHERE b.referral_of = n.id AND b.client_id = p.id AND b.status != 'cancelled' LIMIT 1) AS bonus_title
+       (SELECT b.id || '|' || b.status || '|' || b.title FROM bonuses b WHERE b.referral_of = n.id AND b.client_id = p.id AND b.status != 'cancelled' ORDER BY b.created_at DESC LIMIT 1) AS ref_bonus,
+       (SELECT b.id || '|' || b.status || '|' || b.title FROM bonuses b WHERE b.referral_of = p.id AND b.client_id = n.id AND b.status != 'cancelled' ORDER BY b.created_at DESC LIMIT 1) AS new_bonus
      FROM clients n JOIN clients p ON p.id = n.referred_by
      WHERE n.deleted_at IS NULL ORDER BY n.created_at DESC LIMIT 300`,
-  ).all<{ new_id: string; new_name: string; new_phone: string; created_at: string; ref_id: string; ref_name: string; ref_phone: string; bonus_title: string | null }>();
+  ).all<{ new_id: string; new_name: string; new_phone: string; created_at: string; ref_id: string; ref_name: string; ref_phone: string; ref_bonus: string | null; new_bonus: string | null }>();
+  // „id|status|titlu” → bonusul (folosit sau activ), ca să poată fi șters din listă.
+  const parse = (v: string | null) => {
+    if (!v) return null;
+    const [id, status, ...t] = v.split('|');
+    return { id, used: status === 'used', title: t.join('|') };
+  };
   return c.json(
-    r.results.map((x) => ({
-      newClient: { id: x.new_id, name: x.new_name, phone: x.new_phone },
-      referrer: { id: x.ref_id, name: x.ref_name, phone: x.ref_phone },
-      createdAt: x.created_at,
-      bonusTitle: x.bonus_title,
-    })),
+    r.results.map((x) => {
+      const refBonus = parse(x.ref_bonus);
+      return {
+        newClient: { id: x.new_id, name: x.new_name, phone: x.new_phone },
+        referrer: { id: x.ref_id, name: x.ref_name, phone: x.ref_phone },
+        createdAt: x.created_at,
+        bonusTitle: refBonus?.title ?? null,
+        referrerBonus: refBonus,
+        newBonus: parse(x.new_bonus),
+      };
+    }),
   );
 });
 
@@ -1953,12 +1973,17 @@ adminRoutes.get('/referrals/tree', async (c) => {
 /** Beneficiu dat de admin: standard (`standard: true`) sau personalizat; opțional legat de o recomandare. */
 adminRoutes.post('/clients/:id/bonuses', ownerOnly, async (c) => {
   const id = c.req.param('id')!;
-  const b = await c.req.json<Partial<Reward> & { standard?: boolean; referralOf?: string }>();
+  const b = await c.req.json<Partial<Reward> & { standard?: boolean; welcome?: boolean; referralOf?: string }>();
   const exists = await c.env.DB.prepare('SELECT 1 FROM clients WHERE id = ? AND deleted_at IS NULL').bind(id).first();
   if (!exists) throw new HttpError(404, 'not_found');
-  const reward = b.standard ? (await getReferralSettings(c.env)).standard : parseReward(b);
+  const reward = b.standard ? (await getReferralSettings(c.env)).standard : b.welcome ? (await getReferralSettings(c.env)).welcome : parseReward(b);
+  // Legat de o recomandare: fie clientul a adus-o pe `referralOf`, fie el a venit adus de `referralOf`.
   const referralOf = b.referralOf
-    ? ((await c.env.DB.prepare('SELECT id FROM clients WHERE id = ? AND referred_by = ?').bind(b.referralOf, id).first<{ id: string }>())?.id ?? null)
+    ? ((
+        await c.env.DB.prepare('SELECT id FROM clients WHERE id = ? AND (referred_by = ? OR id = (SELECT referred_by FROM clients WHERE id = ?))')
+          .bind(b.referralOf, id, id)
+          .first<{ id: string }>()
+      )?.id ?? null)
     : null;
   const bid = await giveBonus(c.env, id, reward, referralOf ? 'referral' : 'manual', referralOf);
   await ensureTranslated(c.env, [reward.title]);

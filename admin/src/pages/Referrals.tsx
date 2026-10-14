@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
-import { api, type Bonus, type BonusKind, type Plan, type Referral, type ReferralSettings, type Reward } from '../api';
+import { api, type Bonus, type BonusKind, type Plan, type Referral, type ReferralBonus, type ReferralSettings, type Reward } from '../api';
 import { Field, Loading, Modal, useAction, useLoad } from '../ui';
 import { date, lei } from '../util';
 
@@ -35,9 +35,21 @@ export function RewardFields({ value: r, onChange }: { value: Reward; onChange: 
           <div />
         )}
       </div>
-      <Field label="Valabil (zile; gol = fără termen)">
-        <input type="number" min={1} value={r.validDays ?? ''} onChange={(e) => onChange({ ...r, validDays: e.target.value === '' ? null : Number(e.target.value) })} style={{ maxWidth: 160 }} />
-      </Field>
+      <div className="grid two">
+        <Field label="Valabil">
+          <select value={r.validDays === null ? 'next' : 'days'} onChange={(e) => onChange({ ...r, validDays: e.target.value === 'next' ? null : (r.validDays ?? 30) })}>
+            <option value="next">La următoarea tunsoare</option>
+            <option value="days">O perioadă de timp</option>
+          </select>
+        </Field>
+        {r.validDays !== null ? (
+          <Field label="Câte zile">
+            <input type="number" min={1} value={r.validDays} onChange={(e) => onChange({ ...r, validDays: e.target.value === '' ? 1 : Number(e.target.value) })} style={{ maxWidth: 160 }} />
+          </Field>
+        ) : (
+          <div />
+        )}
+      </div>
     </div>
   );
 }
@@ -119,12 +131,15 @@ export function ClientBonuses({ clientId, bonuses, owner, onChange }: { clientId
   );
 }
 
+type Target = { clientId: string; referralOf: string; name: string; side: 'referrer' | 'new' };
+
 export function ReferralsPage() {
   const settings = useLoad(() => api<ReferralSettings>('GET', '/admin/referral-settings'));
   const list = useLoad(() => api<Referral[]>('GET', '/admin/referrals'));
   const [s, setS] = useState<ReferralSettings | null>(null);
-  const [custom, setCustom] = useState<{ ref: Referral; r: Reward } | null>(null);
+  const [custom, setCustom] = useState<{ to: Target; r: Reward } | null>(null);
   const [saved, setSaved] = useState(false);
+  const [note, setNote] = useState('');
   const { busy, error, run } = useAction();
 
   useEffect(() => {
@@ -133,12 +148,65 @@ export function ReferralsPage() {
 
   if (!s) return <Loading error={settings.error} />;
   const dirty = JSON.stringify(s) !== JSON.stringify(settings.data);
-  const give = (ref: Referral, body: object) =>
+  const edit = (patch: Partial<ReferralSettings>) => {
+    setSaved(false);
+    setNote('');
+    setS({ ...s, ...patch });
+  };
+  const give = (to: Target, body: object) =>
     run(async () => {
-      await api('POST', `/admin/clients/${ref.referrer.id}/bonuses`, { ...body, referralOf: ref.newClient.id });
+      await api('POST', `/admin/clients/${to.clientId}/bonuses`, { ...body, referralOf: to.referralOf });
       setCustom(null);
       list.reload();
     });
+  const remove = (b: ReferralBonus) =>
+    confirm(`Ștergi bonusul „${b.title}”? Clientul nu-l mai vede în aplicație.`) &&
+    run(async () => {
+      await api('PATCH', `/admin/bonuses/${b.id}`, { status: 'cancelled' });
+      list.reload();
+    });
+  const refresh = (side: 'referrer' | 'new') =>
+    run(async () => {
+      const r = await api<{ updated: number }>('POST', '/admin/referral-settings/refresh', { side });
+      setNote(r.updated ? `Am actualizat ${r.updated === 1 ? 'un bonus' : `${r.updated} bonusuri`}.` : 'Nu era niciun bonus nefolosit de actualizat.');
+      list.reload();
+    });
+
+  const cell = (b: ReferralBonus | null, to: Target) =>
+    b ? (
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <span>
+          {b.title}
+          {b.used ? <span className="muted"> · folosit</span> : null}
+        </span>
+        {!b.used ? (
+          <button className="ghost sm" disabled={busy} onClick={() => remove(b)}>
+            Șterge
+          </button>
+        ) : null}
+      </div>
+    ) : (
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <button className="sm" disabled={busy} onClick={() => give(to, to.side === 'new' ? { welcome: true } : { standard: true })}>
+          Dă standard
+        </button>
+        <button className="ghost sm" onClick={() => setCustom({ to, r: { ...(to.side === 'new' ? s.welcome : s.standard), title: '' } })}>
+          Personalizat
+        </button>
+      </div>
+    );
+
+  const side = (title: string, on: boolean, setOn: (v: boolean) => void, r: Reward, setR: (r: Reward) => void, sideKey: 'referrer' | 'new') => (
+    <div className="grid" style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+      <label className="check">
+        <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} /> <b>{title}</b>
+      </label>
+      {on ? <RewardFields value={r} onChange={setR} /> : null}
+      <button className="ghost sm" style={{ justifySelf: 'start' }} disabled={busy || dirty} title={dirty ? 'Salvează întâi' : ''} onClick={() => refresh(sideKey)}>
+        Aplică beneficiul de acum și bonusurilor deja date, nefolosite
+      </button>
+    </div>
+  );
 
   return (
     <>
@@ -146,22 +214,23 @@ export function ReferralsPage() {
         <h1>Recomandări și bonusuri</h1>
       </div>
       <p className="muted small" style={{ marginTop: -8, maxWidth: 760 }}>
-        Fiecare client are în aplicație un cod și un link de recomandare. Când cineva își face cont cu el, cel care l-a recomandat primește un beneficiu:
-        automat beneficiul standard de mai jos sau, dacă oprești varianta automată, îl alegi tu pentru fiecare recomandare. Bonusurile le marchează
-        frizerul ca folosite, din aplicație sau din fișa clientului.
+        Fiecare client are în aplicație un cod și un link de recomandare. Când cineva își face cont cu el, pot primi bonus cel care a recomandat, clientul nou
+        sau amândoi: automat, cu beneficiile de mai jos, sau îl dai tu din listă. Ce schimbi aici se aplică recomandărilor de acum înainte; bonusurile deja date
+        rămân cum erau, dacă nu apeși „Aplică… bonusurilor deja date”. Bonusurile le marchează frizerul ca folosite, din aplicație sau din fișa clientului.
       </p>
       <ReferralTree standard={s.standard} />
       <div className="row" style={{ alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' }}>
         <div className="card grid" style={{ flex: '1 1 360px', maxWidth: 520 }}>
           <label className="check">
-            <input type="checkbox" checked={s.enabled} onChange={(e) => { setSaved(false); setS({ ...s, enabled: e.target.checked }); }} /> Recomandările sunt pornite
+            <input type="checkbox" checked={s.enabled} onChange={(e) => edit({ enabled: e.target.checked })} /> Recomandările sunt pornite
           </label>
           <label className="check">
-            <input type="checkbox" checked={s.auto} onChange={(e) => { setSaved(false); setS({ ...s, auto: e.target.checked }); }} /> Dă automat beneficiul standard la fiecare cont nou
+            <input type="checkbox" checked={s.auto} onChange={(e) => edit({ auto: e.target.checked })} /> Dă automat bonusurile bifate mai jos, la fiecare cont nou
           </label>
-          <h2 style={{ margin: '6px 0 0' }}>Beneficiul standard</h2>
-          <RewardFields value={s.standard} onChange={(standard) => { setSaved(false); setS({ ...s, standard }); }} />
+          {side('Bonus pentru cel care a recomandat', s.toReferrer, (v) => edit({ toReferrer: v }), s.standard, (standard) => edit({ standard }), 'referrer')}
+          {side('Bonus pentru clientul nou, venit prin recomandare', s.toNew, (v) => edit({ toNew: v }), s.welcome, (welcome) => edit({ welcome }), 'new')}
           {error ? <div className="err">{error}</div> : null}
+          {note ? <div className="success small">{note}</div> : null}
           <div className="row">
             <button
               disabled={busy || !dirty}
@@ -175,7 +244,7 @@ export function ReferralsPage() {
             >
               Salvează
             </button>
-            {saved && !dirty ? <span className="success small">Salvat.</span> : null}
+            {saved && !dirty ? <span className="success small">Salvat. Se aplică recomandărilor noi.</span> : null}
           </div>
         </div>
         <div className="card" style={{ flex: '2 1 480px' }}>
@@ -191,7 +260,8 @@ export function ReferralsPage() {
                   <th>Client nou</th>
                   <th>Recomandat de</th>
                   <th>Data</th>
-                  <th>Beneficiu</th>
+                  <th>Bonusul celui care a recomandat</th>
+                  <th>Bonusul clientului nou</th>
                 </tr>
               </thead>
               <tbody>
@@ -207,18 +277,10 @@ export function ReferralsPage() {
                     </td>
                     <td className="small">{date(x.createdAt)}</td>
                     <td className="small">
-                      {x.bonusTitle ? (
-                        x.bonusTitle
-                      ) : (
-                        <div className="row" style={{ gap: 6 }}>
-                          <button className="sm" disabled={busy} onClick={() => give(x, { standard: true })}>
-                            Dă standard
-                          </button>
-                          <button className="ghost sm" onClick={() => setCustom({ ref: x, r: { ...s.standard, title: '' } })}>
-                            Personalizat
-                          </button>
-                        </div>
-                      )}
+                      {cell(x.referrerBonus, { clientId: x.referrer.id, referralOf: x.newClient.id, name: x.referrer.name || x.referrer.phone, side: 'referrer' })}
+                    </td>
+                    <td className="small">
+                      {cell(x.newBonus, { clientId: x.newClient.id, referralOf: x.referrer.id, name: x.newClient.name || x.newClient.phone, side: 'new' })}
                     </td>
                   </tr>
                 ))}
@@ -227,11 +289,11 @@ export function ReferralsPage() {
           )}
           {custom ? (
             <div className="card grid" style={{ marginTop: 12 }}>
-              <b>Beneficiu pentru {custom.ref.referrer.name || custom.ref.referrer.phone}</b>
+              <b>Bonus pentru {custom.to.name}</b>
               <RewardFields value={custom.r} onChange={(r) => setCustom({ ...custom, r })} />
               <div className="row">
-                <button disabled={busy || !custom.r.title.trim()} onClick={() => give(custom.ref, custom.r)}>
-                  Dă beneficiul
+                <button disabled={busy || !custom.r.title.trim()} onClick={() => give(custom.to, custom.r)}>
+                  Dă bonusul
                 </button>
                 <button className="ghost" onClick={() => setCustom(null)}>
                   Renunță
