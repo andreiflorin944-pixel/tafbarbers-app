@@ -5,7 +5,7 @@ import { iso } from './time';
 
 // TAF Identity: pozele și descrierea tunsorii dorite de client, plus ce notează echipa despre el.
 
-export const IDENTITY_MAX_PHOTOS = 5;
+export const IDENTITY_MAX_PHOTOS = 10;
 const STAFF_MAX_PHOTOS = 30;
 const CLIENT_UPLOADS_PER_DAY = 30;
 

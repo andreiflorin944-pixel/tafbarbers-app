@@ -13,6 +13,8 @@ import { deleteClient, exportClient } from '../gdpr';
 import { marketingChannels, recordConsent } from '../consents';
 import { createOrder, getOrder, getOrders, notifyOrder, setOrderStatus } from '../shop';
 import { myReferrals } from '../referrals';
+import { getStylePhotos } from '../advisor';
+import { hairstyle } from '../hairstyles';
 import { localize, localizeText } from '../contentI18n';
 import { mySubscriptions } from '../subscriptions';
 import { cardPortalUrl, createRecurringCheckout, setRenewal } from '../recurring';
@@ -114,6 +116,22 @@ clientRoutes.put('/me/identity', async (c) => {
 clientRoutes.post('/me/identity/photos', async (c) => {
   const caption = (c.req.query('caption') ?? '').trim();
   const p = await addPhoto(c.env, c.get('client').clientId, mimeOf(c.req.header('Content-Type')), await c.req.arrayBuffer(), null, caption);
+  return c.json(p, 201);
+});
+
+/** Tunsoarea recomandată de consilier, salvată în TAF Identity (poza ei, cu numele tunsorii), ca s-o vadă frizerul. */
+clientRoutes.post('/me/identity/photos/style/:key', async (c) => {
+  const h = hairstyle(c.req.param('key') ?? '');
+  if (!h) throw new HttpError(404, 'not_found');
+  const own = (await getStylePhotos(c.env)).photos[h.key]?.match(/^\/v1\/media\/([\w-]+)$/)?.[1];
+  const m = await c.env.DB.prepare('SELECT mime, data FROM media WHERE id = ?')
+    .bind(own ?? `style-${h.key}`)
+    .first<{ mime: string; data: ArrayBuffer | number[] }>();
+  if (!m) throw new HttpError(404, 'not_found');
+  const buf = m.data instanceof ArrayBuffer ? m.data : new Uint8Array(m.data).buffer;
+  const lang = c.req.query('lang');
+  const name = lang === 'en' || lang === 'fr' ? h.name[lang] : h.name.ro;
+  const p = await addPhoto(c.env, c.get('client').clientId, m.mime, buf, null, name);
   return c.json(p, 201);
 });
 

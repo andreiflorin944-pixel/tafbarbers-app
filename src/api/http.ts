@@ -101,6 +101,7 @@ export function httpApi(baseUrl: string): BookingApi {
     },
     saveIdentityNote: (token, note) => call('PUT', '/me/identity', { token, body: { note } }),
     addIdentityPhoto: (token, uri) => upload('POST', '/me/identity/photos', token, uri),
+    saveStyleToIdentity: (token, key) => call('POST', `/me/identity/photos/style/${encodeURIComponent(key)}`, { token }),
     removeIdentityPhoto: async (token, id) => {
       await call('DELETE', `/me/identity/photos/${encodeURIComponent(id)}`, { token });
     },

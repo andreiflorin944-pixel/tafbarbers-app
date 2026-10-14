@@ -63,6 +63,8 @@ export interface BookingApi {
   saveIdentityNote(token: string, note: string): Promise<Identity>;
   addIdentityPhoto(token: string, uri: string): Promise<IdentityPhoto>;
   removeIdentityPhoto(token: string, id: string): Promise<void>;
+  /** Poza tunsorii recomandate de consilier, salvată în TAF Identity. */
+  saveStyleToIdentity(token: string, key: string): Promise<IdentityPhoto>;
 
   // Carduri cadou (plata la salon) și pozele înainte/după puse de frizer.
   getGiftCards(token: string): Promise<GiftCards>;

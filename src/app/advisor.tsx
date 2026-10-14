@@ -27,6 +27,7 @@ export default function Advisor() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AdvisorResult | null>(null);
+  const [noteSaved, setNoteSaved] = useState<'no' | 'busy' | 'yes'>('no');
 
   if (gate) return gate;
   if (business && !business.advisor) return <Screen edges={['bottom']}><Empty icon="sparkles-outline" text={t('advisor.off')} /></Screen>;
@@ -59,7 +60,24 @@ export default function Advisor() {
     router.push('/book/location');
   };
 
+  // Descrierea „ce ți se potrivește” se adaugă la descrierea din TAF Identity, pe care o vede frizerul.
+  const saveNote = async () => {
+    if (!token || !result) return;
+    setNoteSaved('busy');
+    setError(null);
+    try {
+      const cur = (await api.getIdentity(token)).note.trim();
+      const add = result.summary.trim();
+      await api.saveIdentityNote(token, (cur && !cur.includes(add) ? `${cur}\n\n${add}` : add).slice(0, 1000));
+      setNoteSaved('yes');
+    } catch (e) {
+      setError(errorMessage(e));
+      setNoteSaved('no');
+    }
+  };
+
   const again = () => {
+    setNoteSaved('no');
     setResult(null);
     setPhoto(null);
     setError(null);
@@ -106,9 +124,16 @@ export default function Advisor() {
             {photo ? <Image source={{ uri: photo }} style={s.thumb} /> : null}
             <Text style={[ui.text, { flex: 1, lineHeight: 21 }]}>{result.summary}</Text>
           </View>
+          <SaveButton
+            state={noteSaved}
+            title={t('advisor.saveNote')}
+            done={t('advisor.savedNote')}
+            onPress={saveNote}
+          />
+          {error ? <Text style={{ color: colors.danger, textAlign: 'center' }}>{error}</Text> : null}
           <Text style={ui.section}>{t('advisor.forYou')}</Text>
           {result.styles.map((x) => (
-            <StyleCard key={x.key} x={x} onBook={() => book(x)} price={x.service ? serviceById(x.service.id) : undefined} />
+            <StyleCard key={x.key} x={x} token={token} onBook={() => book(x)} price={x.service ? serviceById(x.service.id) : undefined} />
           ))}
           <Text style={[ui.muted, { textAlign: 'center', marginTop: space.sm }]}>{t('advisor.note')}</Text>
           <Text style={[ui.muted, { textAlign: 'center' }]}>{t('advisor.left', { n: result.left })}</Text>
@@ -119,8 +144,36 @@ export default function Advisor() {
   );
 }
 
-function StyleCard({ x, onBook, price }: { x: AdvisorStyle; onBook: () => void; price: ReturnType<ReturnType<typeof useApp>['serviceById']> }) {
+/** „Salvează în TAF Identity”: buton mic, care arată „Salvat” după ce a mers. */
+function SaveButton({ state, title, done, onPress }: { state: 'no' | 'busy' | 'yes'; title: string; done: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} disabled={state !== 'no'} style={s.save} accessibilityRole="button">
+      {state === 'busy' ? (
+        <ActivityIndicator color={colors.gold} size="small" />
+      ) : (
+        <Ionicons name={state === 'yes' ? 'checkmark-circle' : 'bookmark-outline'} size={18} color={colors.gold} />
+      )}
+      <Text style={[ui.text, { color: colors.gold, fontWeight: '700' }]}>{state === 'yes' ? done : title}</Text>
+    </Pressable>
+  );
+}
+
+function StyleCard({ x, token, onBook, price }: { x: AdvisorStyle; token: string | null; onBook: () => void; price: ReturnType<ReturnType<typeof useApp>['serviceById']> }) {
   const { t } = useT();
+  const [saved, setSaved] = useState<'no' | 'busy' | 'yes'>('no');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const save = async () => {
+    if (!token) return;
+    setSaved('busy');
+    setSaveError(null);
+    try {
+      await api.saveStyleToIdentity(token, x.key);
+      setSaved('yes');
+    } catch (e) {
+      setSaveError(errorMessage(e));
+      setSaved('no');
+    }
+  };
   const priceText = usePriceLabel();
   // Prima dată poza de exemplu se generează pe server (câteva secunde), apoi vine imediat.
   const [img, setImg] = useState<'loading' | 'ok' | 'none'>('loading');
@@ -185,6 +238,8 @@ function StyleCard({ x, onBook, price }: { x: AdvisorStyle; onBook: () => void; 
           <Text style={ui.price}>{price ? priceText(price) : lei(x.service.price)}</Text>
         </View>
       ) : null}
+      {img === 'ok' ? <SaveButton state={saved} title={t('advisor.saveStyle')} done={t('advisor.savedStyle')} onPress={save} /> : null}
+      {saveError ? <Text style={{ color: colors.danger }}>{saveError}</Text> : null}
       <Button title={t('advisor.book')} onPress={onBook} />
     </View>
   );
@@ -200,5 +255,6 @@ const s = StyleSheet.create({
   pair: { flexDirection: 'row', gap: 2, aspectRatio: 8 / 5, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: '#000' },
   tag: { position: 'absolute', top: 8, left: 8, color: '#fff', backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, fontWeight: '800', fontSize: 11 },
   styleImg: { width: '100%', aspectRatio: 1, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  save: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: space.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.goldDark },
   ask: { flexDirection: 'row', gap: space.sm, alignItems: 'flex-start', backgroundColor: colors.bg, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, padding: space.sm },
 });

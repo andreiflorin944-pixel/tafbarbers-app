@@ -199,8 +199,15 @@ export const mockApi: BookingApi = {
   },
   async addIdentityPhoto(token, uri) {
     const id = identityOf(token);
-    if (id.photos.length >= 5) throw new ApiError('too_many_photos', 409);
+    if (id.photos.length >= 10) throw new ApiError('too_many_photos', 409);
     const p = { id: `ph-${Date.now()}`, url: uri, caption: '' };
+    id.photos.push(p);
+    return delay(p);
+  },
+  async saveStyleToIdentity(token, key) {
+    const id = identityOf(token);
+    if (id.photos.length >= 10) throw new ApiError('too_many_photos', 409);
+    const p = { id: `ph-${Date.now()}`, url: `/v1/advisor/style/${key}`, caption: key };
     id.photos.push(p);
     return delay(p);
   },

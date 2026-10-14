@@ -11,9 +11,9 @@ import { pickImage } from '@/lib/pickImage';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
-const MAX = 5;
+const MAX = 10;
 
-// TAF Identity: până la 5 poze și o descriere a tunsorii dorite. Le vede și frizerul.
+// TAF Identity: până la 10 poze și o descriere a tunsorii dorite. Le vede și frizerul.
 export default function IdentityScreen() {
   const { token } = useApp();
   const { t } = useT();
