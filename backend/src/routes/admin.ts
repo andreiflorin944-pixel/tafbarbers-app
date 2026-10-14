@@ -922,8 +922,22 @@ adminRoutes.get('/bookings', async (c) => {
   const r = await c.env.DB.prepare(`${BOOKING_SELECT} WHERE ${where.join(' AND ')} ORDER BY b.starts_at LIMIT 1000`)
     .bind(...vals)
     .all<BookingRow>();
+  // Clienții care au completat TAF Identity (poze sau descriere): în calendar apare eticheta „TAF Identity”.
+  const ids = [...new Set(r.results.map((x) => x.client_id))];
+  const withIdentity = new Set<string>();
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90);
+    const rows = await c.env.DB.prepare(
+      `SELECT id FROM clients WHERE id IN (${part.map(() => '?').join(',')})
+       AND (identity_note != '' OR EXISTS (SELECT 1 FROM client_photos p WHERE p.client_id = clients.id AND p.private = 0))`,
+    )
+      .bind(...part)
+      .all<{ id: string }>();
+    for (const x of rows.results) withIdentity.add(x.id);
+  }
+  const list = r.results.map((x) => ({ ...booking(x), identity: withIdentity.has(x.client_id) }));
   // Aplicația echipei cere limba ei: numele serviciilor vin traduse (panoul nu trimite limba, rămâne în română).
-  return c.json(await localize(c.env, q.lang, r.results.map(booking), ['serviceName']));
+  return c.json(await localize(c.env, q.lang, list, ['serviceName']));
 });
 
 /** Programare făcută din panou (telefon/walk-in). Clientul se creează după număr dacă nu există. */

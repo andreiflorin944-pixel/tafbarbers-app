@@ -189,7 +189,7 @@ export function CalendarPage({ me }: { me: Me }) {
     return (
       <div
         key={x.id}
-        className={`cal-ev ${x.status}${h < 54 ? ' short' : ''}${x.clientBirthday ? ' bday' : ''}${open?.id === x.id ? ' sel' : ''}`}
+        className={`cal-ev ${x.status}${h < 54 ? ' short' : ''}${x.identity ? ' has-id' : ''}${x.clientBirthday ? ' bday' : ''}${open?.id === x.id ? ' sel' : ''}`}
         style={{
           top: (s - startMin) * PX + 1,
           height: h,
@@ -262,6 +262,11 @@ export function CalendarPage({ me }: { me: Me }) {
           {x.serviceName}
           {withBarber ? ` · ${x.barberName}` : ''}
         </span>
+        {x.identity ? (
+          <span className="cal-ev-id" title="Clientul are poze sau o descriere în TAF Identity (în fișa lui)">
+            <Icon name="image" size={13} /> TAF Identity
+          </span>
+        ) : null}
       </div>
     );
   };

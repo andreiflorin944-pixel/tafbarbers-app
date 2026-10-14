@@ -324,6 +324,8 @@ export type Location = {
 };
 export type Booking = {
   id: string;
+  /** Clientul are poze sau descriere în TAF Identity (doar în lista din calendar). */
+  identity?: boolean;
   clientId: string;
   barberId: string;
   serviceId: string;
