@@ -46,7 +46,8 @@ PUBLIC_URL = "https://app.tafbarbers.ro"
 
 # Secrete (se pun cu `npx wrangler secret put NUME`, niciodată în cod):
 #   SMSADVERT_TOKEN   cheia API de la smsadvert.ro
-#   SMSADVERT_SENDER  phone = SMS-urile pleacă de pe telefonul conectat în SMSAdvert (altfel de pe numărul scurt)
+#   SMSADVERT_SENDER  phone = SMS-urile pleacă de pe telefonul conectat în SMSAdvert (altfel de pe numărul scurt);
+#                     reminder-ul de 2h și codul de logare pleacă oricum pe numărul scurt, ca să ajungă la timp
 #   EMAIL_API_KEY     cheia furnizorului de e-mail
 #   ADMIN_SETUP_KEY   parolă unică pentru crearea primului cont de admin
 #   EMAIL_FROM        expeditorul e-mailurilor (ex. TAFBarbers <programari@tafbarbers.ro>)
