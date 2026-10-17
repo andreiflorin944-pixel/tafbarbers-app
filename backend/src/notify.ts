@@ -34,6 +34,13 @@ export function smsPlain(s: string) {
 }
 
 /**
+ * Mesajele care au rost doar la ora lor pleacă mereu pe numărul scurt, chiar cu SMSADVERT_SENDER=phone: telefonul conectat
+ * le ține în coadă cât e adormit sau fără semnal (17 oct.: reminder-ul de 2h dat de server la 08:00 a ajuns la 13:29,
+ * după programarea de la 10:00), pe când numărul scurt le livrează pe loc. Codul de logare e la fel de grabnic.
+ */
+const URGENT_SMS = new Set(['reminder_2h', 'otp']);
+
+/**
  * SMS prin SMSAdvert (smsadvert.ro). Fără cheie configurată, mesajul doar se jurnalizează
  * (mod test), ca restul fluxului să poată fi încercat.
  */
@@ -50,7 +57,8 @@ export async function sendSms(env: Env, l: Omit<Log, 'channel'>, raw: string): P
       method: 'POST',
       headers: { Authorization: env.SMSADVERT_TOKEN, 'Content-Type': 'application/json' },
       // SMSADVERT_SENDER=phone: pleacă de pe telefonul conectat în contul SMSAdvert (același număr ca alte aplicații); altfel de pe numărul scurt.
-      body: JSON.stringify({ phone: l.recipient, shortTextMessage: text, sendAsShort: env.SMSADVERT_SENDER !== 'phone' }),
+      // Cele grabnice (URGENT_SMS) pleacă oricum pe numărul scurt.
+      body: JSON.stringify({ phone: l.recipient, shortTextMessage: text, sendAsShort: env.SMSADVERT_SENDER !== 'phone' || URGENT_SMS.has(l.kind) }),
     });
     // Răspuns OK: {"successMessage": "...", "msgId": "..."}; altfel apare un mesaj de eroare.
     const raw = await res.text();
