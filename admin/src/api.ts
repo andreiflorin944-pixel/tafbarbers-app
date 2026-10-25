@@ -22,6 +22,8 @@ export class ApiError extends Error {
   constructor(
     public code: string,
     public status: number,
+    /** Textul primit de la Apple / Google / Expo, când serverul îl trimite mai departe. */
+    public detail?: string,
   ) {
     super(code);
   }
@@ -47,7 +49,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   }
   const json = await res.json().catch(() => null);
   if (res.status === 401 && !path.startsWith('/admin/login') && !path.startsWith('/admin/setup')) onUnauthorized();
-  if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+  if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status, typeof json?.message === 'string' ? json.message : undefined);
   return json as T;
 }
 
@@ -185,9 +187,24 @@ const MESSAGES: Record<string, string> = {
   social_key_missing: 'Lipsește cheia de criptare pe server.',
   invalid_date: 'Alege data și ora.',
   empty_file: 'Fișierul e gol.',
+  expo_not_connected: 'Conectează mai întâi Expo (pasul 1 de mai jos).',
+  invalid_expo_token: 'Tokenul Expo nu pare corect. Copiază-l din nou, întreg.',
+  invalid_key_id: 'Key ID are 10 caractere (litere mari și cifre).',
+  invalid_issuer_id: 'Issuer ID nu pare corect. Îl găsești deasupra listei de chei, în App Store Connect.',
+  invalid_p8: 'Fișierul cheii Apple nu pare corect. Alege fișierul .p8 descărcat de la Apple.',
+  invalid_google_json: 'Fișierul Google nu pare corect. Alege fișierul .json al contului de serviciu.',
+  invalid_version: 'Versiunea se scrie ca 1.0.1.',
+  version_too_low: 'Versiunea trebuie să fie mai mare decât cea publicată acum.',
+  ios_in_review: 'Apple verifică acum o versiune. Poți trimite una nouă după ce e aprobată.',
+  release_running: 'O actualizare e deja în curs. Așteaptă să se termine.',
+  invalid_domain: 'Adresa nu pare corectă. Scrie-o ca programari.tafbarbers.ro.',
+  invalid_ga_id: 'Codul Google Analytics începe cu G- (de exemplu G-AB12CD34EF).',
+  invalid_pixel_id: 'Meta Pixel ID are doar cifre.',
+  invalid_link: 'Fiecare link are nevoie de un nume și de o adresă corectă.',
+  no_language: 'Alege cel puțin o limbă.',
 };
 export const errorText = (e: unknown) =>
-  e instanceof ApiError ? (MESSAGES[e.code] ?? `Eroare: ${e.code}`) : 'A apărut o problemă.';
+  e instanceof ApiError ? (e.detail ?? MESSAGES[e.code] ?? `Eroare: ${e.code}`) : 'A apărut o problemă.';
 
 /** Micșorează poza în browser (max `maxPx` pe latura mare) și o urcă. Întoarce adresa ei. */
 export async function uploadImage(file: File, opts: { maxPx?: number; keepAlpha?: boolean; path?: string } = {}): Promise<string> {

@@ -2,6 +2,8 @@ import { Hono, type Context, type Next } from 'hono';
 import { notesRoutes } from '../notes';
 import { socialAdmin } from '../social';
 import { qrAdmin } from '../qr';
+import { storesAdmin } from '../stores';
+import { websiteAdmin } from '../website';
 import {
   createSession,
   deleteSession,
@@ -139,6 +141,8 @@ adminRoutes.use('*', async (c, next) => {
 adminRoutes.route('/', notesRoutes);
 adminRoutes.route('/', socialAdmin);
 adminRoutes.route('/', qrAdmin);
+adminRoutes.route('/', storesAdmin);
+adminRoutes.route('/', websiteAdmin);
 
 adminRoutes.post('/logout', async (c) => {
   const t = tokenFrom(c);

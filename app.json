@@ -85,6 +85,12 @@
       "typedRoutes": false
     },
     "owner": "florinflorin",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/9d5c78da-8145-45f1-bc49-4a055bebea7c"
+    },
     "extra": {
       "router": {},
       "eas": {

@@ -8,6 +8,7 @@ import { formatLocal, iso } from './time';
 import { runSocial } from './social';
 import { checkWaitlist } from './waitlist';
 import { translateAllOnce } from './translateAll';
+import { advanceReleases } from './stores';
 
 /**
  * Rulează la fiecare 5 minute: reminder-e (24h și 2h înainte), cererile de programare expirate, lista de așteptare, campanii programate, urări de ziua clientului,
@@ -75,6 +76,13 @@ export async function scheduled(env: Env) {
     await translateAllOnce(env);
   } catch (e) {
     console.error('translations failed', e);
+  }
+
+  // Actualizările aplicației pornite din panou: starea construirii și, la iOS, trimiterea la verificare la Apple.
+  try {
+    await advanceReleases(env);
+  } catch (e) {
+    console.error('app releases failed', e);
   }
 
   await env.DB.batch([

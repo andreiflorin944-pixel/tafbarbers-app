@@ -13,6 +13,7 @@ import { waitlistPublic } from './waitlist';
 import { DOCS, legalDoc, type Doc } from './legal';
 import { getBusiness } from './db';
 import { formatLocal } from './time';
+import { isSiteHost, sitePage, websitePublic } from './website';
 
 const app = new Hono<AppEnv>();
 
@@ -35,6 +36,14 @@ app.route('/v1/admin', adminRoutes);
 app.route('/v1', clientRoutes);
 app.route('/', qrPublic);
 app.route('/', waitlistPublic);
+app.route('/', websitePublic);
+
+// Rădăcina: la app.tafbarbers.ro (și la domeniul propriu al site-ului) e site-ul cu programare online; în rest (panou.…, workers.dev) e panoul.
+app.get('/', async (c) => {
+  if (await isSiteHost(c.env, new URL(c.req.url).host)) return c.html(await sitePage(c.env));
+  if (c.env.ASSETS) return c.env.ASSETS.fetch(c.req.raw);
+  return c.text('Not found', 404);
+});
 
 // Pagini publice pentru regulamente (link pentru App Store / Google Play și site).
 app.get('/legal/:doc', async (c) => {

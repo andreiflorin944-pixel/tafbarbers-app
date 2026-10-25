@@ -1,0 +1,51 @@
+# Pornit din panou (Aplicații → „Actualizați aplicația”) prin API-ul EAS: construiește versiunea nouă și o trimite
+# la Apple (TestFlight) și la Google Play (producție). Trimiterea la verificare la Apple o face apoi serverul.
+name: Versiune nouă din panou
+run_name: Versiunea ${{ inputs.version }} (${{ inputs.platform }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+        required: true
+      version:
+        type: string
+        required: true
+        description: Versiunea din magazine, ex. 1.0.1
+
+jobs:
+  build_ios:
+    name: Construire iPhone
+    if: ${{ inputs.platform != 'android' }}
+    type: build
+    env:
+      APP_VERSION: ${{ inputs.version }}
+    params:
+      platform: ios
+      profile: production
+  submit_ios:
+    name: Trimitere la Apple
+    needs: [build_ios]
+    type: submit
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+  build_android:
+    name: Construire Android
+    if: ${{ inputs.platform != 'ios' }}
+    type: build
+    env:
+      APP_VERSION: ${{ inputs.version }}
+    params:
+      platform: android
+      profile: production
+  submit_android:
+    name: Trimitere la Google Play
+    needs: [build_android]
+    type: submit
+    params:
+      build_id: ${{ needs.build_android.outputs.build_id }}
