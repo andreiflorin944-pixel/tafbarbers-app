@@ -13,10 +13,12 @@ routes = [
 ]
 
 # Panoul de administrare (admin/dist) e servit de același Worker; doar /v1/* ajunge la API.
+# „/” trece prin Worker: la app.tafbarbers.ro arată site-ul (Panou → Site web), în rest panoul.
 [assets]
 directory = "../admin/dist"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/v1/*", "/legal/*", "/r/*", "/programare", "/sterge-cont", "/plata/*", "/q/*", "/w/*", "/b/*"]
+run_worker_first = ["/", "/site", "/v1/*", "/legal/*", "/r/*", "/programare", "/sterge-cont", "/plata/*", "/q/*", "/w/*", "/b/*"]
 
 [[d1_databases]]
 binding = "DB"

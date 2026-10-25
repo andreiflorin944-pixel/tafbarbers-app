@@ -1,5 +1,7 @@
 export type Env = {
   DB: D1Database;
+  // Panoul de administrare (admin/dist), servit de același Worker.
+  ASSETS?: Fetcher;
   TIMEZONE: string;
   CORS_ORIGINS: string;
   SMSADVERT_TOKEN?: string;
@@ -39,6 +41,8 @@ export type Env = {
   SOCIAL_KEY?: string;
   MEDIA?: R2Bucket;
   SOCIAL_MOCK_BASE?: string;
+  // Doar local: server de probă în locul Apple, Google Play și Expo (Panou → Aplicații).
+  STORES_MOCK_BASE?: string;
   // Doar local: server de probă în locul Workers AI pentru asistent.
   DEV_AI_MOCK_BASE?: string;
   // Doar pentru dezvoltare locală: codul OTP se întoarce în răspuns în loc de SMS.

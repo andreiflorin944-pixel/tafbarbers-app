@@ -1,0 +1,20 @@
+# Pornit din panou (Aplicații → „Actualizare rapidă”): trimite codul nou direct pe telefoane, fără magazine.
+# Ajunge doar la versiunile din magazine care au aceeași parte nativă (runtimeVersion „fingerprint”).
+name: Actualizare rapidă din panou
+run_name: Actualizare rapidă
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        type: string
+        required: false
+
+jobs:
+  update:
+    name: Actualizare rapidă
+    type: update
+    environment: production
+    params:
+      branch: production
+      message: ${{ inputs.message }}
