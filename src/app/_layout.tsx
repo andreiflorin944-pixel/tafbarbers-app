@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Intro } from '@/components/Intro';
 import { PushLink } from '@/components/PushLink';
 import { installCrashReporter, reportError } from '@/lib/crash';
 import { QrLink } from '@/components/QrLink';
@@ -36,6 +37,7 @@ export default function RootLayout() {
           <QrLink />
           <PushLink />
           <RootStack />
+          <Intro />
         </ThemeProvider>
       </CartProvider>
       </StaffProvider>
