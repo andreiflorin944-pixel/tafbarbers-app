@@ -60,7 +60,11 @@
         {
           "image": "./assets/splash-icon.png",
           "imageWidth": 220,
-          "backgroundColor": "#0B0B0C"
+          "backgroundColor": "#0B0B0C",
+          "android": {
+            "image": "./assets/splash-icon-android.png",
+            "imageWidth": 220
+          }
         }
       ],
       [
