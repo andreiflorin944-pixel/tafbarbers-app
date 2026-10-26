@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { barberColor } from './Calendar';
-import { api, BLOCK_KINDS, blockKind, type Barber, type Block, type BlockKind, type Me, type TimeOff } from '../api';
+import { api, BLOCK_KINDS, blockKind, type Barber, type Block, type BlockKind, type Booking, type Me, type TimeOff } from '../api';
+import { AffectedBookings } from './AffectedBookings';
 import { Field, Loading, useAction, useLoad } from '../ui';
 import { addDays, date, dayOf, time, today, WEEKDAYS } from '../util';
 
@@ -38,10 +39,13 @@ function TimeOffSection({ me }: { me: Me }) {
     setVer((v) => v + 1);
   };
 
+  // Programările deja făcute în zilele libere: se arată imediat, ca să fie anulate sau păstrate.
+  const [affected, setAffected] = useState<Booking[]>([]);
   const add = () =>
     run(async () => {
-      await api('POST', '/admin/time-off', { barberId: barberId || null, fromDay, toDay, reason });
+      const r = await api<{ affected?: Booking[] }>('POST', '/admin/time-off', { barberId: barberId || null, fromDay, toDay, reason });
       setReason('');
+      setAffected(r.affected ?? []);
       reload();
     });
 
@@ -53,8 +57,8 @@ function TimeOffSection({ me }: { me: Me }) {
       <h2 style={{ marginTop: 28 }}>Concedii și zile libere</h2>
       <div className="card grid" style={{ marginBottom: 18, maxWidth: 640 }}>
         <p className="muted small" style={{ margin: 0 }}>
-          Zile întregi în care aplicația nu mai oferă ore (concediu, sărbătoare, salon închis). Pentru câteva ore dintr-o zi folosește blocurile de mai sus. Programările
-          deja făcute rămân; verifică-le în calendar.
+          Zile întregi în care aplicația nu mai oferă ore (concediu, sărbătoare, salon închis). Pentru câteva ore dintr-o zi folosește blocurile de mai sus. Dacă sunt
+          deja programări în acele zile, ți le arătăm imediat, ca să le anulezi (clientul primește mesaj) sau să le păstrezi.
         </p>
         <Field label="Cine">
           <select value={barberId} onChange={(e) => setBarberId(e.target.value)} disabled={!me.owner && !!me.barberId}>
@@ -94,6 +98,7 @@ function TimeOffSection({ me }: { me: Me }) {
         </div>
       </div>
 
+      {affected.length ? <AffectedBookings list={affected} what="Zilele libere au fost adăugate." onClose={() => setAffected([])} /> : null}
       {me.owner || me.permissions.bookings_all ? <LeavePlanner barbers={barbers} ver={ver} /> : null}
 
       {!data.data ? (
@@ -289,12 +294,13 @@ function BlocksSection({ me }: { me: Me }) {
   const [fromDay, setFromDay] = useState(today());
   const [untilDay, setUntilDay] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
+  const [affected, setAffected] = useState<Booking[]>([]);
   const { busy, error, run } = useAction();
 
   const add = () =>
     run(async () => {
       setMsg(null);
-      const r = await api<{ block: Block; conflicts: number }>('POST', '/admin/blocks', {
+      const r = await api<{ block: Block; conflicts: number; affected?: Booking[] }>('POST', '/admin/blocks', {
         barberId: who || null,
         kind,
         label,
@@ -306,9 +312,10 @@ function BlocksSection({ me }: { me: Me }) {
       setLabel('');
       setMsg(
         r.conflicts
-          ? `Adăugat. Atenție: ${r.conflicts === 1 ? 'o programare deja făcută se suprapune' : `${r.conflicts} programări deja făcute se suprapun`} cu blocul. Ele rămân; verifică-le în calendar.`
+          ? `Adăugat. Atenție: ${r.conflicts === 1 ? 'o programare deja făcută se suprapune' : `${r.conflicts} programări deja făcute se suprapun`} cu blocul.`
           : 'Adăugat.',
       );
+      setAffected(r.affected ?? []);
       data.reload();
     });
 
@@ -322,6 +329,7 @@ function BlocksSection({ me }: { me: Me }) {
 
   return (
     <>
+      {affected.length ? <AffectedBookings list={affected} what="Blocul a fost adăugat." onClose={() => setAffected([])} /> : null}
       <h2>Pauze și ore speciale</h2>
       <div className="card grid" style={{ marginBottom: 18, maxWidth: 640 }}>
         <p className="muted small" style={{ margin: 0 }}>

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { api, ApiError, RANKS, type Barber, type Hours, type Location, type Me, type Service } from '../api';
+import { api, ApiError, RANKS, type Barber, type Booking, type Hours, type Location, type Me, type Service } from '../api';
 import { emptyTr, Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 import { hm, parseHm, WEEKDAYS } from '../util';
 import { BARBER_PALETTE, barberColor } from './Calendar';
+import { AffectedBookings } from './AffectedBookings';
 
 // Luni primul, duminica la final.
 const ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -12,6 +13,8 @@ export function BarbersPage(_: { me: Me }) {
     Promise.all([api<Barber[]>('GET', '/admin/barbers'), api<Service[]>('GET', '/admin/services'), api<Location[]>('GET', '/admin/locations')]),
   );
   const [edit, setEdit] = useState<Partial<Barber> | null>(null);
+  // Programările rămase în afara programului nou (după „Salvează”).
+  const [affected, setAffected] = useState<Booking[]>([]);
   const [barbers, services, locations] = data.data ?? [[], [], []];
   // Locația se arată pe fișe doar când salonul are mai multe.
   const locName = (id: string | null) => (locations.length > 1 ? (locations.find((l) => l.id === id)?.name ?? '') : '');
@@ -73,12 +76,14 @@ export function BarbersPage(_: { me: Me }) {
           services={services}
           locations={locations}
           onClose={() => setEdit(null)}
-          onDone={() => {
+          onDone={(list) => {
             setEdit(null);
+            setAffected(list);
             data.reload();
           }}
         />
       ) : null}
+      {affected.length ? <AffectedBookings list={affected} what="Programul a fost salvat." onClose={() => setAffected([])} /> : null}
     </>
   );
 }
@@ -94,7 +99,7 @@ function BarberModal({
   services: Service[];
   locations: Location[];
   onClose: () => void;
-  onDone: () => void;
+  onDone: (affected: Booking[]) => void;
 }) {
   const [locationId, setLocationId] = useState(b.locationId ?? locations.find((l) => l.active)?.id ?? '');
   const [name, setName] = useState(b.name ?? '');
@@ -148,9 +153,13 @@ function BarberModal({
         hours,
         ...(locationId && { locationId }),
       };
-      if (b.id) await api('PATCH', `/admin/barbers/${b.id}`, body);
-      else await api('POST', '/admin/barbers', body);
-      onDone();
+      if (b.id) {
+        const r = await api<{ affected?: Booking[] }>('PATCH', `/admin/barbers/${b.id}`, body);
+        onDone(r.affected ?? []);
+      } else {
+        await api('POST', '/admin/barbers', body);
+        onDone([]);
+      }
     });
 
   return (
@@ -314,7 +323,7 @@ function BarberModal({
                 confirm('Ștergi frizerul? Dacă are programări în istoric, doar se dezactivează.') &&
                 run(async () => {
                   await api('DELETE', `/admin/barbers/${b.id}`);
-                  onDone();
+                  onDone([]);
                 })
               }
             >

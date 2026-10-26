@@ -10,6 +10,7 @@ import { checkWaitlist, closeOnBooking } from './waitlist';
 import { locationVars } from './locations';
 import { discounted, serviceOffers } from './offers';
 import { notifyStaff } from './staffNotify';
+import { recordServerError } from './serverErrors';
 
 /** Stările care țin ora ocupată: programările confirmate și cererile încă fără răspuns. */
 export const HOLDS_SLOT = `('confirmed','requested')`;
@@ -144,7 +145,7 @@ export async function createBooking(
     if (input.notify !== false) await notifyBooking(env, created, requested ? 'booking_request' : 'confirm');
     await notifyStaff(env, created, requested ? 'request' : 'new', input.adminId ?? null);
   };
-  if (input.defer) input.defer(notify().catch((e) => console.error('booking_notify', e)));
+  if (input.defer) input.defer(notify().catch((e) => recordServerError(env, 'booking_notify', e)));
   else await notify();
   return created;
 }

@@ -9,6 +9,7 @@ import { runSocial } from './social';
 import { checkWaitlist } from './waitlist';
 import { translateAllOnce } from './translateAll';
 import { advanceReleases } from './stores';
+import { alertServerErrors, markCronRun, recordServerError } from './serverErrors';
 
 /**
  * Rulează la fiecare 5 minute: reminder-e (24h și 2h înainte), cererile de programare expirate, lista de așteptare, campanii programate, urări de ziua clientului,
@@ -21,24 +22,24 @@ export async function scheduled(env: Env) {
   try {
     await expireRequests(env, new Date(now));
   } catch (e) {
-    console.error('expire requests failed', e);
+    await recordServerError(env, 'cron: expire requests failed', e);
   }
   // Lista de așteptare: după cererile expirate (care eliberează ore); prinde și orele eliberate de schimbări de program.
   try {
     await checkWaitlist(env, { now: new Date(now) });
   } catch (e) {
-    console.error('waitlist failed', e);
+    await recordServerError(env, 'cron: waitlist failed', e);
   }
   // O eroare la reminder-e nu oprește restul pașilor (campanii, urări, curățenie).
   try {
     await reminders(env, 'reminder_24h', 'reminder_24h_at', now + 23.5 * 3_600_000, now + 24 * 3_600_000);
   } catch (e) {
-    console.error('reminders 24h failed', e);
+    await recordServerError(env, 'cron: reminders 24h failed', e);
   }
   try {
     await reminders(env, 'reminder_2h', 'reminder_2h_at', now, now + 2 * 3_600_000);
   } catch (e) {
-    console.error('reminders 2h failed', e);
+    await recordServerError(env, 'cron: reminders 2h failed', e);
   }
 
   try {
@@ -47,43 +48,51 @@ export async function scheduled(env: Env) {
     const sending = await env.DB.prepare(`SELECT id FROM campaigns WHERE status = 'sending' ORDER BY created_at LIMIT 5`).all<{ id: string }>();
     for (const c of sending.results) await runCampaign(env, c.id);
   } catch (e) {
-    console.error('campaigns failed', e);
+    await recordServerError(env, 'cron: campaigns failed', e);
   }
 
   try {
     await greetBirthdays(env, new Date(now));
   } catch (e) {
-    console.error('birthday greetings failed', e);
+    await recordServerError(env, 'cron: birthday greetings failed', e);
   }
   try {
     await sendWinback(env, new Date(now));
   } catch (e) {
-    console.error('winback failed', e);
+    await recordServerError(env, 'cron: winback failed', e);
   }
   try {
     await sendLastMinute(env, new Date(now));
   } catch (e) {
-    console.error('last minute failed', e);
+    await recordServerError(env, 'cron: last minute failed', e);
   }
   try {
     await runSocial(env, new Date(now));
   } catch (e) {
-    console.error('social posts failed', e);
+    await recordServerError(env, 'cron: social posts failed', e);
   }
 
   // Textele din panou netraduse încă în engleză și franceză (o dată, pe bucăți, până nu mai lipsește nimic).
   try {
     await translateAllOnce(env);
   } catch (e) {
-    console.error('translations failed', e);
+    await recordServerError(env, 'cron: translations failed', e);
   }
 
   // Actualizările aplicației pornite din panou: starea construirii și, la iOS, trimiterea la verificare la Apple.
   try {
     await advanceReleases(env);
   } catch (e) {
-    console.error('app releases failed', e);
+    await recordServerError(env, 'cron: app releases failed', e);
   }
+
+  // Erorile de mai sus (și cele din cererile ultimei ore): proprietarul primește anunț, cel mult o dată pe oră.
+  try {
+    await alertServerErrors(env, new Date(now));
+  } catch (e) {
+    console.error('error alert failed', e);
+  }
+  await markCronRun(env, new Date(now));
 
   await env.DB.batch([
     env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(iso(new Date(now))),
@@ -126,7 +135,7 @@ async function reminders(
     try {
       sent = await notifyBooking(env, b, kind);
     } catch (e) {
-      console.error('reminder', r.id, e);
+      await recordServerError(env, `cron: reminder ${r.id}`, e);
     }
     // N-a plecat pe niciun canal (ex. SMS-ul a dat eroare): se reîncearcă la următoarea rulare, cât timp e în fereastră,
     // de cel mult 3 ori (după încercările eșuate din jurnal), ca o eroare care ține să nu trimită la nesfârșit.

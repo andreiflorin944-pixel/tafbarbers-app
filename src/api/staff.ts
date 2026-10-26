@@ -150,7 +150,7 @@ export const staffApi = {
   // Clientul se dă după telefon (+ nume, pentru client nou) sau, ales din bază, după `clientId`.
   create: (t: string, body: { phone?: string; name?: string; clientId?: string; serviceId: string; barberId: string; start: string; notify: boolean }) =>
     call<StaffBooking>('POST', '/admin/bookings', t, body),
-  timeOff: (t: string, body: { fromDay: string; toDay: string; reason: string; barberId?: string | null }) => call('POST', '/admin/time-off', t, body),
+  timeOff: (t: string, body: { fromDay: string; toDay: string; reason: string; barberId?: string | null }) => call<{ id: number; conflicts?: number }>('POST', '/admin/time-off', t, body),
   listTimeOff: (t: string, from: string) => call<StaffTimeOff[]>('GET', `/admin/time-off?from=${encodeURIComponent(from)}`, t),
   deleteTimeOff: (t: string, id: number) => call('DELETE', `/admin/time-off/${id}`, t),
   // Blocuri în program: pauză de masă, liber, educațional, altceva, doar membri TAF Club.

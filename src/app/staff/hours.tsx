@@ -50,8 +50,9 @@ export default function StaffHours() {
     setBusy(true);
     setMsg(null);
     try {
-      await staffApi.timeOff(staffToken, { fromDay: from, toDay: to, reason: reason.trim(), barberId: staff.barberId });
-      setMsg({ ok: true, text: t('hours.offAdded') });
+      const r = await staffApi.timeOff(staffToken, { fromDay: from, toDay: to, reason: reason.trim(), barberId: staff.barberId });
+      // Programările deja făcute în zilele libere rămân: frizerul le vede în calendar și le mută sau le anulează.
+      setMsg({ ok: true, text: !r.conflicts ? t('hours.offAdded') : r.conflicts === 1 ? t('hours.blockConflictOne') : t('hours.blockConflictMany', { n: r.conflicts }) });
       setReason('');
       load();
     } catch (e) {

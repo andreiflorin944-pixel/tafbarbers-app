@@ -56,6 +56,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 const MESSAGES: Record<string, string> = {
   network: 'Nu ne putem conecta la server.',
   wrong_credentials: 'E-mail sau parolă greșită.',
+  login_locked: 'Prea multe încercări greșite. Așteaptă 15 minute și încearcă din nou.',
   forbidden: 'Cheia de configurare nu e corectă.',
   already_set_up: 'Contul de administrator există deja. Intră cu e-mailul și parola.',
   password_too_short: 'Parola trebuie să aibă cel puțin 10 caractere.',
