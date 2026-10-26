@@ -29,6 +29,7 @@ import { WaitlistPage } from './pages/Waitlist';
 import { AppsPage } from './pages/Apps';
 import { WebsitePage } from './pages/Website';
 import { RequestsBell } from './Requests';
+import { InstallButton } from './Install';
 
 const PAGES = [
   { key: 'calendar', label: 'Calendar', show: () => true, el: CalendarPage },
@@ -365,6 +366,7 @@ export function App() {
             {current.label}
           </span>
           <span className="top-right">
+            <InstallButton />
             <ThemeSwitch theme={theme} onChange={setTheme} />
             <RequestsBell me={me} onCount={setRequests} />
             <UserMenu me={me} theme={theme} onTheme={toggleTheme} onLogout={logout} />

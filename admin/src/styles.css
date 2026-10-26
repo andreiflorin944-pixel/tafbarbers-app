@@ -105,6 +105,9 @@ h2 { font-size: 17px; margin: 0 0 10px; }
 .top-title { font-size: 26px; font-weight: 800; margin-right: 10px; }
 .top-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .crumb { font-weight: 600; }
+.install-btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px; background: var(--gold-soft); color: var(--accent-text); border: 1px solid var(--gold-line); font-weight: 700; font-size: 13px; white-space: nowrap; }
+.install-btn:hover { background: var(--gold); color: #000; }
+.install-steps { margin: 12px 0 0; padding-left: 20px; line-height: 1.7; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .grid { display: grid; gap: 12px; }
@@ -177,6 +180,8 @@ h2 { font-size: 17px; margin: 0 0 10px; }
   .cal-date button.link { font-size: 16px; }
   .content { padding: 14px 12px 60px; }
   .topbar .crumb { display: none; }
+  .install-btn { padding: 8px; }
+  .install-btn span { display: none; }
   .grid.two { grid-template-columns: 1fr; }
 }
 
