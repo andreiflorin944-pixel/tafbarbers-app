@@ -14,6 +14,7 @@ import { DOCS, legalDoc, type Doc } from './legal';
 import { getBusiness } from './db';
 import { formatLocal } from './time';
 import { isSiteHost, sitePage, websitePublic } from './website';
+import { health, recordServerError } from './serverErrors';
 
 const app = new Hono<AppEnv>();
 
@@ -28,6 +29,11 @@ app.use('*', async (c, next) => {
 });
 
 app.get('/v1', (c) => c.json({ name: 'tafbarbers-api', ok: true }));
+// Pentru un monitor extern (ex. UptimeRobot): 200 cât timp cron-ul de la 5 minute rulează, 503 dacă s-a oprit.
+app.get('/v1/health', async (c) => {
+  const h = await health(c.env);
+  return c.json(h, h.ok ? 200 : 503);
+});
 app.route('/v1', publicRoutes);
 app.route('/v1', socialPublic);
 app.route('/v1', assistantRoutes);
@@ -210,7 +216,8 @@ app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {
   if (err instanceof HttpError) return c.json({ error: err.code }, err.status);
   if (err instanceof SyntaxError) return c.json({ error: 'invalid_json' }, 400);
-  console.error(err);
+  // Se păstrează în panou (Setări → Erori din aplicație) și ajunge în anunțul orar către proprietar.
+  c.executionCtx.waitUntil(recordServerError(c.env, `${c.req.method} ${c.req.path}`, err));
   return c.json({ error: 'server_error' }, 500);
 });
 

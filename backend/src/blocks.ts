@@ -188,35 +188,36 @@ export async function createBlock(env: Env, b: BlockInput, adminId: string) {
     .bind(id, barberId, kind, label, day, weekdays, start, end, fromDay, untilDay, adminId)
     .run();
   const row = (await env.DB.prepare('SELECT * FROM schedule_blocks WHERE id = ?').bind(id).first<BlockRow>())!;
-  return { block: block(row), conflicts: blocksTime(kind) ? await conflictsOf(env, row) : 0 };
+  const affectedIds = blocksTime(kind) ? await conflictsOf(env, row) : [];
+  return { block: block(row), conflicts: affectedIds.length, affectedIds };
 }
 
 /**
  * Programările deja făcute (confirmate sau cereri) care cad peste un bloc nou, din ziua de azi
- * până la cât se poate programa în avans. Blocul nu le anulează; panoul doar avertizează.
+ * până la cât se poate programa în avans. Blocul nu le anulează; panoul le arată (anulare cu mesaj sau păstrare).
  */
-async function conflictsOf(env: Env, r: BlockRow) {
+async function conflictsOf(env: Env, r: BlockRow): Promise<string[]> {
   const biz = await getBusiness(env);
   const today = localDay(env.TIMEZONE, new Date());
   const from = r.day ?? (r.from_day && r.from_day > today ? r.from_day : today);
   let to = r.day ?? addDays(today, biz.maxDaysAhead ?? 30);
   if (r.until_day && r.until_day < to) to = r.until_day;
-  if (to < from) return 0;
+  if (to < from) return [];
   const bk = await env.DB.prepare(
-    `SELECT starts_at, ends_at FROM bookings WHERE status IN ('confirmed','requested') AND starts_at >= ? AND starts_at < ? ${r.barber_id ? 'AND barber_id = ?' : ''} LIMIT 2000`,
+    `SELECT id, starts_at, ends_at FROM bookings WHERE status IN ('confirmed','requested') AND starts_at >= ? AND starts_at < ? ${r.barber_id ? 'AND barber_id = ?' : ''} LIMIT 2000`,
   )
     .bind(...[iso(localToUtc(env.TIMEZONE, from, 0)), iso(localToUtc(env.TIMEZONE, to, 1440)), ...(r.barber_id ? [r.barber_id] : [])])
-    .all<{ starts_at: string; ends_at: string }>();
-  let n = 0;
+    .all<{ id: string; starts_at: string; ends_at: string }>();
+  const out: string[] = [];
   for (const x of bk.results) {
     const s = new Date(x.starts_at);
     const d = localDay(env.TIMEZONE, s);
     if (!blockOnDay(r, d)) continue;
     const sm = localMinutes(env.TIMEZONE, s);
     const em = sm + (Date.parse(x.ends_at) - s.getTime()) / 60_000;
-    if (sm < r.end_min && em > r.start_min) n++;
+    if (sm < r.end_min && em > r.start_min) out.push(x.id);
   }
-  return n;
+  return out;
 }
 
 /** Șterge un bloc (frizerul fără drept pe toți doar pe ale lui). Întoarce dacă a șters ceva. */

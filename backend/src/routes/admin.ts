@@ -4,6 +4,8 @@ import { socialAdmin } from '../social';
 import { qrAdmin } from '../qr';
 import { storesAdmin } from '../stores';
 import { websiteAdmin } from '../website';
+import { clearFailures, lockedAny, loginKeys, recordFailure } from '../clientPassword';
+import { barberHours, bookingsBrief, hoursConflicts, overlapping } from '../scheduleConflicts';
 import {
   createSession,
   deleteSession,
@@ -105,12 +107,22 @@ adminRoutes.post('/setup', async (c) => {
 
 adminRoutes.post('/login', async (c) => {
   const b = await c.req.json<{ email?: string; password?: string }>();
+  const email = String(b.email ?? '').trim().toLowerCase().slice(0, 200);
+  const password = String(b.password ?? '').slice(0, 200);
   const a = await c.env.DB.prepare('SELECT id, password_hash FROM admins WHERE email = ?')
-    .bind(String(b.email ?? '').trim().toLowerCase())
+    .bind(email)
     .first<{ id: string; password_hash: string }>();
+  // Ca la clienți: 5 parole greșite în 15 minute pe cont (sau pe adresa scrisă) și 20 pe IP blochează intrarea 15 minute.
+  // Cheile echipei au prefix propriu, ca blocarea unui cont de client să nu le atingă (și invers).
+  const keys = await loginKeys(c, email ? { kind: 'email', value: `staff:${email}` } : null, a ? [`staff:${a.id}`] : []);
+  if (await lockedAny(c.env, keys)) throw new HttpError(429, 'login_locked');
   // Verificăm parola și când contul nu există, ca timpul de răspuns să nu-l dea de gol.
-  const ok = await verifyPassword(String(b.password ?? ''), a?.password_hash ?? DUMMY_HASH);
-  if (!a || !ok) throw new HttpError(401, 'wrong_credentials');
+  const ok = await verifyPassword(password, a?.password_hash ?? DUMMY_HASH);
+  if (!a || !ok) {
+    await recordFailure(c.env, keys);
+    throw new HttpError(401, 'wrong_credentials');
+  }
+  await clearFailures(c.env, [keys.ident, ...keys.accounts].filter((x): x is string => !!x));
   return c.json({ token: await createSession(c.env.DB, 'admin', a.id) });
 });
 
@@ -738,12 +750,15 @@ adminRoutes.patch('/barbers/:id', ownerOnly, async (c) => {
       .run();
     movedBookings = r.meta.changes ?? 0;
   }
+  const hoursBefore = b.hours ? await barberHours(c.env, id) : null;
   await saveBarberRelations(c.env.DB, id, b);
+  // Program nou: programările viitoare care nu mai încap în el (panoul le arată, nu se anulează singure).
+  const moved = hoursBefore ? await hoursConflicts(c.env, id, hoursBefore, await barberHours(c.env, id)) : [];
   if (prev)
     await saveTranslations(c.env, { role: { ro: (v.role as string) ?? prev.role, prev: prev.role }, bio: { ro: (v.bio as string) ?? prev.bio, prev: prev.bio } }, b.translations);
   // Programul s-a schimbat: poate s-au eliberat ore pentru lista de așteptare.
   if (b.hours || b.serviceIds || b.durations || b.active || b.locationId) await waitlistNow(c.env);
-  return c.json({ ok: true, movedBookings });
+  return c.json({ ok: true, movedBookings, affected: await bookingsBrief(c.env, moved) });
 });
 
 // --- Locații (Setări → Locații): doar proprietarul le schimbă; lista o vede toată echipa (filtrul din calendar) ---
@@ -869,7 +884,9 @@ adminRoutes.post('/time-off', async (c) => {
   const r = await c.env.DB.prepare('INSERT INTO time_off (barber_id, starts_at, ends_at, reason) VALUES (?, ?, ?, ?)')
     .bind(barberId, start, end, (b.reason ?? '').slice(0, 200))
     .run();
-  return c.json({ id: r.meta.last_row_id }, 201);
+  // Programările deja făcute în zilele libere rămân: panoul le arată, ca să fie anulate (cu mesaj la client) sau păstrate.
+  const ids = await overlapping(c.env, start, end, barberId);
+  return c.json({ id: r.meta.last_row_id, conflicts: ids.length, affected: await bookingsBrief(c.env, ids) }, 201);
 });
 
 adminRoutes.delete('/time-off/:id', async (c) => {
@@ -902,8 +919,8 @@ adminRoutes.post('/blocks', async (c) => {
   const b = await c.req.json<BlockInput>().catch(() => ({}) as BlockInput);
   // Frizerul pune blocuri doar în programul lui, ca la concedii.
   const scoped = timeOffScope(c);
-  const r = await createBlock(c.env, { ...b, barberId: scoped ?? (b.barberId || null) }, c.get('admin').adminId);
-  return c.json(r, 201);
+  const { affectedIds, ...r } = await createBlock(c.env, { ...b, barberId: scoped ?? (b.barberId || null) }, c.get('admin').adminId);
+  return c.json({ ...r, affected: await bookingsBrief(c.env, affectedIds) }, 201);
 });
 
 adminRoutes.delete('/blocks/:id', async (c) => {

@@ -972,6 +972,7 @@ const KIND: Record<string, string> = {
   reminder_24h: 'Reminder 24h',
   reminder_2h: 'Reminder 2h',
   campaign: 'Campanie',
+  server_error: 'Alertă erori server',
 };
 
 function MessageLog() {

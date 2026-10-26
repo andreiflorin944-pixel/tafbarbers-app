@@ -35,6 +35,10 @@ binding = "AI"
 # binding = "MEDIA"
 # bucket_name = "tafbarbers-media"
 
+# Jurnalele Worker-ului (erori, console.error) se păstrează în Cloudflare: Workers → tafbarbers-api → Logs.
+[observability]
+enabled = true
+
 # Reminder-ele SMS/push rulează la fiecare 5 minute.
 [triggers]
 crons = ["*/5 * * * *"]
