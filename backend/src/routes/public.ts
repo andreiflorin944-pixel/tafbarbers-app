@@ -187,13 +187,14 @@ publicRoutes.get('/availability', async (c) => {
   if (!serviceId || !isDay(day)) throw new HttpError(400, 'invalid_query');
   const biz = await getBusiness(c.env);
   const today = localDay(c.env.TIMEZONE, new Date());
-  if (day < today || day > addDays(today, biz.maxDaysAhead ?? 30)) return c.json([]);
   // Cu cont: membrii TAF Club văd și orele „doar membri” (marcate); panoul le vede pe toate.
   const who = await optionalSession(c);
   const access = who?.kind === 'admin' ? 'staff' : await accessFor(c.env, who?.id);
+  // Panoul poate programa și în zilele trecute (ex. o programare uitată); clienții doar de azi încolo.
+  if ((day < today && who?.kind !== 'admin') || day > addDays(today, biz.maxDaysAhead ?? 30)) return c.json([]);
   // Panoul, la mutarea unei programări: ora ei de acum contează ca liberă (`exclude` = programarea mutată).
   const exclude = who?.kind === 'admin' ? c.req.query('exclude') || undefined : undefined;
-  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, locationId, day, access, excludeBookingId: exclude }));
+  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, locationId, day, access, excludeBookingId: exclude, anyTime: who?.kind === 'admin' }));
 });
 
 publicRoutes.get('/legal/:doc', async (c) => {

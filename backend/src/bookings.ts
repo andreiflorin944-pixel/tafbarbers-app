@@ -78,6 +78,7 @@ export async function createBooking(
       locationId: input.locationId ?? null,
       day: localDay(env.TIMEZONE, start),
       access: input.source === 'admin' ? 'staff' : await accessFor(env, input.clientId),
+      anyTime: input.source === 'admin',
     });
     const slot = slots.find((s) => Date.parse(s.start) === start.getTime());
     if (!slot) throw new HttpError(409, 'slot_unavailable');
@@ -256,7 +257,7 @@ export async function editBooking(env: Env, id: string, input: BookingEdit, admi
   if (!moved && !serviceChanged && !priceChanged) return cur;
 
   if ((moved || serviceChanged) && !input.force) {
-    const slots = await availability(env, { serviceId, barberId, day: localDay(env.TIMEZONE, start), excludeBookingId: id, access: 'staff' });
+    const slots = await availability(env, { serviceId, barberId, day: localDay(env.TIMEZONE, start), excludeBookingId: id, access: 'staff', anyTime: true });
     if (!slots.some((s) => Date.parse(s.start) === start.getTime() && s.barberId === barberId)) throw new HttpError(409, 'slot_unavailable');
   }
   // Suprapunerea cu altă programare se verifică în aceeași instrucțiune (și cu `force`).

@@ -38,12 +38,12 @@ export async function eligibleBarbers(env: Env, serviceId: string, barberId: str
 }
 
 /**
- * Orele libere dintr-o zi locală. Pentru „orice frizer”, fiecare oră apare o singură dată,
+ * Orele libere dintr-o zi locală (fără `anyTime`, doar cele de după acum + timpul minim de anunț). Pentru „orice frizer”, fiecare oră apare o singură dată,
  * atribuită primului frizer liber (în ordinea din panou). Cu `locationId`, „orice frizer” înseamnă orice frizer din acea locație.
  */
 export async function availability(
   env: Env,
-  opts: { serviceId: string; barberId: string | null; locationId?: string | null; day: string; excludeBookingId?: string; access?: Access },
+  opts: { serviceId: string; barberId: string | null; locationId?: string | null; day: string; excludeBookingId?: string; access?: Access; anyTime?: boolean },
 ): Promise<Slot[]> {
   const access = opts.access ?? 'public';
   const biz = await getBusiness(env);
@@ -62,7 +62,8 @@ export async function availability(
   const dayEnd = localToUtc(tz, opts.day, 24 * 60);
   const wd = weekdayOf(opts.day);
   const step = (biz.slotStepMin ?? 15) * 60_000;
-  const earliest = Date.now() + (biz.minLeadMin ?? 0) * 60_000;
+  // Clienții nu pot lua ore trecute sau prea apropiate; panoul (`anyTime`) poate programa și acum, și în trecut.
+  const earliest = opts.anyTime ? -Infinity : Date.now() + (biz.minLeadMin ?? 0) * 60_000;
 
   const ph = barbers.map(() => '?').join(',');
   const [own, hours, busy, off, blocks] = await Promise.all([
