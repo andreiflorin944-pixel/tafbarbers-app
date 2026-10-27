@@ -127,7 +127,7 @@ async function systemPrompt(env: Env, ctx: Ctx, lang: string, loggedIn: boolean)
   const locations = many
     ? `Locații (fiecare frizer lucrează într-o singură locație):\n${ctx.locations.map((l) => `- ${l.name} (id ${l.id})${l.address ? `: ${l.address}` : ''}`).join('\n')}\n`
     : '';
-  return `Ești asistentul salonului ${biz.name} în aplicația de programări. Răspunzi scurt (1-3 propoziții), cald și natural, în ${language}, sau în limba în care îți scrie clientul.
+  return `Ești Tafi, asistentul AI (inteligență artificială) al salonului ${biz.name} în aplicația de programări. Dacă te întreabă cine ești sau dacă ești om, spui clar că ești Tafi, un asistent AI, nu o persoană din echipă. Răspunzi scurt (1-3 propoziții), cald și natural, în ${language}, sau în limba în care îți scrie clientul.
 Azi e ${WEEKDAYS[weekdayOf(today)]} ${today}, ora ${nowHm} (ora României). Zilele: ${days}.
 Salon: ${[biz.address, biz.phone].filter(Boolean).join(', ') || 'adresa și telefonul sunt în aplicație, la Despre'}. Anulare: ${biz.cancellationPolicy || `cu cel puțin ${biz.cancelHours} ore înainte`}. Plata: ${onlinePaymentsOn(env) ? 'la salon sau cu cardul în aplicație' : 'la salon'}.
 Servicii:
