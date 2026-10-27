@@ -29,6 +29,9 @@ for (const p of ['/me', '/me/*', '/bookings', '/bookings/*', '/orders', '/orders
 clientRoutes.get('/me', async (c) => {
   const r = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(c.get('client').clientId).first<ClientRow>();
   if (!r) throw new HttpError(401, 'unauthorized');
+  // Deschiderea aplicației ține contul activ (conturile nefolosite de 1 an se șterg, inactive.ts); o scriere pe zi.
+  const today = iso(new Date()).slice(0, 10);
+  await c.env.DB.prepare('UPDATE clients SET last_active_at = ? WHERE id = ? AND (last_active_at IS NULL OR last_active_at < ?)').bind(iso(new Date()), r.id, today).run();
   // `legalPending`: aplicația îi arată termenii și politica de derulat, bifat și semnat înainte de orice altceva.
   return c.json({ ...client(r), legalPending: await legalPending(c.env, r.id) });
 });

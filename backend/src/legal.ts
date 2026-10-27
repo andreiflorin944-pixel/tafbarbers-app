@@ -116,11 +116,12 @@ Această politică explică ce date personale prelucrăm când folosești aplica
 Nu luăm decizii automate cu efecte juridice asupra ta și nu facem profilare în acest sens. Asistentul virtual doar propune; decizia de a te programa e a ta.
 
 4. Cât timp păstrăm datele
-• Datele de cont și istoricul: cât timp ai cont.
+• Datele de cont și istoricul: cât timp ai cont și îl folosești.
 • Jurnalul mesajelor trimise (tip, dată, stare): 12 luni.
 • Notițele echipei din programări: 3 ani de la programare.
 • Amprenta rețelei de la scanarea codurilor QR: 30 de zile; contoarele zilnice ale asistentului: 7 zile.
 • Conversațiile cu asistentul și înregistrările vocale: nu se păstrează.
+• Contul nefolosit: dacă timp de 1 an nu ai nicio programare, vizită sau comandă și nu deschizi Aplicația, te anunțăm pe e-mail sau în Aplicație, iar după încă 30 de zile contul se șterge ca la „Șterge contul”. Nu se șterg conturile cu abonament activ sau cu card cadou nefolosit.
 • La ștergerea contului: numele, telefonul, e-mailul, data nașterii, pozele, notițele și preferințele se șterg imediat. Din dovada acordurilor rămâne doar data și ce ai acceptat, fără adresa IP, fără dispozitiv și fără semnătură, ca să putem arăta că acordul a existat. Programările și încasările rămân anonimizate (fără date despre tine), pentru evidența contabilă.
 • Documentele financiar-contabile: pe durata cerută de legislația contabilă și fiscală.
 • Codurile de intrare: câteva minute, până expiră.

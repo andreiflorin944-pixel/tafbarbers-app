@@ -11,6 +11,7 @@ import { translateAllOnce } from './translateAll';
 import { advanceReleases } from './stores';
 import { alertServerErrors, markCronRun, recordServerError } from './serverErrors';
 import { applyRetention, retentionDue } from './retention';
+import { cleanInactive } from './inactive';
 
 /**
  * Rulează la fiecare 5 minute: reminder-e (24h și 2h înainte), cererile de programare expirate, lista de așteptare, campanii programate, urări de ziua clientului,
@@ -101,6 +102,11 @@ export async function scheduled(env: Env) {
       await applyRetention(env, now);
     } catch (e) {
       await recordServerError(env, 'cron: retention failed', e);
+    }
+    try {
+      await cleanInactive(env, now);
+    } catch (e) {
+      await recordServerError(env, 'cron: inactive accounts failed', e);
     }
   }
 
