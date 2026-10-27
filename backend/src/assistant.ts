@@ -8,6 +8,7 @@ import { addDays, iso, localDay, weekdayOf } from './time';
 import { aiOf } from './translate';
 import { discounted, serviceOffers } from './offers';
 import { localizeText } from './contentI18n';
+import { ipHash } from './qr';
 
 // Asistentul din aplicație: clientul scrie sau vorbește („Când are Florin loc vineri?”), asistentul răspunde despre
 // servicii, prețuri, program și ore libere, și propune programarea. Programarea o confirmă clientul cu un buton,
@@ -126,7 +127,7 @@ async function systemPrompt(env: Env, ctx: Ctx, lang: string, loggedIn: boolean)
   const locations = many
     ? `Locații (fiecare frizer lucrează într-o singură locație):\n${ctx.locations.map((l) => `- ${l.name} (id ${l.id})${l.address ? `: ${l.address}` : ''}`).join('\n')}\n`
     : '';
-  return `Ești asistentul salonului ${biz.name} în aplicația de programări. Răspunzi scurt (1-3 propoziții), cald și natural, în ${language}, sau în limba în care îți scrie clientul.
+  return `Ești Tafi, asistentul AI (inteligență artificială) al salonului ${biz.name} în aplicația de programări. Dacă te întreabă cine ești sau dacă ești om, spui clar că ești Tafi, un asistent AI, nu o persoană din echipă. Răspunzi scurt (1-3 propoziții), cald și natural, în ${language}, sau în limba în care îți scrie clientul.
 Azi e ${WEEKDAYS[weekdayOf(today)]} ${today}, ora ${nowHm} (ora României). Zilele: ${days}.
 Salon: ${[biz.address, biz.phone].filter(Boolean).join(', ') || 'adresa și telefonul sunt în aplicație, la Despre'}. Anulare: ${biz.cancellationPolicy || `cu cel puțin ${biz.cancelHours} ore înainte`}. Plata: ${onlinePaymentsOn(env) ? 'la salon sau cu cardul în aplicație' : 'la salon'}.
 Servicii:
@@ -414,7 +415,8 @@ assistantRoutes.post('/assistant', async (c) => {
     .map((m) => ({ role: m.role, content: m.content.slice(0, 600) }));
   if (!history.length || history[history.length - 1].role !== 'user') throw new HttpError(400, 'message_required');
   const clientId = await whoIs(c.env, tokenFrom(c));
-  const key = clientId ?? `ip:${c.req.header('CF-Connecting-IP') ?? 'local'}`;
+  // Fără cont, limita se ține după amprenta adresei IP (nu adresa în clar); rândurile se șterg după 7 zile.
+  const key = clientId ?? `ip:${(await ipHash(c.env, c)) ?? 'local'}`;
   await checkLimit(c.env, key);
   return c.json(await chat(c.env, history, lang, !!clientId, await accessFor(c.env, clientId), clientId));
 });
@@ -427,7 +429,7 @@ assistantRoutes.post('/assistant/voice', async (c) => {
   if (!buf.byteLength) throw new HttpError(400, 'empty_file');
   if (buf.byteLength > 3_000_000) throw new HttpError(400, 'audio_too_long');
   const clientId = await whoIs(c.env, tokenFrom(c));
-  await checkLimit(c.env, clientId ?? `ip:${c.req.header('CF-Connecting-IP') ?? 'local'}`);
+  await checkLimit(c.env, clientId ?? `ip:${(await ipHash(c.env, c)) ?? 'local'}`);
   const lang = c.req.query('lang');
   let bin = '';
   const u = new Uint8Array(buf);

@@ -21,7 +21,8 @@ export async function exportClient(env: Env, id: string) {
     env.DB.prepare('SELECT platform, updated_at FROM push_tokens WHERE client_id = ?').bind(id).all(),
   ]);
   const orders = (await getOrders(env, 'o.client_id = ?', [id], 1000)).map(({ clientName: _n, clientPhone: _p, ...o }) => o);
-  const { notes: _internal, ...profile } = client(c);
+  // Notițele echipei despre client intră și ele (dreptul de acces, art. 15 GDPR, acoperă tot ce știm despre el).
+  const { notes: teamNotes, ...profile } = client(c);
   const identity = await getIdentity(env, id, false);
   const bonuses = await getBonuses(env, id, false);
   const subscriptions = await getSubscriptions(env, id, false);
@@ -33,6 +34,7 @@ export async function exportClient(env: Env, id: string) {
       termsAcceptedAt: c.terms_accepted_at,
       marketingConsentAt: (c as { marketing_consent_at?: string | null }).marketing_consent_at ?? null,
       passwordSetAt: (c as { password_set_at?: string | null }).password_set_at ?? null,
+      teamNotes,
     },
     bookings: bk.results.map((b) => {
       const { clientName: _n, clientPhone: _p, ...rest } = booking(b);

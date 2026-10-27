@@ -198,6 +198,8 @@ export default function Assistant() {
         {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
       </ScrollView>
 
+      {/* AI Act art. 50: clientul știe că vorbește cu un program AI, care poate greși. */}
+      <Text style={s.disclaimer}>{t('assist.disclaimer')}</Text>
       <View style={s.modeRow} accessibilityRole="radiogroup">
         <Text style={{ color: colors.muted, fontSize: 12 }}>{t('assist.replyMode')}</Text>
         {([false, true] as const).map((on) => (
@@ -252,6 +254,7 @@ const s = StyleSheet.create({
   propTitle: { color: colors.text, fontWeight: '800', fontSize: 15 },
   propLine: { color: colors.muted, fontSize: 14 },
   example: { alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  disclaimer: { color: colors.muted, fontSize: 11, lineHeight: 15, textAlign: 'center', paddingHorizontal: space.md, paddingTop: 6 },
   modeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', paddingVertical: 6 },
   modeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
   modeOn: { backgroundColor: colors.gold, borderColor: colors.gold },

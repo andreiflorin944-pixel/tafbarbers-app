@@ -88,12 +88,12 @@ export async function greetBirthdays(env: Env, now = new Date()) {
   const md = day.slice(5, 10);
   const mds = md === '02-28' && !leap(year) ? [md, '02-29'] : [md];
   const rows = await env.DB.prepare(
-    `SELECT id, name, phone, email, lang, marketing_sms, marketing_email FROM clients
+    `SELECT id, name, phone, email, lang, marketing_sms, marketing_email, marketing_push FROM clients
      WHERE deleted_at IS NULL AND birth_date IS NOT NULL AND substr(birth_date, 6, 5) IN (${mds.map(() => '?').join(',')})
        AND (birthday_greeted IS NULL OR birthday_greeted < ?) LIMIT 200`,
   )
     .bind(...mds, year)
-    .all<{ id: string; name: string; phone: string; email: string | null; lang: string; marketing_sms: number; marketing_email: number }>();
+    .all<{ id: string; name: string; phone: string; email: string | null; lang: string; marketing_sms: number; marketing_email: number; marketing_push: number }>();
   if (!rows.results.length) return 0;
   const shop = (await getBusiness(env)).name;
   let n = 0;
@@ -113,8 +113,8 @@ export async function greetBirthdays(env: Env, now = new Date()) {
       const gift = await localizeText(env, lang, s.reward.title);
       body += lang === 'ro' ? ` Cadou de la noi: ${gift}.` : lang === 'fr' ? ` Notre cadeau : ${gift}.` : ` Our gift: ${gift}.`;
     }
-    // Push: oricui are aplicația cu notificările pornite. E-mail și SMS: doar cu acordul pentru oferte.
-    if (s.push) {
+    // Pe toate canalele doar cu acordul pentru oferte (urarea cu cadou e un mesaj promoțional).
+    if (s.push && c.marketing_push) {
       const t = await env.DB.prepare('SELECT token FROM push_tokens WHERE client_id = ?').bind(c.id).all<{ token: string }>();
       if (t.results.length) await sendPush(env, { kind: 'birthday' }, t.results.map((x) => x.token), title, body, { screen: s.bonus ? 'rewards' : 'home' });
     }

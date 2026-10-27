@@ -867,6 +867,9 @@ type Consent = {
   lang: string | null;
   channel: string | null;
   anonymized: boolean;
+  signature: string | null;
+  docHash: string | null;
+  readFull: boolean;
 };
 const SOURCE: Record<string, string> = {
   register: 'cont nou (cu cod)',
@@ -874,6 +877,7 @@ const SOURCE: Record<string, string> = {
   first_login: 'prima intrare (client adăugat din panou)',
   login: 'la intrarea în cont',
   profile: 'din profilul lui',
+  sign: 'a semnat termenii și politica',
 };
 const CHANNEL: Record<string, string> = { push: 'notificări', email: 'e-mail', sms: 'SMS' };
 // Versiunea documentului: data modelului implicit (2026-10-09) sau data și ora salvării din panou (cu oră, ca două corecturi în aceeași zi să se deosebească).
@@ -914,6 +918,13 @@ function Consents({ clientId }: { clientId: string }) {
                   .filter(Boolean)
                   .join(' · ')}
               </div>
+              {x.signature ? (
+                <div>
+                  Semnat: <b>{x.signature}</b>
+                  {x.readFull ? ' · a derulat documentele până la capăt' : ''}
+                  {x.docHash ? <span className="muted"> · amprenta textului {x.docHash.slice(0, 12)}…</span> : null}
+                </div>
+              ) : null}
               <div className="muted">
                 {x.anonymized
                   ? 'Cont șters: au rămas doar data și ce a acceptat.'

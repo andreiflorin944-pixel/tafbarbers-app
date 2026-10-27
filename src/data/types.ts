@@ -106,6 +106,8 @@ export type Me = {
   photoUrl?: string | null;
   /** Contul are o parolă (pe lângă intrarea cu cod). */
   hasPassword?: boolean;
+  /** Trebuie să citească și să semneze termenii și politica (cont vechi sau documente actualizate). */
+  legalPending?: boolean;
 };
 
 /** O poză din TAF Identity. `addedBy` apare doar la pozele urcate de echipă. */

@@ -3,7 +3,8 @@ import { router } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { api, usingMock } from "@/api";
-import { ApiError } from "@/api/client";
+import { ApiError, type LegalSignature } from "@/api/client";
+import { LegalSign } from "@/components/LegalSign";
 import { SocialLogin, type SocialResult } from "@/components/SocialLogin";
 import {
   PASSWORD_MIN,
@@ -55,9 +56,12 @@ export function PhoneLogin({
   const [birth, setBirth] = useState("");
   const [ref, setRef] = useState(initialRef?.toUpperCase() ?? "");
   const [devCode, setDevCode] = useState<string | undefined>();
-  const [accepted, setAccepted] = useState(false);
-  // Bifa de oferte vine bifată (alegerea proprietarului); clientul o poate debifa aici sau opri oricând din Cont.
-  const [marketing, setMarketing] = useState(true);
+  // Termenii și politica se semnează în fereastra lor (derulare până jos, bifă, numele ca semnătură); `accepted` = semnat.
+  const [signed, setSigned] = useState<LegalSignature | null>(null);
+  const [signOpen, setSignOpen] = useState(false);
+  const accepted = !!signed;
+  // Bifa de oferte pornește nebifată: un acord bifat dinainte nu e valabil (GDPR, considerentul 32).
+  const [marketing, setMarketing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,6 +174,7 @@ export function PhoneLogin({
         name: name.trim(),
         lang,
         acceptTerms: accepted,
+        ...signed,
         marketing,
         birthDate: parseBirth(birth) ?? undefined,
         ref: ref.trim() || undefined,
@@ -202,6 +207,7 @@ export function PhoneLogin({
         lang,
         // La intrare, acordul e cel din textul de sub buton (pentru clienții adăugați din panou, care nu l-au dat încă).
         acceptTerms: register ? accepted : true,
+        ...(register ? signed : null),
         marketing: register ? marketing : false,
         birthDate: register ? (parseBirth(birth) ?? undefined) : undefined,
         email: emailOk ? cleanEmail : undefined,
@@ -459,27 +465,29 @@ export function PhoneLogin({
 
           {register ? (
             <>
+              {/* Termenii și politica: se citesc până jos și se semnează în fereastra lor, apoi apare aici „Semnat”. */}
               <Check
                 checked={accepted}
-                onPress={() => setAccepted((a) => !a)}
-                label={`${t("login.agree")} ${t("login.terms")} ${t("login.and")} ${t("login.privacy")}`}
+                onPress={() => setSignOpen(true)}
+                label={signed ? t("sign.done", { name: signed.signature }) : t("sign.open")}
               >
-                {t("login.agree")}{" "}
-                <Text
-                  style={{ color: colors.gold }}
-                  onPress={() => router.push("/legal/terms")}
-                >
-                  {t("login.terms")}
-                </Text>{" "}
-                {t("login.and")}{" "}
-                <Text
-                  style={{ color: colors.gold }}
-                  onPress={() => router.push("/legal/privacy")}
-                >
-                  {t("login.privacy")}
-                </Text>
-                .
+                {signed ? (
+                  t("sign.done", { name: signed.signature })
+                ) : (
+                  <Text style={{ color: colors.gold, fontWeight: "600" }}>
+                    {t("sign.open")}
+                  </Text>
+                )}
               </Check>
+              <LegalSign
+                visible={signOpen}
+                closeLabel={t("nav.back")}
+                onClose={() => setSignOpen(false)}
+                onSign={async (s) => {
+                  setSigned(s);
+                  setSignOpen(false);
+                }}
+              />
               <Check
                 checked={marketing}
                 onPress={() => setMarketing((m) => !m)}
