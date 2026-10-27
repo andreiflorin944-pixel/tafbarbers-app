@@ -65,8 +65,9 @@ export function Intro() {
   });
   return (
     <Animated.View style={[StyleSheet.absoluteFill, styles.wrap, { opacity: fade }]} onLayout={() => void start()}>
-      <Animated.View style={{ width: LOGO_W, height: LOGO_H, transform: [{ scale }] }}>
-        <Image source={require('../../assets/intro-logo.png')} style={StyleSheet.absoluteFill} resizeMode="contain" />
+      <Animated.View style={{ width: LOGO_W, height: LOGO_H, overflow: 'hidden', transform: [{ scale }] }}>
+        {/* Mărimi exacte: pe iOS, fără ele, imaginea apărea la mărimea ei reală și se vedea doar „T”-ul. */}
+        <Image source={require('../../assets/intro-logo.png')} style={{ position: 'absolute', left: 0, top: 0, width: LOGO_W, height: LOGO_H }} resizeMode="contain" />
         <View
           style={{
             position: 'absolute',
@@ -78,7 +79,7 @@ export function Intro() {
         >
           <Animated.Image
             source={require('../../assets/intro-mustache.png')}
-            style={{ width: '100%', height: '100%', transform: [{ rotate }] }}
+            style={{ width: MUSTACHE.width * LOGO_W, height: MUSTACHE.height * LOGO_H, transform: [{ rotate }] }}
             resizeMode="contain"
           />
         </View>
