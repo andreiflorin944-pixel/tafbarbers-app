@@ -10,11 +10,12 @@ import { checkWaitlist } from './waitlist';
 import { translateAllOnce } from './translateAll';
 import { advanceReleases } from './stores';
 import { alertServerErrors, markCronRun, recordServerError } from './serverErrors';
+import { applyRetention, retentionDue } from './retention';
 
 /**
  * Rulează la fiecare 5 minute: reminder-e (24h și 2h înainte), cererile de programare expirate, lista de așteptare, campanii programate, urări de ziua clientului,
  * „Ne e dor de tine”, ore libere de ultim moment, traducerea conținutului care nu e încă tradus,
- * curățenie (sesiuni și coduri expirate). Fiecare reminder se marchează înainte de trimitere,
+ * curățenie (sesiuni și coduri expirate; o dată pe zi, datele vechi după termenele de păstrare). Fiecare reminder se marchează înainte de trimitere,
  * ca o rulare suprapusă să nu-l trimită de două ori.
  */
 export async function scheduled(env: Env) {
@@ -93,6 +94,15 @@ export async function scheduled(env: Env) {
     console.error('error alert failed', e);
   }
   await markCronRun(env, new Date(now));
+
+  // Datele vechi se șterg după termenele din politica de confidențialitate (o dată pe zi).
+  if (retentionDue(now)) {
+    try {
+      await applyRetention(env, now);
+    } catch (e) {
+      await recordServerError(env, 'cron: retention failed', e);
+    }
+  }
 
   await env.DB.batch([
     env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(iso(new Date(now))),

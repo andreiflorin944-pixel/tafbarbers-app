@@ -30,10 +30,11 @@ export interface BookingApi {
     input: { phone: string; email?: string; channel: 'email' | 'sms' },
     lang: string,
   ): Promise<{ phone: string; channel: 'email' | 'sms'; sentTo: string; newAccount?: boolean; devCode?: string }>;
-  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; email?: string; ref?: string; qr?: string; socialTicket?: string; password?: string }): Promise<{ token: string }>;
+  /** `signature` + versiunile: semnătura de la derularea termenilor și a politicii (contul nou). */
+  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; email?: string; ref?: string; qr?: string; socialTicket?: string; password?: string } & Partial<LegalSignature>): Promise<{ token: string }>;
   /** Logare cu Apple / Google: intră direct dacă contul e legat, altfel cere telefonul (tichet pentru completare). */
   socialSignIn(input: { provider: 'apple' | 'google'; idToken: string; nonce?: string; name?: string }): Promise<{ token?: string; needsPhone?: boolean; ticket?: string; email?: string | null; name?: string }>;
-  socialComplete(input: { ticket: string; phone: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; ref?: string; qr?: string }): Promise<{ token: string }>;
+  socialComplete(input: { ticket: string; phone: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; ref?: string; qr?: string } & Partial<LegalSignature>): Promise<{ token: string }>;
   /** Intrarea cu e-mail (sau telefon) și parolă. Date greșite: mereu `wrong_credentials`; prea multe greșeli: `login_locked`. */
   passwordLogin(input: { identifier: string; password: string }): Promise<{ token: string }>;
   /** „Am uitat parola”: codul pleacă pe e-mailul contului, dacă există contul (răspunsul e mereu la fel). */
@@ -44,7 +45,10 @@ export interface BookingApi {
   setPassword(token: string, input: { password: string; current?: string; code?: string }): Promise<void>;
   /** Codul pentru schimbarea parolei, pe e-mailul contului. */
   passwordCode(token: string, lang: string): Promise<{ channel: 'email' | 'sms'; sentTo: string; devCode?: string }>;
-  getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null; translated?: boolean }>;
+  /** `version`: versiunea documentului, trimisă înapoi la semnare. */
+  getLegal(doc: 'terms' | 'privacy', lang: string): Promise<{ title: string; body: string; updatedAt: string | null; version?: string; translated?: boolean }>;
+  /** Semnarea termenilor și a politicii din cont (cont vechi sau documente actualizate). */
+  signLegal(token: string, input: LegalSignature & { lang: string }): Promise<void>;
   exportMe(token: string): Promise<unknown>;
   deleteMe(token: string): Promise<void>;
   logout(token: string): Promise<void>;
@@ -115,6 +119,9 @@ export interface BookingApi {
   /** Consilierul de tunsori: poza (fișier local, nu se păstrează pe server) → 2-3 servicii potrivite ale salonului. */
   advisor(uri: string, lang: string, token: string): Promise<AdvisorResult>;
 }
+
+/** Semnătura de la termeni și politică: numele scris și versiunile documentelor citite. */
+export type LegalSignature = { signature: string; termsVersion: string; privacyVersion: string };
 
 /** Eroare de la server, cu codul lui (ex. `slot_unavailable`). */
 export class ApiError extends Error {

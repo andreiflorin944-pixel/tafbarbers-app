@@ -1,6 +1,8 @@
 import type { Env } from './env';
 import { getBusiness, getSetting, setSetting } from './db';
+import { getWebsite } from './website';
 import { langOf, localizeText, lookup } from './contentI18n';
+import { sha256 } from './auth';
 
 // Regulamentele afișate în aplicație și pe web. Se editează din panou (Regulamente), doar în română;
 // până atunci se folosesc modelele de mai jos. În engleză și franceză se arată traducerea automată (cu mențiunea că
@@ -22,11 +24,12 @@ Acești termeni și condiții („Termenii”) se aplică folosirii aplicației 
 Aplicația este operată de {company}, cu sediul în {seat}, CUI {cui}, nr. de înregistrare la Registrul Comerțului {regcom} („noi”). Locația unde se prestează serviciile: {address}. Contact: {email}, telefon {phone}.
 
 2. Contul
-2.1. Contul se creează cu numărul de telefon, adresa de e-mail, numele și data nașterii, și se confirmă cu un cod de unică folosință trimis pe e-mail sau prin SMS. Nu folosim parole pentru clienți.
-2.2. Trebuie să ai cel puțin 16 ani ca să îți faci cont. Pentru copii, programarea o face părintele sau tutorele, din contul lui.
-2.3. Ești responsabil pentru corectitudinea datelor din cont și pentru păstrarea accesului la telefonul și e-mailul tău. Ne poți anunța oricând dacă suspectezi o folosire neautorizată.
-2.4. Poți șterge contul oricând, din Aplicație (Cont → Șterge contul) sau de pe pagina {deleteUrl}. Ce se întâmplă cu datele tale la ștergere e descris în Politica de confidențialitate.
-2.5. Putem suspenda sau închide un cont folosit abuziv (de exemplu programări false repetate, neprezentări repetate fără anunț, limbaj jignitor față de echipă), după ce te anunțăm, cu excepția cazurilor grave.
+2.1. Contul se creează cu numărul de telefon, adresa de e-mail, numele și data nașterii, și se confirmă cu un cod de unică folosință trimis pe e-mail sau prin SMS. Poți intra apoi cu parola aleasă de tine sau cu Apple / Google.
+2.2. La crearea contului (și după fiecare actualizare a acestor Termeni sau a Politicii de confidențialitate) citești ambele documente până la capăt, bifezi că le accepți și scrii numele ca semnătură. Păstrăm data, versiunea documentelor semnate, amprenta lor și semnătura, ca dovadă.
+2.3. Trebuie să ai cel puțin 16 ani ca să îți faci cont. Pentru copii, programarea o face părintele sau tutorele, din contul lui.
+2.4. Ești responsabil pentru corectitudinea datelor din cont și pentru păstrarea accesului la telefonul și e-mailul tău. Ne poți anunța oricând dacă suspectezi o folosire neautorizată.
+2.5. Poți șterge contul oricând, din Aplicație (Cont → Șterge contul) sau de pe pagina {deleteUrl}. Ce se întâmplă cu datele tale la ștergere e descris în Politica de confidențialitate.
+2.6. Putem suspenda sau închide un cont folosit abuziv (de exemplu programări false repetate, neprezentări repetate fără anunț, limbaj jignitor față de echipă), după ce te anunțăm, cu excepția cazurilor grave.
 
 3. Programări
 3.1. Programarea e confirmată când apare în Aplicație, la „Programările mele”, și primești confirmarea (notificare, SMS sau e-mail, după caz). Rezervarea unei ore prin Aplicație este gratuită; serviciul se plătește la salon, după prestare, dacă nu se precizează altfel.
@@ -60,17 +63,20 @@ Plățile online cu cardul sunt procesate de Stripe Payments Europe Ltd. Noi nu 
 9. Comunicări
 Îți trimitem mesaje legate de serviciu (codul de intrare, confirmarea, reamintirea sau anularea programării, comanda gata de ridicare). Ofertele și noutățile le primești doar dacă ți-ai dat acordul separat, pe care îl poți retrage oricând din Cont.
 
-10. Conținutul Aplicației
+10. Asistentul virtual
+Asistentul din Aplicație este un program de inteligență artificială, nu o persoană din echipă. Îți răspunde despre servicii, prețuri, program și ore libere și îți poate propune o programare, pe care o faci doar tu, confirmând-o. Poate greși: înainte să confirmi, verifică serviciul, frizerul, ora și prețul afișate pe ecranul de confirmare; acestea sunt cele care contează. Pozele de exemplu cu tunsori din consilierul de tunsori pot fi generate cu inteligență artificială și sunt marcate ca atare.
+
+11. Conținutul Aplicației
 Textele, logo-ul, pozele și designul Aplicației ne aparțin sau le folosim cu drept de folosință. Pozele „înainte și după” cu tine se publică doar cu acordul tău.
 
-11. Răspundere
+12. Răspundere
 Ne străduim ca Aplicația să funcționeze fără întreruperi, dar pot exista pauze pentru mentenanță sau probleme tehnice. Nu răspundem pentru pagube indirecte cauzate de imposibilitatea temporară de a folosi Aplicația. Nimic din acești Termeni nu limitează drepturile pe care le ai prin lege ca și consumator.
 
-12. Reclamații și litigii
+13. Reclamații și litigii
 Ne poți trimite orice reclamație la {email} sau la salon; îți răspundem în cel mult 30 de zile. Dacă nu ești mulțumit de răspuns, te poți adresa Autorității Naționale pentru Protecția Consumatorilor (ANPC, www.anpc.ro) sau poți apela la soluționarea alternativă a litigiilor (SAL), potrivit OG 38/2015 (informații pe www.anpc.ro/ce-este-sal/). Legea aplicabilă este legea română; litigiile se soluționează de instanțele competente din România, fără a-ți afecta dreptul de a te adresa instanței de la domiciliul tău.
 
-13. Modificări
-Putem actualiza acești Termeni. Versiunea curentă e mereu în Aplicație, cu data ultimei actualizări. Pentru schimbări importante te anunțăm în Aplicație sau pe e-mail înainte să intre în vigoare.
+14. Modificări
+Putem actualiza acești Termeni. Versiunea curentă e mereu în Aplicație, cu data ultimei actualizări. După o actualizare, la următoarea deschidere a Aplicației îți cerem să citești și să semnezi din nou versiunea nouă.
 
 Contact: {company}, {seat} · {email} · {phone}`;
 
@@ -82,38 +88,46 @@ Această politică explică ce date personale prelucrăm când folosești aplica
 {company}, sediul în {seat}, CUI {cui}, Reg. Com. {regcom} („noi”). Pentru orice întrebare despre datele tale ne scrii la {email} sau ne suni la {phone}.
 
 2. Ce date prelucrăm
-• Date de cont: nume, număr de telefon, adresă de e-mail, data nașterii, limba aleasă.
-• Programări: serviciul, frizerul, data și ora, starea (încheiată, neprezentare, anulată), plata la salon (sumă, metodă, bacșiș) și notițele interne ale echipei despre serviciu.
+• Date de cont: nume, număr de telefon, adresă de e-mail, data nașterii, limba aleasă, parola (păstrată doar ca amprentă criptografică). Dacă intri cu Apple sau Google, primim de la ei numele și adresa de e-mail confirmată.
+• Programări: serviciul, frizerul, data și ora, starea (încheiată, neprezentare, anulată), plata la salon (sumă, metodă, bacșiș) și notițele interne ale echipei despre serviciu (le primești și pe ele la „Descarcă datele mele”). Echipa nu notează date despre sănătate.
 • TAF Identity (opțional): poza de profil și preferințele pe care le completezi tu; pozele făcute de echipă la salon pentru fișa ta și, doar cu acordul tău, poze „înainte și după”. Tot doar cu acordul tău (păstrăm data și cine din echipă l-a înregistrat), o pereche „înainte și după” poate fi arătată altor clienți, ca exemplu, în consilierul AI de tunsori; vezi asta în Aplicație (Cont → Tunsorile mele) și o poți opri oricând de acolo.
 • Consilierul AI de tunsori (opțional): poza pe care o faci pentru analiză e trimisă serviciului Workers AI (Cloudflare), care descrie fața și părul ca să îți propună servicii ale salonului. Poza nu se salvează nicăieri și nu e văzută de echipă; păstrăm doar numărul de analize pe zi.
+• Asistentul virtual (opțional): când îi scrii sau îi vorbești asistentului din Aplicație, mesajele tale (și înregistrarea vocală, dacă folosești microfonul) sunt trimise serviciului Workers AI (Cloudflare), care le transformă în text și formulează răspunsul. Dacă ești conectat, asistentul vede și programările tale viitoare, ca să nu-ți propună o oră peste una existentă. Conversația și înregistrarea nu se salvează pe server după ce primești răspunsul; păstrăm doar numărul de mesaje pe zi (pentru limita zilnică), legat de cont sau, fără cont, de o amprentă criptată a adresei IP. Asistentul este un program de inteligență artificială și poate greși; programarea se face doar când o confirmi tu. Te rugăm să nu-i scrii date despre sănătate sau alte date sensibile.
 • Cumpărături: comenzi din magazin, carduri cadou, abonamente, bonusuri și recomandări (cine te-a recomandat și pe cine ai recomandat).
 • Plăți online: identificatorul tranzacției și suma. Datele cardului sunt prelucrate direct de Stripe; noi nu le vedem.
 • Comunicări: acordul pentru oferte (cu data), identificatorul dispozitivului pentru notificări push, jurnalul mesajelor trimise (tip, dată, stare).
 • Locația (opțional, doar dacă pornești în Aplicație „Anunță-mă când sunt lângă salon”): telefonul verifică singur dacă ai intrat în zona din jurul unei locații a salonului, inclusiv când Aplicația e închisă. Nu primim și nu păstrăm poziția ta; telefonul ne anunță doar locația salonului lângă care ești, iar noi păstrăm data ultimului anunț trimis, ca să nu îți trimitem prea des. Oprești oricând din Cont sau din setările telefonului.
-• Date tehnice: date necesare funcționării (de exemplu sesiunea de conectare, adresa IP în jurnalele serverului, pentru securitate). Când accepți termenii și politica de confidențialitate sau îți dai ori îți retragi acordul pentru oferte, păstrăm dovada: data și ora, versiunea documentelor, adresa IP, tipul dispozitivului (browser sau aplicație) și limba. Dacă Aplicația se oprește din cauza unei erori, trimitem mesajul tehnic al erorii, versiunea Aplicației și tipul sistemului (Android sau iOS), legate de cont dacă ești conectat, ca să reparăm problema; păstrăm doar ultimele 300 de erori. Nu folosim cookie-uri de urmărire sau publicitate și nu folosim instrumente de analiză care te urmăresc între aplicații.
+• Coduri QR ale salonului: când scanezi un cod QR de pe un afiș sau un flyer, păstrăm data, tipul telefonului și o amprentă criptată a rețelei din care ai scanat (nu adresa IP în clar). Dacă în următoarele 24 de ore îți faci cont sau intri în cont din aceeași rețea, socotim că ai venit prin acel cod, pentru statisticile campaniei. Amprenta se șterge după 30 de zile.
+• Date tehnice: date necesare funcționării (de exemplu sesiunea de conectare, adresa IP în jurnalele serverului, pentru securitate). Când semnezi termenii și politica de confidențialitate sau îți dai ori îți retragi acordul pentru oferte, păstrăm dovada: data și ora, versiunea documentelor și amprenta textului semnat, numele scris ca semnătură, faptul că ai derulat documentele până la capăt, adresa IP, tipul dispozitivului (browser sau aplicație) și limba. Dacă Aplicația se oprește din cauza unei erori, trimitem mesajul tehnic al erorii, versiunea Aplicației și tipul sistemului (Android sau iOS), legate de cont dacă ești conectat, ca să reparăm problema; păstrăm doar ultimele 300 de erori. {cookies}
 
 3. De ce și pe ce temei
 • Crearea contului, programările, comenzile, cardurile cadou și abonamentele: executarea contractului cu tine (art. 6 alin. 1 lit. b GDPR).
 • Mesajele de serviciu (cod de intrare, confirmare, reamintire, anulare, comandă gata): executarea contractului și interesul nostru legitim de a reduce neprezentările.
 • Oferte, noutăți, „Ne e dor de tine”, anunțuri cu ore libere (inclusiv cel când ești lângă salon): doar cu acordul tău (art. 6 alin. 1 lit. a GDPR și Legea 506/2004), pe care îl retragi oricând din Cont, fără să afecteze ce s-a trimis înainte.
-• Urarea și bonusul de ziua ta: executarea contractului (programul de bonusuri din Aplicație); poți renunța scriindu-ne.
+• Urarea și bonusul de ziua ta: doar cu acordul tău pentru oferte, pe canalele pe care l-ai dat.
+• Asistentul virtual: pașii dinaintea programării, făcuți la cererea ta, și executarea contractului (art. 6 alin. 1 lit. b GDPR).
+• Statisticile codurilor QR: interesul nostru legitim de a afla care reclame funcționează (art. 6 alin. 1 lit. f GDPR), cu amprentă criptată și păstrare scurtă; te poți opune oricând scriindu-ne.
 • Pozele „înainte și după” și arătarea lor ca exemplu altor clienți: acordul tău, pe care îl retragi oricând.
 • Analiza pozei în consilierul AI de tunsori: acordul tău, dat în Aplicație înainte de fiecare analiză.
 • Locația pentru anunțul „ești lângă salon”: acordul tău, dat în Aplicație și în permisiunea telefonului, pe care îl retragi oricând.
 • Evidența financiar-contabilă (încasări, bonuri, NIR): obligație legală (art. 6 alin. 1 lit. c GDPR).
 • Securitatea Aplicației și prevenirea fraudelor (de exemplu limitarea codurilor trimise): interesul nostru legitim.
-• Dovada acordurilor tale (termeni, confidențialitate, oferte): obligația legală de a putea demonstra acordul (art. 7 alin. 1 și art. 6 alin. 1 lit. c GDPR).
-Nu luăm decizii automate cu efecte juridice asupra ta și nu facem profilare în acest sens.
+• Dovada acordurilor tale și semnătura (termeni, confidențialitate, oferte): obligația legală de a putea demonstra acordul (art. 7 alin. 1 și art. 6 alin. 1 lit. c GDPR).
+Nu luăm decizii automate cu efecte juridice asupra ta și nu facem profilare în acest sens. Asistentul virtual doar propune; decizia de a te programa e a ta.
 
 4. Cât timp păstrăm datele
 • Datele de cont și istoricul: cât timp ai cont.
-• La ștergerea contului: numele, telefonul, e-mailul, data nașterii, pozele, notițele și preferințele se șterg imediat. Din dovada acordurilor rămâne doar data și ce ai acceptat, fără adresa IP și fără dispozitiv, ca să putem arăta că acordul a existat. Programările și încasările rămân anonimizate (fără date despre tine), pentru evidența contabilă.
+• Jurnalul mesajelor trimise (tip, dată, stare): 12 luni.
+• Notițele echipei din programări: 3 ani de la programare.
+• Amprenta rețelei de la scanarea codurilor QR: 30 de zile; contoarele zilnice ale asistentului: 7 zile.
+• Conversațiile cu asistentul și înregistrările vocale: nu se păstrează.
+• La ștergerea contului: numele, telefonul, e-mailul, data nașterii, pozele, notițele și preferințele se șterg imediat. Din dovada acordurilor rămâne doar data și ce ai acceptat, fără adresa IP, fără dispozitiv și fără semnătură, ca să putem arăta că acordul a existat. Programările și încasările rămân anonimizate (fără date despre tine), pentru evidența contabilă.
 • Documentele financiar-contabile: pe durata cerută de legislația contabilă și fiscală.
 • Codurile de intrare: câteva minute, până expiră.
 
 5. Cui transmitem datele
 Nu vindem datele tale. Le transmitem doar furnizorilor care ne ajută să livrăm serviciul, cu contracte care îi obligă să le protejeze:
-• Cloudflare, Inc. (găzduire, bază de date, securitate, traducerea automată și analiza pozelor din consilierul AI de tunsori);
+• Cloudflare, Inc. (găzduire, bază de date, securitate, traducerea automată, asistentul virtual, inclusiv transformarea vocii în text, și analiza pozelor din consilierul AI de tunsori);
 • SMSAdvert (trimiterea SMS-urilor, România);
 • Resend (trimiterea e-mailurilor);
 • Expo (650 Industries) și serviciile de notificări Apple și Google (notificări push);
@@ -133,12 +147,12 @@ Aplicația nu se adresează copiilor sub 16 ani. Pentru serviciile pentru copii,
 Folosim conexiuni criptate (HTTPS), acces pe bază de cont și drepturi pentru echipă (de exemplu un frizer nu vede telefonul și e-mailul clienților dacă nu are acest drept), coduri de unică folosință cu limită de încercări și copii de siguranță.
 
 9. Modificări
-Putem actualiza această politică; versiunea curentă e mereu în Aplicație, cu data ultimei actualizări. Pentru schimbări importante te anunțăm înainte.
+Putem actualiza această politică; versiunea curentă e mereu în Aplicație, cu data ultimei actualizări. După o actualizare, la următoarea deschidere a Aplicației îți arătăm versiunea nouă, s-o citești și s-o semnezi.
 
 Contact pentru date personale: {company} · {email} · {phone}`;
 
 /** Data ultimei schimbări a fiecărui model de mai sus (apare ca „Ultima actualizare” cât timp nu e editat în panou). */
-const TEMPLATE_DATE: Record<Doc, string> = { terms: '2026-10-09', privacy: '2026-10-12' };
+const TEMPLATE_DATE: Record<Doc, string> = { terms: '2026-10-27', privacy: '2026-10-27' };
 
 const DEFAULTS: Record<Doc, Version> = {
   terms: { title: 'Termeni și condiții', body: TERMS_RO },
@@ -155,18 +169,30 @@ export async function saveLegal(env: Env, store: LegalStore) {
 }
 
 // Bucățile scrise de server în text, în limba cititorului.
-const FILL: Record<'ro' | 'en' | 'fr', { todo: string; policy: (h: number) => string; what: Record<string, string> }> = {
+const FILL: Record<'ro' | 'en' | 'fr', { todo: string; policy: (h: number) => string; what: Record<string, string>; cookies: (ga: boolean, pixel: boolean) => string }> = {
   ro: {
+    cookies: (ga, pixel) =>
+      ga || pixel
+        ? `Aplicația nu folosește cookie-uri de urmărire. Pe site, doar dacă apeși „Accept” în bannerul de cookie-uri, pornim ${[ga && 'Google Analytics (Google Ireland Ltd., statistici de vizitare)', pixel && 'Meta Pixel (Meta Platforms Ireland Ltd., măsurarea reclamelor)'].filter(Boolean).join(' și ')}, care pun cookie-uri în browser și pot transfera date în SUA. Temei: acordul tău (Legea 506/2004 art. 4 și art. 6 alin. 1 lit. a GDPR). Îți retragi acordul ștergând datele site-ului din browser; bannerul apare din nou.`
+        : 'Nu folosim cookie-uri de urmărire sau publicitate și nu folosim instrumente de analiză care te urmăresc între aplicații.',
     todo: 'de completat',
     policy: (h) => `Poți anula din aplicație cu cel puțin ${h} ore înainte.`,
     what: { company: 'denumirea firmei', cui: 'CUI', regcom: 'nr. Registrul Comerțului', seat: 'sediul social', email: 'e-mail de contact', phone: 'telefon', address: 'adresa salonului' },
   },
   en: {
+    cookies: (ga, pixel) =>
+      ga || pixel
+        ? `The app does not use tracking cookies. On the website, only if you tap “Accept” in the cookie banner, we start ${[ga && 'Google Analytics (Google Ireland Ltd., visit statistics)', pixel && 'Meta Pixel (Meta Platforms Ireland Ltd., ad measurement)'].filter(Boolean).join(' and ')}, which set cookies in your browser and may transfer data to the USA. Legal basis: your consent. You withdraw it by clearing the site data in your browser; the banner then appears again.`
+        : 'We do not use tracking or advertising cookies, nor analytics tools that track you across apps.',
     todo: 'to be completed',
     policy: (h) => `You can cancel in the app at least ${h} hours in advance.`,
     what: { company: 'company name', cui: 'tax ID', regcom: 'trade register no.', seat: 'registered office', email: 'contact e-mail', phone: 'phone', address: 'salon address' },
   },
   fr: {
+    cookies: (ga, pixel) =>
+      ga || pixel
+        ? `L’application n’utilise pas de cookies de suivi. Sur le site, seulement si vous appuyez sur « Accepter » dans le bandeau cookies, nous activons ${[ga && 'Google Analytics (Google Ireland Ltd., statistiques de visite)', pixel && 'Meta Pixel (Meta Platforms Ireland Ltd., mesure des publicités)'].filter(Boolean).join(' et ')}, qui déposent des cookies et peuvent transférer des données aux États-Unis. Base légale : votre consentement. Vous le retirez en effaçant les données du site dans le navigateur ; le bandeau réapparaît.`
+        : 'Nous n’utilisons pas de cookies de suivi ou de publicité, ni d’outils d’analyse qui vous suivent entre applications.',
     todo: 'à compléter',
     policy: (h) => `Vous pouvez annuler dans l’application au moins ${h} heures à l’avance.`,
     what: { company: 'nom de la société', cui: 'code fiscal', regcom: 'n° registre du commerce', seat: 'siège social', email: 'e-mail de contact', phone: 'téléphone', address: 'adresse du salon' },
@@ -181,7 +207,7 @@ export async function legalBase(env: Env, doc: Doc, store?: LegalStore): Promise
 
 /** Textul gata de afișat: din panou sau modelul implicit, tradus dacă se poate, cu datele salonului completate. */
 export async function legalDoc(env: Env, doc: Doc, lang: string) {
-  const [store, biz] = await Promise.all([getLegal(env), getBusiness(env)]);
+  const [store, biz, site] = await Promise.all([getLegal(env), getBusiness(env), getWebsite(env)]);
   const v = store[doc]?.versions ?? {};
   const base = await legalBase(env, doc, store);
   const want = langOf(lang);
@@ -215,12 +241,24 @@ export async function legalDoc(env: Env, doc: Doc, lang: string) {
       .replaceAll('{address}', todo(biz.address, 'address'))
       .replaceAll('{deleteUrl}', `${publicBase || 'https://app.tafbarbers.ro'}/sterge-cont`)
       .replaceAll('{updated}', updated.slice(0, 10).split('-').reverse().join('.'))
-      .replaceAll('{policy}', policy);
+      .replaceAll('{policy}', policy)
+      // Paragraful despre cookie-uri urmează setările site-ului (Google Analytics / Meta Pixel completate în panou).
+      .replaceAll('{cookies}', f.cookies(!!site.tracking.gaId, !!site.tracking.metaPixelId));
   // `lang` = limba în care e textul; `translated` = traducere automată (aplicația arată că varianta oficială e în română).
-  return { doc, title: fill(chosen.title), body: fill(chosen.body), updatedAt: store[doc]?.updatedAt ?? null, isDefault: !v.ro, lang: shown, translated: shown !== 'ro' };
+  // `version` = versiunea de la dovada acordului (aceeași ca în legalVersions), ca aplicația să trimită la semnare ce a citit.
+  return { doc, title: fill(chosen.title), body: fill(chosen.body), updatedAt: store[doc]?.updatedAt ?? null, version: updated, isDefault: !v.ro, lang: shown, translated: shown !== 'ro' };
 }
 
 export const defaultLegal = DEFAULTS;
+
+/**
+ * Amprenta (SHA-256) textului exact pe care îl semnează clientul: termenii și politica, cum se afișează în limba lui.
+ * Dacă textul se schimbă vreodată, amprenta din dovada acordului arată că versiunea semnată era alta.
+ */
+export async function legalHash(env: Env, lang: string) {
+  const [t, p] = await Promise.all([legalDoc(env, 'terms', lang), legalDoc(env, 'privacy', lang)]);
+  return sha256(`${t.title}\n${t.body}\n\n${p.title}\n${p.body}`);
+}
 
 /**
  * Versiunea termenilor și a politicii de confidențialitate în acest moment, pentru dovada acordului: data și ora exactă a

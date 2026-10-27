@@ -38,6 +38,8 @@ type AppState = {
   signIn: (token: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateMe: (patch: Parameters<typeof api.updateMe>[1]) => Promise<void>;
+  /** Citește din nou contul (ex. după semnarea termenilor). */
+  refreshMe: () => Promise<void>;
   bookings: Booking[];
   refreshBookings: () => Promise<void>;
   addBooking: (b: Booking) => void;
@@ -167,6 +169,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       updateMe: async (patch) => {
         if (!token) return;
         setUser(await api.updateMe(token, patch));
+      },
+      refreshMe: async () => {
+        if (!token) return;
+        setUser(await api.me(token));
       },
       bookings,
       refreshBookings,

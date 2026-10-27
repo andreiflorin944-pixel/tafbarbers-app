@@ -21,9 +21,9 @@ export async function sendTemplate(
   const out = { sms: false, push: false, email: false };
   const ch = await channelsFor(env, opts.channel ?? (event === 'order_ready_paid' ? 'order_ready' : event));
   if (!ch) return { ...out, off: true };
-  const c = await env.DB.prepare('SELECT phone, email, lang, name FROM clients WHERE id = ?')
+  const c = await env.DB.prepare('SELECT phone, email, lang, name, phone_unverified FROM clients WHERE id = ?')
     .bind(clientId)
-    .first<{ phone: string; email: string | null; lang: string; name: string }>();
+    .first<{ phone: string; email: string | null; lang: string; name: string; phone_unverified: number | null }>();
   if (!c || c.phone.startsWith('deleted:')) return out;
   const biz = await getBusiness(env);
   const name = (c.name ?? '').trim();
@@ -38,7 +38,8 @@ export async function sendTemplate(
     ...tr,
   });
   const log = { kind: event, bookingId: opts.bookingId };
-  if (ch.sms && t.sms) out.sms = await sendSms(env, { ...log, recipient: c.phone }, t.sms);
+  // Numărul nedovedit (cont făcut cu cod pe e-mail) poate fi al altcuiva: fără SMS până nu intră cu cod pe acel număr.
+  if (ch.sms && t.sms && !c.phone_unverified) out.sms = await sendSms(env, { ...log, recipient: c.phone }, t.sms);
   if (ch.push && t.pushTitle) {
     const tokens = (await env.DB.prepare('SELECT token FROM push_tokens WHERE client_id = ?').bind(clientId).all<{ token: string }>()).results.map((x) => x.token);
     if (tokens.length) out.push = (await sendPush(env, log, tokens, t.pushTitle, t.pushBody, opts.data ?? {})) > 0;

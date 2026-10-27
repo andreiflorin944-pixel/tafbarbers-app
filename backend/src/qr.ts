@@ -14,7 +14,7 @@ const PROBABLE_HOURS = 24;
 
 type CampaignRow = { id: string; code: string; name: string; target: string; created_at: string; archived_at: string | null };
 
-/** Adresa IP doar ca amprentă: hash cu o cheie a serverului, nu o păstrăm în clar. */
+/** Adresa IP doar ca amprentă: hash cu o cheie a serverului, nu o păstrăm în clar (și o golim după 30 de zile, retention.ts). */
 export async function ipHash(env: Env, c: Context<AppEnv>): Promise<string | null> {
   const ip = c.req.header('CF-Connecting-IP');
   if (!ip) return null;
@@ -87,7 +87,11 @@ qrPublic.get('/q/:code', async (c) => {
   if (!camp || camp.archived_at) return c.html(await openAppPage(c.env, 'tafbarbers://'));
   const ip = await ipHash(c.env, c);
   c.executionCtx.waitUntil(
-    c.env.DB.prepare('INSERT INTO qr_scans (id, campaign_id, at, device, ip_hash) VALUES (?, ?, ?, ?, ?)')
+    // `first`: prima scanare de la această rețea pe campanie (amprenta se golește după 30 de zile, numărul de persoane rămâne).
+    c.env.DB.prepare(
+      `INSERT INTO qr_scans (id, campaign_id, at, device, ip_hash, first)
+       VALUES (?1, ?2, ?3, ?4, ?5, CASE WHEN ?5 IS NOT NULL AND EXISTS (SELECT 1 FROM qr_scans WHERE campaign_id = ?2 AND ip_hash = ?5) THEN 0 ELSE 1 END)`,
+    )
       .bind(newId('qs'), camp.id, iso(new Date()), device(c.req.header('User-Agent') ?? ''), ip)
       .run(),
   );
@@ -114,7 +118,7 @@ async function stats(env: Env, id?: string): Promise<Map<string, Stats>> {
   const where = id ? 'WHERE campaign_id = ?' : '';
   const args = id ? [id] : [];
   const [scans, clients, books] = await Promise.all([
-    env.DB.prepare(`SELECT campaign_id, count(*) AS scans, count(DISTINCT coalesce(ip_hash, id)) AS people FROM qr_scans ${where} GROUP BY campaign_id`).bind(...args).all<{ campaign_id: string; scans: number; people: number }>(),
+    env.DB.prepare(`SELECT campaign_id, count(*) AS scans, sum(first) AS people FROM qr_scans ${where} GROUP BY campaign_id`).bind(...args).all<{ campaign_id: string; scans: number; people: number }>(),
     env.DB.prepare(`SELECT campaign_id, sum(kind = 'signup') AS signups, sum(kind = 'login') AS logins FROM qr_clients ${where} GROUP BY campaign_id`).bind(...args).all<{ campaign_id: string; signups: number; logins: number }>(),
     // Programările făcute de acești clienți după ce au venit prin cod.
     env.DB.prepare(

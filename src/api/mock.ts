@@ -141,7 +141,9 @@ export const mockApi: BookingApi = {
       title: tr(doc === 'terms' ? 'mock.terms' : 'mock.privacy'),
       body: tr('mock.legalBody'),
       updatedAt: null,
+      version: '2026-10-27',
     }),
+  signLegal: () => delay(undefined),
   async exportMe(token) {
     return delay({ profile: users.get(token), bookings: bookings.filter((b) => b.phone === token) });
   },

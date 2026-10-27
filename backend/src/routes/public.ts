@@ -11,7 +11,7 @@ import { barber, BARBER_SERVICE_COLS, emailTaken, getBusiness, promo, service, t
 import { HttpError, type AppEnv } from '../env';
 import { addDays, iso, isDay, localDay } from '../time';
 import { DOCS, legalDoc, type Doc } from '../legal';
-import { recordConsent } from '../consents';
+import { checkSignature, recordConsent, signatureFrom } from '../consents';
 import { localize } from '../contentI18n';
 import { activeLocationId, activeLocations } from '../locations';
 import { getAppearance } from '../appearance';
@@ -231,7 +231,10 @@ publicRoutes.post('/auth/otp', async (c) => {
 });
 
 publicRoutes.post('/auth/verify', async (c) => {
-  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean; qr?: string; socialTicket?: string; password?: string }>();
+  const body = await c.req.json<{ phone?: string; code?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; email?: string; ref?: string; marketing?: boolean; qr?: string; socialTicket?: string; password?: string; signature?: string; termsVersion?: string; privacyVersion?: string }>();
+  // Semnătura de la derularea termenilor și a politicii (aplicațiile vechi nu o trimit; acelor clienți li se cere după intrare).
+  const sign = signatureFrom(body);
+  await checkSignature(c.env, sign);
   const phone = normalizePhone(body.phone);
   // Parola aleasă la „Creează cont” (opțională aici: conturile din Apple / Google sau din panou nu au una).
   const password = body.password === undefined || body.password === '' ? null : validClientPassword(body.password);
@@ -275,7 +278,7 @@ publicRoutes.post('/auth/verify', async (c) => {
         row.channel === 'email' ? 1 : 0,
       )
       .run();
-    await recordConsent(c.env, c, client.id, { source: 'register', terms: true, marketing: { push: !!mk, email: !!mk, sms: !!mk }, lang: body.lang });
+    await recordConsent(c.env, c, client.id, { source: 'register', terms: true, marketing: { push: !!mk, email: !!mk, sms: !!mk }, lang: body.lang, sign });
     await applyReferral(c.env, client.id, body.ref);
   } else {
     // Contul a fost creat cu cod pe e-mail (numărul nu a fost dovedit), iar acum cineva intră cu cod prin SMS pe acel număr:
@@ -317,12 +320,13 @@ publicRoutes.post('/auth/verify', async (c) => {
       const r = await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL').bind(iso(new Date()), client.id).run();
       firstAccept = !!r.meta.changes;
     }
-    if (firstAccept || mkChanged) {
+    if (firstAccept || mkChanged || sign) {
       await recordConsent(c.env, c, client.id, {
-        source: firstAccept ? 'first_login' : 'login',
-        terms: firstAccept,
+        source: firstAccept ? 'first_login' : sign ? 'sign' : 'login',
+        terms: firstAccept || !!sign,
         marketing: mkChanged ? { push: true, email: true, sms: true } : null,
         lang: body.lang,
+        sign,
       });
     }
   }
@@ -363,7 +367,9 @@ publicRoutes.post('/auth/social', async (c) => {
 // E-mailul confirmat de Apple / Google ține loc de cod. Numărul nu e dovedit încă (ca la contul făcut cu cod pe e-mail):
 // prima intrare cu cod prin SMS pe acel număr îl confirmă.
 publicRoutes.post('/auth/social/complete', async (c) => {
-  const body = await c.req.json<{ ticket?: string; phone?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; ref?: string; marketing?: boolean; qr?: string }>();
+  const body = await c.req.json<{ ticket?: string; phone?: string; name?: string; lang?: string; acceptTerms?: boolean; birthDate?: string; ref?: string; marketing?: boolean; qr?: string; signature?: string; termsVersion?: string; privacyVersion?: string }>();
+  const sign = signatureFrom(body);
+  await checkSignature(c.env, sign);
   const t = await readTicket(c.env, body.ticket);
   const phone = normalizePhone(body.phone);
   const existing = await c.env.DB.prepare('SELECT id, email FROM clients WHERE phone = ? AND deleted_at IS NULL').bind(phone).first<{ id: string; email: string | null }>();
@@ -376,7 +382,9 @@ publicRoutes.post('/auth/social/complete', async (c) => {
     // Client adăugat din panou care intră prima dată, cu Apple / Google: acordul îl dă acum.
     if (body.acceptTerms === true) {
       const r = await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL').bind(iso(new Date()), clientId).run();
-      if (r.meta.changes) await recordConsent(c.env, c, clientId, { source: 'first_login', terms: true, marketing: null, lang: body.lang });
+      if (r.meta.changes || sign) await recordConsent(c.env, c, clientId, { source: r.meta.changes ? 'first_login' : 'sign', terms: true, marketing: null, lang: body.lang, sign });
+    } else if (sign) {
+      await recordConsent(c.env, c, clientId, { source: 'sign', terms: true, marketing: null, lang: body.lang, sign });
     }
   } else {
     if (!t.email_verified || !t.email) throw new HttpError(400, 'code_required');
@@ -405,7 +413,7 @@ publicRoutes.post('/auth/social/complete', async (c) => {
         mk ? iso(new Date()) : null,
       )
       .run();
-    await recordConsent(c.env, c, clientId, { source: 'social', terms: true, marketing: { push: !!mk, email: !!mk, sms: !!mk }, lang: body.lang });
+    await recordConsent(c.env, c, clientId, { source: 'social', terms: true, marketing: { push: !!mk, email: !!mk, sms: !!mk }, lang: body.lang, sign });
     await applyReferral(c.env, clientId, body.ref);
   }
   await linkTicket(c.env, t, clientId);

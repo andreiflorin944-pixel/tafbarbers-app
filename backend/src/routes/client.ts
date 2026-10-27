@@ -10,7 +10,7 @@ import { HttpError, type AppEnv } from '../env';
 import { iso } from '../time';
 import { attributeQr } from '../qr';
 import { deleteClient, exportClient } from '../gdpr';
-import { marketingChannels, recordConsent } from '../consents';
+import { cleanSignature, legalPending, marketingChannels, recordConsent } from '../consents';
 import { createOrder, getOrder, getOrders, notifyOrder, setOrderStatus } from '../shop';
 import { myReferrals } from '../referrals';
 import { getStylePhotos } from '../advisor';
@@ -29,7 +29,18 @@ for (const p of ['/me', '/me/*', '/bookings', '/bookings/*', '/orders', '/orders
 clientRoutes.get('/me', async (c) => {
   const r = await c.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(c.get('client').clientId).first<ClientRow>();
   if (!r) throw new HttpError(401, 'unauthorized');
-  return c.json(client(r));
+  // `legalPending`: aplicația îi arată termenii și politica de derulat, bifat și semnat înainte de orice altceva.
+  return c.json({ ...client(r), legalPending: await legalPending(c.env, r.id) });
+});
+
+/** Semnarea termenilor și a politicii (cont vechi, client adăugat din panou sau documente actualizate). */
+clientRoutes.post('/me/legal-sign', async (c) => {
+  const b = await c.req.json<{ signature?: unknown; termsVersion?: unknown; privacyVersion?: unknown; lang?: string }>().catch(() => ({}) as Record<string, undefined>);
+  const sign = cleanSignature(b.signature, b.termsVersion, b.privacyVersion);
+  const id = c.get('client').clientId;
+  await recordConsent(c.env, c, id, { source: 'sign', terms: true, marketing: null, lang: b.lang, sign });
+  await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = coalesce(terms_accepted_at, ?) WHERE id = ?').bind(iso(new Date()), id).run();
+  return c.json({ ok: true });
 });
 
 /** Clientul deja în cont a deschis aplicația dintr-un cod QR. */

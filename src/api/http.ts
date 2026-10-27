@@ -72,6 +72,9 @@ export function httpApi(baseUrl: string): BookingApi {
     },
     me: (token) => call('GET', '/me', { token }),
     getLegal: (doc, lang) => call('GET', `/legal/${doc}?lang=${lang}`),
+    signLegal: async (token, input) => {
+      await call('POST', '/me/legal-sign', { token, body: input });
+    },
     exportMe: (token) => call('GET', '/me/export', { token }),
     deleteMe: async (token) => {
       await call('DELETE', '/me', { token });
