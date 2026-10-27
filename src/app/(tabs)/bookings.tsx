@@ -28,6 +28,8 @@ export default function Bookings() {
     return () => sub.remove();
   }, [refreshBookings]);
   const { t } = useT();
+  // Înainte de ieșirea timpurie de mai jos: la ștergerea contului / ieșire, ecranul rămâne montat și trebuie să aibă aceleași hook-uri.
+  const { pay } = usePayBooking();
   const book = () => {
     resetDraft();
     router.push('/book/location');
@@ -70,7 +72,6 @@ export default function Bookings() {
     ]);
   };
   const cancelMs = (business?.cancelHours ?? 0) * 3_600_000;
-  const { pay } = usePayBooking();
   const STATUS: Record<string, string> = { requested: t('bookings.pending'), cancelled: t('status.cancelled'), completed: t('status.completed'), no_show: t('status.noShow') };
   const pending = (b: Booking) => b.status === 'requested';
 
