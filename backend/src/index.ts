@@ -49,7 +49,7 @@ app.route('/', websitePublic);
 
 // Rădăcina: la app.tafbarbers.ro (și la domeniul propriu al site-ului) e site-ul cu programare online; în rest (panou.…, workers.dev) e panoul.
 app.get('/', async (c) => {
-  if (await isSiteHost(c.env, new URL(c.req.url).host)) return c.html(await sitePage(c.env));
+  if (await isSiteHost(c.env, new URL(c.req.url).host)) return c.html(await sitePage(c.env, { lang: c.req.query('lang') }));
   if (c.env.ASSETS) return c.env.ASSETS.fetch(c.req.raw);
   return c.text('Not found', 404);
 });
