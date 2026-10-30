@@ -28,6 +28,7 @@ import { TemplatesPage } from './pages/Templates';
 import { WaitlistPage } from './pages/Waitlist';
 import { AppsPage } from './pages/Apps';
 import { WebsitePage } from './pages/Website';
+import { BarberlyPage } from './pages/Barberly';
 import { RequestsBell } from './Requests';
 import { InstallButton } from './Install';
 
@@ -50,6 +51,7 @@ const PAGES = [
   { key: 'timeoff', label: 'Pauze și concedii', show: (m: Me) => m.permissions.timeoff, el: TimeOffPage },
   { key: 'apps', label: 'Aplicații iOS și Android', show: (m: Me) => m.owner, el: AppsPage },
   { key: 'website', label: 'Site web', show: (m: Me) => m.owner, el: WebsitePage },
+  { key: 'barberly', label: 'Programări din Barberly', show: (m: Me) => m.owner, el: BarberlyPage },
   { key: 'appearance', label: 'Aspect aplicație', show: (m: Me) => m.owner, el: AppearancePage },
   { key: 'promos', label: 'Bannere aplicație', show: (m: Me) => m.owner, el: PromosPage },
   { key: 'campaigns', label: 'Campanii', show: (m: Me) => m.owner, el: CampaignsPage },
@@ -158,6 +160,7 @@ const NAV: NavSection[] = [
     groups: [
       { title: 'Magazine', items: [{ label: 'Aplicații iOS și Android', to: 'apps' }] },
       { title: 'Site web', items: [{ label: 'Site web și rezervare online', to: 'website' }] },
+      { title: 'Mutarea din Barberly', items: [{ label: 'Programări din Barberly', to: 'barberly' }] },
       { title: 'Aplicația', items: [{ label: 'Aspectul aplicației', to: 'appearance' }, { label: 'Bannere în aplicație', to: 'promos' }, { label: 'Consilier AI de tunsori', to: 'settings/consilier' }] },
       { title: 'Linkuri', items: [{ label: 'Butonul „Programează” și recenzii', to: 'notifications/linkuri' }] },
       { title: 'Legal', items: [{ label: 'Regulamente și GDPR', to: 'legal' }] },

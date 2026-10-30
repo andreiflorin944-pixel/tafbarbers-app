@@ -85,6 +85,12 @@ function logText(e: BookingActivity['log'][number]) {
       return d.by === 'client' ? 'Anulată de client' : 'Anulată de salon';
     case 'review_sent':
       return 'Cerere de recenzie trimisă';
+    case 'barberly_import':
+      return 'Copiată din Barberly';
+    case 'barberly_change':
+      return `Mutată în Barberly: ${when(s('from'))} → ${when(s('to'))}`;
+    case 'barberly_cancel':
+      return 'Anulată în Barberly';
     default:
       return e.kind;
   }

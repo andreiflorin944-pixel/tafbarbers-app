@@ -3,7 +3,7 @@ import { iso } from './time';
 
 // Termenele de păstrare (GDPR art. 5 alin. 1 lit. e), aceleași ca în politica de confidențialitate:
 // jurnalul mesajelor 12 luni, amprenta IP a scanărilor QR 30 de zile, contoarele zilnice ale asistentului 7 zile,
-// notițele din programări 3 ani. Rulează o dată pe zi, noaptea.
+// notițele din programări 3 ani, jurnalul e-mailurilor din Barberly 90 de zile. Rulează o dată pe zi, noaptea.
 
 const DAY = 86_400_000;
 
@@ -15,6 +15,8 @@ export async function applyRetention(env: Env, now: number) {
     // Totalul analizelor consilierului (`advisor:done`) e doar un număr și rămâne pentru statistici.
     env.DB.prepare(`DELETE FROM assistant_usage WHERE day < ? AND key != 'advisor:done'`).bind(before(7).slice(0, 10)),
     env.DB.prepare(`UPDATE bookings SET note = '' WHERE note != '' AND starts_at < ?`).bind(before(3 * 365)),
+    // Jurnalul e-mailurilor copiate din Barberly (subiectul are numele clientului): 90 de zile.
+    env.DB.prepare('DELETE FROM barberly_inbox WHERE received_at < ?').bind(before(90)),
   ]);
 }
 

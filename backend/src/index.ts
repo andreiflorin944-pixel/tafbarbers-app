@@ -15,6 +15,7 @@ import { getBusiness } from './db';
 import { formatLocal } from './time';
 import { isSiteHost, sitePage, websitePublic } from './website';
 import { health, recordServerError } from './serverErrors';
+import { barberlyPublic } from './barberly';
 
 const app = new Hono<AppEnv>();
 
@@ -38,6 +39,8 @@ app.route('/v1', publicRoutes);
 app.route('/v1', socialPublic);
 app.route('/v1', assistantRoutes);
 app.route('/v1', advisorRoutes);
+// E-mailurile Barberly trimise de scriptul din Gmail (cheia scriptului, nu sesiune de admin).
+app.route('/v1', barberlyPublic);
 app.route('/v1/admin', adminRoutes);
 app.route('/v1', clientRoutes);
 app.route('/', qrPublic);
