@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getAppearance, isImageUrl } from './appearance';
-import { getBusiness, getSetting, setSetting } from './db';
+import { getBusiness, getSetting, setSetting, type Business } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
 import { getAutomations } from './growth';
 import { STORE_LINKS } from './stores';
@@ -29,7 +29,10 @@ export type Website = {
   layout: 'buttons' | 'tiles'; // butoane pe rând (ca în aplicație) sau pătrate câte două
   sections: { booking: boolean; barbers: boolean; services: boolean; contact: boolean; links: boolean; apps: boolean };
   customDomain: string; // ex. programari.tafbarbers.ro (îl leagă cine publică serverul)
-  tracking: { gaId: string; metaPixelId: string };
+  // Codurile pentru statistici și reclame (din conturile Google, Meta, TikTok); pornesc doar după acordul vizitatorului.
+  tracking: { gaId: string; metaPixelId: string; googleAdsId: string; googleAdsLabel: string; tiktokPixelId: string };
+  // Cum apare site-ul în Google și când e trimis pe WhatsApp / Facebook; gol = text automat din datele salonului.
+  seo: { title: Texts; description: Texts; shareImage: string | null; googleVerification: string; metaVerification: string };
   links: Array<{ label: string; url: string }>;
 };
 
@@ -49,7 +52,8 @@ export const DEFAULT_WEBSITE: Website = {
   layout: 'buttons',
   sections: { booking: true, barbers: true, services: true, contact: true, links: true, apps: true },
   customDomain: '',
-  tracking: { gaId: '', metaPixelId: '' },
+  tracking: { gaId: '', metaPixelId: '', googleAdsId: '', googleAdsLabel: '', tiktokPixelId: '' },
+  seo: { title: { ro: '', en: '', fr: '' }, description: { ro: '', en: '', fr: '' }, shareImage: null, googleVerification: '', metaVerification: '' },
   links: [],
 };
 
@@ -63,6 +67,12 @@ export async function getWebsite(env: Env): Promise<Website> {
     ...saved,
     sections: { ...DEFAULT_WEBSITE.sections, ...saved.sections },
     tracking: { ...DEFAULT_WEBSITE.tracking, ...saved.tracking },
+    seo: {
+      ...DEFAULT_WEBSITE.seo,
+      ...saved.seo,
+      title: { ...DEFAULT_WEBSITE.seo.title, ...saved.seo?.title },
+      description: { ...DEFAULT_WEBSITE.seo.description, ...saved.seo?.description },
+    },
     welcome: { ...DEFAULT_WEBSITE.welcome, ...saved.welcome },
   };
 }
@@ -104,11 +114,37 @@ export async function saveWebsite(env: Env, b: Partial<Website>): Promise<Websit
     n.customDomain = d;
   }
   if (b.tracking && typeof b.tracking === 'object') {
-    const ga = String(b.tracking.gaId ?? n.tracking.gaId).trim().toUpperCase();
-    const px = String(b.tracking.metaPixelId ?? n.tracking.metaPixelId).trim();
-    if (ga && !/^G-[A-Z0-9]{4,15}$/.test(ga)) throw new HttpError(400, 'invalid_ga_id');
-    if (px && !/^\d{6,20}$/.test(px)) throw new HttpError(400, 'invalid_pixel_id');
-    n.tracking = { gaId: ga, metaPixelId: px };
+    const tr = { ...n.tracking, ...b.tracking };
+    const v = (k: keyof Website['tracking'], re: RegExp, err: string, up = true) => {
+      const x = String(tr[k] ?? '').trim().replace(/\s+/g, '');
+      const y = up ? x.toUpperCase() : x;
+      if (y && !re.test(y)) throw new HttpError(400, err);
+      return y;
+    };
+    n.tracking = {
+      gaId: v('gaId', /^G-[A-Z0-9]{4,15}$/, 'invalid_ga_id'),
+      metaPixelId: v('metaPixelId', /^\d{6,20}$/, 'invalid_pixel_id'),
+      googleAdsId: v('googleAdsId', /^AW-\d{6,15}$/, 'invalid_ads_id'),
+      googleAdsLabel: v('googleAdsLabel', /^[A-Za-z0-9_-]{4,40}$/, 'invalid_ads_label', false),
+      tiktokPixelId: v('tiktokPixelId', /^[A-Z0-9]{10,30}$/, 'invalid_tiktok_id'),
+    };
+  }
+  if (b.seo && typeof b.seo === 'object') {
+    const s = b.seo;
+    for (const l of LANGS) {
+      if (typeof s.title?.[l] === 'string') n.seo.title[l] = s.title[l].replace(/\s+/g, ' ').trim().slice(0, 70);
+      if (typeof s.description?.[l] === 'string') n.seo.description[l] = s.description[l].replace(/\s+/g, ' ').trim().slice(0, 300);
+    }
+    if (s.shareImage !== undefined) n.seo.shareImage = image(s.shareImage);
+    // Se poate lipi tot rândul <meta …> din Google Search Console / Meta Business; păstrăm doar codul.
+    const code = (x: unknown, err: string) => {
+      const raw = String(x ?? '').trim();
+      const c = (raw.match(/content=["']([^"']+)["']/i)?.[1] ?? raw).trim();
+      if (c && !/^[A-Za-z0-9_-]{10,100}$/.test(c)) throw new HttpError(400, err);
+      return c;
+    };
+    if (s.googleVerification !== undefined) n.seo.googleVerification = code(s.googleVerification, 'invalid_verification');
+    if (s.metaVerification !== undefined) n.seo.metaVerification = code(s.metaVerification, 'invalid_verification');
   }
   if (Array.isArray(b.links)) {
     n.links = b.links.slice(0, 12).map((x) => {
@@ -136,9 +172,102 @@ export async function isSiteHost(env: Env, host: string) {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
-export async function sitePage(env: Env, opts: { preview?: boolean } = {}) {
+const SEO_TEXT: Record<Lang, { title: (n: string) => string; desc: (n: string, where: string) => string; locale: string }> = {
+  ro: {
+    title: (n) => `${n} · Frizerie, programare online`,
+    desc: (n, where) => `${n}${where ? `, ${where}` : ''}: tuns, barbă și styling. Programează-te online în câteva secunde: alegi serviciul, frizerul și ora.`,
+    locale: 'ro_RO',
+  },
+  en: {
+    title: (n) => `${n} · Barbershop, book online`,
+    desc: (n, where) => `${n}${where ? `, ${where}` : ''}: haircuts, beard and styling. Book online in seconds: choose the service, the barber and the time.`,
+    locale: 'en_GB',
+  },
+  fr: {
+    title: (n) => `${n} · Barbier, réservation en ligne`,
+    desc: (n, where) => `${n}${where ? `, ${where}` : ''} : coupe, barbe et coiffage. Réservez en ligne en quelques secondes : service, barbier et heure.`,
+    locale: 'fr_FR',
+  },
+};
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+/** Limba paginii cerută prin `?lang=` (pentru Google: câte o adresă pe limbă), dacă e pornită pe site. */
+export function siteLang(w: Website, q: string | undefined): Lang {
+  return w.languages.includes(q as Lang) ? (q as Lang) : w.defaultLang;
+}
+
+/** Adresa principală a site-ului (pentru Google): domeniul propriu, dacă e legat, altfel app.tafbarbers.ro. */
+export const siteOrigin = (env: Env, w: Website) => (w.customDomain ? `https://${w.customDomain}` : (env.PUBLIC_URL ?? 'https://app.tafbarbers.ro').replace(/\/$/, ''));
+
+const langUrl = (origin: string, w: Website, l: Lang) => `${origin}/${l === w.defaultLang ? '' : `?lang=${l}`}`;
+
+/** Datele salonului pentru Google (schema.org HairSalon): adresă, telefon, program, prețuri, servicii, buton de programare. */
+async function structuredData(env: Env, w: Website, biz: Business, origin: string, image: string) {
+  const [svc, hours] = await Promise.all([
+    env.DB.prepare('SELECT name, description, duration_min, price_bani FROM services WHERE active = 1 AND members_only = 0 ORDER BY sort, name LIMIT 30').all<{
+      name: string;
+      description: string;
+      duration_min: number;
+      price_bani: number;
+    }>(),
+    env.DB.prepare(
+      `SELECT h.weekday, MIN(h.start_min) AS s, MAX(h.end_min) AS e FROM working_hours h JOIN barbers b ON b.id = h.barber_id WHERE b.active = 1 GROUP BY h.weekday`,
+    ).all<{ weekday: number; s: number; e: number }>(),
+  ]);
+  const prices = svc.results.map((x) => x.price_bani / 100).filter((x) => x > 0);
+  const social = [
+    biz.instagram && (/^https?:/.test(biz.instagram) ? biz.instagram : `https://www.instagram.com/${biz.instagram.replace(/^@/, '')}`),
+    biz.facebook && (/^https?:/.test(biz.facebook) ? biz.facebook : `https://www.facebook.com/${biz.facebook}`),
+    biz.tiktok && (/^https?:/.test(biz.tiktok) ? biz.tiktok : `https://www.tiktok.com/@${biz.tiktok.replace(/^@/, '')}`),
+    ...w.links.map((l) => l.url).filter((u) => /^https:\/\/(www\.)?(instagram|facebook|tiktok|youtube)\.com\//.test(u)),
+  ].filter((x): x is string => !!x);
+  const ld: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'HairSalon',
+    '@id': `${origin}/#salon`,
+    name: biz.name,
+    description: biz.description || biz.tagline || undefined,
+    url: `${origin}/`,
+    image,
+    logo: image,
+    telephone: biz.phone || undefined,
+    address: biz.address ? { '@type': 'PostalAddress', streetAddress: biz.address, addressCountry: 'RO' } : undefined,
+    priceRange: prices.length ? `${Math.min(...prices)}-${Math.max(...prices)} RON` : undefined,
+    currenciesAccepted: 'RON',
+    openingHoursSpecification: hours.results
+      .sort((x, y) => ((x.weekday + 6) % 7) - ((y.weekday + 6) % 7))
+      .map((h) => ({ '@type': 'OpeningHoursSpecification', dayOfWeek: `https://schema.org/${DAY_NAMES[h.weekday]}`, opens: hm(h.s), closes: hm(h.e) })),
+    sameAs: social.length ? [...new Set(social)] : undefined,
+    hasOfferCatalog: svc.results.length
+      ? {
+          '@type': 'OfferCatalog',
+          name: 'Servicii',
+          itemListElement: svc.results.map((x) => ({
+            '@type': 'Offer',
+            price: (x.price_bani / 100).toFixed(2),
+            priceCurrency: 'RON',
+            itemOffered: { '@type': 'Service', name: x.name, description: x.description || undefined },
+          })),
+        }
+      : undefined,
+    potentialAction: { '@type': 'ReserveAction', target: { '@type': 'EntryPoint', urlTemplate: `${origin}/`, actionPlatform: ['https://schema.org/DesktopWebPlatform', 'https://schema.org/MobileWebPlatform'] } },
+  };
+  return JSON.stringify(ld).replace(/</g, '\\u003c');
+}
+
+export async function sitePage(env: Env, opts: { preview?: boolean; lang?: string } = {}) {
   const [w, biz, look, auto] = await Promise.all([getWebsite(env), getBusiness(env), getAppearance(env), getAutomations(env)]);
   const icon = w.iconUrl ?? '/favicon.png';
+  const origin = siteOrigin(env, w);
+  const lang = siteLang(w, opts.lang);
+  const abs = (u: string) => (/^https:/.test(u) ? u : `${origin}${u}`);
+  const image = abs(w.seo.shareImage ?? w.logoUrl ?? look.logoUrl ?? '/app-icon.png');
+  const where = biz.address.split(',').slice(-1)[0]?.trim() ?? '';
+  const title = w.seo.title[lang] || SEO_TEXT[lang].title(biz.name);
+  const desc = w.seo.description[lang] || SEO_TEXT[lang].desc(biz.name, where);
+  const url = langUrl(origin, w, lang);
   const cfg = {
     w,
     biz: { name: biz.name, tagline: biz.tagline, address: biz.address, phone: biz.phone, instagram: biz.instagram, description: biz.description ?? '' },
@@ -149,12 +278,56 @@ export async function sitePage(env: Env, opts: { preview?: boolean } = {}) {
     preview: !!opts.preview,
   };
   const json = JSON.stringify(cfg).replace(/</g, '\\u003c');
-  return `<!doctype html><html lang="${w.defaultLang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>${esc(biz.name)} · Programare online</title><meta name="description" content="${esc(`${biz.name}: programare online${biz.address ? `, ${biz.address}` : ''}`)}">
+  const meta = (k: string, v: string, attr = 'property') => `<meta ${attr}="${k}" content="${esc(v)}">`;
+  const head = opts.preview
+    ? '<meta name="robots" content="noindex">'
+    : [
+        `<link rel="canonical" href="${esc(url)}">`,
+        ...(w.languages.length > 1
+          ? [...w.languages.map((l) => `<link rel="alternate" hreflang="${l}" href="${esc(langUrl(origin, w, l))}">`), `<link rel="alternate" hreflang="x-default" href="${esc(`${origin}/`)}">`]
+          : []),
+        meta('og:type', 'website'),
+        meta('og:site_name', biz.name),
+        meta('og:title', title),
+        meta('og:description', desc),
+        meta('og:url', url),
+        meta('og:image', image),
+        meta('og:locale', SEO_TEXT[lang].locale),
+        ...w.languages.filter((l) => l !== lang).map((l) => meta('og:locale:alternate', SEO_TEXT[l].locale)),
+        meta('twitter:card', w.seo.shareImage ? 'summary_large_image' : 'summary', 'name'),
+        meta('twitter:title', title, 'name'),
+        meta('twitter:description', desc, 'name'),
+        meta('twitter:image', image, 'name'),
+        w.seo.googleVerification && meta('google-site-verification', w.seo.googleVerification, 'name'),
+        w.seo.metaVerification && meta('facebook-domain-verification', w.seo.metaVerification, 'name'),
+        `<script type="application/ld+json">${await structuredData(env, w, biz, origin, image)}</script>`,
+      ]
+        .filter(Boolean)
+        .join('\n');
+  // Pentru cine n-are JavaScript (și pentru motoarele de căutare care nu-l rulează): numele, descrierea și datele de contact.
+  const noscript = `<noscript><main style="max-width:720px;margin:0 auto;padding:24px 16px"><h1>${esc(biz.name)}</h1><p>${esc(desc)}</p>${biz.address ? `<p>${esc(biz.address)}</p>` : ''}${biz.phone ? `<p><a href="tel:${esc(biz.phone.replace(/\s+/g, ''))}">${esc(biz.phone)}</a></p>` : ''}</main></noscript>`;
+  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>${esc(title)}</title><meta name="description" content="${esc(desc)}">
 <link rel="icon" href="${esc(icon)}"><link rel="apple-touch-icon" href="${esc(icon)}"><meta name="theme-color" content="${esc(w.accent)}">
-${opts.preview ? '<meta name="robots" content="noindex">' : ''}
-<style>${SITE_CSS}</style></head><body><div id="bg"></div><div id="app"></div>
+${head}
+<style>${SITE_CSS}</style></head><body><div id="bg"></div><div id="app"></div>${noscript}
 <script>window.SITE=${json};</script><script>${SITE_JS}</script></body></html>`;
+}
+
+/** robots.txt: pe site (app.… / domeniul propriu) Google poate citi pagina; panoul și API-ul nu se indexează. */
+export async function robotsTxt(env: Env, site: boolean) {
+  if (!site) return 'User-agent: *\nDisallow: /\n';
+  return `User-agent: *\nAllow: /\nDisallow: /v1/admin/\nDisallow: /b/\nDisallow: /plata/\nDisallow: /r/\nDisallow: /q/\nDisallow: /w/\nDisallow: /sterge-cont\nDisallow: /site\n\nSitemap: ${siteOrigin(env, await getWebsite(env))}/sitemap.xml\n`;
+}
+
+/** sitemap.xml: pagina principală în fiecare limbă și regulamentele. */
+export async function sitemapXml(env: Env) {
+  const w = await getWebsite(env);
+  const origin = siteOrigin(env, w);
+  const alt = w.languages.length > 1 ? w.languages.map((l) => `<xhtml:link rel="alternate" hreflang="${l}" href="${esc(langUrl(origin, w, l))}"/>`).join('') : '';
+  const pages = w.languages.map((l) => `<url><loc>${esc(langUrl(origin, w, l))}</loc>${alt}<changefreq>weekly</changefreq><priority>${l === w.defaultLang ? '1.0' : '0.8'}</priority></url>`);
+  for (const d of ['privacy', 'terms']) pages.push(`<url><loc>${esc(`${origin}/legal/${d}`)}</loc><changefreq>monthly</changefreq><priority>0.2</priority></url>`);
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${pages.join('\n')}\n</urlset>\n`;
 }
 
 const SITE_CSS = `
@@ -271,9 +444,9 @@ footer{text-align:center;font-size:12px;color:var(--muted);padding:20px 16px 110
 const SITE_JS = String.raw`(function(){
 var S=window.SITE,W=S.w,app=document.getElementById('app');
 var T={
-ro:{welcome:'Bine ați venit',book:'Programare',barbers:'Frizerii',services:'Servicii',contact:'Contact',links:'Linkurile mele',chooseService:'Alege serviciul',chooseBarber:'Alege frizerul',any:'Oricare frizer',anyHint:'Prima oră liberă',chooseTime:'Alege ziua și ora',noSlots:'Nicio oră liberă în ziua asta. Încearcă altă zi.',yourData:'Datele tale',phone:'Telefon',email:'E-mail',sendCode:'Trimite codul',code:'Codul primit',codeSentTo:'Ți-am trimis codul la ',name:'Nume și prenume',birth:'Data nașterii',terms:'Am citit și accept Termenii și condițiile și Politica de confidențialitate.',scrollHint:'Derulează termenii și politica până la capăt ca să poți bifa și semna.',sig:'Semnătura: scrie numele și prenumele',sigNeeded:'Bifează că ai citit documentele și scrie numele ca semnătură.',legalChanged:'Documentele tocmai s-au actualizat. Citește-le din nou și semnează.',marketing:'Vreau să primesc oferte (opțional).',confirm:'Confirmă programarea',service:'Serviciu',barber:'Frizer',when:'Când',price:'Preț',done:'Programare confirmată!',requested:'Cererea a fost trimisă. Salonul o confirmă în curând.',doneText:'Ți-am trimis confirmarea. O poți muta sau anula din aplicație.',again:'Înapoi la început',min:'min',call:'Sună',map:'Vezi pe hartă',hours:'Program',closed:'Închis',days:['Duminică','Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă'],short:['Du','Lu','Ma','Mi','Jo','Vi','Sâ'],months:['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','nov','dec'],consent:'Folosim cookie-uri de statistică doar dacă ești de acord.',accept:'Accept',refuse:'Nu, mulțumesc',getApp:'Ia aplicația',err:'A apărut o problemă. Încearcă din nou.',wrongCode:'Codul nu e corect.',expired:'Codul a expirat. Cere altul.',slotTaken:'Ora tocmai a fost ocupată. Alege alta.',badPhone:'Numărul de telefon nu pare corect.',emailMismatch:'E-mailul nu e cel din cont.',emailMissing:'Contul nu are e-mail; scrie-ne la salon.',tooMany:'Ai cerut un cod de curând. Mai încearcă peste un minut.',fill:'Completează toate câmpurile.',emailInUse:'E-mailul e deja folosit de alt cont.'},
-en:{welcome:'Welcome',book:'Book now',barbers:'Barbers',services:'Services',contact:'Contact',links:'My links',chooseService:'Choose a service',chooseBarber:'Choose a barber',any:'Any barber',anyHint:'First free time',chooseTime:'Choose day and time',noSlots:'No free times this day. Try another day.',yourData:'Your details',phone:'Phone',email:'E-mail',sendCode:'Send code',code:'Code received',codeSentTo:'We sent the code to ',name:'Full name',birth:'Date of birth',terms:'I have read and accept the Terms and conditions and the Privacy policy.',scrollHint:'Scroll the terms and the privacy policy to the end to be able to tick and sign.',sig:'Signature: type your full name',sigNeeded:'Tick that you read the documents and type your name as your signature.',legalChanged:'The documents were just updated. Read them again and sign.',marketing:'Send me offers (optional).',confirm:'Confirm booking',service:'Service',barber:'Barber',when:'When',price:'Price',done:'Booking confirmed!',requested:'Request sent. The shop will confirm it soon.',doneText:'We sent you a confirmation. You can move or cancel it in the app.',again:'Back to start',min:'min',call:'Call',map:'Open map',hours:'Opening hours',closed:'Closed',days:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],short:['Su','Mo','Tu','We','Th','Fr','Sa'],months:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],consent:'We use statistics cookies only if you agree.',accept:'Accept',refuse:'No, thanks',getApp:'Get the app',err:'Something went wrong. Please try again.',wrongCode:'Wrong code.',expired:'The code expired. Ask for a new one.',slotTaken:'That time was just taken. Pick another.',badPhone:'The phone number looks wrong.',emailMismatch:'This is not the e-mail on the account.',emailMissing:'The account has no e-mail; please contact the shop.',tooMany:'You asked for a code recently. Try again in a minute.',fill:'Please fill in all fields.',emailInUse:'This e-mail is used by another account.'},
-fr:{welcome:'Bienvenue',book:'Prendre rendez-vous',barbers:'Barbiers',services:'Services',contact:'Contact',links:'Mes liens',chooseService:'Choisissez un service',chooseBarber:'Choisissez un barbier',any:'N’importe quel barbier',anyHint:'Premier créneau libre',chooseTime:'Choisissez le jour et l’heure',noSlots:'Aucun créneau ce jour-là. Essayez un autre jour.',yourData:'Vos coordonnées',phone:'Téléphone',email:'E-mail',sendCode:'Envoyer le code',code:'Code reçu',codeSentTo:'Code envoyé à ',name:'Nom et prénom',birth:'Date de naissance',terms:'J’ai lu et j’accepte les Conditions générales et la Politique de confidentialité.',scrollHint:'Faites défiler les conditions et la politique jusqu’au bout pour pouvoir cocher et signer.',sig:'Signature : écrivez vos nom et prénom',sigNeeded:'Cochez que vous avez lu les documents et écrivez votre nom comme signature.',legalChanged:'Les documents viennent d’être mis à jour. Relisez-les et signez.',marketing:'Je veux recevoir des offres (facultatif).',confirm:'Confirmer le rendez-vous',service:'Service',barber:'Barbier',when:'Quand',price:'Prix',done:'Rendez-vous confirmé !',requested:'Demande envoyée. Le salon la confirmera bientôt.',doneText:'Nous vous avons envoyé une confirmation. Vous pouvez le déplacer ou l’annuler dans l’app.',again:'Retour au début',min:'min',call:'Appeler',map:'Voir la carte',hours:'Horaires',closed:'Fermé',days:['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'],short:['Di','Lu','Ma','Me','Je','Ve','Sa'],months:['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'],consent:'Nous utilisons des cookies de statistiques seulement avec votre accord.',accept:'Accepter',refuse:'Non merci',getApp:'Télécharger l’app',err:'Un problème est survenu. Réessayez.',wrongCode:'Code incorrect.',expired:'Le code a expiré. Demandez-en un autre.',slotTaken:'Ce créneau vient d’être pris. Choisissez-en un autre.',badPhone:'Le numéro semble incorrect.',emailMismatch:'Cet e-mail n’est pas celui du compte.',emailMissing:'Le compte n’a pas d’e-mail ; contactez le salon.',tooMany:'Vous avez demandé un code récemment. Réessayez dans une minute.',fill:'Remplissez tous les champs.',emailInUse:'Cet e-mail est déjà utilisé.'}
+ro:{welcome:'Bine ați venit',book:'Programare',barbers:'Frizerii',services:'Servicii',contact:'Contact',links:'Linkurile mele',chooseService:'Alege serviciul',chooseBarber:'Alege frizerul',any:'Oricare frizer',anyHint:'Prima oră liberă',chooseTime:'Alege ziua și ora',noSlots:'Nicio oră liberă în ziua asta. Încearcă altă zi.',yourData:'Datele tale',phone:'Telefon',email:'E-mail',sendCode:'Trimite codul',code:'Codul primit',codeSentTo:'Ți-am trimis codul la ',name:'Nume și prenume',birth:'Data nașterii',terms:'Am citit și accept Termenii și condițiile și Politica de confidențialitate.',scrollHint:'Derulează termenii și politica până la capăt ca să poți bifa și semna.',sig:'Semnătura: scrie numele și prenumele',sigNeeded:'Bifează că ai citit documentele și scrie numele ca semnătură.',legalChanged:'Documentele tocmai s-au actualizat. Citește-le din nou și semnează.',marketing:'Vreau să primesc oferte (opțional).',confirm:'Confirmă programarea',service:'Serviciu',barber:'Frizer',when:'Când',price:'Preț',done:'Programare confirmată!',requested:'Cererea a fost trimisă. Salonul o confirmă în curând.',doneText:'Ți-am trimis confirmarea. O poți muta sau anula din aplicație.',again:'Înapoi la început',min:'min',call:'Sună',map:'Vezi pe hartă',hours:'Program',closed:'Închis',days:['Duminică','Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă'],short:['Du','Lu','Ma','Mi','Jo','Vi','Sâ'],months:['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','nov','dec'],consent:'Folosim cookie-uri de statistică și publicitate doar dacă ești de acord.',accept:'Accept',refuse:'Nu, mulțumesc',getApp:'Ia aplicația',err:'A apărut o problemă. Încearcă din nou.',wrongCode:'Codul nu e corect.',expired:'Codul a expirat. Cere altul.',slotTaken:'Ora tocmai a fost ocupată. Alege alta.',badPhone:'Numărul de telefon nu pare corect.',emailMismatch:'E-mailul nu e cel din cont.',emailMissing:'Contul nu are e-mail; scrie-ne la salon.',tooMany:'Ai cerut un cod de curând. Mai încearcă peste un minut.',fill:'Completează toate câmpurile.',emailInUse:'E-mailul e deja folosit de alt cont.'},
+en:{welcome:'Welcome',book:'Book now',barbers:'Barbers',services:'Services',contact:'Contact',links:'My links',chooseService:'Choose a service',chooseBarber:'Choose a barber',any:'Any barber',anyHint:'First free time',chooseTime:'Choose day and time',noSlots:'No free times this day. Try another day.',yourData:'Your details',phone:'Phone',email:'E-mail',sendCode:'Send code',code:'Code received',codeSentTo:'We sent the code to ',name:'Full name',birth:'Date of birth',terms:'I have read and accept the Terms and conditions and the Privacy policy.',scrollHint:'Scroll the terms and the privacy policy to the end to be able to tick and sign.',sig:'Signature: type your full name',sigNeeded:'Tick that you read the documents and type your name as your signature.',legalChanged:'The documents were just updated. Read them again and sign.',marketing:'Send me offers (optional).',confirm:'Confirm booking',service:'Service',barber:'Barber',when:'When',price:'Price',done:'Booking confirmed!',requested:'Request sent. The shop will confirm it soon.',doneText:'We sent you a confirmation. You can move or cancel it in the app.',again:'Back to start',min:'min',call:'Call',map:'Open map',hours:'Opening hours',closed:'Closed',days:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],short:['Su','Mo','Tu','We','Th','Fr','Sa'],months:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],consent:'We use statistics and advertising cookies only if you agree.',accept:'Accept',refuse:'No, thanks',getApp:'Get the app',err:'Something went wrong. Please try again.',wrongCode:'Wrong code.',expired:'The code expired. Ask for a new one.',slotTaken:'That time was just taken. Pick another.',badPhone:'The phone number looks wrong.',emailMismatch:'This is not the e-mail on the account.',emailMissing:'The account has no e-mail; please contact the shop.',tooMany:'You asked for a code recently. Try again in a minute.',fill:'Please fill in all fields.',emailInUse:'This e-mail is used by another account.'},
+fr:{welcome:'Bienvenue',book:'Prendre rendez-vous',barbers:'Barbiers',services:'Services',contact:'Contact',links:'Mes liens',chooseService:'Choisissez un service',chooseBarber:'Choisissez un barbier',any:'N’importe quel barbier',anyHint:'Premier créneau libre',chooseTime:'Choisissez le jour et l’heure',noSlots:'Aucun créneau ce jour-là. Essayez un autre jour.',yourData:'Vos coordonnées',phone:'Téléphone',email:'E-mail',sendCode:'Envoyer le code',code:'Code reçu',codeSentTo:'Code envoyé à ',name:'Nom et prénom',birth:'Date de naissance',terms:'J’ai lu et j’accepte les Conditions générales et la Politique de confidentialité.',scrollHint:'Faites défiler les conditions et la politique jusqu’au bout pour pouvoir cocher et signer.',sig:'Signature : écrivez vos nom et prénom',sigNeeded:'Cochez que vous avez lu les documents et écrivez votre nom comme signature.',legalChanged:'Les documents viennent d’être mis à jour. Relisez-les et signez.',marketing:'Je veux recevoir des offres (facultatif).',confirm:'Confirmer le rendez-vous',service:'Service',barber:'Barbier',when:'Quand',price:'Prix',done:'Rendez-vous confirmé !',requested:'Demande envoyée. Le salon la confirmera bientôt.',doneText:'Nous vous avons envoyé une confirmation. Vous pouvez le déplacer ou l’annuler dans l’app.',again:'Retour au début',min:'min',call:'Appeler',map:'Voir la carte',hours:'Horaires',closed:'Fermé',days:['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'],short:['Di','Lu','Ma','Me','Je','Ve','Sa'],months:['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'],consent:'Nous utilisons des cookies de statistiques et de publicité seulement avec votre accord.',accept:'Accepter',refuse:'Non merci',getApp:'Télécharger l’app',err:'Un problème est survenu. Réessayez.',wrongCode:'Code incorrect.',expired:'Le code a expiré. Demandez-en un autre.',slotTaken:'Ce créneau vient d’être pris. Choisissez-en un autre.',badPhone:'Le numéro semble incorrect.',emailMismatch:'Cet e-mail n’est pas celui du compte.',emailMissing:'Le compte n’a pas d’e-mail ; contactez le salon.',tooMany:'Vous avez demandé un code récemment. Réessayez dans une minute.',fill:'Remplissez tous les champs.',emailInUse:'Cet e-mail est déjà utilisé.'}
 };
 var T2={
 ro:{hello:'Bine ai venit.',sub:'Următoarea vizită începe aici.',bookCta:'Programează-te',firstFree:'Prima oră disponibilă',bookAt:'Rezervă {t}',otherTime:'Altă oră',recommended:'Recomandarea TAF',team:'Echipa',visit:'Ne găsești aici',directions:'Indicații',whatsapp:'WhatsApp',about:'Despre noi',apps:'Aplicația TAF',dlOn:'Descarcă din',getOn:'Disponibil pe',steps:['Serviciul','Frizerul','Ora','Confirmare'],from:'de la',chooseBarberSub:'Alege cu cine vrei să te tunzi.',chooseServiceSub:'Ce facem azi?',assistantTitle:'Spune când vrei să te tunzi.',assistantSub:'Asistentul tău se ocupă de programare.',idKicker:'TAF Identity',idTitle:'Arată-ne cum vrei să te tunzi.',idText:'Adaugă fotografii sau vezi cu AI ce ți se potrivește și spune-ne ce vrei să păstrăm sau să schimbăm.',idTextNoAi:'Adaugă fotografii cu tunsoarea dorită și spune-ne ce vrei să păstrăm sau să schimbăm.',idCta:'Pregătește-ți tunsoarea',perks:'Beneficiile tale',qRewards:'Bonusuri',qGift:'Card cadou',qSubs:'Abonamente',qShop:'Magazin',invite:'Adu un prieten',inviteText:'Primiți amândoi bonus la prima lui tunsoare.',inviteCta:'Invită un prieten',tabHome:'Acasă',tabServices:'Servicii',tabBook:'Rezervă',tabBookings:'Programări',tabAccount:'Cont',appTitle:'Disponibil în aplicația TAF',appText:'Descarcă aplicația gratuită ca să folosești și asta. Te programezi la fel de ușor și primești bonusuri.',bookingsText:'Programările tale le vezi, le muți sau le anulezi din aplicația TAF.',accountText:'Contul tău, bonusurile și abonamentele sunt în aplicația TAF.'},
@@ -356,19 +529,19 @@ function bindDetails(){var phone='',isNew=false,legal=null;var $=function(i){ret
 function loadLegal(){legal=null;$('terms').checked=false;$('terms').disabled=true;$('lhint').hidden=false;var box=$('legal');box.textContent='…';Promise.all([api('GET','/legal/terms?lang='+lang),api('GET','/legal/privacy?lang='+lang)]).then(function(r){legal=r;box.innerHTML='<h3>'+e(r[0].title)+'</h3>'+e(r[0].body)+'<hr><h3>'+e(r[1].title)+'</h3>'+e(r[1].body);box.scrollTop=0;box.onscroll=function(){if(box.scrollTop+box.clientHeight>=box.scrollHeight-30){$('terms').disabled=false;$('lhint').hidden=true}}},function(){box.textContent=t('err')})}
 if($('send'))$('send').onclick=function(){$('msg').textContent='';this.disabled=true;var me=this;var body={phone:$('phone').value,channel:S.otpSms?'sms':'email'};if(!S.otpSms)body.email=$('email').value.trim();api('POST','/auth/otp',body).then(function(r){phone=r.phone;isNew=r.newAccount;$('f1').hidden=true;$('f2').hidden=false;$('newacc').hidden=!isNew;if(isNew)loadLegal();$('sent').textContent=t('codeSentTo')+r.sentTo+(r.devCode?' ('+r.devCode+')':'');},fail).then(function(){me.disabled=false})};
 $('confirm').onclick=function(){$('msg').textContent='';var me=this;var body={phone:phone,code:token?'':$('code').value.trim(),lang:lang};if(isNew&&!token){body.name=$('name').value.trim();body.birthDate=$('birth').value;body.acceptTerms=$('terms').checked;body.marketing=$('mk').checked;if(S.otpSms)body.email=$('email2').value.trim();if(!body.name||!body.birthDate){$('msg').textContent=t('fill');return}var sig=$('sig').value.replace(/\s+/g,' ').trim();if(!legal||!body.acceptTerms||(sig.match(/[A-Za-zÀ-ɏ]/g)||[]).length<3){$('msg').textContent=t('sigNeeded');return}body.signature=sig;body.termsVersion=legal[0].version;body.privacyVersion=legal[1].version}me.disabled=true;
-(token?Promise.resolve({token:token}):api('POST','/auth/verify',body)).then(function(v){token=v.token;return api('POST','/bookings',{serviceId:sel.service.id,barberId:sel.barber?sel.barber.id:sel.slot.barberId,start:sel.slot.start,note:'Programare de pe site'})}).then(function(b){sel.result=b;history=[];view='done';render()},function(x){if(x&&x.message==='slot_unavailable'){sel.slot=null;history.pop();view='pickTime';render();setTimeout(function(){alert(t('slotTaken'))},50);return}fail(x);if(x&&x.message==='legal_changed')loadLegal();me.disabled=false})}}
+(token?Promise.resolve({token:token}):api('POST','/auth/verify',body)).then(function(v){token=v.token;return api('POST','/bookings',{serviceId:sel.service.id,barberId:sel.barber?sel.barber.id:sel.slot.barberId,start:sel.slot.start,note:'Programare de pe site'})}).then(function(b){sel.result=b;trackBooking();history=[];view='done';render()},function(x){if(x&&x.message==='slot_unavailable'){sel.slot=null;history.pop();view='pickTime';render();setTimeout(function(){alert(t('slotTaken'))},50);return}fail(x);if(x&&x.message==='legal_changed')loadLegal();me.disabled=false})}}
 function done(){var req=sel.result&&sel.result.status==='requested';return'<div class="center"><div class="done-ic">'+ic('check')+'</div><h2>'+(req?t('requested'):t('done'))+'</h2></div>'+summary()+'<p class="muted center">'+t('doneText')+'</p><a class="btn" href="'+(/iPhone|iPad/.test(navigator.userAgent)?S.stores.appStore:S.stores.play)+'" target="_blank" rel="noopener">'+t('getApp')+'</a><button class="btn ghost" id="again">'+t('again')+'</button>'}
 function contact(){return soft('biz','/business',null).then(function(b){return'<h2>'+t('contact')+'</h2><div class="card"><div class="ctitle">'+e(S.biz.name)+'</div>'+(S.biz.address?'<div class="muted">'+e(S.biz.address)+'</div>':'')+'</div>'+visit()})}
 function links(){return'<h2>'+t('links')+'</h2>'+W.links.map(function(l){return'<a class="card perk" href="'+e(l.url)+'" target="_blank" rel="noopener">'+ic('links')+'<span>'+e(l.label)+'</span>'+ic('chev','chev')+'</a>'}).join('')}
 var seq=0;
-function render(){theme();var titles={home:'',app:t('apps'),bookings:t('tabBookings'),account:t('tabAccount'),services:t('services'),barbers:t('barbers'),contact:t('contact'),links:t('links'),book:t('book'),pickBarber:t('book'),pickTime:t('book'),details:t('book'),done:t('book')};
+function render(){theme();document.documentElement.lang=lang;var titles={home:'',app:t('apps'),bookings:t('tabBookings'),account:t('tabAccount'),services:t('services'),barbers:t('barbers'),contact:t('contact'),links:t('links'),book:t('book'),pickBarber:t('book'),pickTime:t('book'),details:t('book'),done:t('book')};
 var body=view==='home'?home():view==='app'||view==='bookings'||view==='account'?appOnly():view==='services'?services(false):view==='barbers'?barbers(false):view==='contact'?contact():view==='links'?links():view==='book'?services(true):view==='pickBarber'?barbers(true):view==='pickTime'?times():view==='details'?details():done();
-var my=++seq,foot='<footer>© '+e(S.biz.name)+' · <a href="/legal/privacy?lang='+lang+'">'+(lang==='ro'?'Confidențialitate':lang==='fr'?'Confidentialité':'Privacy')+'</a> · <a href="/legal/terms?lang='+lang+'">'+(lang==='ro'?'Termeni':lang==='fr'?'Conditions':'Terms')+'</a></footer>';
+var my=++seq,foot='<footer>© '+e(S.biz.name)+' · <a href="/legal/privacy?lang='+lang+'">'+(lang==='ro'?'Confidențialitate':lang==='fr'?'Confidentialité':'Privacy')+'</a> · <a href="/legal/terms?lang='+lang+'">'+(lang==='ro'?'Termeni':lang==='fr'?'Conditions':'Terms')+'</a>'+(hasTracking()&&!S.preview?' · <a href="#" id="cookies">'+(lang==='ro'?'Cookie-uri':'Cookies')+'</a>':'')+'</footer>';
 var fab=TABS[view]||view==='app'?tabbar():'';
 var shell=function(h){return'<div class="wrap">'+header(titles[view])+'<main>'+h+'</main>'+foot+'</div>'+fab};
 if(body&&body.then&&!app.firstChild||body&&body.then&&app.dataset.view!==view){app.innerHTML=shell('<div class="spin"></div>');wire()}
 Promise.resolve(body).then(function(h){if(my!==seq)return;app.dataset.view=view;app.innerHTML=shell(h);wire()},function(){if(my!==seq)return;app.innerHTML=shell('<p class="err">'+t('err')+'</p>');wire()})}
-function wire(){var q=function(s){return Array.prototype.slice.call(app.querySelectorAll(s))};var b=document.getElementById('back');if(b)b.onclick=back;var l=document.getElementById('lang');if(l)l.onchange=function(){lang=this.value;try{localStorage.setItem('taf-site-lang',lang)}catch(e){}data={};render()};
+function wire(){var q=function(s){return Array.prototype.slice.call(app.querySelectorAll(s))};var b=document.getElementById('back');if(b)b.onclick=back;var ck=document.getElementById('cookies');if(ck)ck.onclick=function(ev){ev.preventDefault();cookieSettings()};var l=document.getElementById('lang');if(l)l.onchange=function(){lang=this.value;try{localStorage.setItem('taf-site-lang',lang)}catch(e){}data={};render()};
 q('[data-go]').forEach(function(x){x.onclick=function(){if(x.dataset.go==='book')sel={};go(x.dataset.go)}});
 q('[data-tab]').forEach(function(x){x.onclick=function(){if(view===x.dataset.tab)return scrollTo(0,0);history=[];view=x.dataset.tab;render();scrollTo(0,0)}});
 q('[data-svc]').forEach(function(x){x.onclick=function(){sel={service:data.services.filter(function(s){return s.id===x.dataset.svc})[0]};go('pickBarber')}});
@@ -384,19 +557,43 @@ if(view==='details')bindDetails();var a=document.getElementById('again');if(a)a.
 // Bara de jos, ca în aplicație: Acasă, Servicii, Rezervă (butonul din mijloc), Programări, Cont.
 var TABS={home:1,services:1,bookings:1,account:1};
 function tabbar(){var it=[['home','home','tabHome'],['services','cut','tabServices'],null,['bookings','calendar','tabBookings'],['account','user','tabAccount']];return'<nav class="tabs">'+it.map(function(x){if(!x)return'<button class="tab" data-go="book"><span class="tplus">'+ic('plus')+'</span><span>'+t('tabBook')+'</span></button>';return'<button class="tab'+(view===x[0]?' on':'')+'" data-tab="'+x[0]+'">'+ic(x[1])+'<span>'+t(x[2])+'</span></button>'}).join('')+'</nav>'}
-function tracking(){if(S.preview||(!W.tracking.gaId&&!W.tracking.metaPixelId))return;var c=null;try{c=localStorage.getItem('taf-consent')}catch(x){}if(c==='yes')return startTracking();if(c==='no')return;var d=document.createElement('div');d.id='consent';d.innerHTML=e(t('consent'))+' <a href="/legal/privacy?lang='+lang+'" style="color:inherit">›</a><div class="row"><button class="btn" id="cy">'+t('accept')+'</button><button class="btn ghost" id="cn">'+t('refuse')+'</button></div>';document.body.appendChild(d);
+// Statistici și reclame (Google Analytics / Ads, Meta Pixel, TikTok): pornesc doar după „Accept” în banner (GDPR, Legea 506/2004).
+var TR=W.tracking||{},trackOn=false;
+function hasTracking(){return!!(TR.gaId||TR.googleAdsId||TR.metaPixelId||TR.tiktokPixelId)}
+function tracking(){if(S.preview||!hasTracking())return;var c=null;try{c=localStorage.getItem('taf-consent')}catch(x){}if(c==='yes')return startTracking();if(c==='no')return;askConsent()}
+function askConsent(){if(document.getElementById('consent'))return;var d=document.createElement('div');d.id='consent';d.setAttribute('role','dialog');d.innerHTML=e(t('consent'))+' <a href="/legal/privacy?lang='+lang+'" style="color:inherit">›</a><div class="row"><button class="btn" id="cy">'+t('accept')+'</button><button class="btn ghost" id="cn">'+t('refuse')+'</button></div>';document.body.appendChild(d);
 document.getElementById('cy').onclick=function(){try{localStorage.setItem('taf-consent','yes')}catch(x){}d.remove();startTracking()};document.getElementById('cn').onclick=function(){try{localStorage.setItem('taf-consent','no')}catch(x){}d.remove()}}
-function startTracking(){if(W.tracking.gaId){var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+W.tracking.gaId;document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};gtag('js',new Date());gtag('config',W.tracking.gaId)}
-if(W.tracking.metaPixelId){!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init',W.tracking.metaPixelId);fbq('track','PageView')}}
+// Linkul „Cookie-uri” din subsol: retragi sau schimbi acordul oricând (după retragere, pagina se reîncarcă fără scripturi).
+function cookieSettings(){var was=null;try{was=localStorage.getItem('taf-consent');localStorage.removeItem('taf-consent')}catch(x){}if(was==='yes')return location.reload();askConsent()}
+function addScript(src){var s=document.createElement('script');s.async=true;s.src=src;document.head.appendChild(s)}
+function startTracking(){if(trackOn)return;trackOn=true;var g=TR.gaId||TR.googleAdsId;
+if(g){addScript('https://www.googletagmanager.com/gtag/js?id='+g);window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};gtag('consent','default',{ad_storage:'granted',ad_user_data:'granted',ad_personalization:'granted',analytics_storage:'granted'});gtag('js',new Date());if(TR.gaId)gtag('config',TR.gaId);if(TR.googleAdsId)gtag('config',TR.googleAdsId)}
+if(TR.metaPixelId){!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init',TR.metaPixelId);fbq('track','PageView')}
+if(TR.tiktokPixelId){!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie'];ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js';ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=r;ttq._t=ttq._t||{};ttq._t[e]=+new Date;ttq._o=ttq._o||{};ttq._o[e]=n||{};addScript(r+'?sdkid='+e+'&lib='+t)}}(window,document,'ttq');ttq.load(TR.tiktokPixelId);ttq.page()}}
+// Programarea făcută = „conversia” pentru reclame (doar dacă vizitatorul a acceptat).
+function trackBooking(){if(!trackOn||!sel.service)return;var v=Number(sel.service.price)||0,p={value:v,currency:'RON'};
+try{if(window.gtag){if(TR.gaId)gtag('event','generate_lead',{value:v,currency:'RON',items:[{item_name:sel.service.name}]});if(TR.googleAdsId&&TR.googleAdsLabel)gtag('event','conversion',{send_to:TR.googleAdsId+'/'+TR.googleAdsLabel,value:v,currency:'RON'})}
+if(window.fbq)fbq('track','Schedule',p);if(window.ttq)ttq.track('PlaceAnOrder',{value:v,currency:'RON',contents:[{content_name:sel.service.name}]})}catch(x){}}
 // Previzualizarea din panou: aspectul nesalvat vine prin postMessage, de la aceeași adresă.
-if(S.preview)addEventListener('message',function(ev){if(ev.origin!==location.origin||!ev.data||ev.data.type!=='taf-site')return;W=S.w=ev.data.website;if(W.languages.indexOf(lang)<0)lang=W.defaultLang;if(ev.data.view&&ev.data.view!==view){history=[];view=ev.data.view}render()});
+if(S.preview)addEventListener('message',function(ev){if(ev.origin!==location.origin||!ev.data||ev.data.type!=='taf-site')return;W=S.w=ev.data.website;TR=W.tracking||{};if(W.languages.indexOf(lang)<0)lang=W.defaultLang;if(ev.data.view&&ev.data.view!==view){history=[];view=ev.data.view}render()});
 render();tracking();
 })();`;
 
 // --- Rutele ---
 
 export const websitePublic = new Hono<AppEnv>();
-websitePublic.get('/site', async (c) => c.html(await sitePage(c.env, { preview: c.req.query('preview') === '1' })));
+websitePublic.get('/site', async (c) =>
+  c.html(await sitePage(c.env, { preview: c.req.query('preview') === '1', lang: c.req.query('lang') })),
+);
+websitePublic.get('/robots.txt', async (c) => {
+  const u = new URL(c.req.url);
+  return c.text(await robotsTxt(c.env, await isSiteHost(c.env, u.host)), 200, { 'cache-control': 'public, max-age=3600' });
+});
+websitePublic.get('/sitemap.xml', async (c) => {
+  const u = new URL(c.req.url);
+  if (!(await isSiteHost(c.env, u.host))) return c.text('Not found', 404);
+  return c.body(await sitemapXml(c.env), 200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+});
 
 export const websiteAdmin = new Hono<AppEnv>();
 websiteAdmin.use('/website', async (c, next) => {

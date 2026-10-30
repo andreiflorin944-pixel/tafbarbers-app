@@ -1,6 +1,6 @@
 import type { Env } from './env';
 import { getBusiness, getSetting, setSetting } from './db';
-import { getWebsite } from './website';
+import { getWebsite, type Website } from './website';
 import { langOf, localizeText, lookup } from './contentI18n';
 import { sha256 } from './auth';
 
@@ -170,29 +170,29 @@ export async function saveLegal(env: Env, store: LegalStore) {
 }
 
 // Bucățile scrise de server în text, în limba cititorului.
-const FILL: Record<'ro' | 'en' | 'fr', { todo: string; policy: (h: number) => string; what: Record<string, string>; cookies: (ga: boolean, pixel: boolean) => string }> = {
+const FILL: Record<'ro' | 'en' | 'fr', { todo: string; policy: (h: number) => string; what: Record<string, string>; cookies: (t: Website['tracking']) => string }> = {
   ro: {
-    cookies: (ga, pixel) =>
-      ga || pixel
-        ? `Aplicația nu folosește cookie-uri de urmărire. Pe site, doar dacă apeși „Accept” în bannerul de cookie-uri, pornim ${[ga && 'Google Analytics (Google Ireland Ltd., statistici de vizitare)', pixel && 'Meta Pixel (Meta Platforms Ireland Ltd., măsurarea reclamelor)'].filter(Boolean).join(' și ')}, care pun cookie-uri în browser și pot transfera date în SUA. Temei: acordul tău (Legea 506/2004 art. 4 și art. 6 alin. 1 lit. a GDPR). Îți retragi acordul ștergând datele site-ului din browser; bannerul apare din nou.`
+    cookies: (t) =>
+      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId
+        ? `Aplicația nu folosește cookie-uri de urmărire. Pe site, doar dacă apeși „Accept” în bannerul de cookie-uri, pornim ${[t.gaId && 'Google Analytics (Google Ireland Ltd., statistici de vizitare)', t.googleAdsId && 'Google Ads (Google Ireland Ltd., măsurarea reclamelor)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd., măsurarea reclamelor)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd., măsurarea reclamelor)'].filter(Boolean).join(' și ')}, care pun cookie-uri în browser și pot transfera date în SUA. Temei: acordul tău (Legea 506/2004 art. 4 și art. 6 alin. 1 lit. a GDPR). Îți retragi acordul oricând din linkul „Cookie-uri” din josul site-ului.`
         : 'Nu folosim cookie-uri de urmărire sau publicitate și nu folosim instrumente de analiză care te urmăresc între aplicații.',
     todo: 'de completat',
     policy: (h) => `Poți anula din aplicație cu cel puțin ${h} ore înainte.`,
     what: { company: 'denumirea firmei', cui: 'CUI', regcom: 'nr. Registrul Comerțului', seat: 'sediul social', email: 'e-mail de contact', phone: 'telefon', address: 'adresa salonului' },
   },
   en: {
-    cookies: (ga, pixel) =>
-      ga || pixel
-        ? `The app does not use tracking cookies. On the website, only if you tap “Accept” in the cookie banner, we start ${[ga && 'Google Analytics (Google Ireland Ltd., visit statistics)', pixel && 'Meta Pixel (Meta Platforms Ireland Ltd., ad measurement)'].filter(Boolean).join(' and ')}, which set cookies in your browser and may transfer data to the USA. Legal basis: your consent. You withdraw it by clearing the site data in your browser; the banner then appears again.`
+    cookies: (t) =>
+      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId
+        ? `The app does not use tracking cookies. On the website, only if you tap “Accept” in the cookie banner, we start ${[t.gaId && 'Google Analytics (Google Ireland Ltd., visit statistics)', t.googleAdsId && 'Google Ads (Google Ireland Ltd., ad measurement)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd., ad measurement)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd., ad measurement)'].filter(Boolean).join(' and ')}, which set cookies in your browser and may transfer data to the USA. Legal basis: your consent. You can withdraw it at any time from the “Cookies” link at the bottom of the website.`
         : 'We do not use tracking or advertising cookies, nor analytics tools that track you across apps.',
     todo: 'to be completed',
     policy: (h) => `You can cancel in the app at least ${h} hours in advance.`,
     what: { company: 'company name', cui: 'tax ID', regcom: 'trade register no.', seat: 'registered office', email: 'contact e-mail', phone: 'phone', address: 'salon address' },
   },
   fr: {
-    cookies: (ga, pixel) =>
-      ga || pixel
-        ? `L’application n’utilise pas de cookies de suivi. Sur le site, seulement si vous appuyez sur « Accepter » dans le bandeau cookies, nous activons ${[ga && 'Google Analytics (Google Ireland Ltd., statistiques de visite)', pixel && 'Meta Pixel (Meta Platforms Ireland Ltd., mesure des publicités)'].filter(Boolean).join(' et ')}, qui déposent des cookies et peuvent transférer des données aux États-Unis. Base légale : votre consentement. Vous le retirez en effaçant les données du site dans le navigateur ; le bandeau réapparaît.`
+    cookies: (t) =>
+      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId
+        ? `L’application n’utilise pas de cookies de suivi. Sur le site, seulement si vous appuyez sur « Accepter » dans le bandeau cookies, nous activons ${[t.gaId && 'Google Analytics (Google Ireland Ltd., statistiques de visite)', t.googleAdsId && 'Google Ads (Google Ireland Ltd., mesure des publicités)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd., mesure des publicités)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd., mesure des publicités)'].filter(Boolean).join(' et ')}, qui déposent des cookies et peuvent transférer des données aux États-Unis. Base légale : votre consentement. Vous pouvez le retirer à tout moment via le lien « Cookies » en bas du site.`
         : 'Nous n’utilisons pas de cookies de suivi ou de publicité, ni d’outils d’analyse qui vous suivent entre applications.',
     todo: 'à compléter',
     policy: (h) => `Vous pouvez annuler dans l’application au moins ${h} heures à l’avance.`,
@@ -243,8 +243,8 @@ export async function legalDoc(env: Env, doc: Doc, lang: string) {
       .replaceAll('{deleteUrl}', `${publicBase || 'https://app.tafbarbers.ro'}/sterge-cont`)
       .replaceAll('{updated}', updated.slice(0, 10).split('-').reverse().join('.'))
       .replaceAll('{policy}', policy)
-      // Paragraful despre cookie-uri urmează setările site-ului (Google Analytics / Meta Pixel completate în panou).
-      .replaceAll('{cookies}', f.cookies(!!site.tracking.gaId, !!site.tracking.metaPixelId));
+      // Paragraful despre cookie-uri urmează setările site-ului (Google Analytics / Ads, Meta Pixel, TikTok completate în panou).
+      .replaceAll('{cookies}', f.cookies(site.tracking));
   // `lang` = limba în care e textul; `translated` = traducere automată (aplicația arată că varianta oficială e în română).
   // `version` = versiunea de la dovada acordului (aceeași ca în legalVersions), ca aplicația să trimită la semnare ce a citit.
   return { doc, title: fill(chosen.title), body: fill(chosen.body), updatedAt: store[doc]?.updatedAt ?? null, version: updated, isDefault: !v.ro, lang: shown, translated: shown !== 'ro' };

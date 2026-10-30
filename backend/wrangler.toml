@@ -18,7 +18,7 @@ routes = [
 directory = "../admin/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/", "/site", "/v1/*", "/legal/*", "/r/*", "/programare", "/sterge-cont", "/plata/*", "/q/*", "/w/*", "/b/*"]
+run_worker_first = ["/", "/site", "/robots.txt", "/sitemap.xml", "/v1/*", "/legal/*", "/r/*", "/programare", "/sterge-cont", "/plata/*", "/q/*", "/w/*", "/b/*"]
 
 [[d1_databases]]
 binding = "DB"

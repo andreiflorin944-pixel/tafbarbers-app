@@ -201,6 +201,10 @@ const MESSAGES: Record<string, string> = {
   invalid_domain: 'Adresa nu pare corectă. Scrie-o ca programari.tafbarbers.ro.',
   invalid_ga_id: 'Codul Google Analytics începe cu G- (de exemplu G-AB12CD34EF).',
   invalid_pixel_id: 'Meta Pixel ID are doar cifre.',
+  invalid_ads_id: 'Codul Google Ads începe cu AW- și are cifre (de exemplu AW-123456789).',
+  invalid_ads_label: 'Eticheta conversiei Google Ads are doar litere, cifre, - și _.',
+  invalid_tiktok_id: 'TikTok Pixel ID are doar litere mari și cifre.',
+  invalid_verification: 'Codul de verificare nu pare corect. Lipiți doar codul sau tot rândul <meta …>.',
   invalid_link: 'Fiecare link are nevoie de un nume și de o adresă corectă.',
   no_language: 'Alege cel puțin o limbă.',
 };

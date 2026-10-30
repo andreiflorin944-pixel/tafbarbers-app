@@ -20,7 +20,8 @@ type Website = {
   layout: 'buttons' | 'tiles';
   sections: { booking: boolean; barbers: boolean; services: boolean; contact: boolean; links: boolean; apps: boolean };
   customDomain: string;
-  tracking: { gaId: string; metaPixelId: string };
+  tracking: { gaId: string; metaPixelId: string; googleAdsId: string; googleAdsLabel: string; tiktokPixelId: string };
+  seo: { title: Record<Lang, string>; description: Record<Lang, string>; shareImage: string | null; googleVerification: string; metaVerification: string };
   links: Array<{ label: string; url: string }>;
 };
 
@@ -37,7 +38,8 @@ const TABS = [
   { key: 'limbi', label: 'Limbi' },
   { key: 'layout', label: 'Aspectul meniului' },
   { key: 'domeniu', label: 'Domeniu personalizat' },
-  { key: 'tracking', label: 'Statistici (Google, Meta)' },
+  { key: 'seo', label: 'Google și distribuire (SEO)' },
+  { key: 'tracking', label: 'Statistici și reclame' },
   { key: 'linkuri', label: 'Linkurile mele' },
 ] as const;
 type Tab = (typeof TABS)[number]['key'];
@@ -318,19 +320,60 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
           </Field>
         </>
       );
+    case 'seo':
+      return (
+        <>
+          <h2 style={{ margin: 0 }}>Google și distribuire (SEO)</h2>
+          <p className="muted small" style={{ margin: 0 }}>
+            Cum apare site-ul în căutările Google și când cineva trimite linkul pe WhatsApp, Facebook sau Instagram. Lăsați gol și se folosește un
+            text automat cu numele și adresa salonului. Google mai primește automat programul, prețurile, serviciile, adresa și telefonul.
+          </p>
+          {v.languages.map((l) => (
+            <div key={l} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <Field label={`Titlul în Google, ${LANG_NAMES[l]} (cel mult 60 de caractere: ${v.seo.title[l].length})`}>
+                <input value={v.seo.title[l]} maxLength={70} placeholder={l === 'ro' ? 'TAFBarbers · Frizerie, programare online' : l === 'en' ? 'TAFBarbers · Barbershop, book online' : 'TAFBarbers · Barbier, réservation en ligne'} onChange={(e) => set({ seo: { ...v.seo, title: { ...v.seo.title, [l]: e.target.value } } })} />
+              </Field>
+              <Field label={`Descrierea în Google, ${LANG_NAMES[l]} (cel mult 160 de caractere: ${v.seo.description[l].length})`}>
+                <textarea rows={2} maxLength={300} value={v.seo.description[l]} onChange={(e) => set({ seo: { ...v.seo, description: { ...v.seo.description, [l]: e.target.value } } })} />
+              </Field>
+            </div>
+          ))}
+          <Field label="Poza care apare când trimiteți linkul (ideal 1200 × 630, lată). Fără ea se folosește logo-ul.">
+            <ImagePicker value={v.seo.shareImage} onChange={(shareImage) => set({ seo: { ...v.seo, shareImage } })} maxPx={1200} />
+          </Field>
+          <Field label="Cod de verificare Google Search Console (opțional; puteți lipi tot rândul <meta …>)">
+            <input value={v.seo.googleVerification} onChange={(e) => set({ seo: { ...v.seo, googleVerification: e.target.value } })} />
+          </Field>
+          <Field label="Cod de verificare a domeniului în Meta Business (opțional; puteți lipi tot rândul <meta …>)">
+            <input value={v.seo.metaVerification} onChange={(e) => set({ seo: { ...v.seo, metaVerification: e.target.value } })} />
+          </Field>
+          <p className="muted small" style={{ margin: 0 }}>
+            Harta site-ului pentru Google: {SITE_URL}/sitemap.xml
+          </p>
+        </>
+      );
     case 'tracking':
       return (
         <>
-          <h2 style={{ margin: 0 }}>Statistici</h2>
+          <h2 style={{ margin: 0 }}>Statistici și reclame</h2>
           <p className="muted small" style={{ margin: 0 }}>
-            Opțional. Cu ele vedeți în Google Analytics și în Meta (Facebook) câți oameni intră pe site. Vizitatorii văd întâi o întrebare dacă sunt de
-            acord (cerut de GDPR); fără acord, nu se trimite nimic.
+            Opțional, pentru reclame. Codurile le găsiți în conturile Google, Meta (Facebook / Instagram) și TikTok. Vizitatorii văd întâi o întrebare
+            dacă sunt de acord (cerut de GDPR); fără acord, nu se trimite nimic. Programările făcute pe site se numără automat ca „conversii”.
           </p>
           <Field label="Google Analytics, Measurement ID (G-…)">
             <input value={v.tracking.gaId} placeholder="G-XXXXXXXXXX" onChange={(e) => set({ tracking: { ...v.tracking, gaId: e.target.value } })} />
           </Field>
-          <Field label="Meta Pixel ID (doar cifre)">
+          <Field label="Google Ads, Conversion ID (AW-…)">
+            <input value={v.tracking.googleAdsId} placeholder="AW-123456789" onChange={(e) => set({ tracking: { ...v.tracking, googleAdsId: e.target.value } })} />
+          </Field>
+          <Field label="Google Ads, eticheta conversiei „Programare” (Conversion label, opțional)">
+            <input value={v.tracking.googleAdsLabel} placeholder="AbC-D_efGhIjK" onChange={(e) => set({ tracking: { ...v.tracking, googleAdsLabel: e.target.value } })} />
+          </Field>
+          <Field label="Meta Pixel ID (Facebook / Instagram, doar cifre)">
             <input value={v.tracking.metaPixelId} inputMode="numeric" onChange={(e) => set({ tracking: { ...v.tracking, metaPixelId: e.target.value } })} />
+          </Field>
+          <Field label="TikTok Pixel ID">
+            <input value={v.tracking.tiktokPixelId} placeholder="C4ABCDEFGHIJ1234567" onChange={(e) => set({ tracking: { ...v.tracking, tiktokPixelId: e.target.value } })} />
           </Field>
         </>
       );
