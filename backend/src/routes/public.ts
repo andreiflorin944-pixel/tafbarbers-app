@@ -244,11 +244,10 @@ publicRoutes.post('/auth/verify', async (c) => {
     .first<{ id: string; name: string; email: string | null }>();
   // Cont nou: acordul pentru termeni și confidențialitate e obligatoriu (codul rămâne valabil).
   if (!client && body.acceptTerms !== true) throw new HttpError(400, 'terms_required');
-  // Cont nou: cerem și data nașterii și un e-mail (vine din cererea codului sau din formular).
+  // Cont nou: cerem un e-mail (vine din cererea codului sau din formular); data nașterii e opțională.
   const birthDate = body.birthDate ? parseBirthDate(body.birthDate) : null;
   const formEmail = typeof body.email === 'string' && EMAIL_RE.test(body.email.trim()) ? body.email.trim().toLowerCase() : null;
   const email = row.email ?? formEmail;
-  if (!client && !birthDate) throw new HttpError(400, 'birth_date_required');
   if (!client && !email) throw new HttpError(400, 'email_required');
   if (!client && email && (await emailTaken(c.env, email, phone))) throw new HttpError(400, 'email_in_use');
   // Codul se folosește o singură dată (două cereri odată cu același cod: doar una intră).
@@ -390,7 +389,6 @@ publicRoutes.post('/auth/social/complete', async (c) => {
     if (!t.email_verified || !t.email) throw new HttpError(400, 'code_required');
     if (body.acceptTerms !== true) throw new HttpError(400, 'terms_required');
     const birthDate = body.birthDate ? parseBirthDate(body.birthDate) : null;
-    if (!birthDate) throw new HttpError(400, 'birth_date_required');
     if (await emailTaken(c.env, t.email, phone)) throw new HttpError(400, 'email_in_use');
     clientId = newId('cl');
     isNew = true;

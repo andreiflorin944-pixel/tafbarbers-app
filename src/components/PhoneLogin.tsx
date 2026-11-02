@@ -81,7 +81,8 @@ export function PhoneLogin({
   const cleanPhone = phone.replace(/[\s\-().]/g, "");
   const cleanEmail = email.trim().toLowerCase();
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail);
-  const birthOk = !!parseBirth(birth);
+  // Data nașterii e opțională (doar pentru surpriza de ziua clientului); dacă e scrisă, trebuie să fie validă.
+  const birthOk = !birth.trim() || !!parseBirth(birth);
   const phoneOk = /^\+?\d{9,15}$/.test(cleanPhone);
   const nameOk = name.trim().length >= 2;
   // Parola se alege la contul nou (nu și la cel din Apple / Google, care intră cu Apple / Google).
