@@ -41,8 +41,8 @@ export function SocialPromoPage() {
       </div>
       <p className="muted small" style={{ marginTop: -8, maxWidth: 760 }}>
         În aplicație apare cardul „Urmărește-ne pe Facebook, Instagram și TikTok și deblochezi {f.percent}% reducere la o ședință”. Clientul apasă pe rețele, apoi
-        pe „Deblochează reducerea” și primește un bonus o singură dată pe cont. Îl vede la Recompense și îl arată la plată; frizerul îl bifează ca folosit, ca la
-        orice bonus.
+        pe „Deblochează reducerea” și primește un bonus o singură dată pe cont. Îl vede la Bonusuri. La plată, frizerul îi cere să arate pe telefon că urmărește pagina (singura verificare reală: rețelele nu spun
+        cine te urmărește), apoi bifează bonusul ca folosit, ca la orice bonus.
       </p>
       <div className="row" style={{ alignItems: 'flex-start', gap: 24, flexWrap: 'wrap' }}>
         <div className="card grid" style={{ flex: '1 1 420px', maxWidth: 600 }}>
