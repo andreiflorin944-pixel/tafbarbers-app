@@ -8,7 +8,7 @@ import { BarbersPage } from './pages/Barbers';
 import { TimeOffPage } from './pages/TimeOff';
 import { PromosPage } from './pages/Promos';
 import { CampaignsPage } from './pages/Campaigns';
-import { SettingsPage } from './pages/Settings';
+import { AccountPage, SettingsPage } from './pages/Settings';
 import { LegalPage } from './pages/Legal';
 import { AppearancePage } from './pages/Appearance';
 import { ShopPage } from './pages/Shop';
@@ -60,8 +60,16 @@ const PAGES = [
   { key: 'legal', label: 'Regulamente și GDPR', show: (m: Me) => m.owner, el: LegalPage },
   { key: 'notifications', label: 'Notificări', show: (m: Me) => m.owner, el: NotificationsPage },
   { key: 'templates', label: 'Șabloane de mesaje', show: (m: Me) => m.owner, el: TemplatesPage },
-  { key: 'settings', label: 'Setări', show: () => true, el: SettingsPage },
+  { key: 'settings', label: 'Setări', show: (m: Me) => m.owner, el: SettingsPage },
+  { key: 'account', label: 'Contul meu', show: () => true, el: AccountPage },
 ];
+
+// Adresele vechi ale contului (#/settings/parola, poza, sesiuni) duc acum la „Contul meu”.
+const redirectOld = () => {
+  const m = location.hash.match(/^#\/?settings\/(parola|poza|sesiuni)\b/);
+  if (m) location.replace(`#/account/${m[1]}`);
+};
+redirectOld();
 
 const pageFromHash = () => location.hash.replace(/^#\/?/, '').split('?')[0].split('/')[0] || 'calendar';
 const hashNow = () => location.hash.replace(/^#\/?/, '').split('?')[0];
@@ -96,26 +104,32 @@ function Icon({ name, size = 22 }: { name: string; size?: number }) {
 }
 
 // Meniul compact, grupat ca în Barberly: o iconiță pe domeniu, iar la click se deschide lista cu subramuri.
+// Regula: fiecare pagină apare o singură dată în meniu (fără dubluri între secțiuni). Rapoartele stau la Rapoarte,
+// datele salonului la Setări, iar contul tău (parolă, poză, deconectare) la avatarul din dreapta sus.
 const NAV: NavSection[] = [
-  {
-    key: 'business',
-    label: 'Afaceri',
-    icon: 'business',
-    groups: [
-      { items: [{ label: 'Tablou de bord', to: 'dashboard' }] },
-      { title: 'Echipa', items: [{ label: 'Frizeri, culori și program', to: 'barbers' }, { label: 'Pauze, ore speciale și concedii', to: 'timeoff' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }] },
-      { title: 'Ce oferim', items: [{ label: 'Servicii și prețuri', to: 'services' }, { label: 'Abonamente', to: 'subscriptions' }] },
-      { title: 'Salonul', items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Locații', to: 'settings/locatii' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }] },
-    ],
-  },
   {
     key: 'work',
     label: 'Calendar',
     icon: 'work',
     groups: [
-      { items: [{ label: 'Calendar', to: 'calendar' }, { label: 'Notițe echipă', to: 'notes' }] },
-      { title: 'Programări', items: [{ label: 'Lista programărilor', to: 'reports/bookings' }, { label: 'Rezervări viitoare', to: 'reports/upcoming' }, { label: 'Listă de așteptare', to: 'waitlist' }, { label: 'Raportul zilei', to: 'reports/day' }] },
-      { title: 'Program', items: [{ label: 'Pauze, ore speciale și concedii', to: 'timeoff' }, { label: 'Ore de lucru', to: 'barbers' }] },
+      {
+        items: [
+          { label: 'Calendarul zilei', to: 'calendar' },
+          { label: 'Lista programărilor', to: 'reports/bookings' },
+          { label: 'Rezervări viitoare', to: 'reports/upcoming' },
+          { label: 'Listă de așteptare', to: 'waitlist' },
+          { label: 'Notițe echipă', to: 'notes' },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'clients',
+    label: 'Clienți',
+    icon: 'clients',
+    groups: [
+      { items: [{ label: 'Lista clienților (import / export)', to: 'clients' }] },
+      { title: 'Analize', items: [{ label: 'Clienți TOP-100', to: 'reports/top100' }, { label: 'Păstrarea clienților', to: 'reports/retention' }, { label: 'Clienți noi vs. care revin', to: 'reports/new-returning' }] },
     ],
   },
   {
@@ -124,46 +138,7 @@ const NAV: NavSection[] = [
     icon: 'pay',
     groups: [
       { title: 'Încasări', items: [{ label: 'Registrul de încasări', to: 'reports/register' }, { label: 'Toate plățile', to: 'reports/payments' }, { label: 'Plăți pe frizer', to: 'reports/payments-member' }, { label: 'Bacșișuri', to: 'reports/tips-member' }] },
-      { title: 'Online (Stripe)', items: [{ label: 'Plăți online', to: 'payments' }, { label: 'Setări plăți online', to: 'settings/plati' }] },
-      { title: 'Vânzări', items: [{ label: 'Carduri cadou', to: 'giftcards' }, { label: 'Abonamente vândute', to: 'subscriptions' }, { label: 'Comenzi magazin', to: 'shop' }] },
-    ],
-  },
-  {
-    key: 'clients',
-    label: 'Clienți',
-    icon: 'clients',
-    groups: [
-      { items: [{ label: 'Lista clienților (import / export)', to: 'clients' }, { label: 'Zile de naștere', to: 'birthdays' }, { label: 'Recomandări și bonusuri', to: 'referrals' }] },
-      { title: 'Analize', items: [{ label: 'Clienți TOP-100', to: 'reports/top100' }, { label: 'Păstrarea clienților', to: 'reports/retention' }, { label: 'Clienți noi vs. care revin', to: 'reports/new-returning' }] },
-    ],
-  },
-  {
-    key: 'marketing',
-    label: 'Marketing',
-    icon: 'marketing',
-    groups: [
-      { items: [{ label: 'Postări Facebook, Instagram, TikTok', to: 'social' }, { label: 'Campanii (SMS, e-mail, push)', to: 'campaigns' }, { label: 'Bannere în aplicație', to: 'promos' }, { label: 'Coduri QR pentru campanii', to: 'qr' }] },
-      { title: 'Automatizări', items: [{ label: 'Ne e dor de tine', to: 'notifications/dor' }, { label: 'Ore libere azi', to: 'notifications/ore-libere' }, { label: 'Lângă salon', to: 'notifications/langa-salon' }, { label: 'Card cadou', to: 'notifications/card-cadou' }, { label: 'Zile de naștere', to: 'birthdays' }] },
-      { title: 'Fidelizare', items: [{ label: 'Recomandări și bonusuri', to: 'referrals' }, { label: 'Abonamente', to: 'subscriptions' }] },
-    ],
-  },
-  {
-    key: 'notify',
-    label: 'Notificări',
-    icon: 'notify',
-    groups: [{ items: [{ label: 'Ce se trimite și pe unde', to: 'notifications/canale' }, { label: 'Șabloane de mesaje', to: 'templates' }, { label: 'Mesaje trimise', to: 'settings/mesaje' }] }],
-  },
-  {
-    key: 'apps',
-    label: 'Aplicații',
-    icon: 'apps',
-    groups: [
-      { title: 'Magazine', items: [{ label: 'Aplicații iOS și Android', to: 'apps' }] },
-      { title: 'Site web', items: [{ label: 'Site web și rezervare online', to: 'website' }] },
-      { title: 'Mutarea din Barberly', items: [{ label: 'Programări din Barberly', to: 'barberly' }] },
-      { title: 'Aplicația', items: [{ label: 'Aspectul aplicației', to: 'appearance' }, { label: 'Bannere în aplicație', to: 'promos' }, { label: 'Consilier AI de tunsori', to: 'settings/consilier' }] },
-      { title: 'Linkuri', items: [{ label: 'Butonul „Programează” și recenzii', to: 'notifications/linkuri' }] },
-      { title: 'Legal', items: [{ label: 'Regulamente și GDPR', to: 'legal' }] },
+      { title: 'Online și cadouri', items: [{ label: 'Plăți online (Stripe)', to: 'payments' }, { label: 'Carduri cadou', to: 'giftcards' }] },
     ],
   },
   {
@@ -176,13 +151,57 @@ const NAV: NavSection[] = [
     ],
   },
   {
+    key: 'marketing',
+    label: 'Marketing',
+    icon: 'marketing',
+    groups: [
+      { items: [{ label: 'Campanii (SMS, e-mail, push)', to: 'campaigns' }, { label: 'Postări Facebook, Instagram, TikTok', to: 'social' }, { label: 'Bannere în aplicație', to: 'promos' }, { label: 'Coduri QR pentru campanii', to: 'qr' }] },
+      { title: 'Automatizări', items: [{ label: 'Ne e dor de tine', to: 'notifications/dor' }, { label: 'Ore libere azi', to: 'notifications/ore-libere' }, { label: 'Lângă salon', to: 'notifications/langa-salon' }, { label: 'Card cadou', to: 'notifications/card-cadou' }, { label: 'Zile de naștere', to: 'birthdays' }] },
+      { title: 'Fidelizare', items: [{ label: 'Recomandări și bonusuri', to: 'referrals' }] },
+    ],
+  },
+  {
     key: 'reports',
     label: 'Rapoarte',
     icon: 'reports',
     groups: [
-      { title: 'Vânzări', items: [{ label: 'Raportul zilei', to: 'reports/day' }, { label: 'Vânzări pe frizer', to: 'reports/sales-barber' }, { label: 'Vânzări pe servicii', to: 'reports/sales-service' }] },
+      { items: [{ label: 'Tablou de bord', to: 'dashboard' }, { label: 'Raportul zilei', to: 'reports/day' }] },
+      { title: 'Vânzări', items: [{ label: 'Vânzări pe frizer', to: 'reports/sales-barber' }, { label: 'Vânzări pe servicii', to: 'reports/sales-service' }] },
       { title: 'Programări', items: [{ label: 'Rezervări pe frizer', to: 'reports/bookings-barber' }, { label: 'Anulări din partea echipei', to: 'reports/cancel-staff' }, { label: 'Anulări de către client', to: 'reports/cancel-client' }] },
       { items: [{ label: 'Toate rapoartele', to: 'reports' }] },
+    ],
+  },
+  {
+    key: 'business',
+    label: 'Echipă și servicii',
+    icon: 'business',
+    groups: [
+      { title: 'Echipa', items: [{ label: 'Frizeri, culori și ore de lucru', to: 'barbers' }, { label: 'Pauze, ore speciale și concedii', to: 'timeoff' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }] },
+      { title: 'Ce oferim', items: [{ label: 'Servicii și prețuri', to: 'services' }, { label: 'Abonamente', to: 'subscriptions' }] },
+    ],
+  },
+  {
+    key: 'notify',
+    label: 'Notificări',
+    icon: 'notify',
+    groups: [{ items: [{ label: 'Ce se trimite și pe unde', to: 'notifications/canale' }, { label: 'Șabloane de mesaje', to: 'templates' }, { label: 'Mesaje trimise', to: 'settings/mesaje' }] }],
+  },
+  {
+    key: 'apps',
+    label: 'Aplicații și site',
+    icon: 'apps',
+    groups: [
+      { title: 'Magazine și site', items: [{ label: 'Aplicații iOS și Android', to: 'apps' }, { label: 'Site web și rezervare online', to: 'website' }] },
+      {
+        title: 'Aplicația',
+        items: [
+          { label: 'Aspectul aplicației', to: 'appearance' },
+          { label: 'Consilier AI de tunsori', to: 'settings/consilier' },
+          { label: 'Butonul „Programează” și recenzii', to: 'notifications/linkuri' },
+          { label: 'Erori din aplicație', to: 'settings/erori' },
+        ],
+      },
+      { title: 'Mutarea din Barberly', items: [{ label: 'Programări din Barberly', to: 'barberly' }] },
     ],
   },
   {
@@ -190,18 +209,16 @@ const NAV: NavSection[] = [
     label: 'Setări',
     icon: 'settings',
     groups: [
-      { items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Locații', to: 'settings/locatii' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }, { label: 'Plăți online (Stripe)', to: 'settings/plati' }, { label: 'Utilizatori și drepturi', to: 'settings/echipa' }, { label: 'Traduceri (engleză, franceză)', to: 'settings/traduceri' }, { label: 'Consilier AI de tunsori', to: 'settings/consilier' }] },
-      { title: 'Contul meu', items: [{ label: 'Profilul meu (poză, descriere)', to: 'settings/poza' }, { label: 'Schimbă parola', to: 'settings/parola' }, { label: 'Deconectare de pe alte dispozitive', to: 'settings/sesiuni' }] },
-      { items: [{ label: 'Regulamente și GDPR', to: 'legal' }, { label: 'Mesaje trimise', to: 'settings/mesaje' }] },
+      { title: 'Salonul', items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Locații', to: 'settings/locatii' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }] },
+      { title: 'Altele', items: [{ label: 'Plăți online (chei Stripe)', to: 'settings/plati' }, { label: 'Traduceri (engleză, franceză)', to: 'settings/traduceri' }, { label: 'Regulamente și GDPR', to: 'legal' }] },
     ],
   },
 ];
 
-// Bara laterală lată: domeniile grupate sub titluri mici, ca în machetă. „Afaceri” rămâne la Administrare
-// (tabloul de bord și serviciile nu apar în altă parte).
+// Bara laterală lată: domeniile grupate sub titluri mici, ca în machetă.
 const AREAS: Array<{ title: string; keys: string[] }> = [
   { title: 'Activitate', keys: ['work', 'clients'] },
-  { title: 'Afacere', keys: ['pay', 'marketing', 'shop', 'reports'] },
+  { title: 'Afacere', keys: ['pay', 'shop', 'marketing', 'reports'] },
   { title: 'Administrare', keys: ['business', 'notify', 'apps', 'settings'] },
 ];
 
@@ -232,6 +249,7 @@ export function App() {
       setMe(null);
     });
     const onHash = () => {
+      redirectOld();
       setPage(pageFromHash());
       setHash(hashNow());
       setFlyout(null);
@@ -273,8 +291,6 @@ export function App() {
   const inMenu = (to: string) => {
     const [base, sub] = to.split('/');
     if (!allowed.has(base)) return false;
-    if (sub === 'poza') return !!me.barberId;
-    if (base === 'settings' && !me.owner) return sub === 'parola' || sub === 'sesiuni';
     if (base === 'clients' && !me.owner) return me.permissions.contacts;
     return true;
   };
@@ -297,7 +313,6 @@ export function App() {
   const ordered = AREAS.map((a) => ({ ...a, items: a.keys.map((k) => sections.find((s) => s.key === k)).filter((s): s is (typeof sections)[number] => !!s) })).filter(
     (a) => a.items.length,
   );
-  const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
 
   return (
     <div className="shell">
@@ -328,20 +343,6 @@ export function App() {
             </div>
           ))}
         </nav>
-        <div className="rail-foot">
-          <button className="rail-btn" onClick={toggleTheme} title={theme === 'light' ? 'Temă întunecată' : 'Temă luminoasă'}>
-            <span className="rail-ic">
-              <Icon name={theme === 'light' ? 'moon' : 'sun'} />
-            </span>
-            <span>{theme === 'light' ? 'Întunecat' : 'Luminos'}</span>
-          </button>
-          <button className="rail-btn" onClick={logout} title={`Ieși din cont (${me.name || me.email})`}>
-            <span className="rail-ic">
-              <Icon name="logout" />
-            </span>
-            <span>Ieși</span>
-          </button>
-        </div>
       </aside>
       {open ? (
         <>
@@ -372,7 +373,7 @@ export function App() {
             <InstallButton />
             <ThemeSwitch theme={theme} onChange={setTheme} />
             <RequestsBell me={me} onCount={setRequests} />
-            <UserMenu me={me} theme={theme} onTheme={toggleTheme} onLogout={logout} />
+            <UserMenu me={me} onLogout={logout} />
           </span>
         </div>
         <div className="content">
@@ -401,8 +402,8 @@ function ThemeSwitch({ theme, onChange }: { theme: 'light' | 'dark'; onChange: (
   );
 }
 
-/** Avatarul din dreapta sus, cu meniul mic: Setări, Temă, Ieși. */
-function UserMenu({ me, theme, onTheme, onLogout }: { me: Me; theme: 'light' | 'dark'; onTheme: () => void; onLogout: () => void }) {
+/** Avatarul din dreapta sus, cu meniul mic: Contul meu și Ieși (tema e doar în comutatorul de alături). */
+function UserMenu({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -426,13 +427,9 @@ function UserMenu({ me, theme, onTheme, onLogout }: { me: Me; theme: 'light' | '
       </button>
       {open ? (
         <div className="user-menu" role="menu">
-          <a href={me.owner ? '#/settings' : '#/settings/parola'} role="menuitem" onClick={() => setOpen(false)}>
-            <Icon name="settings" size={18} /> Setări
+          <a href="#/account" role="menuitem" onClick={() => setOpen(false)}>
+            <Icon name="settings" size={18} /> Contul meu
           </a>
-          <button role="menuitemcheckbox" aria-checked={theme === 'dark'} onClick={onTheme}>
-            <Icon name={theme === 'dark' ? 'moon' : 'sun'} size={18} /> Temă întunecată
-            <span className={`mini-switch${theme === 'dark' ? ' on' : ''}`} aria-hidden />
-          </button>
           <button role="menuitem" onClick={onLogout}>
             <Icon name="logout" size={18} /> Ieși
           </button>
