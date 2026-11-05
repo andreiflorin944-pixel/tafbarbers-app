@@ -15,6 +15,7 @@ import { ShopPage } from './pages/Shop';
 import { ReferralsPage } from './pages/Referrals';
 import { SubscriptionsPage } from './pages/Subscriptions';
 import { BirthdaysPage } from './pages/Birthdays';
+import { SocialPromoPage } from './pages/SocialPromo';
 import { DashboardPage } from './pages/Dashboard';
 import { ReportsPage } from './pages/Reports';
 import { NotificationsPage } from './pages/Notifications';
@@ -48,6 +49,7 @@ const PAGES = [
   { key: 'payments', label: 'Plăți online', show: (m: Me) => m.owner || m.permissions.stats, el: PaymentsPage },
   { key: 'birthdays', label: 'Zile de naștere', show: (m: Me) => m.owner, el: BirthdaysPage },
   { key: 'referrals', label: 'Recomandări și bonusuri', show: (m: Me) => m.owner, el: ReferralsPage },
+  { key: 'socialpromo', label: 'Promo rețele sociale', show: (m: Me) => m.owner, el: SocialPromoPage },
   { key: 'timeoff', label: 'Pauze și concedii', show: (m: Me) => m.permissions.timeoff, el: TimeOffPage },
   { key: 'apps', label: 'Aplicații iOS și Android', show: (m: Me) => m.owner, el: AppsPage },
   { key: 'website', label: 'Site web', show: (m: Me) => m.owner, el: WebsitePage },
@@ -142,9 +144,9 @@ const NAV: NavSection[] = [
     label: 'Marketing',
     icon: 'marketing',
     groups: [
-      { items: [{ label: 'Postări Facebook, Instagram, TikTok', to: 'social' }, { label: 'Campanii (SMS, e-mail, push)', to: 'campaigns' }, { label: 'Bannere în aplicație', to: 'promos' }, { label: 'Coduri QR pentru campanii', to: 'qr' }] },
+      { items: [{ label: 'Postări Facebook, Instagram, TikTok', to: 'social' }, { label: 'Campanii (SMS, e-mail, push)', to: 'campaigns' }, { label: 'Bannere în aplicație', to: 'promos' }, { label: 'Coduri QR pentru campanii', to: 'qr' }, { label: 'Promo: urmărește-ne pe rețele', to: 'socialpromo' }] },
       { title: 'Automatizări', items: [{ label: 'Ne e dor de tine', to: 'notifications/dor' }, { label: 'Ore libere azi', to: 'notifications/ore-libere' }, { label: 'Lângă salon', to: 'notifications/langa-salon' }, { label: 'Card cadou', to: 'notifications/card-cadou' }, { label: 'Zile de naștere', to: 'birthdays' }] },
-      { title: 'Fidelizare', items: [{ label: 'Recomandări și bonusuri', to: 'referrals' }, { label: 'Abonamente', to: 'subscriptions' }] },
+      { title: 'Fidelizare', items: [{ label: 'Recomandări și bonusuri', to: 'referrals' }, { label: 'Promo rețele sociale', to: 'socialpromo' }, { label: 'Abonamente', to: 'subscriptions' }] },
     ],
   },
   {

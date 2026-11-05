@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react';
 import { router } from 'expo-router';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { Card, Logo, Screen, SectionTitle, styles } from '@/components/ui';
-import { whatsappUrl } from '@/lib/contact';
+import { socialUrl, whatsappUrl } from '@/lib/contact';
 import { dayName } from '@/lib/dates';
 import { useT } from '@/i18n';
 import { useApp } from '@/state/AppState';
@@ -21,9 +21,9 @@ export default function About() {
       </View>
 
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: space.md, marginBottom: space.md }}>
-        {business.instagram ? <Social icon="logo-instagram" url={`https://instagram.com/${business.instagram}`} /> : null}
-        {business.facebook ? <Social icon="logo-facebook" url={business.facebook} /> : null}
-        {business.tiktok ? <Social icon="logo-tiktok" url={business.tiktok} /> : null}
+        {socialUrl('instagram', business.instagram) ? <Social icon="logo-instagram" url={socialUrl('instagram', business.instagram)!} /> : null}
+        {socialUrl('facebook', business.facebook) ? <Social icon="logo-facebook" url={socialUrl('facebook', business.facebook)!} /> : null}
+        {socialUrl('tiktok', business.tiktok) ? <Social icon="logo-tiktok" url={socialUrl('tiktok', business.tiktok)!} /> : null}
         {business.phone && whatsappUrl(business.phone) ? <Social icon="logo-whatsapp" url={whatsappUrl(business.phone)!} /> : null}
         {business.website ? <Social icon="globe-outline" url={business.website} /> : null}
       </View>

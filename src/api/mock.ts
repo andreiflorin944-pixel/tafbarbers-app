@@ -167,6 +167,12 @@ export const mockApi: BookingApi = {
     return delay(undefined);
   },
   getIdentity: (token) => delay(identityOf(token)),
+  claimSocialPromo: (token) => {
+    const u = users.get(token);
+    if (u) users.set(token, { ...u, socialPromoClaimed: true });
+    // i18n-ok: conținut de probă
+    return delay({ claimed: true, already: false, bonus: { id: 'bn-social', title: '50% reducere la o ședință', kind: 'percent' as const, value: 50, source: 'manual' as const, status: 'active' as const, expiresAt: null, createdAt: new Date().toISOString(), usedAt: null } });
+  },
   getReferrals: () =>
     delay({
       enabled: true,

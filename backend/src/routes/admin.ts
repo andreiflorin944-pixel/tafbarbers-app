@@ -65,6 +65,7 @@ import {
 } from '../subscriptions';
 import { setRenewal, stopPlanRenewals, stopRecurringFor } from '../recurring';
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
+import { getSocialPromoSettings, promoTitle, saveSocialPromoSettings, socialLinks, socialPromoStats } from '../socialPromo';
 import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } from '../reports';
 import { localizeReport, reportText } from '../reportsI18n';
 import { xlsx } from '../xlsx';
@@ -1899,6 +1900,20 @@ adminRoutes.get('/gift-cards/check', async (c) => {
   const g = await c.env.DB.prepare(`${GIFT_SELECT} WHERE g.code = ?`).bind(norm).first<GiftCardRow>();
   if (!g || g.status === 'pending' || g.status === 'cancelled') throw new HttpError(404, 'gift_card_not_found');
   return c.json(giftCard(g, true));
+});
+
+// --- Promo „Urmărește-ne pe rețele” ---
+
+const socialPromoView = async (env: Parameters<typeof getSocialPromoSettings>[0]) => {
+  const [s, stats, biz] = await Promise.all([getSocialPromoSettings(env), socialPromoStats(env), getBusiness(env)]);
+  return { ...s, stats, links: socialLinks(biz) };
+};
+adminRoutes.get('/social-promo', async (c) => c.json(await socialPromoView(c.env)));
+adminRoutes.put('/social-promo', ownerOnly, async (c) => {
+  const s = await saveSocialPromoSettings(c.env, await c.req.json());
+  // Titlul bonusului apare clientului în aplicație (la Recompense), și în engleză / franceză.
+  await ensureTranslated(c.env, [promoTitle(s.percent)]);
+  return c.json(await socialPromoView(c.env));
 });
 
 // --- Ziua de naștere ---
