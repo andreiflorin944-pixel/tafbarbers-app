@@ -16,6 +16,11 @@ import { colors, radius, space } from '@/theme';
 // Calendarul zilei, ca în Barberly: un rând pe slot (pasul din Setări), programările ca blocuri
 // cât durează, orele închise și concediile hașurate. Atingi un slot liber ca să adaugi o programare.
 const ROW = 34;
+// Liniile și orele se văd pe orice fundal ales în panou: le facem din culoarea textului, transparentă.
+// Linie plină și mai groasă la fiecare oră fixă, subțire la pas; ora fixă mare și albă, restul mai mici.
+const ink = (a: number) => `${colors.text.slice(0, 7)}${Math.round(a * 255).toString(16).padStart(2, '0')}`;
+const LINE_HOUR = ink(0.3);
+const LINE_STEP = ink(0.12);
 const hm = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 type Range = { start: number; end: number };
 
@@ -182,11 +187,21 @@ export default function StaffCalendar() {
           ) : null}
           <View style={{ flexDirection: 'row' }}>
             <View style={{ width: 60 }}>
-              {rows.map((m) => (
-                <View key={m} style={s.timeCell}>
-                  <Text style={s.timeText}>{hm(m)}</Text>
+              {rows.map((m) => {
+                const full = m % 60 === 0;
+                // Ora de lângă linia de acum nu se mai scrie, ca să nu se suprapună cu eticheta roșie.
+                const hide = nowMin >= 0 && Math.abs(m - nowMin) < Math.max(8, step * 0.8);
+                return (
+                  <View key={m} style={[s.timeCell, full && s.timeCellHour]}>
+                    {hide ? null : <Text style={full ? s.timeHour : s.timeText}>{hm(m)}</Text>}
+                  </View>
+                );
+              })}
+              {nowMin > gStart && nowMin < gEnd ? (
+                <View style={[s.nowPill, { top: y(nowMin) - 9 }]} pointerEvents="none">
+                  <Text style={s.nowPillText}>{hm(nowMin)}</Text>
                 </View>
-              ))}
+              ) : null}
             </View>
             {shown.map((b) => (
               <View key={b.id} style={[s.col, { height: rows.length * ROW }]}>
@@ -196,7 +211,7 @@ export default function StaffCalendar() {
                     accessibilityLabel={t('cal.slot', { time: hm(m), name: b.name })}
                     disabled={!p.bookings_create}
                     onPress={() => router.push({ pathname: '/staff/new', params: { day, time: hm(m), barberId: b.id } })}
-                    style={({ pressed }) => [s.slot, { top: y(m) }, pressed && { backgroundColor: colors.cardAlt }]}
+                    style={({ pressed }) => [s.slot, { top: y(m) }, m % 60 === 0 && s.slotHour, pressed && { backgroundColor: colors.cardAlt }]}
                   />
                 ))}
                 {blockedFor(b).map((r, i) => (
@@ -278,14 +293,19 @@ const s = StyleSheet.create({
   chipOn: { backgroundColor: colors.gold, borderColor: colors.gold },
   chipText: { color: colors.text, fontWeight: '600' },
   colHead: { flex: 1, color: colors.text, fontWeight: '700', textAlign: 'center', paddingVertical: 6 },
-  timeCell: { height: ROW, justifyContent: 'center', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, borderRightWidth: 1, borderRightColor: colors.border },
-  timeText: { color: colors.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
-  col: { flex: 1, position: 'relative', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: colors.border },
-  slot: { position: 'absolute', left: 0, right: 0, height: ROW, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  timeCell: { height: ROW, alignItems: 'center', paddingTop: 3, borderRightWidth: 1, borderRightColor: LINE_HOUR },
+  timeCellHour: { borderTopWidth: 1.5, borderTopColor: LINE_HOUR, paddingTop: 1.5 },
+  timeText: { color: ink(0.6), fontSize: 12, fontVariant: ['tabular-nums'] },
+  timeHour: { color: colors.text, fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  col: { flex: 1, position: 'relative', borderRightWidth: 1, borderRightColor: LINE_STEP },
+  slot: { position: 'absolute', left: 0, right: 0, height: ROW, borderTopWidth: 1, borderTopColor: LINE_STEP },
+  slotHour: { borderTopWidth: 1.5, borderTopColor: LINE_HOUR },
   hatch: { position: 'absolute', left: 3, right: 3, overflow: 'hidden', backgroundColor: colors.cardAlt, borderRadius: 4, opacity: 0.9 },
   stripe: { position: 'absolute', width: 4, backgroundColor: colors.border, transform: [{ rotate: '45deg' }] },
   booking: { position: 'absolute', left: 4, right: 4, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 5, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
   bName: { color: colors.text, fontWeight: '800', fontSize: 14 },
   bLine: { color: colors.muted, fontSize: 12, marginTop: 1 },
   now: { position: 'absolute', left: 0, right: 0, height: 2, backgroundColor: colors.danger },
+  nowPill: { position: 'absolute', left: 3, right: 3, height: 18, borderRadius: 6, backgroundColor: colors.danger, alignItems: 'center', justifyContent: 'center' },
+  nowPillText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '800', fontVariant: ['tabular-nums'] },
 });
