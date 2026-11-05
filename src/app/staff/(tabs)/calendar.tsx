@@ -17,10 +17,12 @@ import { colors, radius, space } from '@/theme';
 // cât durează, orele închise și concediile hașurate. Atingi un slot liber ca să adaugi o programare.
 const ROW = 34;
 // Liniile și orele se văd pe orice fundal ales în panou: le facem din culoarea textului, transparentă.
-// Linie plină și mai groasă la fiecare oră fixă, subțire la pas; ora fixă mare și albă, restul mai mici.
+// Zona calendarului e puțin mai deschisă decât fundalul, ca programările (carduri închise) să iasă în evidență.
+// Linie groasă la fiecare oră fixă, subțire la pas; ora fixă mare și albă, restul puțin mai mici.
 const ink = (a: number) => `${colors.text.slice(0, 7)}${Math.round(a * 255).toString(16).padStart(2, '0')}`;
-const LINE_HOUR = ink(0.3);
-const LINE_STEP = ink(0.12);
+const LINE_HOUR = ink(0.55);
+const LINE_STEP = ink(0.22);
+const GRID_BG = ink(0.09);
 const hm = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 type Range = { start: number; end: number };
 
@@ -294,12 +296,12 @@ const s = StyleSheet.create({
   chipText: { color: colors.text, fontWeight: '600' },
   colHead: { flex: 1, color: colors.text, fontWeight: '700', textAlign: 'center', paddingVertical: 6 },
   timeCell: { height: ROW, alignItems: 'center', paddingTop: 3, borderRightWidth: 1, borderRightColor: LINE_HOUR },
-  timeCellHour: { borderTopWidth: 1.5, borderTopColor: LINE_HOUR, paddingTop: 1.5 },
-  timeText: { color: ink(0.6), fontSize: 12, fontVariant: ['tabular-nums'] },
-  timeHour: { color: colors.text, fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  col: { flex: 1, position: 'relative', borderRightWidth: 1, borderRightColor: LINE_STEP },
+  timeCellHour: { borderTopWidth: 2, borderTopColor: LINE_HOUR, paddingTop: 1 },
+  timeText: { color: ink(0.85), fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  timeHour: { color: colors.text, fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  col: { flex: 1, position: 'relative', backgroundColor: GRID_BG, borderRightWidth: 1, borderRightColor: ink(0.3) },
   slot: { position: 'absolute', left: 0, right: 0, height: ROW, borderTopWidth: 1, borderTopColor: LINE_STEP },
-  slotHour: { borderTopWidth: 1.5, borderTopColor: LINE_HOUR },
+  slotHour: { borderTopWidth: 2, borderTopColor: LINE_HOUR },
   hatch: { position: 'absolute', left: 3, right: 3, overflow: 'hidden', backgroundColor: colors.cardAlt, borderRadius: 4, opacity: 0.9 },
   stripe: { position: 'absolute', width: 4, backgroundColor: colors.border, transform: [{ rotate: '45deg' }] },
   booking: { position: 'absolute', left: 4, right: 4, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 5, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
