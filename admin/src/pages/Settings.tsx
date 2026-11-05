@@ -1,11 +1,56 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { api, errorText, setToken, uploadImageTo, PERM_LABELS, ROLE_HELP, ROLE_LABELS, type Barber, type Business, type Location, type Me, type Perm, type Role } from '../api';
 import { emptyTr, Field, ImagePicker, Loading, TranslationFields, useAction, useLoad, useSub } from '../ui';
 import { date, lei, time } from '../util';
 
+// Fiecare link din meniu deschide doar secțiunea lui (#/settings/<secțiune>), nu toată pagina lungă.
+// Datele salonului, ale firmei și regulile sunt un singur formular (un buton de salvare), deci se deschid împreună.
+const SECTIONS: Array<{ subs: string[]; title: string; el: (me: Me) => ReactNode }> = [
+  { subs: ['salon', 'firma', 'reguli'], title: 'Datele salonului', el: () => <BusinessForm /> },
+  { subs: ['locatii'], title: 'Locații', el: () => <Locations /> },
+  { subs: ['plati'], title: 'Plăți online', el: () => <OnlinePayments /> },
+  { subs: ['traduceri'], title: 'Traduceri', el: () => <TranslateAll /> },
+  { subs: ['consilier'], title: 'Consilier AI de tunsori', el: () => <HairAdvisor /> },
+  { subs: ['echipa'], title: 'Utilizatori și drepturi', el: (me) => <Team me={me} /> },
+  { subs: ['mesaje'], title: 'Mesaje trimise', el: () => <MessageLog /> },
+  { subs: ['erori'], title: 'Erori din aplicație', el: () => <AppErrors /> },
+];
+
 export function SettingsPage({ me }: { me: Me }) {
-  // Din meniu: #/settings/<secțiune> derulează la secțiunea respectivă (după ce s-a încărcat).
   const sub = useSub();
+  useScrollToSub(sub);
+  const section = SECTIONS.find((x) => x.subs.includes(sub)) ?? SECTIONS[0];
+  return (
+    <>
+      <div className="head">
+        <h1>{section.title}</h1>
+      </div>
+      <div className="grid" style={{ gap: 18, maxWidth: 760 }}>
+        {section.el(me)}
+      </div>
+    </>
+  );
+}
+
+/** Contul meu (din avatarul din dreapta sus): profilul frizerului, parola și deconectarea de pe alte dispozitive. */
+export function AccountPage({ me }: { me: Me }) {
+  useScrollToSub(useSub());
+  return (
+    <>
+      <div className="head">
+        <h1>Contul meu</h1>
+      </div>
+      <div className="grid" style={{ gap: 18, maxWidth: 760 }}>
+        {me.barberId ? <MyPhoto me={me} /> : null}
+        <Password />
+        <Sessions />
+      </div>
+    </>
+  );
+}
+
+/** Derulează la #set-<sub> după ce secțiunea s-a încărcat. */
+function useScrollToSub(sub: string) {
   useEffect(() => {
     if (!sub) return;
     let tries = 0;
@@ -18,35 +63,6 @@ export function SettingsPage({ me }: { me: Me }) {
     }, 100);
     return () => clearInterval(t);
   }, [sub]);
-  return (
-    <>
-      <div className="head">
-        <h1>Setări</h1>
-      </div>
-      <div className="grid" style={{ gap: 18, maxWidth: 760 }}>
-        {me.owner ? (
-          <a href="#/notifications" className="card" style={{ display: 'block', textDecoration: 'none' }}>
-            <b>Notificări automate ›</b>
-            <div className="muted small">
-              Ce mesaje pleacă singure și pe ce canal (push, SMS, e-mail), textele lor, „Ne e dor de tine”, orele libere de azi, cardurile cadou și
-              butonul „Programează” pentru Google Maps și Instagram.
-            </div>
-          </a>
-        ) : null}
-        {me.owner ? <BusinessForm /> : null}
-        {me.owner ? <OnlinePayments /> : null}
-        {me.owner ? <Locations /> : null}
-        {me.owner ? <TranslateAll /> : null}
-        {me.owner ? <HairAdvisor /> : null}
-        {me.owner ? <Team me={me} /> : null}
-        {me.barberId ? <MyPhoto me={me} /> : null}
-        <Password />
-        <Sessions />
-        {me.owner ? <MessageLog /> : null}
-        {me.owner ? <AppErrors /> : null}
-      </div>
-    </>
-  );
 }
 
 type PayStatus = {
@@ -1018,7 +1034,7 @@ function AppErrors() {
   const [open, setOpen] = useState<number | null>(null);
   return (
     <div className="card grid">
-      <h2 style={{ margin: 0 }}>Erori din aplicație</h2>
+      <h2 id="set-erori" style={{ margin: 0, scrollMarginTop: 16 }}>Erori din aplicație</h2>
       <p className="muted small" style={{ margin: 0 }}>
         Când aplicația se închide neașteptat sau un ecran nu se poate afișa, eroarea apare aici (fără date personale, doar numele contului dacă era logat).
       </p>
