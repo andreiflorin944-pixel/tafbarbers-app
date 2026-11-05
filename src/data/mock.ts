@@ -13,6 +13,14 @@ export const business: Business = {
   phone: '',
   website: 'https://www.tafbarbers.ro',
   instagram: 'tafbarbers',
+  facebook: 'https://www.facebook.com/tafbarbers',
+  tiktok: 'tafbarbers',
+  socialPromo: {
+    percent: 50,
+    validDays: 60,
+    requireTaps: false,
+    links: { facebook: 'https://www.facebook.com/tafbarbers', instagram: 'https://www.instagram.com/tafbarbers', tiktok: 'https://www.tiktok.com/@tafbarbers' },
+  },
   cancellationPolicy:
     'Poți anula programarea cu cel mult 12 ore înainte și se acceptă o singură neprezentare. Orice altă neprezentare sau anulare cu mai puțin de 12 ore înainte implică plata integrală a programării.',
   hours: [

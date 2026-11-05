@@ -3,14 +3,14 @@ import type { ComponentProps } from 'react';
 import { router } from 'expo-router';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { Card, Logo, Screen, SectionTitle, styles } from '@/components/ui';
-import { whatsappUrl } from '@/lib/contact';
+import { socialUrl, whatsappUrl } from '@/lib/contact';
 import { dayName } from '@/lib/dates';
 import { useT } from '@/i18n';
 import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function About() {
-  const { business } = useApp();
+  const { business, user } = useApp();
   const { t } = useT();
   if (!business) return null;
 
@@ -21,12 +21,25 @@ export default function About() {
       </View>
 
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: space.md, marginBottom: space.md }}>
-        {business.instagram ? <Social icon="logo-instagram" url={`https://instagram.com/${business.instagram}`} /> : null}
-        {business.facebook ? <Social icon="logo-facebook" url={business.facebook} /> : null}
-        {business.tiktok ? <Social icon="logo-tiktok" url={business.tiktok} /> : null}
+        {socialUrl('instagram', business.instagram) ? <Social icon="logo-instagram" url={socialUrl('instagram', business.instagram)!} /> : null}
+        {socialUrl('facebook', business.facebook) ? <Social icon="logo-facebook" url={socialUrl('facebook', business.facebook)!} /> : null}
+        {socialUrl('tiktok', business.tiktok) ? <Social icon="logo-tiktok" url={socialUrl('tiktok', business.tiktok)!} /> : null}
         {business.phone && whatsappUrl(business.phone) ? <Social icon="logo-whatsapp" url={whatsappUrl(business.phone)!} /> : null}
         {business.website ? <Social icon="globe-outline" url={business.website} /> : null}
       </View>
+
+      {/* Promo „Urmărește-ne pe rețele și ai X% reducere” (pornit din panou), sub iconițele rețelelor; dispare după deblocare. */}
+      {business.socialPromo && !user?.socialPromoClaimed ? (
+        <Card onPress={() => router.push('/social')} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, borderColor: colors.gold, marginBottom: space.md }}>
+          <Text style={{ color: colors.gold, fontSize: 28, fontWeight: '800', minWidth: 72, textAlign: 'center' }}>-{business.socialPromo.percent}%</Text>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={[styles.muted, { fontSize: 12, fontWeight: '600', letterSpacing: 1.2 }]}>{t('social.kicker')}</Text>
+            <Text style={styles.cardTitle}>{t('social.homeTitle', { n: business.socialPromo.percent })}</Text>
+            <Text style={[styles.muted, { fontSize: 13 }]}>{t('social.homeText')}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </Card>
+      ) : null}
 
       <Card style={{ gap: space.sm }}>
         <Text style={[styles.title, { fontSize: 24 }]}>{business.name}</Text>

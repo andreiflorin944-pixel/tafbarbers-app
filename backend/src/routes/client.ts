@@ -13,6 +13,7 @@ import { deleteClient, exportClient } from '../gdpr';
 import { cleanSignature, legalPending, marketingChannels, recordConsent } from '../consents';
 import { createOrder, getOrder, getOrders, notifyOrder, setOrderStatus } from '../shop';
 import { myReferrals } from '../referrals';
+import { claimSocialPromo } from '../socialPromo';
 import { getStylePhotos } from '../advisor';
 import { hairstyle } from '../hairstyles';
 import { localize, localizeText } from '../contentI18n';
@@ -33,7 +34,8 @@ clientRoutes.get('/me', async (c) => {
   const today = iso(new Date()).slice(0, 10);
   await c.env.DB.prepare('UPDATE clients SET last_active_at = ? WHERE id = ? AND (last_active_at IS NULL OR last_active_at < ?)').bind(iso(new Date()), r.id, today).run();
   // `legalPending`: aplicația îi arată termenii și politica de derulat, bifat și semnat înainte de orice altceva.
-  return c.json({ ...client(r), legalPending: await legalPending(c.env, r.id) });
+  // `socialPromoClaimed`: și-a deblocat deja reducerea „Urmărește-ne pe rețele” (o singură dată pe cont).
+  return c.json({ ...client(r), socialPromoClaimed: !!(r as { social_promo_at?: string | null }).social_promo_at, legalPending: await legalPending(c.env, r.id) });
 });
 
 /** Semnarea termenilor și a politicii (cont vechi, client adăugat din panou sau documente actualizate). */
@@ -178,6 +180,12 @@ clientRoutes.get('/me/referrals', async (c) => {
     welcome: r.welcome && (await localizeText(c.env, lang, r.welcome)),
     bonuses: await localize(c.env, lang, r.bonuses, ['title']),
   });
+});
+/** „Urmărește-ne și deblochezi reducerea”: dă bonusul o singură dată pe cont. */
+clientRoutes.post('/me/social-promo', async (c) => {
+  const r = await claimSocialPromo(c.env, c.get('client').clientId);
+  const [b] = r.bonus ? await localize(c.env, c.req.query('lang'), [r.bonus], ['title']) : [null];
+  return c.json({ ...r, bonus: b });
 });
 clientRoutes.get('/me/subscriptions', async (c) => {
   const lang = c.req.query('lang');

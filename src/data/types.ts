@@ -108,6 +108,8 @@ export type Me = {
   hasPassword?: boolean;
   /** Trebuie să citească și să semneze termenii și politica (cont vechi sau documente actualizate). */
   legalPending?: boolean;
+  /** Și-a deblocat deja reducerea „Urmărește-ne pe rețele” (o singură dată pe cont). */
+  socialPromoClaimed?: boolean;
 };
 
 /** O poză din TAF Identity. `addedBy` apare doar la pozele urcate de echipă. */
@@ -175,7 +177,12 @@ export type Business = {
   social?: { apple: boolean; google: { iosClientId: string | null; androidClientId: string | null; webClientId: string | null } | null };
   requireApproval?: boolean; // programările din aplicație intră ca cereri, confirmate de salon
   approvalBarberIds?: string[]; // doar la acești frizeri (listă goală = la toți)
+  /** Promo „Urmărește-ne pe rețele și deblochezi X% reducere” (null = oprit în panou). */
+  socialPromo?: SocialPromo | null;
 };
+
+export type SocialLinks = { facebook: string | null; instagram: string | null; tiktok: string | null };
+export type SocialPromo = { percent: number; validDays: number | null; requireTaps: boolean; links: SocialLinks };
 
 export type Appearance = {
   accent: string;

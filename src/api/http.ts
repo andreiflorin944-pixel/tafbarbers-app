@@ -86,6 +86,7 @@ export function httpApi(baseUrl: string): BookingApi {
     },
     getIdentity: (token) => call('GET', '/me/identity', { token }),
     getReferrals: (token) => call('GET', '/me/referrals', { token }),
+    claimSocialPromo: (token) => call('POST', '/me/social-promo', { token }),
     getSubscriptions: (token) => call('GET', '/me/subscriptions', { token }),
     getGiftCards: (token) => call('GET', '/me/gift-cards', { token }),
     buyGiftCard: (token, input) => call('POST', '/me/gift-cards', { token, body: input }),

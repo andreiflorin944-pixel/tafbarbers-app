@@ -1,4 +1,4 @@
-import type { BeforeAfter, DayPart, WaitlistEntry, GiftCards, Barber, Location, Booking, Business, Identity, Referrals, IdentityPhoto, Plan, Subscription, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
+import type { BeforeAfter, DayPart, WaitlistEntry, GiftCards, Barber, Bonus, Location, Booking, Business, Identity, Referrals, IdentityPhoto, Plan, Subscription, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
 
 // Singura legătură dintre interfață și server. `http.ts` vorbește cu serverul nostru
 // (Cloudflare Worker); `mock.ts` e varianta de test, folosită cât timp aplicația nu are
@@ -63,6 +63,8 @@ export interface BookingApi {
   removeProfilePhoto(token: string): Promise<void>;
   getIdentity(token: string): Promise<Identity>;
   getReferrals(token: string): Promise<Referrals>;
+  /** Deblochează reducerea „Urmărește-ne pe rețele” (o singură dată pe cont). */
+  claimSocialPromo(token: string): Promise<{ claimed: boolean; already: boolean; bonus: Bonus | null }>;
   getSubscriptions(token: string): Promise<{ plans: Plan[]; subscriptions: Subscription[] }>;
   saveIdentityNote(token: string, note: string): Promise<Identity>;
   addIdentityPhoto(token: string, uri: string): Promise<IdentityPhoto>;
