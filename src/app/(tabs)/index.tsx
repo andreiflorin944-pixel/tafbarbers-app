@@ -194,24 +194,6 @@ export default function Home() {
           <Button title={t('home.book')} onPress={() => startBooking()} />
         )}
 
-        {/* Promo „Urmărește-ne pe rețele și ai X% reducere” (pornit din panou); dispare după ce clientul și-a deblocat reducerea. */}
-        {business?.socialPromo && !user?.socialPromoClaimed ? (
-          <Pressable onPress={() => router.push('/social')} style={({ pressed }) => [s.card, s.rowCard, { borderColor: colors.gold }, pressed && { opacity: 0.85 }]} accessibilityRole="button">
-            <Text style={s.socialPct}>-{business.socialPromo.percent}%</Text>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={s.kicker}>{t('social.kicker')}</Text>
-              <Text style={s.cardTitle}>{t('social.homeTitle', { n: business.socialPromo.percent })}</Text>
-              <View style={[s.row, { gap: 6, marginTop: 2 }]}>
-                {business.socialPromo.links.facebook ? <Ionicons name="logo-facebook" size={16} color={colors.gold} /> : null}
-                {business.socialPromo.links.instagram ? <Ionicons name="logo-instagram" size={16} color={colors.gold} /> : null}
-                {business.socialPromo.links.tiktok ? <Ionicons name="logo-tiktok" size={16} color={colors.gold} /> : null}
-                <Text style={s.small}>{t('social.homeText')}</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-          </Pressable>
-        ) : null}
-
         {/* Asistentul: spui când vrei să vii și te programează el. */}
         <Pressable onPress={() => router.push('/assistant')} style={({ pressed }) => [s.card, s.rowCard, pressed && { opacity: 0.85 }]} accessibilityRole="button">
           <MaterialCommunityIcons name="waveform" size={36} color={colors.gold} />
@@ -436,7 +418,6 @@ const s = StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: 18, gap: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   rowCard: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
-  socialPct: { color: colors.gold, fontSize: 28, fontWeight: '800', minWidth: 72, textAlign: 'center' },
   kicker: { color: colors.muted, fontSize: 12, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   small: { color: colors.muted, fontSize: 13, lineHeight: 18 },

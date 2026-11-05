@@ -10,7 +10,7 @@ import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function About() {
-  const { business } = useApp();
+  const { business, user } = useApp();
   const { t } = useT();
   if (!business) return null;
 
@@ -27,6 +27,19 @@ export default function About() {
         {business.phone && whatsappUrl(business.phone) ? <Social icon="logo-whatsapp" url={whatsappUrl(business.phone)!} /> : null}
         {business.website ? <Social icon="globe-outline" url={business.website} /> : null}
       </View>
+
+      {/* Promo „Urmărește-ne pe rețele și ai X% reducere” (pornit din panou), sub iconițele rețelelor; dispare după deblocare. */}
+      {business.socialPromo && !user?.socialPromoClaimed ? (
+        <Card onPress={() => router.push('/social')} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, borderColor: colors.gold, marginBottom: space.md }}>
+          <Text style={{ color: colors.gold, fontSize: 28, fontWeight: '800', minWidth: 72, textAlign: 'center' }}>-{business.socialPromo.percent}%</Text>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={[styles.muted, { fontSize: 12, fontWeight: '600', letterSpacing: 1.2 }]}>{t('social.kicker')}</Text>
+            <Text style={styles.cardTitle}>{t('social.homeTitle', { n: business.socialPromo.percent })}</Text>
+            <Text style={[styles.muted, { fontSize: 13 }]}>{t('social.homeText')}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        </Card>
+      ) : null}
 
       <Card style={{ gap: space.sm }}>
         <Text style={[styles.title, { fontSize: 24 }]}>{business.name}</Text>
