@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, Text, View } from 'react-native';
 import { api } from '@/api';
@@ -21,7 +21,17 @@ export default function CustomSub() {
   const gate = useLoginGate();
   const [cfg, setCfg] = useState<CustomSubConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [qty, setQty] = useState<Record<string, number>>({});
+  // Deschis din „Vii des?” sau din sugestia de pe Acasă: serviciile vin deja puse (`items=svc-a:2,svc-b:1`).
+  const params = useLocalSearchParams<{ items?: string }>();
+  const [qty, setQty] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      String(params.items ?? '')
+        .split(',')
+        .map((x) => x.split(':'))
+        .filter(([id, q]) => id && Number(q) > 0)
+        .map(([id, q]) => [id, Math.min(20, Math.floor(Number(q)))]),
+    ),
+  );
   const [quote, setQuote] = useState<CustomSubQuote | null>(null);
   const [autoRenew, setAutoRenew] = useState(true);
   const [paying, setPaying] = useState(false);

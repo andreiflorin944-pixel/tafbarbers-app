@@ -494,7 +494,7 @@ export type Promo = {
   icon: string;
   imageUrl: string | null;
   color: string | null;
-  action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'shop'; productId: string | null } | { type: 'book' };
+  action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'shop'; productId: string | null } | { type: 'book' } | { type: 'custom_sub' };
   translations: Record<string, Partial<Record<'kicker' | 'title' | 'text' | 'cta', string>>>;
   startsAt: string | null;
   endsAt: string | null;

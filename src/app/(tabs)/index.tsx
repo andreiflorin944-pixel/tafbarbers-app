@@ -9,6 +9,7 @@ import { mediaUrl } from '@/api/staff';
 import { Backdrop } from '@/components/Backdrop';
 import { LangButton } from '@/components/LangButton';
 import { PayDueBanner } from '@/components/PayDue';
+import { LoyalPitch } from '@/components/CustomSubPitch';
 import { useCart } from '@/state/Cart';
 import { Button, styles as ui } from '@/components/ui';
 import type { Product, Promo, Service } from '@/data/types';
@@ -95,6 +96,8 @@ export default function Home() {
       return startBooking();
     }
     if (p.action.type === 'url') return Linking.openURL(p.action.url);
+    // Abonamentul personalizat: „Creează-ți abonamentul”.
+    if (p.action.type === 'custom_sub') return router.push('/custom-sub');
     // Ofertă de produs: magazinul, cu produsul ales primul.
     if (p.action.type === 'shop') return router.push(p.action.productId ? { pathname: '/shop', params: { product: p.action.productId } } : '/shop');
     startBooking();
@@ -234,6 +237,9 @@ export default function Home() {
             <Ionicons name="arrow-forward" size={18} color={colors.gold} />
           </Pressable>
         </View>
+
+        {/* Clienții veniți des în ultima lună: cât ar fi economisit cu abonamentul personalizat. */}
+        {user ? <LoyalPitch /> : null}
 
         {picks.length ? (
           <>

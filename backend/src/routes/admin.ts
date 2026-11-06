@@ -2201,7 +2201,7 @@ type PromoInput = {
   icon?: string;
   imageUrl?: string | null;
   color?: string | null;
-  action?: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'shop'; productId?: string | null } | { type: 'book' };
+  action?: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'shop'; productId?: string | null } | { type: 'book' } | { type: 'custom_sub' };
   translations?: Record<string, Record<string, string>>;
   startsAt?: string | null;
   endsAt?: string | null;
@@ -2229,7 +2229,7 @@ function promoValues(b: PromoInput, create: boolean) {
   if (b.icon !== undefined) v.icon = PROMO_ICONS.includes(b.icon) ? b.icon : 'pricetag';
   if (b.action !== undefined || create) {
     const a = b.action ?? { type: 'book' };
-    if (!['service', 'url', 'shop', 'book'].includes(a.type)) throw new HttpError(400, 'invalid_action');
+    if (!['service', 'url', 'shop', 'book', 'custom_sub'].includes(a.type)) throw new HttpError(400, 'invalid_action');
     v.action_type = a.type;
     v.action_value = a.type === 'service' ? a.serviceId : a.type === 'url' ? a.url : a.type === 'shop' ? a.productId || null : null;
   }

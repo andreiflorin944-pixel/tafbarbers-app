@@ -1,4 +1,4 @@
-import type { BeforeAfter, DayPart, WaitlistEntry, GiftCards, Barber, Location, Booking, Business, Identity, Referrals, IdentityPhoto, Plan, Subscription, CustomSubConfig, CustomSubItem, CustomSubQuote, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
+import type { BeforeAfter, DayPart, WaitlistEntry, GiftCards, Barber, Location, Booking, Business, Identity, Referrals, IdentityPhoto, Plan, Subscription, CustomSubConfig, CustomSubHint, CustomSubItem, CustomSubQuote, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
 
 // Singura legătură dintre interfață și server. `http.ts` vorbește cu serverul nostru
 // (Cloudflare Worker); `mock.ts` e varianta de test, folosită cât timp aplicația nu are
@@ -110,6 +110,7 @@ export interface BookingApi {
   getCustomSub(): Promise<CustomSubConfig>;
   quoteCustomSub(items: CustomSubItem[]): Promise<CustomSubQuote>;
   payCustomSub(token: string, items: CustomSubItem[], autoRenew: boolean): Promise<{ url: string; recurring?: boolean }>;
+  customSubHint(token: string): Promise<CustomSubHint | null>;
   /** Oprește sau pornește reînnoirea automată; pornită după ce s-a încheiat, întoarce pagina de plată (`url`). */
   setSubscriptionRenewal(token: string, id: string, on: boolean): Promise<{ ok: true; on: boolean; url?: string }>;
   /** „Schimbă cardul” pentru plățile automate: pagina Stripe. */

@@ -57,7 +57,9 @@ export function PromosPage(_: { me: Me }) {
                     ? (p.action as { url: string }).url
                     : p.action.type === 'shop'
                       ? `magazin${p.action.productId ? ` (${products.find((x) => x.id === (p.action as { productId: string }).productId)?.name ?? 'produs șters'})` : ''}`
-                      : 'programare'}
+                      : p.action.type === 'custom_sub'
+                        ? 'abonament personalizat'
+                        : 'programare'}
               </div>
               <div className="small" style={{ marginTop: 6, opacity: 0.7 }}>
                 {!p.active ? 'Ascuns · ' : ''}
@@ -123,7 +125,9 @@ function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Pro
               ? { type: 'url', url }
               : actionType === 'shop'
                 ? { type: 'shop', productId: productId || null }
-                : { type: 'book' },
+                : actionType === 'custom_sub'
+                  ? { type: 'custom_sub' }
+                  : { type: 'book' },
         translations: { en: clean(texts.en), fr: clean(texts.fr) },
         startsAt: startsAt ? new Date(startsAt + 'T00:00:00').toISOString() : null,
         endsAt: endsAt ? new Date(endsAt + 'T23:59:59').toISOString() : null,
@@ -194,6 +198,7 @@ function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Pro
               <option value="service">Programare la un serviciu anume</option>
               <option value="shop">Magazinul din aplicație (un produs)</option>
               <option value="url">Un link (site, Instagram…)</option>
+              <option value="custom_sub">„Creează-ți abonamentul” (abonament personalizat)</option>
             </select>
           </Field>
         </div>
@@ -241,6 +246,11 @@ function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Pro
           <Field label="Link">
             <input value={url} onChange={(e) => setUrl(e.target.value)} />
           </Field>
+        ) : actionType === 'custom_sub' ? (
+          <div className="muted small">
+            Bannerul deschide în aplicație pagina unde clientul își alege serviciile și vede reducerea. Apare doar cât abonamentul personalizat e pornit
+            (Abonamente → Abonament personalizat).
+          </div>
         ) : null}
         <div className="grid two">
           <Field label="Afișat din (opțional)">

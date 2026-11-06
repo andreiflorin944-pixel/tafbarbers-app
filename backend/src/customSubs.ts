@@ -188,3 +188,36 @@ export async function customRefundBani(env: Env, sub: { id: string; price_bani: 
   const usedBani = [...used].reduce((a, [id, n]) => a + (price.get(id) ?? 0) * n, 0);
   return Math.max(0, sub.price_bani - usedBani);
 }
+
+/**
+ * „Luna asta ai venit de 3 ori: cu abonament economiseai 18 lei.” Pentru clienții fideli de pe Acasă:
+ * vizitele din ultimele 30 de zile (încheiate sau programate deja trecute, neplătite din abonament), până la maximul pe lună.
+ * null dacă funcția e oprită, are deja un abonament activ sau a venit de prea puține ori.
+ */
+export async function customSubHint(env: Env, clientId: string) {
+  const st = await getCustomSubSettings(env);
+  if (!st.enabled) return null;
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const active = await env.DB.prepare(`SELECT 1 FROM subscriptions WHERE client_id = ? AND status = 'active' AND ends_at > ? LIMIT 1`).bind(clientId, nowIso).first();
+  if (active) return null;
+  const since = new Date(now.getTime() - 30 * 86_400_000).toISOString();
+  const r = await env.DB.prepare(
+    `SELECT service_id FROM bookings WHERE client_id = ? AND starts_at >= ? AND starts_at <= ? AND status IN ('completed','confirmed')
+       AND (payment IS NULL OR payment != 'subscription') ORDER BY starts_at DESC LIMIT 20`,
+  )
+    .bind(clientId, since, nowIso)
+    .all<{ service_id: string }>();
+  const allowed = r.results.filter((b) => !st.serviceIds.length || st.serviceIds.includes(b.service_id)).slice(0, st.maxVisits);
+  if (allowed.length < st.minVisits) return null;
+  const counts = new Map<string, number>();
+  for (const b of allowed) counts.set(b.service_id, (counts.get(b.service_id) ?? 0) + 1);
+  try {
+    const q = await quoteCustom(env, [...counts].map(([serviceId, qty]) => ({ serviceId, qty })), st);
+    if (q.fullBani - q.priceBani < 100) return null;
+    return { visits: q.visits, items: q.items, fullPrice: q.fullBani / 100, price: q.priceBani / 100, save: (q.fullBani - q.priceBani) / 100, discount: q.pct };
+  } catch {
+    // Un serviciu scos între timp: fără sugestie.
+    return null;
+  }
+}

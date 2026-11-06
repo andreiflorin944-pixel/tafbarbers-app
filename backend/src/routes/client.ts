@@ -17,7 +17,7 @@ import { getStylePhotos } from '../advisor';
 import { hairstyle } from '../hairstyles';
 import { localize, localizeText } from '../contentI18n';
 import { mySubscriptions } from '../subscriptions';
-import { ensureCustomPlan, getCustomSubSettings, quoteCustom } from '../customSubs';
+import { customSubHint, ensureCustomPlan, getCustomSubSettings, quoteCustom } from '../customSubs';
 import { cardPortalUrl, createRecurringCheckout, setRenewal } from '../recurring';
 import { joinWaitlist, myWaitlist, removeWaitlist } from '../waitlist';
 import { activeLocationId } from '../locations';
@@ -316,6 +316,9 @@ clientRoutes.post('/me/subscriptions/:planId/pay', async (c) => {
   });
   return c.json({ url, recurring: false });
 });
+
+/** Sugestia pentru clienții fideli de pe Acasă (vizitele din ultimele 30 de zile și cât ar fi economisit), sau `null`. */
+clientRoutes.get('/me/custom-sub/hint', async (c) => c.json(await customSubHint(c.env, c.get('client').clientId)));
 
 /**
  * Cumpără un abonament personalizat cu cardul: `{ items: [{ serviceId, qty }], autoRenew }`.

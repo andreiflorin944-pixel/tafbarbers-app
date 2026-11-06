@@ -87,7 +87,32 @@ ok(s.state === 'used_up' && s.cutsLeft === 0, 'package used up');
 
 // Anulare (fără plată online: nimic de returnat pe card).
 r = await req('PATCH', `/admin/subscriptions/${subId}`, { status: 'cancelled' }, at); ok(r.status === 200, 'owner cancels');
+
+// Sugestia de pe Acasă: client nou cu 3 vizite plătite la salon în ultimele 30 de zile.
+const phone2 = '0733' + rnd();
+const email2 = `fidel${rnd()}@test.ro`;
+r = await req('POST', '/auth/otp', { phone: phone2, email: email2, channel: 'email' }, null, ip);
+r = await req('POST', '/auth/verify', { phone: phone2, code: r.body?.devCode, name: 'Client Fidel', email: email2, acceptTerms: true }, null, ip);
+const tok2 = r.body.token;
+r = await req('GET', '/me', null, tok2); const client2 = r.body.id;
+r = await req('GET', '/me/custom-sub/hint', null, tok2); ok(r.status === 200 && r.body === null, 'no hint without visits');
+for (const [i, svc] of [['svc-skin-fade', 0], ['svc-skin-fade', 1], ['svc-beard', 2]].map(([v, k]) => [k, v])) {
+  const start = new Date(Date.now() - (3 + i * 5) * 86400000 - 7 * 3600000).toISOString();
+  const bk = await req('POST', '/admin/bookings', { clientId: client2, serviceId: svc, barberId: 'barber-florin', start, force: true, notify: false }, at);
+  r = await req('POST', `/admin/bookings/${bk.body.id}/complete`, { payment: 'paid' }, at);
+}
+r = await req('GET', '/me/custom-sub/hint', null, tok2);
+ok(r.body && r.body.visits === 3 && r.body.discount === 10 && r.body.fullPrice === 175 && r.body.price === 157 && r.body.save === 18, `hint: 3 visits, would save 18 lei (${JSON.stringify(r.body)})`);
+
+// Banner „abonament personalizat”: apare doar cât funcția e pornită.
+r = await req('POST', '/admin/promos', { kicker: 'NOU', title: 'Abonamentul tău', cta: 'Creează-l', action: { type: 'custom_sub' } }, at); ok(r.status === 201, 'custom_sub banner created');
+const promoId = r.body.id;
+r = await req('GET', '/promos'); ok(r.body.some((p) => p.id === promoId && p.action.type === 'custom_sub'), 'banner visible while on');
+
 r = await req('PUT', '/admin/custom-sub', { enabled: false }, at); ok(r.status === 200 && !r.body.enabled, 'turned off again');
+r = await req('GET', '/promos'); ok(!r.body.some((p) => p.id === promoId), 'banner hidden while off');
+r = await req('GET', '/me/custom-sub/hint', null, tok2); ok(r.body === null, 'no hint while off');
+await req('DELETE', `/admin/promos/${promoId}`, null, at);
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');
 process.exit(fails ? 1 : 0);

@@ -136,6 +136,7 @@ export function httpApi(baseUrl: string): BookingApi {
     paySubscription: (token, planId) => call('POST', `/me/subscriptions/${encodeURIComponent(planId)}/pay`, { token }),
     getCustomSub: () => call('GET', '/custom-sub'),
     quoteCustomSub: (items) => call('POST', '/custom-sub/quote', { body: { items } }),
+    customSubHint: (token) => call('GET', '/me/custom-sub/hint', { token }),
     payCustomSub: (token, items, autoRenew) => call('POST', '/me/custom-sub/pay', { token, body: { items, autoRenew } }),
     setSubscriptionRenewal: (token, id, on) => call('POST', `/me/subscriptions/${encodeURIComponent(id)}/renewal`, { token, body: { on } }),
     changeSubscriptionCard: (token) => call('POST', '/me/subscriptions/card', { token }),

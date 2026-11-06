@@ -311,6 +311,7 @@ export const mockApi: BookingApi = {
     return delay({ items: items.map((i) => ({ ...i, name: i.serviceId, price: prices[i.serviceId] ?? 0 })), visits, discount, fullPrice, price: Math.floor((fullPrice * (100 - discount)) / 100), periodDays: 30 });
   },
   payCustomSub: () => Promise.reject(new ApiError('payments_off', 409)),
+  customSubHint: () => delay(null),
   changeSubscriptionCard: () => Promise.reject(new ApiError('payments_off', 409)),
   assistant: () => Promise.resolve({ reply: tr('mock.assistant') }),
   assistantVoice: () => Promise.reject(new ApiError('assistant_off', 409)),

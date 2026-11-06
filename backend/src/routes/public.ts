@@ -201,7 +201,9 @@ publicRoutes.get('/promos', async (c) => {
   )
     .bind(now, now)
     .all<PromoRow>();
-  return c.json(r.results.map((p) => promo(p, lang)));
+  // Bannerul „abonament personalizat” apare doar cât funcția e pornită din panou.
+  const customOn = r.results.some((p) => p.action_type === 'custom_sub') && (await getCustomSubSettings(c.env)).enabled;
+  return c.json(r.results.filter((p) => p.action_type !== 'custom_sub' || customOn).map((p) => promo(p, lang)));
 });
 
 /** GET /availability?serviceId=…&barberId=…&locationId=…&day=YYYY-MM-DD (fără frizer: orice frizer din locație) */
