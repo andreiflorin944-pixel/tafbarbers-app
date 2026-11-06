@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import type { ComponentProps, ReactNode } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useContext, type ComponentProps, type ReactNode } from 'react';
+import { HeaderHeightContext } from 'expo-router/react-navigation';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Barber, Service } from '@/data/types';
 import { mediaUrl } from '@/api/staff';
@@ -19,11 +20,30 @@ export const tabBarSpace = (inset: number) => TAB_BAR_HEIGHT + tabBarInset(inset
 // `tab`: ecranele din taburi se termină deasupra barei (nu mai plutește peste conținut); lăsăm doar puțin aer la final.
 export function Screen({ children, scroll = true, edges, tab }: { children: ReactNode; scroll?: boolean; edges?: Array<'top' | 'bottom'>; tab?: boolean }) {
   const pad = tab ? { paddingBottom: space.xl + space.md } : null;
+  // Câmpurile de jos (ex. formularul de cont) nu rămân sub tastatură: pe iPhone derularea își mărește singură spațiul de jos,
+  // pe Android (aplicație edge-to-edge, fereastra nu se mai micșorează) conținutul primește jos spațiul tastaturii.
+  const headerHeight = useContext(HeaderHeightContext) ?? 0;
+  const scrollView = (
+    <ScrollView
+      contentContainerStyle={[styles.scroll, pad]}
+      automaticallyAdjustKeyboardInsets
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+    >
+      {children}
+    </ScrollView>
+  );
   return (
     <SafeAreaView style={styles.screen} edges={edges ?? ['top']}>
       <Backdrop />
       {scroll ? (
-        <ScrollView contentContainerStyle={[styles.scroll, pad]}>{children}</ScrollView>
+        Platform.OS === 'android' ? (
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={headerHeight}>
+            {scrollView}
+          </KeyboardAvoidingView>
+        ) : (
+          scrollView
+        )
       ) : (
         <View style={[styles.scroll, pad, { flex: 1 }]}>{children}</View>
       )}
