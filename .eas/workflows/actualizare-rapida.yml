@@ -15,6 +15,10 @@ jobs:
     name: Actualizare rapidă
     type: update
     environment: production
+    # Adresa serverului e scrisă în cod la construire. La „eas update” nu se iau variabilele din eas.json,
+    # iar fără ea aplicația pornește cu datele de test (adresă „se preia din Barberly”, fără abonamente).
+    env:
+      EXPO_PUBLIC_API_URL: https://app.tafbarbers.ro
     params:
       branch: production
       message: ${{ inputs.message }}
