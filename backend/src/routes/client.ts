@@ -188,12 +188,15 @@ clientRoutes.get('/me/subscriptions', async (c) => {
 // Carduri cadou: cele cumpărate de client și cele primite pe numărul lui de telefon.
 clientRoutes.get('/me/gift-cards', async (c) => {
   const id = c.get('client').clientId;
-  const me = await c.env.DB.prepare('SELECT phone FROM clients WHERE id = ?').bind(id).first<{ phone: string }>();
+  const me = await c.env.DB.prepare('SELECT phone, phone_unverified FROM clients WHERE id = ?').bind(id).first<{ phone: string; phone_unverified: number | null }>();
+  // Cardurile primite pe număr se văd doar după ce numărul e dovedit cu cod prin SMS: altfel cine își face cont
+  // cu numărul altcuiva (cod pe e-mail, Apple / Google) ar vedea codurile cardurilor trimise acelui număr.
+  const myPhone = me && !me.phone_unverified ? me.phone : '';
   const r = await c.env.DB.prepare(
     `SELECT g.*, b.name AS buyer_name FROM gift_cards g LEFT JOIN clients b ON b.id = g.buyer_client_id
      WHERE (g.buyer_client_id = ? OR g.recipient_phone = ?) AND g.status != 'cancelled' ORDER BY g.created_at DESC LIMIT 50`,
   )
-    .bind(id, me?.phone ?? '')
+    .bind(id, myPhone)
     .all<GiftCardRow>();
   const s = (await getAutomations(c.env)).giftCard;
   return c.json({
@@ -202,7 +205,7 @@ clientRoutes.get('/me/gift-cards', async (c) => {
     validMonths: s.validMonths,
     bought: r.results.filter((g) => g.buyer_client_id === id).map((g) => giftCard(g, true)),
     // Cel care primește vede codul doar după ce cardul a fost plătit.
-    received: r.results.filter((g) => g.recipient_phone === me?.phone && g.buyer_client_id !== id).map((g) => giftCard(g, true)),
+    received: r.results.filter((g) => !!myPhone && g.recipient_phone === myPhone && g.buyer_client_id !== id).map((g) => giftCard(g, true)),
   });
 });
 

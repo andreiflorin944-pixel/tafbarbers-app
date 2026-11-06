@@ -264,6 +264,14 @@ function ownLocation(c: Context<AppEnv>): string | null {
   return c.get('admin').locationId;
 }
 
+/** Administratorul de locație lucrează doar cu frizerii locației lui. */
+async function barberInLocation(c: Context<AppEnv>, barberId: string) {
+  const loc = ownLocation(c);
+  if (!loc) return;
+  const br = await c.env.DB.prepare('SELECT location_id FROM barbers WHERE id = ?').bind(barberId).first<{ location_id: string | null }>();
+  if (!br || br.location_id !== loc) throw new HttpError(403, 'forbidden');
+}
+
 function cleanPerms(raw: unknown): Record<string, boolean> {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return Object.fromEntries(PERMS.filter((p) => typeof o[p] === 'boolean').map((p) => [p, o[p] as boolean]));
@@ -998,10 +1006,13 @@ adminRoutes.post('/bookings', async (c) => {
     await c.env.DB.prepare('UPDATE clients SET name = ? WHERE id = ?').bind(b.name.trim().slice(0, 80), cl.id).run();
   }
   const barberId = ownBarber(c) ?? b.barberId ?? null;
+  // Administratorul de locație programează doar la frizerii locației lui („orice frizer” = din locația lui).
+  if (barberId) await barberInLocation(c, barberId);
   const created = await createBooking(c.env, {
     clientId: cl.id,
     serviceId: b.serviceId,
     barberId,
+    locationId: ownLocation(c),
     start: b.start,
     note: b.note,
     source: 'admin',
@@ -1018,13 +1029,14 @@ adminRoutes.patch('/bookings/:id', async (c) => {
   const cur = await getBooking(c.env, id);
   need(c, 'bookings_manage');
   const scoped = ownBarber(c);
-  if (!cur || (scoped && cur.barberId !== scoped)) throw new HttpError(404, 'not_found');
+  if (!cur || !inScope(c, cur)) throw new HttpError(404, 'not_found');
   const b = await c.req.json<{ status?: string; note?: string } & BookingEdit>();
   if (b.status === 'cancelled') return c.json(await cancelBooking(c.env, id, 'admin', undefined, c.get('admin').adminId));
   // Mutată (altă oră sau alt frizer), alt serviciu sau alt preț: „Salvați modificările” din panoul programării.
   // Frizerul care vede doar programările lui nu le poate da altui frizer.
   if (b.start !== undefined || b.barberId !== undefined || b.serviceId !== undefined || (b.price !== undefined && b.price !== null)) {
     if (scoped && b.barberId && b.barberId !== scoped) throw new HttpError(403, 'forbidden');
+    if (b.barberId && b.barberId !== cur.barberId) await barberInLocation(c, b.barberId);
     await editBooking(c.env, id, b, c.get('admin').adminId);
     if (b.note === undefined) return c.json(await getBooking(c.env, id));
   }
@@ -1147,7 +1159,7 @@ adminRoutes.get('/bookings/:id/checkout', async (c) => {
 /** Cererile de programare care așteaptă răspuns (clopoțelul din panou). Frizerul le vede doar pe ale lui. */
 adminRoutes.get('/bookings/requests', async (c) => {
   need(c, 'bookings_manage');
-  const items = await localize(c.env, c.req.query('lang'), await pendingRequests(c.env, ownBarber(c)), ['serviceName']);
+  const items = await localize(c.env, c.req.query('lang'), (await pendingRequests(c.env, ownBarber(c))).filter((x) => inScope(c, x)), ['serviceName']);
   return c.json({ count: items.length, items });
 });
 
@@ -1191,7 +1203,7 @@ adminRoutes.get('/bookings/unclosed', async (c) => {
   )
     .bind(...(scoped ? [iso(new Date()), iso(new Date(Date.now() - 90 * 86_400_000)), scoped] : [iso(new Date()), iso(new Date(Date.now() - 90 * 86_400_000))]))
     .all<BookingRow>();
-  return c.json(await localize(c.env, c.req.query('lang'), r.results.map(booking), ['serviceName']));
+  return c.json(await localize(c.env, c.req.query('lang'), r.results.map(booking).filter((x) => inScope(c, x)), ['serviceName']));
 });
 
 /** Frizerul confirmă tunsoarea: `{ payment: 'paid', amount }` sau `{ payment: 'subscription' }`, opțional `bonusId`. */
@@ -1260,9 +1272,15 @@ adminRoutes.post('/bookings/:id/review-request', async (c) => {
 async function bookingForStaff(c: Context<AppEnv>) {
   need(c, 'bookings_manage');
   const cur = await getBooking(c.env, c.req.param('id')!);
-  const scoped = ownBarber(c);
-  if (!cur || (scoped && cur.barberId !== scoped)) throw new HttpError(404, 'not_found');
+  if (!cur || !inScope(c, cur)) throw new HttpError(404, 'not_found');
   return cur;
+}
+
+/** Programarea e în ce poate lucra contul: a frizerului lui (fără „bookings_all”) și din locația lui (administratorul de locație). */
+function inScope(c: Context<AppEnv>, b: { barberId: string; locationId?: string | null }) {
+  const barber = ownBarber(c);
+  const loc = ownLocation(c);
+  return (!barber || b.barberId === barber) && (!loc || b.locationId === loc);
 }
 
 // --- Abonamente ---

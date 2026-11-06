@@ -6,6 +6,7 @@ import { getAutomations } from './growth';
 import { otpEmail, resetEmail } from './messages';
 import { sendEmail, sendSms } from './notify';
 import { renderTemplate } from './templates';
+import { ipHash } from './qr';
 import { iso } from './time';
 
 // Codurile de 6 cifre (intrare în cont, parolă uitată, schimbarea parolei): un singur cod activ pe număr de telefon,
@@ -16,6 +17,9 @@ export const OTP_TTL = 10 * 60_000;
 export const OTP_MAX_TRIES = 8;
 /** Câte coduri se pot cere pe zi pentru același număr sau aceeași adresă. */
 const OTP_PER_DAY = 10;
+/** Câte coduri se pot cere de pe aceeași adresă IP într-o oră și într-o zi (o rețea de salon sau de bloc are mai mulți clienți). */
+const OTP_PER_IP_HOUR = 10;
+const OTP_PER_IP_DAY = 30;
 // RO, MD, FR, BE, CH, LU, IT, ES, DE, AT, UK, IE, NL.
 const OTP_PREFIXES = ['+40', '+373', '+33', '+32', '+41', '+352', '+39', '+34', '+49', '+43', '+44', '+353', '+31'];
 
@@ -32,6 +36,20 @@ export async function issueCode(
   if (channel === 'sms' && !(await getAutomations(c.env)).otpSms) throw new HttpError(400, 'sms_code_off');
   if (channel === 'sms' && !OTP_PREFIXES.some((p) => phone.startsWith(p))) throw new HttpError(400, 'country_not_supported');
   if (channel === 'email' && !email) throw new HttpError(400, 'invalid_email');
+  // De pe același IP: cel mult 10 coduri pe oră și 30 pe zi, ca un singur dispozitiv să nu poată consuma plafonul zilnic al tuturor
+  // (și nici SMS-urile trimise de pe telefonul salonului). Contorul stă în assistant_usage, care se golește după 7 zile.
+  const ip = await ipHash(c.env, c);
+  if (ip) {
+    const now = iso(new Date());
+    const day = now.slice(0, 10);
+    const bump = async (k: string) =>
+      (
+        await c.env.DB.prepare(`INSERT INTO assistant_usage (day, key, n) VALUES (?, ?, 1) ON CONFLICT (day, key) DO UPDATE SET n = n + 1 RETURNING n`)
+          .bind(day, k)
+          .first<{ n: number }>()
+      )?.n ?? 0;
+    if ((await bump(`otp-ip:${ip}:${now.slice(11, 13)}`)) > OTP_PER_IP_HOUR || (await bump(`otp-ip:${ip}`)) > OTP_PER_IP_DAY) throw new HttpError(429, 'too_many_requests');
+  }
   const today = await c.env.DB.prepare(`SELECT count(*) AS n FROM message_log WHERE kind = 'otp' AND channel = ? AND created_at > ?`)
     .bind(channel, iso(new Date(Date.now() - 86_400_000)))
     .first<{ n: number }>();
