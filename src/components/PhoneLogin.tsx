@@ -234,6 +234,19 @@ export function PhoneLogin({
   );
 
   const socialOnly = !!social && !needCode;
+  // E-mailul vine de la Apple / Google doar la contul nou; la intrare (cont existent) se poate scrie e-mailul contului.
+  const emailLocked = !!sentTo || (register && !!social?.email);
+
+  // „Folosește alt e-mail”: renunțăm la legarea cu Apple / Google și revenim la formularul obișnuit, cu e-mailul gol.
+  const dropSocial = () => {
+    setSocial(null);
+    setNeedCode(false);
+    setEmail("");
+    setSentTo(null);
+    setCode("");
+    setError(null);
+    setNotice(null);
+  };
 
   return (
     <View>
@@ -355,13 +368,10 @@ export function PhoneLogin({
             <TextInput
               value={email}
               onChangeText={setEmail}
-              editable={!sentTo && !social?.email}
+              editable={!emailLocked}
               placeholder={t("account.emailPh")}
               placeholderTextColor={colors.muted}
-              style={[
-                styles.input,
-                sentTo || social?.email ? local.locked : null,
-              ]}
+              style={[styles.input, emailLocked ? local.locked : null]}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -369,6 +379,17 @@ export function PhoneLogin({
             />,
             t(register ? "login.emailHintRegister" : "login.emailHintLogin"),
           )}
+          {social && !sentTo ? (
+            <Pressable
+              onPress={dropSocial}
+              style={{ marginTop: space.sm }}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: colors.gold, fontSize: 13, fontWeight: "600" }}>
+                {t("login.otherEmail")}
+              </Text>
+            </Pressable>
+          ) : null}
           {register ? (
             <>
               {field(

@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { HeaderBack } from '@/components/HeaderBack';
 import { Intro } from '@/components/Intro';
 import { LegalGate } from '@/components/LegalGate';
 import { PushLink } from '@/components/PushLink';
@@ -90,7 +91,7 @@ function RootStack() {
       <Stack.Screen name="book/time" options={{ title: t('nav.pickTime') }} />
       <Stack.Screen name="book/confirm" options={{ title: t('nav.confirm') }} />
       <Stack.Screen name="book/success" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="login" options={{ title: 'TAF Barber’s', presentation: 'modal' }} />
+      <Stack.Screen name="login" options={{ title: 'TAF Barber’s', presentation: 'modal', headerLeft: () => <HeaderBack /> }} />
       <Stack.Screen name="identity" options={{ title: t('account.identity') }} />
       <Stack.Screen name="assistant" options={{ title: t('nav.assistant') }} />
       <Stack.Screen name="advisor" options={{ title: t('nav.advisor') }} />
@@ -102,7 +103,7 @@ function RootStack() {
       <Stack.Screen name="barbers" options={{ title: t('nav.barbers') }} />
       <Stack.Screen name="service/[id]" options={{ title: '', headerTransparent: true }} />
       <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
-      <Stack.Screen name="staff/login" options={{ title: t('nav.staffLogin'), presentation: 'modal' }} />
+      <Stack.Screen name="staff/login" options={{ title: t('nav.staffLogin'), presentation: 'modal', headerLeft: () => <HeaderBack /> }} />
       <Stack.Screen name="staff/(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="staff/client/[id]" options={{ title: t('nav.clientFile') }} />
       <Stack.Screen name="staff/orders" options={{ title: t('nav.shopOrders') }} />
