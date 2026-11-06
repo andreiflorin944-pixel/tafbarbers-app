@@ -300,6 +300,18 @@ export const mockApi: BookingApi = {
   payBooking: () => Promise.reject(new ApiError('payments_off', 409)),
   paySubscription: () => Promise.reject(new ApiError('payments_off', 409)),
   setSubscriptionRenewal: () => Promise.reject(new ApiError('payments_off', 409)),
+  getCustomSub: () => delay({ enabled: true, discounts: { '2': 5, '3': 10, '4': 15 }, minVisits: 2, maxVisits: 4, periodDays: 30, serviceIds: [] }),
+  quoteCustomSub: (items) => {
+    const visits = items.reduce((a, i) => a + i.qty, 0);
+    const discount = visits >= 4 ? 15 : visits === 3 ? 10 : visits === 2 ? 5 : 0;
+    const prices: Record<string, number> = Object.fromEntries(services.map((s) => [s.id, s.price]));
+    const fullPrice = items.reduce((a, i) => a + (prices[i.serviceId] ?? 0) * i.qty, 0);
+    if (visits < 2) return Promise.reject(new ApiError('too_few_visits', 400));
+    if (visits > 4) return Promise.reject(new ApiError('too_many_visits', 400));
+    return delay({ items: items.map((i) => ({ ...i, name: i.serviceId, price: prices[i.serviceId] ?? 0 })), visits, discount, fullPrice, price: Math.floor((fullPrice * (100 - discount)) / 100), periodDays: 30 });
+  },
+  payCustomSub: () => Promise.reject(new ApiError('payments_off', 409)),
+  customSubHint: () => delay(null),
   changeSubscriptionCard: () => Promise.reject(new ApiError('payments_off', 409)),
   assistant: () => Promise.resolve({ reply: tr('mock.assistant') }),
   assistantVoice: () => Promise.reject(new ApiError('assistant_off', 409)),

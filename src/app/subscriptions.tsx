@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Image, Linking, Platform, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Image, Linking, Platform, Pressable, Text, View } from 'react-native';
 import { api } from '@/api';
 import { useLoginGate } from '@/components/LoginGate';
 import { cutsText, SubscriptionRow } from '@/components/SubscriptionRow';
 import { Button, Card, Screen, styles } from '@/components/ui';
-import type { Plan, Subscription } from '@/data/types';
+import type { CustomSubConfig, Plan, Subscription } from '@/data/types';
 import { formatDate } from '@/lib/dates';
 import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
@@ -22,6 +23,10 @@ export default function Subscriptions() {
   const [error, setError] = useState<string | null>(null);
 
   const [paying, setPaying] = useState<string | null>(null);
+  const [custom, setCustom] = useState<CustomSubConfig | null>(null);
+  useEffect(() => {
+    api.getCustomSub().then(setCustom, () => setCustom(null));
+  }, []);
   const load = useCallback(() => {
     if (token) api.getSubscriptions(token).then(setData, (e) => setError(errorMessage(e)));
   }, [token]);
@@ -41,6 +46,19 @@ export default function Subscriptions() {
     setPaying(p.id);
     try {
       const { url } = await api.paySubscription(token, p.id);
+      await Linking.openURL(url);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setPaying(null);
+    }
+  };
+  // Abonament personalizat plătit manual: clientul plătește din nou aceeași combinație (cu prețurile de acum).
+  const payAgain = async (s: Subscription) => {
+    if (!token || !s.items) return;
+    setPaying(s.id);
+    try {
+      const { url } = await api.payCustomSub(token, s.items.map((i) => ({ serviceId: i.serviceId, qty: i.qty })), false);
       await Linking.openURL(url);
     } catch (e) {
       fail(e);
@@ -113,7 +131,15 @@ export default function Subscriptions() {
           <Text style={[styles.muted, { textAlign: 'center' }]}>
             {s.state === 'upcoming' ? t('subs.startsOn', { date: formatDate(new Date(s.startsAt)) }) : cutsText(s)} · {t('common.until', { date: formatDate(new Date(s.endsAt)) })}
           </Text>
-          <Text style={[styles.muted, { fontSize: 13, textAlign: 'center' }]}>{t('subs.for', { list: covers(s.serviceIds) })}</Text>
+          {s.items ? (
+            s.items.map((i) => (
+              <Text key={i.serviceId} style={[styles.muted, { fontSize: 13, textAlign: 'center' }]}>
+                {t('customSub.left', { name: services.find((x) => x.id === i.serviceId)?.name ?? i.serviceId, left: Math.max(0, i.qty - i.used), total: i.qty })}
+              </Text>
+            ))
+          ) : (
+            <Text style={[styles.muted, { fontSize: 13, textAlign: 'center' }]}>{t('subs.for', { list: covers(s.serviceIds) })}</Text>
+          )}
           {s.renewal && lastOfPlan(s) ? (
             <Text style={[styles.text, { textAlign: 'center', color: s.renewal.on ? colors.gold : colors.muted }]}>
               {s.renewal.on
@@ -134,8 +160,28 @@ export default function Subscriptions() {
               ) : null}
             </View>
           ) : null}
+          {s.items && online && !s.renewal?.on && lastOfPlan(s) ? (
+            <View style={{ alignSelf: 'stretch', marginTop: space.xs }}>
+              <Button title={t('customSub.payAgain')} variant="ghost" onPress={() => payAgain(s)} loading={paying === s.id} />
+            </View>
+          ) : null}
         </Card>
       ))}
+
+      {custom?.enabled ? (
+        <Pressable onPress={() => router.push('/custom-sub')} accessibilityRole="button" style={{ marginBottom: space.sm }}>
+          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, borderColor: colors.gold }}>
+            <Ionicons name="options" size={28} color={colors.gold} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.cardTitle}>{t('customSub.cta')}</Text>
+              <Text style={[styles.muted, { fontSize: 13 }]}>
+                {t('customSub.ctaSub', { max: Math.max(0, ...Object.values(custom.discounts)) })}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          </Card>
+        </Pressable>
+      ) : null}
 
       <Text style={[styles.label, { color: colors.gold }]}>{live.length ? t('subs.renew') : t('subs.title')}</Text>
       {data.plans.length === 0 ? <Text style={styles.muted}>{t('subs.none')}</Text> : null}

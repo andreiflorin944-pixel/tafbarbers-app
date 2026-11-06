@@ -145,7 +145,15 @@ export type Subscription = {
   renewal?: { on: boolean; at: string | null; price: number; failed: boolean; ended: boolean } | null;
   /** Clientul poate porni reînnoirea automată (plata online pornită, planul încă de vânzare). */
   renewable?: boolean;
+  /** Abonament personalizat: serviciile alese, de câte ori și câte s-au folosit. null = abonament obișnuit. */
+  items?: Array<{ serviceId: string; qty: number; used: number }> | null;
 };
+/** Abonamentul personalizat: reducerea (%) după numărul de vizite (`discounts['3'] = 10`), limitele și serviciile care pot intra (gol = toate). */
+export type CustomSubConfig = { enabled: boolean; discounts: Record<string, number>; minVisits: number; maxVisits: number; periodDays: number; serviceIds: string[] };
+export type CustomSubItem = { serviceId: string; qty: number };
+/** Sugestia pentru clienții fideli: vizitele din ultimele 30 de zile și cât ar fi economisit cu abonament. */
+export type CustomSubHint = { visits: number; items: CustomSubItem[]; fullPrice: number; price: number; save: number; discount: number };
+export type CustomSubQuote = { items: Array<CustomSubItem & { name: string; price: number }>; visits: number; discount: number; fullPrice: number; price: number; periodDays: number };
 export type Referrals = { enabled: boolean; code: string; referred: number; reward: string | null; welcome?: string | null; bonuses: Bonus[] };
 export type Identity = { note: string; photos: IdentityPhoto[]; staffPhotos?: IdentityPhoto[] };
 
@@ -201,7 +209,7 @@ export type Promo = {
   imageUrl?: string | null; // poză de fundal a bannerului
   color?: string | null; // culoarea bannerului; null = alternativ culoarea principală / închis
   // ce face butonul
-  action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'shop'; productId: string | null } | { type: 'book' };
+  action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'shop'; productId: string | null } | { type: 'book' } | { type: 'custom_sub' };
 };
 
 export type Product = {

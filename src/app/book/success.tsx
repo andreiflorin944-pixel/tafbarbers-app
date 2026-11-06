@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Text, View } from 'react-native';
 import { Button, Screen, styles } from '@/components/ui';
+import { AfterBookingPitch } from '@/components/CustomSubPitch';
 import { formatDate, formatTime } from '@/lib/dates';
 import { useT } from '@/i18n';
 import { useApp } from '@/state/AppState';
@@ -37,6 +38,8 @@ export default function Success() {
         {pending ? <Text style={[styles.muted, { textAlign: 'center', fontSize: 14, lineHeight: 20 }]}>{t('success.requestText')}</Text> : null}
       </View>
       <View style={{ gap: space.sm }}>
+        {/* Imediat după programare: cât ar plăti cu abonament lunar pe același serviciu. */}
+        {booking && !pending ? <AfterBookingPitch serviceId={booking.serviceId} onOpen={resetDraft} /> : null}
         <Button
           title={t('success.myBookings')}
           onPress={() => {

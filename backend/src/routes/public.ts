@@ -6,6 +6,7 @@ import { createSession, deleteSession, hashPassword, normalizePhone, optionalSes
 import { clearFailures, DUMMY_HASH, findAccounts, lockedAny, loginKeys, parseIdentifier, recordFailure, validClientPassword } from '../clientPassword';
 import { checkCode, issueCode, useCode } from '../otp';
 import { getPlans } from '../subscriptions';
+import { getCustomSubSettings, quoteCustom } from '../customSubs';
 import { serviceOffers } from '../offers';
 import { barber, BARBER_SERVICE_COLS, emailTaken, getBusiness, promo, service, type BarberRow, type PromoRow, type ServiceRow } from '../db';
 import { HttpError, type AppEnv } from '../env';
@@ -176,6 +177,21 @@ publicRoutes.get('/barbers', async (c) => {
 
 publicRoutes.get('/plans', async (c) => c.json(await localize(c.env, c.req.query('lang'), await getPlans(c.env, false), ['name', 'description'])));
 
+/** Abonamentul personalizat: dacă e pornit, reducerile pe număr de vizite, limitele și serviciile care pot intra (gol = toate). */
+publicRoutes.get('/custom-sub', async (c) => {
+  const s = await getCustomSubSettings(c.env);
+  return c.json({ enabled: s.enabled, discounts: s.discounts, minVisits: s.minVisits, maxVisits: s.maxVisits, periodDays: s.periodDays, serviceIds: s.serviceIds });
+});
+
+/** Prețul unei combinații (același calcul ca la plată), ex. `{ items: [{ serviceId, qty }] }`. */
+publicRoutes.post('/custom-sub/quote', async (c) => {
+  const b = await c.req.json<{ items?: unknown }>().catch(() => ({}) as { items?: unknown });
+  const s = await getCustomSubSettings(c.env);
+  if (!s.enabled) throw new HttpError(409, 'custom_sub_off');
+  const q = await quoteCustom(c.env, b.items, s);
+  return c.json({ items: q.lines, visits: q.visits, discount: q.pct, fullPrice: q.fullBani / 100, price: q.priceBani / 100, periodDays: q.periodDays });
+});
+
 publicRoutes.get('/promos', async (c) => {
   const now = iso(new Date());
   const lang = c.req.query('lang') ?? 'ro';
@@ -185,7 +201,9 @@ publicRoutes.get('/promos', async (c) => {
   )
     .bind(now, now)
     .all<PromoRow>();
-  return c.json(r.results.map((p) => promo(p, lang)));
+  // Bannerul „abonament personalizat” apare doar cât funcția e pornită din panou.
+  const customOn = r.results.some((p) => p.action_type === 'custom_sub') && (await getCustomSubSettings(c.env)).enabled;
+  return c.json(r.results.filter((p) => p.action_type !== 'custom_sub' || customOn).map((p) => promo(p, lang)));
 });
 
 /** GET /availability?serviceId=…&barberId=…&locationId=…&day=YYYY-MM-DD (fără frizer: orice frizer din locație) */

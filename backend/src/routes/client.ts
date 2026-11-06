@@ -17,6 +17,7 @@ import { getStylePhotos } from '../advisor';
 import { hairstyle } from '../hairstyles';
 import { localize, localizeText } from '../contentI18n';
 import { mySubscriptions } from '../subscriptions';
+import { customSubHint, ensureCustomPlan, getCustomSubSettings, quoteCustom } from '../customSubs';
 import { cardPortalUrl, createRecurringCheckout, setRenewal } from '../recurring';
 import { joinWaitlist, myWaitlist, removeWaitlist } from '../waitlist';
 import { activeLocationId } from '../locations';
@@ -312,6 +313,45 @@ clientRoutes.post('/me/subscriptions/:planId/pay', async (c) => {
     clientId,
     lang: c.req.query('lang'),
     meta: { plan: p.id },
+  });
+  return c.json({ url, recurring: false });
+});
+
+/** Sugestia pentru clienții fideli de pe Acasă (vizitele din ultimele 30 de zile și cât ar fi economisit), sau `null`. */
+clientRoutes.get('/me/custom-sub/hint', async (c) => c.json(await customSubHint(c.env, c.get('client').clientId)));
+
+/**
+ * Cumpără un abonament personalizat cu cardul: `{ items: [{ serviceId, qty }], autoRenew }`.
+ * `autoRenew: true` = „Retragere automată lunară” (Stripe taxează cardul la fiecare 30 de zile);
+ * `false` = „Plătesc eu în fiecare lună” (o plată acum, iar luna următoare clientul plătește din nou din aplicație).
+ * Prețul se calculează pe server, cu prețurile de acum.
+ */
+clientRoutes.post('/me/custom-sub/pay', async (c) => {
+  const clientId = c.get('client').clientId;
+  const b = await c.req.json<{ items?: unknown; autoRenew?: boolean }>().catch(() => ({}) as { items?: unknown; autoRenew?: boolean });
+  const s = await getCustomSubSettings(c.env);
+  if (!s.enabled) throw new HttpError(409, 'custom_sub_off');
+  const q = await quoteCustom(c.env, b.items, s);
+  const planId = await ensureCustomPlan(c.env, q);
+  const shop = (await getBusiness(c.env)).name;
+  const base = publicBase(c.env, c.req.url);
+  const title = `${q.name} · ${shop}`;
+  const plan = { id: planId, name: q.name, price_bani: q.priceBani, period_days: q.periodDays };
+  if (b.autoRenew) {
+    const url = await createRecurringCheckout(c.env, { clientId, plan, title, base, lang: c.req.query('lang') });
+    if (url) return c.json({ url, recurring: true });
+  }
+  const me = await c.env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(clientId).first<{ email: string | null }>();
+  const url = await createCheckout(c.env, {
+    kind: 'sub',
+    ref: newId('sb'),
+    amountBani: q.priceBani,
+    title,
+    email: me?.email,
+    base,
+    clientId,
+    lang: c.req.query('lang'),
+    meta: { plan: planId },
   });
   return c.json({ url, recurring: false });
 });

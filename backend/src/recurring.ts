@@ -298,9 +298,10 @@ async function invoicePaid(env: Env, inv: Invoice): Promise<string> {
     const now = iso(new Date());
     await env.DB.batch([
       env.DB.prepare(
-        `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by, pay_method, recurring_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'online', ?)`,
-      ).bind(ref, clientId, rec.plan_id, rec.name, amount, rec.cuts, rec.service_ids, start, end, 'Reînnoit automat (card)', rec.id),
+        // Abonament personalizat: serviciile alese se iau din planul lui ascuns (care nu se mai schimbă după creare).
+        `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by, pay_method, recurring_id, items)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'online', ?, (SELECT items FROM plans WHERE id = ? AND custom = 1))`,
+      ).bind(ref, clientId, rec.plan_id, rec.name, amount, rec.cuts, rec.service_ids, start, end, 'Reînnoit automat (card)', rec.id, rec.plan_id ?? ''),
       // Plata a trecut: dacă era „plata a căzut”, revine la normal.
       env.DB.prepare(`UPDATE recurring_subs SET status = CASE WHEN status = 'ended' THEN 'ended' ELSE 'active' END, current_period_end = ?, updated_at = ? WHERE id = ?`).bind(
         end,
