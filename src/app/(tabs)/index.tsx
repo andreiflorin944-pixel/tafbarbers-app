@@ -239,7 +239,7 @@ export default function Home() {
         </View>
 
         {/* Clienții veniți des în ultima lună: cât ar fi economisit cu abonamentul personalizat. */}
-        {user ? <LoyalPitch /> : null}
+        <LoyalPitch />
 
         {picks.length ? (
           <>

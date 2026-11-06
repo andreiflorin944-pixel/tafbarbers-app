@@ -22,7 +22,7 @@ function PitchCard({ title, text, items, onOpen }: { title: string; text: string
     <Pressable
       onPress={() => {
         onOpen?.();
-        router.push({ pathname: '/custom-sub', params: { items: itemsParam(items) } });
+        router.push(items.length ? { pathname: '/custom-sub', params: { items: itemsParam(items) } } : '/custom-sub');
       }}
       accessibilityRole="button"
     >
@@ -75,26 +75,46 @@ export function AfterBookingPitch({ serviceId, onOpen }: { serviceId: string; on
   );
 }
 
-/** Pe Acasă, pentru clienții fideli: „Luna asta ai venit de 3 ori. Cu abonament economiseai 18 lei.” */
+/**
+ * Pe Acasă, pentru toți clienții cât funcția e pornită. Cine a venit des în ultima lună vede cât ar fi economisit
+ * („Luna asta ai venit de 3 ori…”), ceilalți oferta generală. Nu apare celor cu abonament activ.
+ */
 export function LoyalPitch() {
   const { token } = useApp();
   const { t } = useT();
-  const [hint, setHint] = useState<CustomSubHint | null>(null);
+  const [card, setCard] = useState<{ title: string; text: string; items: CustomSubItem[] } | null>(null);
   useEffect(() => {
-    if (!token) return setHint(null);
     let live = true;
-    api.customSubHint(token).then(
-      (h) => live && setHint(h),
-      () => live && setHint(null),
-    );
+    (async () => {
+      try {
+        const cfg = await api.getCustomSub();
+        if (!cfg.enabled) return live && setCard(null);
+        const max = Math.max(0, ...Object.values(cfg.discounts));
+        let hint: CustomSubHint | null = null;
+        if (token) {
+          const subs = await api.getSubscriptions(token);
+          if (subs.subscriptions.some((s) => s.state === 'active' || s.state === 'upcoming')) return live && setCard(null);
+          hint = await api.customSubHint(token).catch(() => null);
+        }
+        if (!live) return;
+        setCard(
+          hint
+            ? { title: t('customSub.loyalTitle', { n: hint.visits }), text: t('customSub.loyalText', { amount: lei(hint.save), price: lei(hint.price) }), items: hint.items }
+            : { title: t('customSub.cta'), text: t('customSub.ctaSub', { max }), items: [] },
+        );
+      } catch {
+        if (live) setCard(null);
+      }
+    })();
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
-  if (!hint) return null;
+  if (!card) return null;
   return (
     <View style={{ marginTop: space.md }}>
-      <PitchCard title={t('customSub.loyalTitle', { n: hint.visits })} text={t('customSub.loyalText', { amount: lei(hint.save), price: lei(hint.price) })} items={hint.items} />
+      <PitchCard title={card.title} text={card.text} items={card.items} />
     </View>
   );
 }
