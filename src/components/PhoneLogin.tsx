@@ -74,10 +74,13 @@ export function PhoneLogin({
 
   const [password, setPassword] = useState("");
   const [asStaff, setAsStaff] = useState(false);
+  // Intrarea cu cod (pe e-mailul contului sau prin SMS) în loc de parolă: pentru clienții fără parolă (ex. aduși din panou)
+  // sau al căror e-mail din cont nu mai e la îndemână. Codul prin SMS dovedește numărul.
+  const [codeLogin, setCodeLogin] = useState(false);
 
   const register = mode === "register";
-  // Intrarea e doar cu parolă. Codul la intrare rămâne doar pentru legarea unui cont Apple / Google de un cont existent.
-  const passwordMode = !register && !social;
+  // Intrarea e implicit cu parolă; cu cod când clientul alege asta sau când leagă un cont Apple / Google de un cont existent.
+  const passwordMode = !register && !social && !codeLogin;
   const cleanPhone = phone.replace(/[\s\-().]/g, "");
   const cleanEmail = email.trim().toLowerCase();
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail);
@@ -93,6 +96,15 @@ export function PhoneLogin({
 
   const switchMode = (m: Mode) => {
     setMode(m);
+    setCodeLogin(false);
+    setError(null);
+    setNotice(null);
+  };
+
+  const chooseCode = (on: boolean) => {
+    setCodeLogin(on);
+    setSentTo(null);
+    setCode("");
     setError(null);
     setNotice(null);
   };
@@ -118,17 +130,21 @@ export function PhoneLogin({
       if (r.newAccount && !register) {
         setMode("register");
         setNotice(t("login.noAccount"));
-      } else if (!r.newAccount && register && !social) {
-        // Numărul are deja cont: intră cu parola (sau „Am uitat parola”), nu cu codul.
-        setSentTo(null);
-        setMode("login");
-        setNotice(t("login.hasAccountPw"));
       } else if (!r.newAccount && register) {
+        // Numărul are deja cont: codul a plecat deja (pe e-mailul contului sau prin SMS), deci intră direct cu el.
+        if (!social) setCodeLogin(true);
         setMode("login");
         setNotice(t("login.hasAccount"));
       }
     } catch (e) {
-      setError(errorMessage(e));
+      if (e instanceof ApiError && e.code === "email_mismatch") {
+        // Numărul are deja cont, cu alt e-mail: nu-l lăsăm pe „Creează cont”, ci îi arătăm cum intră (e-mailul contului sau SMS).
+        if (!social) setCodeLogin(true);
+        setMode("login");
+        setNotice(
+          t(business?.otpSms === false ? "login.otherEmailNoSms" : "login.otherEmailSms"),
+        );
+      } else setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -314,6 +330,15 @@ export function PhoneLogin({
             onDone={finish}
             initialIdentifier={cleanEmail || cleanPhone}
           />
+          <Pressable
+            onPress={() => chooseCode(true)}
+            style={{ marginTop: space.md, alignItems: "center" }}
+            accessibilityRole="button"
+          >
+            <Text style={{ color: colors.gold, fontSize: 14, fontWeight: "600" }}>
+              {t(business?.otpSms === false ? "login.useCodeEmail" : "login.useCode")}
+            </Text>
+          </Pressable>
         </>
       ) : (
         <>
@@ -585,6 +610,17 @@ export function PhoneLogin({
               </>
             )}
           </View>
+          {codeLogin && !register && !social ? (
+            <Pressable
+              onPress={() => chooseCode(false)}
+              style={{ marginTop: space.md, alignItems: "center" }}
+              accessibilityRole="button"
+            >
+              <Text style={{ color: colors.gold, fontSize: 14, fontWeight: "600" }}>
+                {t("login.usePassword")}
+              </Text>
+            </Pressable>
+          ) : null}
         </>
       )}
 
