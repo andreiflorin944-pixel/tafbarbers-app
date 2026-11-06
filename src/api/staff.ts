@@ -14,7 +14,9 @@ const devHost = __DEV__ ? (Constants.expoConfig?.hostUri ?? '').split(':')[0] : 
 export const apiUrl: string = (
   process.env.EXPO_PUBLIC_API_URL ||
   (Constants.expoConfig?.extra?.apiUrl as string | undefined) ||
-  (devHost ? `http://${devHost}:8787` : '')
+  (devHost ? `http://${devHost}:8787` : '') ||
+  // În aplicația din magazine nu pornim niciodată cu datele de test, chiar dacă adresa lipsește la construire.
+  (__DEV__ ? '' : 'https://app.tafbarbers.ro')
 ).replace(/\/+$/, '');
 
 export type Perm = 'bookings_all' | 'bookings_create' | 'bookings_manage' | 'clients' | 'contacts' | 'timeoff' | 'stats' | 'reports' | 'shop';
