@@ -234,7 +234,8 @@ function StoreCard(p: {
 }
 
 function UpdateModal({ d, platform, onClose, onDone }: { d: AppsData; platform: 'ios' | 'android'; onClose: () => void; onDone: () => void }) {
-  const [where, setWhere] = useState<'all' | 'ios' | 'android'>(d.connections.google || d.connections.apple ? 'all' : platform);
+  // Pornește pe platforma butonului apăsat (iOS sau Android); „iPhone și Android” se alege doar din listă.
+  const [where, setWhere] = useState<'all' | 'ios' | 'android'>(platform);
   const [version, setVersion] = useState(nextVersion(d));
   const [whatsNew, setWhatsNew] = useState('');
   const { busy, error, run } = useAction();
