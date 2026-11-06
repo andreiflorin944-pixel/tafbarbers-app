@@ -1,3 +1,4 @@
+import { usePathname } from 'expo-router';
 import { api } from '@/api';
 import { LegalSign } from '@/components/LegalSign';
 import { useT } from '@/i18n';
@@ -10,7 +11,11 @@ import { useApp } from '@/state/AppState';
 export function LegalGate() {
   const { user, token, refreshMe, signOut } = useApp();
   const { lang, t } = useT();
-  if (!user?.legalPending || !token) return null;
+  const path = usePathname();
+  // Nu peste fereastra de intrare în cont: pe iPhone, o fereastră deschisă peste ea rămâne agățată când intrarea se închide
+  // (ecranul se blochează și semnarea nu ajunge la server). Apare imediat după, pe ecranul la care revii.
+  const onLogin = path === '/login' || path === '/staff/login';
+  if (!user?.legalPending || !token || onLogin) return null;
   return (
     <LegalSign
       visible
