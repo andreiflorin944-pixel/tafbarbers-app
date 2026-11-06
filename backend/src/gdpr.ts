@@ -17,7 +17,8 @@ export async function exportClient(env: Env, id: string) {
   if (!c) throw new HttpError(404, 'not_found');
   const [bk, msgs, tokens] = await Promise.all([
     env.DB.prepare(`${BOOKING_SELECT} WHERE b.client_id = ? ORDER BY b.starts_at`).bind(id).all<BookingRow>(),
-    env.DB.prepare('SELECT channel, kind, created_at, status FROM message_log WHERE recipient = ? OR recipient = ? ORDER BY id').bind(c.phone, c.email ?? '').all(),
+    // Numărul nedovedit (cont făcut cu cod pe e-mail sau Apple / Google) poate fi al altcuiva: mesajele trimise lui nu intră în export.
+    env.DB.prepare('SELECT channel, kind, created_at, status FROM message_log WHERE recipient = ? OR recipient = ? ORDER BY id').bind(phoneOf(c), c.email ?? '').all(),
     env.DB.prepare('SELECT platform, updated_at FROM push_tokens WHERE client_id = ?').bind(id).all(),
   ]);
   const orders = (await getOrders(env, 'o.client_id = ?', [id], 1000)).map(({ clientName: _n, clientPhone: _p, ...o }) => o);
@@ -48,7 +49,7 @@ export async function exportClient(env: Env, id: string) {
     devices: tokens.results,
     giftCards: (
       await env.DB.prepare('SELECT code, amount_bani, balance_bani, recipient_name, status, created_at FROM gift_cards WHERE buyer_client_id = ? OR recipient_phone = ?')
-        .bind(id, c.phone)
+        .bind(id, phoneOf(c))
         .all()
     ).results,
     // Și dacă perechea apare ca exemplu altor clienți (consilierul AI), cu data acordului și a retragerii.
@@ -67,7 +68,7 @@ export async function exportClient(env: Env, id: string) {
  */
 export async function deleteClient(env: Env, id: string) {
   const now = iso(new Date());
-  const c = await env.DB.prepare('SELECT phone, email FROM clients WHERE id = ? AND deleted_at IS NULL').bind(id).first<{ phone: string; email: string | null }>();
+  const c = await env.DB.prepare('SELECT phone, email, phone_unverified FROM clients WHERE id = ? AND deleted_at IS NULL').bind(id).first<{ phone: string; email: string | null; phone_unverified: number | null }>();
   if (!c) throw new HttpError(404, 'not_found');
   // Abonamentele cu plată recurentă se opresc imediat în Stripe (nicio plată după ștergere), iar clientul Stripe se șterge.
   try {
@@ -96,7 +97,8 @@ export async function deleteClient(env: Env, id: string) {
     // Contoarele zilnice ale asistentului și ale consilierului de tunsori (cheia conține id-ul clientului).
     env.DB.prepare(`DELETE FROM assistant_usage WHERE key IN (?1, 'advisor:' || ?1, 'advisor-try:' || ?1)`).bind(id),
     // Cardurile cadou rămân valabile (sunt plătite), dar fără datele lui.
-    env.DB.prepare(`UPDATE gift_cards SET recipient_phone = NULL WHERE recipient_phone = ?`).bind(c.phone),
+    // Doar dacă numărul e dovedit: altfel cardul e al celui care are cu adevărat numărul și rămâne legat de el.
+    env.DB.prepare(`UPDATE gift_cards SET recipient_phone = NULL WHERE recipient_phone = ?`).bind(phoneOf(c)),
     env.DB.prepare(`UPDATE gift_cards SET message = '' WHERE buyer_client_id = ?`).bind(id),
     env.DB.prepare(`DELETE FROM sessions WHERE kind = 'client' AND subject_id = ?`).bind(id),
     env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(c.phone),
@@ -105,7 +107,7 @@ export async function deleteClient(env: Env, id: string) {
     env.DB.prepare('DELETE FROM login_failures WHERE key = ?').bind(`acct:${id}`),
     // Acordurile rămân doar anonime (fără IP și dispozitiv), ca dovadă că acest cont a existat și a acceptat.
     anonymizeConsents(env, id, now),
-    env.DB.prepare(`UPDATE message_log SET recipient = 'sters' WHERE recipient = ? OR recipient = ?`).bind(c.phone, c.email ?? '\u0000'),
+    env.DB.prepare(`UPDATE message_log SET recipient = 'sters' WHERE recipient = ? OR recipient = ?`).bind(phoneOf(c), c.email ?? '\u0000'),
     env.DB.prepare(
       `UPDATE clients SET phone = ?, name = '', email = NULL, notes = '', marketing_sms = 0, marketing_email = 0, marketing_push = 0, marketing_consent_at = NULL, password_hash = NULL, password_set_at = NULL, hist_visits = NULL, hist_spent_bani = NULL, hist_cancelled = NULL, hist_cancelled_bani = NULL, hist_noshows = NULL, hist_noshow_bani = NULL, hist_first_visit = NULL, hist_last_visit = NULL, preferred_barber_id = NULL, deleted_at = ? WHERE id = ?`,
     ).bind(`deleted:${id}`, now, id),
@@ -164,4 +166,9 @@ export async function clientsCsv(env: Env) {
 export async function clientsCells(env: Env): Promise<Cell[][]> {
   const { head, rows } = await clientsTable(env);
   return [head, ...rows];
+}
+
+/** Numărul clientului, doar dacă e dovedit (cod prin SMS); altfel un text care nu se potrivește cu niciun număr. */
+function phoneOf(c: { phone: string; phone_unverified?: number | null }) {
+  return c.phone_unverified ? '-' : c.phone;
 }

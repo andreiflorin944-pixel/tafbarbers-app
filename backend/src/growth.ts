@@ -596,7 +596,8 @@ export async function activateGiftCard(env: Env, id: string, adminId: string | n
     .first<GiftCardRow>())!;
   if (g.recipient_phone) {
     const shop = (await getBusiness(env)).name;
-    const rc = await env.DB.prepare('SELECT id, name, lang FROM clients WHERE phone = ? AND deleted_at IS NULL').bind(g.recipient_phone).first<{ id: string; name: string; lang: string }>();
+    // Push și e-mail doar pe un cont cu numărul dovedit (SMS-ul pleacă oricum pe număr, la cine îl are).
+    const rc = await env.DB.prepare('SELECT id, name, lang FROM clients WHERE phone = ? AND deleted_at IS NULL AND coalesce(phone_unverified, 0) = 0').bind(g.recipient_phone).first<{ id: string; name: string; lang: string }>();
     const lang = langOf(rc?.lang ?? 'ro');
     const vars = {
       nume: firstName(g.recipient_name || rc?.name || ''),

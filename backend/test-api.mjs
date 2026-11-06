@@ -29,7 +29,7 @@ const code = r.body.devCode;
 r = await req('POST', '/auth/otp', { phone: '0712345678' }); ok(r.status === 429, 'otp resend throttled');
 r = await req('POST', '/auth/otp', { phone: '+12025550123' }); ok(r.status === 400 && r.body.error === 'country_not_supported', 'US number rejected');
 r = await req('POST', '/auth/verify', { phone: '0712345678', code: code === '0000' ? '1111' : '0000' }); ok(r.status === 400, 'wrong code rejected');
-r = await req('POST', '/auth/verify', { phone: '0712345678', code, name: 'Test Client', lang: 'fr' }); ok(r.status === 200 && r.body.token, 'verify ok');
+r = await req('POST', '/auth/verify', { phone: '0712345678', code, name: 'Test Client', lang: 'fr', acceptTerms: true, email: 'c@test.ro' }); ok(r.status === 200 && r.body.token, 'verify ok');
 const tok = r.body.token;
 r = await req('GET', '/me', null, tok); ok(r.body.name === 'Test Client' && r.body.lang === 'fr', 'me');
 
@@ -83,9 +83,9 @@ r = await req('POST', '/push-tokens', { token: 'ExponentPushToken[abc]', platfor
 r = await req('POST', '/admin/admins', { email: 'andrei@taf.ro', name: 'Andrei', password: 'parola-andrei-1', barberId: 'barber-andrei' }, at); ok(r.status === 201, 'create barber account');
 const andreiId = r.body.id;
 r = await req('POST', '/admin/login', { email: 'andrei@taf.ro', password: 'parola-andrei-1' }); const bt = r.body.token; ok(!!bt, 'barber login');
-r = await req('GET', '/admin/me', null, bt); ok(r.body.owner === false && r.body.permissions.bookings_create === true && r.body.permissions.clients === false, 'barber default perms');
+r = await req('GET', '/admin/me', null, bt); ok(r.body.owner === false && r.body.permissions.bookings_create === true && r.body.permissions.clients === true && r.body.permissions.contacts === false, 'barber default perms (clients yes, contacts no)');
 r = await req('GET', '/admin/bookings', null, bt); ok(r.body.every(x => x.barberId === 'barber-andrei'), `barber sees only own bookings (${r.body.length})`);
-r = await req('GET', '/admin/clients', null, bt); ok(r.status === 403, 'barber cannot list clients by default');
+r = await req('GET', '/admin/clients', null, bt); ok(r.status === 200 && !JSON.stringify(r.body).includes('"phone"'), 'barber sees clients without phone numbers');
 r = await req('POST', '/admin/services', { name: 'x', durationMin: 30, price: 1 }, bt); ok(r.status === 403, 'barber cannot edit services');
 r = await req('GET', '/admin/stats', null, bt); ok(r.status === 200 && r.body.last30.revenue === null, 'barber stats without revenue');
 r = await req('PATCH', `/admin/admins/${andreiId}`, { permissions: { clients: true, bookings_all: true } }, at); ok(r.status === 200, 'owner updates perms');

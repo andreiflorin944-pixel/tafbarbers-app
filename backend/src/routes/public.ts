@@ -31,6 +31,14 @@ publicRoutes.post('/app-errors', async (c) => {
   const str = (v: unknown, n: number) => (typeof v === 'string' ? v.slice(0, n) : '');
   const message = str(b.message, 500);
   if (!message) return c.json({ ok: true });
+  // Cel mult 30 de erori pe zi de pe același IP: altfel oricine ar putea înlocui jurnalul (păstrează ultimele 300) cu mesaje false.
+  const ip = await ipHash(c.env, c);
+  if (ip) {
+    const n = await c.env.DB.prepare(`INSERT INTO assistant_usage (day, key, n) VALUES (?, ?, 1) ON CONFLICT (day, key) DO UPDATE SET n = n + 1 RETURNING n`)
+      .bind(iso(new Date()).slice(0, 10), `apperr:${ip}`)
+      .first<{ n: number }>();
+    if ((n?.n ?? 0) > 30) return c.json({ ok: true });
+  }
   const who = await optionalSession(c).catch(() => null);
   console.error('app_error', message);
   await c.env.DB.batch([
