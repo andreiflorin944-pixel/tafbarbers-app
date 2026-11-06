@@ -145,7 +145,13 @@ export type Subscription = {
   renewal?: { on: boolean; at: string | null; price: number; failed: boolean; ended: boolean } | null;
   /** Clientul poate porni reînnoirea automată (plata online pornită, planul încă de vânzare). */
   renewable?: boolean;
+  /** Abonament personalizat: serviciile alese, de câte ori și câte s-au folosit. null = abonament obișnuit. */
+  items?: Array<{ serviceId: string; qty: number; used: number }> | null;
 };
+/** Abonamentul personalizat: reducerea (%) după numărul de vizite (`discounts['3'] = 10`), limitele și serviciile care pot intra (gol = toate). */
+export type CustomSubConfig = { enabled: boolean; discounts: Record<string, number>; minVisits: number; maxVisits: number; periodDays: number; serviceIds: string[] };
+export type CustomSubItem = { serviceId: string; qty: number };
+export type CustomSubQuote = { items: Array<CustomSubItem & { name: string; price: number }>; visits: number; discount: number; fullPrice: number; price: number; periodDays: number };
 export type Referrals = { enabled: boolean; code: string; referred: number; reward: string | null; welcome?: string | null; bonuses: Bonus[] };
 export type Identity = { note: string; photos: IdentityPhoto[]; staffPhotos?: IdentityPhoto[] };
 

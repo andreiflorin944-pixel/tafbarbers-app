@@ -123,6 +123,13 @@ const MESSAGES: Record<string, string> = {
   pay_request_recent: 'Cererea de plată tocmai a plecat. Mai încearcă peste un minut.',
   not_to_refund: 'Plata nu mai e „de returnat” (a fost deja returnată). Reîncarcă pagina.',
   no_active_subscription: 'Clientul nu are un abonament activ (cu tunsori rămase) pentru acest serviciu.',
+  too_few_visits: 'Abonamentul personalizat are prea puține vizite (vezi minimul din Abonamente → Abonament personalizat).',
+  too_many_visits: 'Abonamentul personalizat are prea multe vizite (maxim pe lună, din Abonamente → Abonament personalizat).',
+  service_not_allowed: 'Un serviciu ales nu poate intra în abonamentul personalizat.',
+  custom_sub_off: 'Abonamentul personalizat e oprit (Abonamente → Abonament personalizat).',
+  invalid_min_visits: 'Minimul de vizite nu e corect.',
+  invalid_max_visits: 'Maximul de vizite trebuie să fie cel puțin cât minimul.',
+  invalid_discount: 'Reducerile trebuie să fie între 0 și 90%.',
   already_completed: 'Tunsoarea a fost deja confirmată.',
   booking_cancelled: 'Programarea e anulată și nu se mai poate confirma (ora poate fi deja luată). Fă o programare nouă.',
   plan_not_found: 'Abonamentul nu mai există sau e ascuns.',
@@ -419,9 +426,14 @@ export type Subscription = {
   cancelledAt: string | null;
   createdByName?: string | null;
   client?: { id: string; name: string; phone: string };
+  /** Abonament personalizat: serviciile alese, de câte ori și câte s-au folosit. null = abonament obișnuit. */
+  items?: Array<{ serviceId: string; qty: number; used: number }> | null;
   /** Plata automată cu cardul (Stripe): null = plătit la salon sau o singură dată. `at` = următoarea plată; `ended` = abonamentul Stripe s-a încheiat. */
   renewal?: { on: boolean; at: string | null; price: number; failed: boolean; ended: boolean } | null;
 };
+/** Abonamentul personalizat: reducerea (%) după numărul de vizite, limitele, durata și serviciile care pot intra (gol = toate). */
+export type CustomSubSettings = { enabled: boolean; discounts: Record<string, number>; minVisits: number; maxVisits: number; periodDays: number; serviceIds: string[] };
+export type CustomQuote = { items: Array<{ serviceId: string; name: string; qty: number; price: number }>; visits: number; discount: number; fullPrice: number; price: number; periodDays: number; name: string };
 export type Checkout = { booking: Booking; subscription: Subscription | null; bonuses: Bonus[] };
 export type BonusKind = 'percent' | 'amount' | 'free' | 'other';
 export type Reward = { title: string; kind: BonusKind; value: number | null; validDays: number | null };

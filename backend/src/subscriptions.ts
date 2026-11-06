@@ -4,6 +4,7 @@ import { isImageUrl } from './appearance';
 import { HttpError, onlinePaymentsOn, type Env } from './env';
 import { iso } from './time';
 import { sendTemplate } from './sendTemplate';
+import { parseItems, usedByService } from './customSubs';
 
 // Abonamente la tuns: adminul definește planurile, clientul plătește la salon și frizerul
 // (sau adminul) îl activează. La fiecare tunsoare finalizată, frizerul confirmă „a plătit X lei”
@@ -20,6 +21,8 @@ export type PlanRow = {
   sort: number;
   active: number;
   photo_url?: string | null;
+  custom?: number;
+  items?: string | null;
 };
 export const plan = (r: PlanRow) => ({
   id: r.id,
@@ -77,7 +80,7 @@ export function planValues(b: PlanInput, partial: boolean) {
 }
 
 export async function getPlans(env: Env, all: boolean) {
-  const r = await env.DB.prepare(`SELECT * FROM plans ${all ? '' : 'WHERE active = 1'} ORDER BY sort, price_bani`).all<PlanRow>();
+  const r = await env.DB.prepare(`SELECT * FROM plans WHERE custom = 0 ${all ? '' : 'AND active = 1'} ORDER BY sort, price_bani`).all<PlanRow>();
   return r.results.map(plan);
 }
 
@@ -98,6 +101,7 @@ type SubRow = {
   cancelled_at: string | null;
   created_by_name?: string | null;
   recurring_id?: string | null;
+  items?: string | null;
   // Din recurring_subs (doar în listele care le cer, cu RENEWAL_JOIN).
   rec_auto_renew?: number | null;
   rec_status?: string | null;
@@ -123,7 +127,8 @@ const renewalOf = (r: SubRow) =>
       }
     : null;
 
-export const subscription = (r: SubRow) => {
+/** `used`: la abonamentul personalizat, câte vizite s-au folosit din fiecare serviciu (din `usedByService`). */
+export const subscription = (r: SubRow, used?: Map<string, number>) => {
   const now = iso(new Date());
   const state =
     r.status === 'cancelled' ? 'cancelled' : r.starts_at > now ? 'upcoming' : r.ends_at <= now ? 'expired' : r.cuts_total !== null && r.cuts_used >= r.cuts_total ? 'used_up' : 'active';
@@ -136,6 +141,8 @@ export const subscription = (r: SubRow) => {
     cutsUsed: r.cuts_used,
     cutsLeft: r.cuts_total === null ? null : Math.max(0, r.cuts_total - r.cuts_used),
     serviceIds: r.service_ids ? r.service_ids.split(',') : [],
+    // Abonament personalizat: serviciile alese, de câte ori, și câte s-au folosit. null = abonament obișnuit.
+    items: r.items ? parseItems(r.items).map((i) => ({ ...i, used: used?.get(i.serviceId) ?? 0 })) : null,
     startsAt: r.starts_at,
     endsAt: r.ends_at,
     state,
@@ -156,8 +163,9 @@ export async function getSubscriptions(env: Env, clientId: string, staff: boolea
   )
     .bind(clientId)
     .all<SubRow>();
+  const used = await usedByService(env, r.results.filter((x) => x.items).map((x) => x.id));
   return r.results.map((x) => {
-    const s = subscription(x);
+    const s = subscription(x, used.get(x.id));
     return staff ? s : { ...s, createdByName: undefined, note: undefined };
   });
 }
@@ -190,10 +198,10 @@ export async function activateSubscription(
   const end = iso(new Date(new Date(start).getTime() + p.period_days * 86_400_000));
   const id = opts.id ?? newId('sb');
   await env.DB.prepare(
-    `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by, pay_method, recurring_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by, pay_method, recurring_id, items)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, clientId, p.id, p.name, gift ? 0 : p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId, opts.payMethod ?? null, opts.recurringId ?? null)
+    .bind(id, clientId, p.id, p.name, gift ? 0 : p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId, opts.payMethod ?? null, opts.recurringId ?? null, p.items ?? null)
     .run();
   const enddate = new Date(end).toLocaleDateString('ro-RO', { timeZone: env.TIMEZONE, day: 'numeric', month: 'long', year: 'numeric' });
   try {
@@ -212,8 +220,15 @@ export async function usableSubscription(env: Env, clientId: string, serviceId: 
   )
     .bind(clientId, at, at)
     .all<SubRow>();
-  const row = r.results.find((s) => !s.service_ids || s.service_ids.split(',').includes(serviceId));
-  return row ? subscription(row) : null;
+  const fits = r.results.filter((s) => !s.service_ids || s.service_ids.split(',').includes(serviceId));
+  // Abonament personalizat: mai trebuie să aibă vizite rămase din acest serviciu (ex. 2 × Barbă, ambele folosite → nu mai acoperă barba).
+  const used = await usedByService(env, fits.filter((s) => s.items).map((s) => s.id));
+  const row = fits.find((s) => {
+    if (!s.items) return true;
+    const want = parseItems(s.items).find((i) => i.serviceId === serviceId)?.qty ?? 0;
+    return (used.get(s.id)?.get(serviceId) ?? 0) < want;
+  });
+  return row ? subscription(row, used.get(row.id)) : null;
 }
 
 /**
@@ -304,7 +319,19 @@ export async function completeBooking(
     )
       .bind(sub.id)
       .run();
-    if (!used.meta.changes) {
+    // Abonament personalizat: două confirmări în același timp pot trece amândouă de verificare; a doua se întoarce.
+    let over = false;
+    if (used.meta.changes && sub.items) {
+      const want = sub.items.find((i) => i.serviceId === bk.service_id)?.qty ?? 0;
+      const n = await env.DB.prepare(`SELECT count(*) AS n FROM bookings WHERE subscription_id = ? AND service_id = ? AND payment = 'subscription'`)
+        .bind(sub.id, bk.service_id)
+        .first<{ n: number }>();
+      if ((n?.n ?? 0) > want) {
+        over = true;
+        await env.DB.prepare('UPDATE subscriptions SET cuts_used = max(0, cuts_used - 1) WHERE id = ?').bind(sub.id).run();
+      }
+    }
+    if (!used.meta.changes || over) {
       await env.DB.prepare(
         `UPDATE bookings SET status = ?, payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, gift_card_id = NULL, gift_bani = NULL, pay_method = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
       )
@@ -355,10 +382,19 @@ export async function mySubscriptions(env: Env, clientId: string) {
   ]);
   const online = onlinePaymentsOn(env);
   const busy = new Set(recs.results.map((r) => r.plan_id));
+  // Planurile ascunse ale abonamentelor personalizate (nu apar în listă, dar se pot reînnoi automat).
+  const customIds = [...new Set(subs.filter((s) => s.items && s.planId).map((s) => s.planId!))];
+  const custom = customIds.length
+    ? (
+        await env.DB.prepare(`SELECT * FROM plans WHERE custom = 1 AND active = 1 AND id IN (${customIds.map(() => '?').join(',')})`)
+          .bind(...customIds)
+          .all<PlanRow>()
+      ).results.map(plan)
+    : [];
   return {
     plans,
     subscriptions: subs.map((s) => {
-      const p = plans.find((x) => x.id === s.planId);
+      const p = plans.find((x) => x.id === s.planId) ?? custom.find((x) => x.id === s.planId);
       const live = s.state === 'active' || s.state === 'upcoming';
       const renewable = online && live && !!p && !!recurringInterval(p.periodDays) && p.price * 100 >= 200 && (!s.renewal || s.renewal.ended) && !busy.has(p.id);
       return { ...s, renewable };

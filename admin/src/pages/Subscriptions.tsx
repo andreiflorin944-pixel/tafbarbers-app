@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, type Me, type Plan, type Service, type Subscription } from '../api';
 import { emptyTr, Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 import { date, lei } from '../util';
+import { CustomSubBuilder, CustomSubSettingsCard, itemsUsedText } from './CustomSub';
 
 const STATE: Record<Subscription['state'], string> = {
   active: 'Activ',
@@ -50,12 +51,16 @@ function RenewalToggle({ s, onChange }: { s: Subscription; onChange: () => void 
 }
 
 const cuts = (n: number | null) => (n === null ? 'nelimitat' : `${n} ${n === 1 ? 'tunsoare' : 'tunsori'}`);
-const used = (s: Subscription) => (s.cutsTotal === null ? `${s.cutsUsed} folosite (nelimitat)` : `${s.cutsUsed} din ${s.cutsTotal} folosite`);
+const usedBase = (s: Subscription) => (s.cutsTotal === null ? `${s.cutsUsed} folosite (nelimitat)` : `${s.cutsUsed} din ${s.cutsTotal} folosite`);
+/** La abonamentul personalizat, și pe fiecare serviciu: „2 din 3 folosite (Barbă 1/1 · Tuns Clasic 1/2)”. */
+const used = (s: Subscription, services?: Service[] | null) => (s.items && services ? `${usedBase(s)} (${itemsUsedText(s, services)})` : usedBase(s));
 
 /** Abonamentele din fișa clientului: istoric, activare după plata la salon și anulare (proprietarul). */
 export function ClientSubscriptions({ clientId, subs, owner, onChange }: { clientId: string; subs: Subscription[]; owner: boolean; onChange: () => void }) {
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [planId, setPlanId] = useState('');
+  const [custom, setCustom] = useState(false);
+  const services = useLoad(() => (subs.some((s) => s.items) ? api<Service[]>('GET', '/admin/services') : Promise.resolve(null)), [subs.some((s) => s.items)]);
   const { busy, error, run } = useAction();
   const plan = plans?.find((p) => p.id === planId);
   return (
@@ -67,7 +72,7 @@ export function ClientSubscriptions({ clientId, subs, owner, onChange }: { clien
             <b>{s.name}</b>
             <span className="muted">
               {' '}
-              · {date(s.startsAt)} – {date(s.endsAt)} · {used(s)} · {lei(s.price)}
+              · {date(s.startsAt)} – {date(s.endsAt)} · {used(s, services.data)} · {lei(s.price)}
               {s.createdByName ? ` · activat de ${s.createdByName}` : ''}
               {s.renewal && (s.state === 'active' || s.state === 'upcoming') ? ` · ${renewalText(s)}` : ''}
             </span>
@@ -95,7 +100,16 @@ export function ClientSubscriptions({ clientId, subs, owner, onChange }: { clien
           </span>
         </div>
       ))}
-      {plans ? (
+      {custom ? (
+        <CustomSubBuilder
+          clientId={clientId}
+          onCancel={() => setCustom(false)}
+          onDone={() => {
+            setCustom(false);
+            onChange();
+          }}
+        />
+      ) : plans ? (
         <div className="card grid">
           {plans.length === 0 ? (
             <div className="muted small">Nu ai încă abonamente. Le adaugi din pagina „Abonamente”.</div>
@@ -144,6 +158,9 @@ export function ClientSubscriptions({ clientId, subs, owner, onChange }: { clien
             }
           >
             + Activează abonament
+          </button>
+          <button className="ghost sm" onClick={() => setCustom(true)}>
+            + Abonament personalizat
           </button>
         </div>
       )}
@@ -224,6 +241,10 @@ export function SubscriptionsPage({ me }: { me: Me }) {
         </div>
       )}
 
+      <div style={{ marginTop: 24 }}>
+        <CustomSubSettingsCard owner={me.owner} services={services.data ?? []} />
+      </div>
+
       <div className="head" style={{ marginTop: 24 }}>
         <h2 style={{ margin: 0 }}>{all ? 'Toate abonamentele vândute' : 'Abonamente active'}</h2>
         <label className="check small">
@@ -269,7 +290,7 @@ export function SubscriptionsPage({ me }: { me: Me }) {
                   <td className="small">
                     {date(s.startsAt)} – {date(s.endsAt)}
                   </td>
-                  <td className="small">{used(s)}</td>
+                  <td className="small">{used(s, services.data)}</td>
                   <td>
                     <span className={`pill ${PILL[s.state]}`}>{STATE[s.state]}</span>
                   </td>

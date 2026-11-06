@@ -97,6 +97,7 @@ function RootStack() {
       <Stack.Screen name="advisor" options={{ title: t('nav.advisor') }} />
       <Stack.Screen name="rewards" options={{ title: t('nav.rewards') }} />
       <Stack.Screen name="subscriptions" options={{ title: t('nav.subscriptions') }} />
+      <Stack.Screen name="custom-sub" options={{ title: t('customSub.title') }} />
       <Stack.Screen name="gift-cards" options={{ title: t('nav.giftCards') }} />
       <Stack.Screen name="before-after" options={{ title: t('nav.beforeAfter') }} />
       <Stack.Screen name="book/index" options={{ headerShown: false }} />

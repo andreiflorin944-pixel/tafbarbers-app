@@ -63,6 +63,7 @@ import {
   RENEWAL_COLS,
   RENEWAL_JOIN,
 } from '../subscriptions';
+import { customRefundBani, usedByService, ensureCustomPlan, getCustomSubSettings, quoteCustom, saveCustomSubSettings, type CustomSubSettings } from '../customSubs';
 import { setRenewal, stopPlanRenewals, stopRecurringFor } from '../recurring';
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
 import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } from '../reports';
@@ -1337,7 +1338,8 @@ adminRoutes.get('/subscriptions', async (c) => {
   )
     .bind(...(all ? [] : [iso(new Date())]))
     .all<Parameters<typeof subscription>[0] & { client_name: string; client_phone: string }>();
-  return c.json(r.results.map((x) => ({ ...subscription(x), client: { id: x.client_id, name: x.client_name, phone: x.client_phone } })));
+  const used = await usedByService(c.env, r.results.filter((x) => x.items).map((x) => x.id));
+  return c.json(r.results.map((x) => ({ ...subscription(x, used.get(x.id)), client: { id: x.client_id, name: x.client_name, phone: x.client_phone } })));
 });
 
 /** Activează un abonament plătit la salon (frizerul clientului sau adminul). */
@@ -1352,6 +1354,28 @@ adminRoutes.post('/clients/:id/subscriptions', async (c) => {
   const sid = await activateSubscription(c.env, id, b.planId, c.get('admin').adminId, note, !!b.gift);
   if (!b.gift) await c.env.DB.prepare('UPDATE subscriptions SET pay_method = ? WHERE id = ?').bind(payMethodOf(b.payMethod), sid).run();
   return c.json({ id: sid }, 201);
+});
+
+/** Setările abonamentului personalizat (reduceri pe număr de vizite, limite, durată, servicii). */
+adminRoutes.get('/custom-sub', async (c) => c.json(await getCustomSubSettings(c.env)));
+adminRoutes.put('/custom-sub', ownerOnly, async (c) => c.json(await saveCustomSubSettings(c.env, await c.req.json<Partial<CustomSubSettings>>())));
+/** Prețul unei combinații, pentru panou (merge și cu abonamentul personalizat oprit în aplicație). */
+adminRoutes.post('/custom-sub/quote', async (c) => {
+  const b = await c.req.json<{ items?: unknown }>();
+  const q = await quoteCustom(c.env, b.items);
+  return c.json({ items: q.lines, visits: q.visits, discount: q.pct, fullPrice: q.fullBani / 100, price: q.priceBani / 100, periodDays: q.periodDays, name: q.name });
+});
+
+/** Activează un abonament personalizat plătit la salon: `{ items: [{ serviceId, qty }], payMethod, note }`. */
+adminRoutes.post('/clients/:id/custom-sub', async (c) => {
+  const id = c.req.param('id')!;
+  await needClient(c, id);
+  const b = await c.req.json<{ items?: unknown; note?: string; payMethod?: string }>();
+  const q = await quoteCustom(c.env, b.items);
+  const planId = await ensureCustomPlan(c.env, q);
+  const sid = await activateSubscription(c.env, id, planId, c.get('admin').adminId, String(b.note ?? '').trim(), false, { anyPlan: true });
+  await c.env.DB.prepare('UPDATE subscriptions SET pay_method = ? WHERE id = ?').bind(payMethodOf(b.payMethod), sid).run();
+  return c.json({ id: sid, price: q.priceBani / 100 }, 201);
 });
 
 /**
@@ -1374,9 +1398,18 @@ adminRoutes.patch('/subscriptions/:id', ownerOnly, async (c) => {
     .run();
   // Cumpărat online: nefolosit, banii se returnează singuri; cu tunsori folosite, plata apare „de returnat” (decizi tu cât).
   if (r.meta.changes) {
-    const sub = await c.env.DB.prepare('SELECT cuts_used FROM subscriptions WHERE id = ?').bind(id).first<{ cuts_used: number }>();
+    const sub = await c.env.DB.prepare('SELECT id, cuts_used, price_bani, items FROM subscriptions WHERE id = ?')
+      .bind(id)
+      .first<{ id: string; cuts_used: number; price_bani: number; items: string | null }>();
     const used = sub?.cuts_used ?? 0;
-    await refundOrFlag(c.env, 'sub', id, used ? `Abonament anulat după ${used} tunsori folosite` : 'Abonament anulat', !used);
+    // Abonament personalizat folosit parțial: se returnează plătit minus vizitele folosite la preț întreg (suma apare în motiv, la „de returnat”).
+    const why =
+      used && sub?.items
+        ? `Abonament personalizat anulat după ${used} vizite: de returnat ${(await customRefundBani(c.env, sub)) / 100} lei (plătit ${sub.price_bani / 100} lei minus vizitele folosite la preț întreg)`
+        : used
+          ? `Abonament anulat după ${used} tunsori folosite`
+          : 'Abonament anulat';
+    await refundOrFlag(c.env, 'sub', id, why, !used);
     await stopRecurringFor(c.env, id, c.get('admin').adminId);
   }
   return c.json({ ok: true });
