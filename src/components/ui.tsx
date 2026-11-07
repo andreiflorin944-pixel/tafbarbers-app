@@ -117,9 +117,12 @@ export function ServiceRow({
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{service.name}</Text>
         {service.membersOnly ? <Text style={styles.clubBadge}>TAF Club</Text> : null}
-        <Text style={styles.muted} numberOfLines={2}>
-          {service.description}
-        </Text>
+        {/* La rezervare, serviciul ales își arată descrierea întreagă (din panou → Servicii → Descriere). */}
+        {service.description ? (
+          <Text style={styles.muted} numberOfLines={selected ? undefined : 2}>
+            {service.description}
+          </Text>
+        ) : null}
       </View>
       <View style={{ alignItems: 'flex-end' }}>
         <Text style={styles.price}>{price ?? priceText(service)}</Text>

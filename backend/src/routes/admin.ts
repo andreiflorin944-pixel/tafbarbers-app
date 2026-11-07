@@ -19,7 +19,7 @@ import {
   tokenFrom,
   verifyPassword,
 } from '../auth';
-import { acceptRequest, BOOKING_SELECT, cancelBooking, cancelPayRequest, createBooking, editBooking, getBooking, HOLDS_SLOT, logBookingEvent, pendingRequests, refuseRequest, sendPayRequest, type BookingEdit } from '../bookings';
+import { acceptRequest, BOOKING_SELECT, cancelBooking, cancelPayRequest, createBooking, editBooking, getBooking, HOLDS_SLOT, logBookingEvent, pendingRequests, recentLate, refuseRequest, sendPayRequest, type BookingEdit } from '../bookings';
 import { listPayments, markRefunded, onlinePaymentsOn, paymentsStatus, publicBase, refundOrFlag, retryRefund } from '../payments';
 import {
   barber,
@@ -1160,8 +1160,11 @@ adminRoutes.get('/bookings/:id/checkout', async (c) => {
 /** Cererile de programare care așteaptă răspuns (clopoțelul din panou). Frizerul le vede doar pe ale lui. */
 adminRoutes.get('/bookings/requests', async (c) => {
   need(c, 'bookings_manage');
-  const items = await localize(c.env, c.req.query('lang'), (await pendingRequests(c.env, ownBarber(c))).filter((x) => inScope(c, x)), ['serviceName']);
-  return c.json({ count: items.length, items });
+  const [pending, late] = await Promise.all([pendingRequests(c.env, ownBarber(c)), recentLate(c.env, ownBarber(c))]);
+  const items = await localize(c.env, c.req.query('lang'), pending.filter((x) => inScope(c, x)), ['serviceName']);
+  // „Întârzii”: clienții care au anunțat din aplicație că ajung mai târziu (mesaj și sunet în panou, ca la cereri).
+  const lateItems = await localize(c.env, c.req.query('lang'), late.filter((x) => inScope(c, x)), ['serviceName']);
+  return c.json({ count: items.length, items, late: lateItems });
 });
 
 /** Acceptă cererea: devine confirmată și clientul primește confirmarea. */

@@ -4,6 +4,7 @@ import { Alert, AppState, Platform, Text, View } from 'react-native';
 import { api } from '@/api';
 import { Button, Card, Empty, Screen, Segmented, Title, styles } from '@/components/ui';
 import { PayDueBanner, usePayBooking } from '@/components/PayDue';
+import { canReportLate, LateSheet } from '@/components/LateSheet';
 import type { Booking, WaitlistEntry } from '@/data/types';
 import { formatDate, formatTime, fromDayKey } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
@@ -13,8 +14,10 @@ import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function Bookings() {
-  const { user, token, bookings, cancelBooking, serviceById, barberById, locationById, locations, resetDraft, setDraft, business, refreshBookings } = useApp();
+  const { user, token, bookings, cancelBooking, reportLate, serviceById, barberById, locationById, locations, resetDraft, setDraft, business, refreshBookings } = useApp();
   const [tab, setTab] = useState(0);
+  // „Întârzii”: programarea pentru care clientul anunță întârzierea.
+  const [late, setLate] = useState<Booking | null>(null);
   // Lista de așteptare: se reîncarcă la fiecare intrare pe ecran (clientul s-a putut înscrie chiar acum, din alegerea orei).
   const [waitlist, setWaitlist] = useState<WaitlistEntry[]>([]);
   const loadWaitlist = useCallback(() => {
@@ -51,7 +54,10 @@ export default function Bookings() {
   const now = Date.now();
   const sorted = [...bookings].sort((a, b) => a.start.localeCompare(b.start));
   // Cererile în așteptare stau tot la „Urmează”, cu eticheta lor.
-  const upcoming = sorted.filter((b) => (b.status === 'confirmed' || b.status === 'requested') && new Date(b.start).getTime() >= now);
+  // O programare confirmată rămâne aici și la 30 de minute după oră, ca clientul să poată anunța că întârzie.
+  const upcoming = sorted.filter(
+    (b) => (b.status === 'confirmed' || b.status === 'requested') && new Date(b.start).getTime() >= now - (b.status === 'confirmed' ? 30 * 60_000 : 0),
+  );
   const past = sorted.filter((b) => !upcoming.includes(b)).reverse();
 
   const notify = (msg: string) => (Platform.OS === 'web' ? window.alert(msg) : Alert.alert(t('bookings.cancelTitle'), msg));
@@ -111,6 +117,14 @@ export default function Bookings() {
           {b.payment === 'subscription' ? t('bookings.onSubscription') : t('common.lei', { n: (b.payment === 'paid' ? b.paidAmount : (b.price ?? service?.price)) ?? 0 })}
           {b.onlinePaid ? (b.onlineRefunded ? t('bookings.refunded') : t('bookings.paidOnline')) : ''}
         </Text>
+        {b.lateMin && b.status === 'confirmed' ? (
+          <Text style={{ color: colors.gold, fontWeight: '700' }}>{t('late.told', { n: b.lateMin })}</Text>
+        ) : null}
+        {canCancel && canReportLate(b) ? (
+          <View style={{ marginTop: space.sm }}>
+            <Button title={b.lateMin ? t('late.again') : t('late.button')} variant="ghost" onPress={() => setLate(b)} />
+          </View>
+        ) : null}
         {b.payDue && business?.onlinePayments ? (
           <Text style={{ color: colors.gold, fontWeight: '700' }}>{t('pay.due', { amount: lei(b.payDue) })}</Text>
         ) : null}
@@ -124,7 +138,7 @@ export default function Bookings() {
           <View style={{ marginTop: space.sm }}>
             <Button title={t('bookings.withdraw')} variant="ghost" onPress={() => confirmCancel(b)} />
           </View>
-        ) : canCancel && start.getTime() - Date.now() < cancelMs ? (
+        ) : canCancel && start.getTime() <= Date.now() ? null : canCancel && start.getTime() - Date.now() < cancelMs ? (
           <Text style={[styles.muted, { fontSize: 12, marginTop: space.xs }]}>
             {t('bookings.phoneOnly', { h: business?.cancelHours ?? 0 })}
           </Text>
@@ -213,6 +227,7 @@ export default function Bookings() {
       ) : (
         list.map((b) => renderItem(b, tab === 0))
       )}
+      {late ? <LateSheet booking={{ ...late, barberName: barberById(late.barberId)?.name ?? late.barberName }} onClose={() => setLate(null)} onSend={(m, n) => reportLate(late.id, m, n)} /> : null}
     </Screen>
   );
 }

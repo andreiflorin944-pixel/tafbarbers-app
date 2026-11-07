@@ -128,6 +128,17 @@ export function BookingSheet({
             </Text>
             <Text style={[s.status, { color: st.color }]}>{t(st.label)}</Text>
           </View>
+          {b.lateMin && b.status === "confirmed" ? (
+            <View style={[s.birthday, { borderColor: colors.gold }]}>
+              <Text style={{ fontSize: 20 }}>⏰</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[ui.text, { fontWeight: "700" }]}>
+                  {t("late.staffLong", { n: b.lateMin, time: b.lateAt ? formatTime(new Date(b.lateAt)) : "" })}
+                </Text>
+                {b.lateNote ? <Text style={ui.muted}>„{b.lateNote}”</Text> : null}
+              </View>
+            </View>
+          ) : null}
           {b.clientBirthday ? (
             <View style={s.birthday}>
               <Candle size={22} />

@@ -112,6 +112,8 @@ export function httpApi(baseUrl: string): BookingApi {
     listBookings: (token) => call('GET', '/me/bookings', { token }),
     createBooking: (token, input) => call('POST', '/bookings', { token, body: input }),
     cancelBooking: (token, id) => call('POST', `/bookings/${encodeURIComponent(id)}/cancel`, { token }),
+    reportLate: (token, id, minutes, note) => call('POST', `/bookings/${encodeURIComponent(id)}/late`, { token, body: { minutes, note } }),
+    getAppVersion: () => call('GET', '/app-version'),
     getWaitlist: (token) => call('GET', '/me/waitlist', { token }),
     joinWaitlist: (token, input) => call('POST', '/me/waitlist', { token, body: input }),
     leaveWaitlist: async (token, id) => {

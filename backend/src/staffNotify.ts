@@ -3,18 +3,19 @@ import type { Env } from './env';
 import { sendPush } from './notify';
 import { formatLocal, localDay } from './time';
 
-// Anunțurile pe telefon pentru echipă (aplicația echipei): programare nouă, cerere nouă, anulare, mutare.
+// Anunțurile pe telefon pentru echipă (aplicația echipei): programare nouă, cerere nouă, anulare, mutare, clientul întârzie.
 // Le primesc frizerul programării, proprietarul și administratorul locației, fiecare dacă nu le-a oprit.
 // Cine a făcut el însuși schimbarea nu primește anunțul.
 
 type Booking = NonNullable<Awaited<ReturnType<typeof getBooking>>>;
-export type StaffEvent = 'new' | 'request' | 'cancelled' | 'moved';
+export type StaffEvent = 'new' | 'request' | 'cancelled' | 'moved' | 'late';
 
 const TITLES: Record<StaffEvent, string> = {
   new: 'Programare nouă',
   request: 'Cerere nouă de programare',
   cancelled: 'Programare anulată',
   moved: 'Programare mutată',
+  late: 'Clientul întârzie',
 };
 
 /** Nu aruncă niciodată: programarea s-a făcut deja, anunțul e doar în plus. */
@@ -23,7 +24,7 @@ export async function notifyStaff(
   b: Booking,
   ev: StaffEvent,
   actorAdminId: string | null,
-  opts: { fromStart?: string; fromBarberId?: string } = {},
+  opts: { fromStart?: string; fromBarberId?: string; lateMin?: number; lateNote?: string | null } = {},
 ): Promise<void> {
   try {
     const barbers = [b.barberId, opts.fromBarberId ?? b.barberId];
@@ -40,9 +41,11 @@ export async function notifyStaff(
     const when = formatLocal(tz, b.start, 'ro');
     const parts = [b.clientName?.trim() || 'Client', b.serviceName ?? '', `cu ${b.barberName ?? ''}`.trim(), when];
     if (ev === 'moved' && opts.fromStart && opts.fromStart !== b.start) parts.push(`(era ${formatLocal(tz, opts.fromStart, 'ro')})`);
-    const body = parts.filter((p) => p && p !== 'cu').join(' · ');
+    let body = parts.filter((p) => p && p !== 'cu').join(' · ');
+    if (ev === 'late' && opts.lateNote) body += `\n„${opts.lateNote}”`;
+    const title = ev === 'late' && opts.lateMin ? `${TITLES.late} ${opts.lateMin} min` : TITLES[ev];
     // Fără bookingId în jurnal: istoricul programării arată doar mesajele către client.
-    await sendPush(env, { kind: `staff_${ev}` }, tokens, TITLES[ev], body, {
+    await sendPush(env, { kind: `staff_${ev}` }, tokens, title, body, {
       staff: '1',
       bookingId: b.id,
       day: localDay(tz, new Date(b.start)),

@@ -53,6 +53,10 @@ export type StaffBooking = {
   // Cererile de programare: cum s-au încheiat (refuzată / expirată) și motivul refuzului, ca în panou.
   requestOutcome?: 'accepted' | 'refused' | 'expired' | null;
   refuseReason?: string | null;
+  // „Întârzii”: clientul a anunțat din aplicație cu câte minute întârzie (și o notiță).
+  lateMin?: number | null;
+  lateNote?: string | null;
+  lateAt?: string | null;
 };
 /** Istoricul unei programări: jurnalul, plățile și mesajele trimise clientului, plus linkul programării pentru client. */
 export type StaffActivity = {

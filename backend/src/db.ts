@@ -190,6 +190,9 @@ export type BookingRow = {
   cancelled_by?: string | null;
   request_outcome?: string | null;
   refuse_reason?: string | null;
+  late_min?: number | null;
+  late_note?: string | null;
+  late_at?: string | null;
   client_name?: string;
   client_phone?: string;
   client_birth_date?: string | null;
@@ -237,6 +240,10 @@ export const booking = (r: BookingRow) => ({
   // Cererile de programare (cu aprobare): cum s-au încheiat și motivul refuzului, spus clientului.
   requestOutcome: (r.request_outcome ?? null) as 'accepted' | 'refused' | 'expired' | null,
   refuseReason: r.refuse_reason ?? null,
+  // „Întârzii”: clientul a anunțat din aplicație că ajunge cu atâtea minute mai târziu (și când).
+  lateMin: r.late_min ?? null,
+  lateNote: r.late_note ?? null,
+  lateAt: r.late_at ?? null,
   ...(r.client_name !== undefined && { clientName: r.client_name, clientPhone: r.client_phone }),
   // Programare în ziua de naștere a clientului (frizerul vede o lumânare); data nașterii nu se trimite.
   ...(r.client_birth_date !== undefined && { clientBirthday: isBirthdayOn(r.client_birth_date, roLocal(r.starts_at).day) }),

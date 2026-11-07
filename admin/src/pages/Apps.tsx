@@ -18,7 +18,16 @@ type Release = {
   createdAt: string;
 };
 type Connections = { expo: { savedAt: string } | null; apple: { keyId: string; savedAt: string } | null; google: { email: string; savedAt: string } | null };
-type AppsData = { connections: Connections; ios: StoreStatus | null; android: StoreStatus | null; releases: Release[]; links: { appStore: string; play: string } };
+type PlatformVersions = { min: string; latest: string };
+type AppVersions = { ios: PlatformVersions; android: PlatformVersions; message: string; updatedAt: string | null };
+type AppsData = {
+  connections: Connections;
+  ios: StoreStatus | null;
+  android: StoreStatus | null;
+  releases: Release[];
+  links: { appStore: string; play: string };
+  versions?: AppVersions;
+};
 
 const PILL: Record<Tone, string> = { ok: 'completed', wait: 'confirmed', bad: 'cancelled', muted: 'off' };
 const PLATFORM = { ios: 'iPhone', android: 'Android', all: 'iPhone și Android' };
@@ -141,6 +150,8 @@ export function AppsPage() {
           Trimite actualizarea rapidă
         </button>
       </div>
+
+      <VersionsCard d={d} onSaved={data.reload} />
 
       <ConnectionsCard c={d.connections} onSaved={data.reload} />
 
@@ -295,6 +306,59 @@ function OtaModal({ onClose, onDone }: { onClose: () => void; onDone: () => void
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * „Cere actualizarea în aplicație”: telefoanele nu pot fi obligate să instaleze singure versiunea nouă (e setarea fiecăruia
+ * din App Store / Google Play), dar aplicația poate cere asta: obligatoriu (nu se mai poate folosi) sau recomandat (se poate închide).
+ */
+function VersionsCard({ d, onSaved }: { d: AppsData; onSaved: () => void }) {
+  const cur = d.versions ?? { ios: { min: '', latest: '' }, android: { min: '', latest: '' }, message: '', updatedAt: null };
+  const [v, setV] = useState(cur);
+  const [ok, setOk] = useState(false);
+  const { busy, error, run } = useAction();
+  const live = { ios: d.ios?.ok ? d.ios.live : null, android: d.android?.ok ? d.android.live : null };
+  const set = (p: 'ios' | 'android', k: keyof PlatformVersions, val: string) => (setOk(false), setV({ ...v, [p]: { ...v[p], [k]: val.trim() } }));
+  const save = async () => {
+    if (await run(() => api('PUT', '/admin/apps/versions', v))) {
+      setOk(true);
+      onSaved();
+    }
+  };
+  const row = (p: 'ios' | 'android', label: string) => (
+    <div className="grid two" key={p}>
+      <Field label={`${label}: versiune recomandată${live[p] ? ` (în magazin acum: ${live[p]})` : ''}`}>
+        <input value={v[p].latest} onChange={(e) => set(p, 'latest', e.target.value)} placeholder={live[p] ?? '1.0.2'} />
+      </Field>
+      <Field label={`${label}: versiune obligatorie`}>
+        <input value={v[p].min} onChange={(e) => set(p, 'min', e.target.value)} placeholder="gol = nu obligi" />
+      </Field>
+    </div>
+  );
+  return (
+    <div className="card grid" style={{ marginTop: 16, maxWidth: 820 }}>
+      <h2 style={{ margin: 0 }}>Cere actualizarea în aplicație</h2>
+      <p className="muted small" style={{ margin: 0 }}>
+        Apple și Google instalează singure versiunea nouă doar pe telefoanele care au pornite „Actualizări automate” (setarea fiecărui client, nu o
+        putem schimba noi). Pentru ceilalți, aplicația verifică la pornire versiunea de aici: dacă e mai veche decât <b>recomandată</b>, apare un mesaj
+        „Actualizare disponibilă” cu butonul spre App Store / Google Play (se poate închide, revine a doua zi); dacă e mai veche decât{' '}
+        <b>obligatorie</b>, aplicația nu se mai poate folosi până nu se actualizează. Scrie versiunea abia după ce e publicată în magazin.
+      </p>
+      {row('ios', 'iPhone')}
+      {row('android', 'Android')}
+      <Field label="Mesaj pentru clienți (opțional)">
+        <input value={v.message} onChange={(e) => (setOk(false), setV({ ...v, message: e.target.value }))} placeholder="Ex.: Acum poți anunța din aplicație dacă întârzii." />
+      </Field>
+      {error ? <p className="err">{error}</p> : null}
+      {ok ? <p className="small">Salvat. Telefoanele văd schimbarea la următoarea deschidere a aplicației.</p> : null}
+      <div className="row" style={{ gap: 8 }}>
+        <button disabled={busy} onClick={save}>
+          {busy ? 'Se salvează…' : 'Salvează'}
+        </button>
+        {cur.updatedAt ? <span className="muted small">Ultima schimbare: {when(cur.updatedAt)}</span> : null}
+      </div>
+    </div>
   );
 }
 

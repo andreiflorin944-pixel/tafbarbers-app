@@ -9,6 +9,7 @@ import { LegalGate } from '@/components/LegalGate';
 import { PushLink } from '@/components/PushLink';
 import { installCrashReporter, reportError } from '@/lib/crash';
 import { QrLink } from '@/components/QrLink';
+import { UpdateGate } from '@/components/UpdateGate';
 import { I18nProvider, useT } from '@/i18n';
 // Importat aici ca sarcina de fundal să fie definită și când sistemul pornește aplicația doar pentru ea.
 import { syncNearby } from '@/lib/nearby';
@@ -41,6 +42,7 @@ export default function RootLayout() {
           <RootStack />
           <LegalGate />
           <Intro />
+          <UpdateGate />
         </ThemeProvider>
       </CartProvider>
       </StaffProvider>
