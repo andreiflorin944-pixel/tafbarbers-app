@@ -71,7 +71,8 @@ export function RequestsBell({ me, onCount }: { me: Me; onCount?: (n: number) =>
       if (freshLate.length) {
         beep();
         const b = freshLate[0];
-        setToast(`⏰ ${b.clientName || 'Clientul'} întârzie ${b.lateMin} min · ${time(b.start)} cu ${b.barberName}${b.lateNote ? ` · „${b.lateNote}”` : ''}`);
+        const said = [b.lateMin ? `întârzie ${b.lateMin} min` : '', b.lateNote ? `„${b.lateNote}”` : ''].filter(Boolean).join(' · ');
+        setToast(`💬 ${b.clientName || 'Client'}: ${said} · ${time(b.start)} cu ${b.barberName}`);
         bookingsChanged('bell');
       }
       if (fresh.length) {
@@ -149,8 +150,8 @@ export function RequestsBell({ me, onCount }: { me: Me; onCount?: (n: number) =>
       </button>
       {toast ? (
         <button className="toast" onClick={() => (setOpen(true), setToast(null))}>
-          <b>{toast.startsWith('⏰') ? toast : `🔔 ${toast}`}</b>
-          <span className="muted small">{toast.startsWith('⏰') ? 'Apasă ca să vezi' : 'Apasă ca să răspunzi'}</span>
+          <b>{toast.startsWith('💬') ? toast : `🔔 ${toast}`}</b>
+          <span className="muted small">{toast.startsWith('💬') ? 'Apasă ca să vezi' : 'Apasă ca să răspunzi'}</span>
         </button>
       ) : null}
       {open ? (
@@ -169,10 +170,11 @@ export function RequestsBell({ me, onCount }: { me: Me; onCount?: (n: number) =>
             <div className="drawer-body">
               {data?.late?.length ? (
                 <>
-                  <div className="small" style={{ fontWeight: 700 }}>Clienți care întârzie</div>
+                  <div className="small" style={{ fontWeight: 700 }}>Mesaje de la clienți</div>
                   {data.late.map((b) => (
                     <div key={lateKey(b)} className="late-note">
-                      ⏰ <b>{b.clientName || b.clientPhone || 'Client'}</b> întârzie <b>{b.lateMin} min</b>
+                      💬 <b>{b.clientName || b.clientPhone || 'Client'}</b>
+                      {b.lateMin ? <> întârzie <b>{b.lateMin} min</b></> : null}
                       <div className="muted small">
                         {time(b.start)} · {b.serviceName} · {b.barberName}
                         {b.lateAt ? ` · anunțat la ${time(b.lateAt)}` : ''}

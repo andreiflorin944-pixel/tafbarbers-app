@@ -147,9 +147,9 @@ export default function StaffHome() {
                         {b.clientName || b.clientPhone}
                       </Text>
                     </View>
-                    {b.lateMin && b.status === 'confirmed' ? (
-                      <Text style={{ color: colors.gold, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
-                        ⏰ {t('late.staff', { n: b.lateMin })}
+                    {(b.lateMin || b.lateNote) && b.status === 'confirmed' ? (
+                      <Text style={{ color: colors.gold, fontWeight: '700', fontSize: 13 }} numberOfLines={2}>
+                        💬 {[b.lateMin ? t('late.staff', { n: b.lateMin }) : '', b.lateNote ? `„${b.lateNote}”` : ''].filter(Boolean).join(' · ')}
                       </Text>
                     ) : null}
                     <Text style={ui.muted} numberOfLines={1}>

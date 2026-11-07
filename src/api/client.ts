@@ -86,8 +86,8 @@ export interface BookingApi {
     input: { serviceId: string; barberId: string | null; locationId?: string | null; start: string; note?: string },
   ): Promise<Booking>;
   cancelBooking(token: string, id: string): Promise<Booking>;
-  /** „Întârzii”: anunță echipa că clientul ajunge cu `minutes` minute mai târziu (5, 10, 15, 20 sau 30). */
-  reportLate(token: string, id: string, minutes: number, note?: string): Promise<Booking>;
+  /** Mesaj către frizer despre programare, cu „întârzii `minutes` min” opțional (5, 10, 15, 20 sau 30). */
+  reportLate(token: string, id: string, minutes: number | null, note?: string): Promise<Booking>;
   /** Ce versiune a aplicației cere salonul (ecranul „Actualizare disponibilă / obligatorie”). */
   getAppVersion(): Promise<AppVersionInfo>;
   /** Lista de așteptare: înscrierile clientului, înscriere când ziua e plină, scoatere. */

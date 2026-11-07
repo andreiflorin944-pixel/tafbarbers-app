@@ -256,6 +256,7 @@ export function CalendarPage({ me }: { me: Me }) {
           {x.status === 'completed' ? '✓ ' : x.status === 'no_show' ? '✗ ' : ''}
           {x.clientBirthday ? '🕯️ ' : ''}
           {x.lateMin && x.status === 'confirmed' ? <span className="cal-late" title={x.lateNote || 'Clientul întârzie'}>⏰ +{x.lateMin}′ </span> : null}
+          {!x.lateMin && x.lateNote && x.status === 'confirmed' ? <span className="cal-late" title={x.lateNote}>💬 </span> : null}
           {x.clientName || x.clientPhone}
         </b>
         <span className="cal-ev-svc">
@@ -574,9 +575,11 @@ export function CalendarPage({ me }: { me: Me }) {
             {hover.b.clientBirthday ? '🕯️ ' : ''}
             {hover.b.clientName || hover.b.clientPhone || 'Client'}
           </div>
-          {hover.b.lateMin && hover.b.status === 'confirmed' ? (
+          {(hover.b.lateMin || hover.b.lateNote) && hover.b.status === 'confirmed' ? (
             <div className="cal-late">
-              ⏰ Întârzie {hover.b.lateMin} min{hover.b.lateNote ? ` · „${hover.b.lateNote}”` : ''}
+              💬 {hover.b.lateMin ? `Întârzie ${hover.b.lateMin} min` : ''}
+              {hover.b.lateMin && hover.b.lateNote ? ' · ' : ''}
+              {hover.b.lateNote ? `„${hover.b.lateNote}”` : ''}
             </div>
           ) : null}
           <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>

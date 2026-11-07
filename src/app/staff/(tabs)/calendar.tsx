@@ -231,6 +231,7 @@ export default function StaffCalendar() {
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                           {x.clientBirthday ? <Candle size={14} /> : null}
                           {x.lateMin && x.status === 'confirmed' ? <Text style={[s.bName, { color: colors.gold }]}>⏰+{x.lateMin}′</Text> : null}
+                          {!x.lateMin && x.lateNote && x.status === 'confirmed' ? <Text style={s.bName}>💬</Text> : null}
                           <Text style={[s.bName, { flexShrink: 1 }]} numberOfLines={1}>
                             {x.clientName || x.clientPhone}
                           </Text>

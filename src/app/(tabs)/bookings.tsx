@@ -4,7 +4,7 @@ import { Alert, AppState, Platform, Text, View } from 'react-native';
 import { api } from '@/api';
 import { Button, Card, Empty, Screen, Segmented, Title, styles } from '@/components/ui';
 import { PayDueBanner, usePayBooking } from '@/components/PayDue';
-import { canReportLate, LateSheet } from '@/components/LateSheet';
+import { canMessage, LateSheet } from '@/components/LateSheet';
 import type { Booking, WaitlistEntry } from '@/data/types';
 import { formatDate, formatTime, fromDayKey } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
@@ -117,12 +117,14 @@ export default function Bookings() {
           {b.payment === 'subscription' ? t('bookings.onSubscription') : t('common.lei', { n: (b.payment === 'paid' ? b.paidAmount : (b.price ?? service?.price)) ?? 0 })}
           {b.onlinePaid ? (b.onlineRefunded ? t('bookings.refunded') : t('bookings.paidOnline')) : ''}
         </Text>
-        {b.lateMin && b.status === 'confirmed' ? (
-          <Text style={{ color: colors.gold, fontWeight: '700' }}>{t('late.told', { n: b.lateMin })}</Text>
+        {(b.lateMin || b.lateNote) && b.status === 'confirmed' ? (
+          <Text style={{ color: colors.gold, fontWeight: '600' }}>
+            {t('late.told')} {[b.lateMin ? t('late.min', { n: b.lateMin }) : '', b.lateNote ? `„${b.lateNote}”` : ''].filter(Boolean).join(' · ')}
+          </Text>
         ) : null}
-        {canCancel && canReportLate(b) ? (
+        {canCancel && canMessage(b) ? (
           <View style={{ marginTop: space.sm }}>
-            <Button title={b.lateMin ? t('late.again') : t('late.button')} variant="ghost" onPress={() => setLate(b)} />
+            <Button title={b.lateMin || b.lateNote ? t('late.again') : t('late.button')} variant="ghost" onPress={() => setLate(b)} />
           </View>
         ) : null}
         {b.payDue && business?.onlinePayments ? (

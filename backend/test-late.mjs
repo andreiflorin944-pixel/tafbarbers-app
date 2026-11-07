@@ -1,4 +1,4 @@
-// „Întârzii” (clientul anunță din aplicație) și versiunea cerută în aplicație (Panou → Aplicații).
+// Mesajul clientului către frizer (cu „întârzii X min” opțional) și versiunea cerută în aplicație (Panou → Aplicații).
 // Rulează după test-api.mjs (folosește contul de proprietar creat acolo), pe `wrangler dev` local.
 const B = 'http://127.0.0.1:8787/v1';
 let fails = 0;
@@ -39,22 +39,26 @@ ok(r.status === 200 && r.body.lateMin === 10 && r.body.lateNote === 'Sunt în tr
 r = await req('GET', '/me/bookings', null, tok); ok(r.body.find((b) => b.id === soon.id)?.lateMin === 10, 'client list shows lateMin');
 r = await req('GET', '/admin/bookings/requests', null, at); ok(r.body.late?.some((b) => b.id === soon.id && b.lateMin === 10), 'panel bell lists the late client');
 r = await req('GET', `/admin/bookings/${soon.id}/activity`, null, at); ok(r.body.log.some((e) => e.kind === 'late' && e.detail.minutes === 10), 'activity log has late entry');
-r = await req('POST', `/bookings/${soon.id}/late`, { minutes: 15 }, tok); ok(r.status === 200 && r.body.lateMin === 15 && r.body.lateNote === null, 'second notice updates');
-r = await req('POST', `/bookings/${soon.id}/late`, { minutes: 20 }, tok); ok(r.status === 200, 'third notice ok');
-r = await req('POST', `/bookings/${soon.id}/late`, { minutes: 30 }, tok); ok(r.status === 429 && r.body.error === 'late_too_many', 'fourth notice refused');
+r = await req('POST', `/bookings/${soon.id}/late`, {}, tok); ok(r.status === 400 && r.body.error === 'empty_message', 'empty message refused');
+r = await req('POST', `/bookings/${soon.id}/late`, { note: 'Am ajuns, sunt în față' }, tok); ok(r.status === 200 && r.body.lateMin === 10 && r.body.lateNote === 'Am ajuns, sunt în față', 'message only keeps lateMin, saves text');
+r = await req('POST', `/bookings/${soon.id}/late`, { minutes: 15 }, tok); ok(r.status === 200 && r.body.lateMin === 15 && r.body.lateNote === null, 'minutes only');
+r = await req('POST', `/bookings/${soon.id}/late`, { note: 'a 4-a' }, tok); ok(r.status === 200, '4th ok');
+r = await req('POST', `/bookings/${soon.id}/late`, { note: 'a 5-a' }, tok); ok(r.status === 200, '5th ok');
+r = await req('POST', `/bookings/${soon.id}/late`, { note: 'a 6-a' }, tok); ok(r.status === 429 && r.body.error === 'late_too_many', '6th refused');
 
 // Prea devreme (peste 5 ore) și programarea altcuiva.
 const later = await mk(5 * 3_600_000);
-r = await req('POST', `/bookings/${later.id}/late`, { minutes: 5 }, tok); ok(r.status === 409 && r.body.error === 'late_too_early', 'too early refused');
+r = await req('POST', `/bookings/${later.id}/late`, { minutes: 5 }, tok); ok(r.status === 409 && r.body.error === 'late_too_early', 'late minutes too early refused');
+r = await req('POST', `/bookings/${later.id}/late`, { note: 'Pot veni cu fiul meu?' }, tok); ok(r.status === 200 && r.body.lateNote === 'Pot veni cu fiul meu?' && r.body.lateMin === null, 'plain message hours before is fine');
 r = await req('POST', `/bookings/${soon.id}/late`, { minutes: 5 }); ok(r.status === 401, 'needs login');
 const phone2 = '0735' + rnd();
 r = await req('POST', '/auth/otp', { phone: phone2, email: `alt${rnd()}@test.ro`, channel: 'email' }, null, ip);
 r = await req('POST', '/auth/verify', { phone: phone2, code: r.body?.devCode, name: 'Alt Client', email: `alt${rnd()}@test.ro`, acceptTerms: true }, null, ip);
 r = await req('POST', `/bookings/${later.id}/late`, { minutes: 5 }, r.body.token); ok(r.status === 404, "other client's booking not found");
 // Anulată: nu se mai poate.
-const gone = await mk(2 * 3_600_000);
+const gone = await mk(2 * 3_600_000 + 1_800_000);
 r = await req('PATCH', `/admin/bookings/${gone.id}`, { status: 'cancelled' }, at); ok(r.status === 200 && r.body.status === 'cancelled', 'salon cancels');
-r = await req('POST', `/bookings/${gone.id}/late`, { minutes: 5 }, tok); ok(r.status === 409 && r.body.error === 'booking_not_active', 'cancelled booking refused');
+r = await req('POST', `/bookings/${gone.id}/late`, { note: 'x' }, tok); ok(r.status === 409 && r.body.error === 'booking_not_active', 'cancelled booking refused');
 
 // Versiunea cerută în aplicație.
 r = await req('GET', '/app-version'); ok(r.status === 200 && r.body.ios.min === '' && r.body.android.url.includes('ro.tafbarbers.app'), 'no version required by default');
