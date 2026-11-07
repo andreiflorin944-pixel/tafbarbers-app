@@ -211,6 +211,51 @@ export async function logBookingEvent(env: Env, bookingId: string, kind: string,
     .run();
 }
 
+// --- „Întârzii” (clientul, din aplicație) ---
+
+export const LATE_MINUTES = [5, 10, 15, 20, 30] as const;
+/** Se poate anunța cu cel mult 3 ore înainte și până la 30 de minute după ora programării. */
+const LATE_FROM_MS = 3 * 3_600_000;
+const LATE_UNTIL_MS = 30 * 60_000;
+/** De câte ori poate anunța la aceeași programare (ex. „10 min”, apoi „încă 5”), ca să nu umple telefonul frizerului. */
+const LATE_MAX = 3;
+
+/**
+ * Clientul anunță că întârzie: se ține minte la programare (panoul și aplicația echipei îl arată),
+ * intră în jurnal și pleacă anunț pe telefon frizerului programării și administratorilor.
+ */
+export async function reportLate(
+  env: Env,
+  clientId: string,
+  id: string,
+  input: { minutes?: unknown; note?: unknown },
+  defer?: (p: Promise<unknown>) => void,
+) {
+  const minutes = Number(input.minutes);
+  if (!(LATE_MINUTES as readonly number[]).includes(minutes)) throw new HttpError(400, 'invalid_minutes');
+  const note = typeof input.note === 'string' ? input.note.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+  const cur = await getBooking(env, id);
+  if (!cur || cur.clientId !== clientId) throw new HttpError(404, 'booking_not_found');
+  if (cur.status !== 'confirmed') throw new HttpError(409, 'booking_not_active');
+  const left = new Date(cur.start).getTime() - Date.now();
+  if (left > LATE_FROM_MS) throw new HttpError(409, 'late_too_early');
+  if (left < -LATE_UNTIL_MS) throw new HttpError(409, 'late_too_late');
+  const now = iso(new Date());
+  const r = await env.DB.prepare(
+    `UPDATE bookings SET late_min = ?, late_note = ?, late_at = ?, late_count = late_count + 1
+     WHERE id = ? AND client_id = ? AND status = 'confirmed' AND late_count < ?`,
+  )
+    .bind(minutes, note || null, now, id, clientId, LATE_MAX)
+    .run();
+  if (!r.meta.changes) throw new HttpError(429, 'late_too_many');
+  await logBookingEvent(env, id, 'late', { minutes, ...(note && { note }) }, null);
+  const b = (await getBooking(env, id))!;
+  const send = notifyStaff(env, b, 'late', null, { lateMin: minutes, lateNote: note || null });
+  if (defer) defer(send);
+  else await send;
+  return b;
+}
+
 /**
  * Ce se poate schimba la o programare confirmată: ora (`start`), frizerul, serviciul și prețul în lei (`discount` spune de unde vine
  * reducerea, pentru jurnal). Ora nouă trebuie să fie liberă, ca la o programare nouă din panou; `force` o pune oricum (peste program),
@@ -353,6 +398,16 @@ export async function pendingRequests(env: Env, barberId: string | null) {
     `${BOOKING_SELECT} WHERE b.status = 'requested' AND b.starts_at > ? ${barberId ? 'AND b.barber_id = ?' : ''} ORDER BY b.starts_at LIMIT 200`,
   )
     .bind(...(barberId ? [iso(new Date()), barberId] : [iso(new Date())]))
+    .all<BookingRow>();
+  return r.results.map(booking);
+}
+
+/** Întârzierile anunțate de clienți în ultimele 2 ore, la programări încă active (clopoțelul din panou). */
+export async function recentLate(env: Env, barberId: string | null) {
+  const r = await env.DB.prepare(
+    `${BOOKING_SELECT} WHERE b.status = 'confirmed' AND b.late_at > ? ${barberId ? 'AND b.barber_id = ?' : ''} ORDER BY b.late_at DESC LIMIT 50`,
+  )
+    .bind(...(barberId ? [iso(new Date(Date.now() - 2 * 3_600_000)), barberId] : [iso(new Date(Date.now() - 2 * 3_600_000))]))
     .all<BookingRow>();
   return r.results.map(booking);
 }

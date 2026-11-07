@@ -46,13 +46,15 @@ export function beep() {
   });
 }
 
-type Requests = { count: number; items: Booking[] };
+type Requests = { count: number; items: Booking[]; late?: Booking[] };
+const lateKey = (b: Booking) => `${b.id}:${b.lateAt}`;
 
 export function RequestsBell({ me, onCount }: { me: Me; onCount?: (n: number) => void }) {
   const [data, setData] = useState<Requests | null>(null);
   const [open, setOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const seen = useRef<Set<string> | null>(null);
+  const seenLate = useRef<Set<string> | null>(null);
   const allowed = me.owner || me.permissions.bookings_manage;
 
   const load = async () => {
@@ -61,7 +63,17 @@ export function RequestsBell({ me, onCount }: { me: Me; onCount?: (n: number) =>
       // Sunet și mesaj doar pentru cererile apărute de la ultima verificare (nu la prima încărcare a panoului).
       const fresh = seen.current ? r.items.filter((b) => !seen.current!.has(b.id)) : [];
       seen.current = new Set(r.items.map((b) => b.id));
+      // „Întârzii” din aplicație: același sunet și un mesaj, o singură dată pentru fiecare anunț.
+      const late = r.late ?? [];
+      const freshLate = seenLate.current ? late.filter((b) => !seenLate.current!.has(lateKey(b))) : [];
+      seenLate.current = new Set(late.map(lateKey));
       setData(r);
+      if (freshLate.length) {
+        beep();
+        const b = freshLate[0];
+        setToast(`⏰ ${b.clientName || 'Clientul'} întârzie ${b.lateMin} min · ${time(b.start)} cu ${b.barberName}${b.lateNote ? ` · „${b.lateNote}”` : ''}`);
+        bookingsChanged('bell');
+      }
       if (fresh.length) {
         beep();
         const b = fresh[0];
@@ -137,8 +149,8 @@ export function RequestsBell({ me, onCount }: { me: Me; onCount?: (n: number) =>
       </button>
       {toast ? (
         <button className="toast" onClick={() => (setOpen(true), setToast(null))}>
-          <b>🔔 {toast}</b>
-          <span className="muted small">Apasă ca să răspunzi</span>
+          <b>{toast.startsWith('⏰') ? toast : `🔔 ${toast}`}</b>
+          <span className="muted small">{toast.startsWith('⏰') ? 'Apasă ca să vezi' : 'Apasă ca să răspunzi'}</span>
         </button>
       ) : null}
       {open ? (
@@ -155,6 +167,21 @@ export function RequestsBell({ me, onCount }: { me: Me; onCount?: (n: number) =>
               </button>
             </div>
             <div className="drawer-body">
+              {data?.late?.length ? (
+                <>
+                  <div className="small" style={{ fontWeight: 700 }}>Clienți care întârzie</div>
+                  {data.late.map((b) => (
+                    <div key={lateKey(b)} className="late-note">
+                      ⏰ <b>{b.clientName || b.clientPhone || 'Client'}</b> întârzie <b>{b.lateMin} min</b>
+                      <div className="muted small">
+                        {time(b.start)} · {b.serviceName} · {b.barberName}
+                        {b.lateAt ? ` · anunțat la ${time(b.lateAt)}` : ''}
+                      </div>
+                      {b.lateNote ? <div className="small">„{b.lateNote}”</div> : null}
+                    </div>
+                  ))}
+                </>
+              ) : null}
               {!data ? (
                 <p className="muted">Se încarcă…</p>
               ) : !data.items.length ? (

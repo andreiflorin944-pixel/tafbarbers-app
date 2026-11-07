@@ -230,6 +230,7 @@ export default function StaffCalendar() {
                       <Pressable key={x.id} onPress={() => setOpen(x)} style={[s.booking, { top: y(s0) + 1.5, height: h, borderLeftColor: st.color }]} accessibilityLabel={t('cal.booking', { name: x.clientName ?? '' })}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                           {x.clientBirthday ? <Candle size={14} /> : null}
+                          {x.lateMin && x.status === 'confirmed' ? <Text style={[s.bName, { color: colors.gold }]}>⏰+{x.lateMin}′</Text> : null}
                           <Text style={[s.bName, { flexShrink: 1 }]} numberOfLines={1}>
                             {x.clientName || x.clientPhone}
                           </Text>

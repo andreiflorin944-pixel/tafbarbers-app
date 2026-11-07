@@ -403,6 +403,45 @@ export async function advanceReleases(env: Env) {
   }
 }
 
+// --- Versiunea cerută în aplicație (Panou → Aplicații → „Cere actualizarea în aplicație”) ---
+// Telefoanele nu pot fi obligate să instaleze singure o versiune nouă (asta ține de setarea „Actualizări automate” din
+// App Store / Google Play a fiecăruia). Aplicația întreabă la pornire ce versiune cerem și, dacă a ei e mai veche,
+// arată un ecran cu butonul spre magazin: „min” = obligatoriu (nu se poate folosi până nu actualizează),
+// „latest” = recomandat (se poate închide, apare din nou peste o zi).
+
+type PlatformVersions = { min: string; latest: string };
+export type AppVersions = { ios: PlatformVersions; android: PlatformVersions; message: string; updatedAt: string | null };
+const NO_VERSIONS: AppVersions = { ios: { min: '', latest: '' }, android: { min: '', latest: '' }, message: '', updatedAt: null };
+
+export async function getAppVersions(env: Env): Promise<AppVersions> {
+  const v = await getSetting<Partial<AppVersions>>(env, 'app_versions', {});
+  return {
+    ios: { ...NO_VERSIONS.ios, ...v.ios },
+    android: { ...NO_VERSIONS.android, ...v.android },
+    message: v.message ?? '',
+    updatedAt: v.updatedAt ?? null,
+  };
+}
+
+/** Ce primește aplicația: versiunile cerute și linkul spre magazin, pentru fiecare platformă. */
+export async function publicAppVersions(env: Env) {
+  const v = await getAppVersions(env);
+  return {
+    ios: { ...v.ios, url: STORE_LINKS.appStore },
+    android: { ...v.android, url: STORE_LINKS.play },
+    message: v.message,
+  };
+}
+
+const cleanVersions = (raw: unknown, field: string): PlatformVersions => {
+  const o = (raw ?? {}) as { min?: unknown; latest?: unknown };
+  const min = String(o.min ?? '').trim();
+  const latest = String(o.latest ?? '').trim();
+  for (const x of [min, latest]) if (x && !/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(x)) throw new HttpError(400, `invalid_version_${field}`);
+  if (min && latest && cmpVersion(latest, min) < 0) throw new HttpError(400, `latest_below_min_${field}`);
+  return { min, latest };
+};
+
 // --- Rutele din panou (doar proprietarul) ---
 
 export const storesAdmin = new Hono<AppEnv>();
@@ -428,7 +467,20 @@ storesAdmin.get('/apps', async (c) => {
     creds.google ? androidStatus(c.env, creds) : null,
     c.env.DB.prepare('SELECT * FROM app_releases ORDER BY created_at DESC LIMIT 10').all<ReleaseRow>(),
   ]);
-  return c.json({ connections: connections(creds), ios, android, releases: rel.results.map(release), links: STORE_LINKS });
+  return c.json({ connections: connections(creds), ios, android, releases: rel.results.map(release), links: STORE_LINKS, versions: await getAppVersions(c.env) });
+});
+
+/** { ios: { min, latest }, android: { min, latest }, message } — gol = nu se cere nimic. */
+storesAdmin.put('/apps/versions', async (c) => {
+  const b = await c.req.json<{ ios?: unknown; android?: unknown; message?: unknown }>().catch(() => ({}) as Record<string, unknown>);
+  const v: AppVersions = {
+    ios: cleanVersions(b.ios, 'ios'),
+    android: cleanVersions(b.android, 'android'),
+    message: String(b.message ?? '').replace(/\s+/g, ' ').trim().slice(0, 300),
+    updatedAt: iso(new Date()),
+  };
+  await setSetting(c.env, 'app_versions', v);
+  return c.json(v);
 });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

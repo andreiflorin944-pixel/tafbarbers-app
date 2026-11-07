@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getAutomations, nearbyConfig } from '../growth';
+import { publicAppVersions } from '../stores';
 import { attributeQr, ipHash } from '../qr';
 import { accessFor, availability } from '../availability';
 import { createSession, deleteSession, hashPassword, normalizePhone, optionalSession, newId, tokenFrom, verifyPassword } from '../auth';
@@ -25,6 +26,12 @@ import { advisorAvailable, getStylePhotos } from '../advisor';
 import { linkTicket, readTicket, socialConfig, socialSignIn, verifyIdToken, type Provider } from '../socialLogin';
 
 export const publicRoutes = new Hono<AppEnv>();
+
+/** Ce versiune a aplicației cerem (ecranul „Actualizare obligatorie / recomandată” din aplicație). */
+publicRoutes.get('/app-version', async (c) => {
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.json(await publicAppVersions(c.env));
+});
 
 /** O eroare din aplicația de pe telefon (trimisă la pornirea următoare, după o închidere neașteptată). Nu aruncă. */
 publicRoutes.post('/app-errors', async (c) => {

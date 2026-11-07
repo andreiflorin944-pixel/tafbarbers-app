@@ -71,6 +71,17 @@ export type Booking = {
   payDue?: number | null; // echipa a cerut plata în aplicație: suma de plătit acum (null = nimic de plătit)
   requestOutcome?: 'accepted' | 'refused' | 'expired' | null;
   refuseReason?: string | null;
+  /** „Întârzii”: clientul a anunțat echipa că ajunge cu atâtea minute mai târziu. */
+  lateMin?: number | null;
+  lateNote?: string | null;
+  lateAt?: string | null;
+};
+
+/** Versiunea cerută de salon pentru fiecare platformă (gol = nu cere nimic) și linkul spre magazin. */
+export type AppVersionInfo = {
+  ios: { min: string; latest: string; url: string };
+  android: { min: string; latest: string; url: string };
+  message: string;
 };
 
 /** Intervalul din zi pentru lista de așteptare. */
