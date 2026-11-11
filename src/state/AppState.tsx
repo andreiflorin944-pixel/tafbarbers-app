@@ -44,6 +44,7 @@ type AppState = {
   refreshBookings: () => Promise<void>;
   addBooking: (b: Booking) => void;
   cancelBooking: (id: string) => Promise<void>;
+  reportLate: (id: string, minutes: number | null, note?: string) => Promise<void>;
   serviceById: (id: string | null) => Service | undefined;
   barberById: (id: string | null) => Barber | undefined;
   locationById: (id: string | null | undefined) => Location | undefined;
@@ -180,6 +181,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       cancelBooking: async (id) => {
         if (!token) return;
         const updated = await api.cancelBooking(token, id);
+        setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, ...updated } : b)));
+      },
+      reportLate: async (id, minutes, note) => {
+        if (!token) return;
+        const updated = await api.reportLate(token, id, minutes, note);
         setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, ...updated } : b)));
       },
       serviceById: (id) => services.find((s) => s.id === id),

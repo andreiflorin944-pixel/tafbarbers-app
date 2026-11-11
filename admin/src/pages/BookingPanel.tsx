@@ -85,6 +85,8 @@ function logText(e: BookingActivity['log'][number]) {
       return d.by === 'client' ? 'Anulată de client' : 'Anulată de salon';
     case 'review_sent':
       return 'Cerere de recenzie trimisă';
+    case 'late':
+      return `Mesaj de la client${d.minutes ? ` (întârzie ${s('minutes')} min)` : ''}${d.note ? `: „${s('note')}”` : ''}`;
     case 'barberly_import':
       return 'Copiată din Barberly';
     case 'barberly_change':
@@ -381,6 +383,14 @@ export function BookingPanel({
               <Icon name="note" />
             </button>
           </div>
+          {(b.lateMin || b.lateNote) && b.status === 'confirmed' ? (
+            <div className="late-note">
+              💬 Mesaj de la client
+              {b.lateAt ? <span className="muted"> ({new Date(b.lateAt).toLocaleString('ro-RO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})</span> : null}
+              {b.lateMin ? <div>⏰ Întârzie <b>{b.lateMin} min</b></div> : null}
+              {b.lateNote ? <div>„{b.lateNote}”</div> : null}
+            </div>
+          ) : null}
           {b.clientBirthday ? <div className="bday-note">🕯️ E ziua lui de naștere! Urează-i „La mulți ani” și, dacă vrei, fă-i o reducere.</div> : null}
 
           {b.status === 'requested' ? (

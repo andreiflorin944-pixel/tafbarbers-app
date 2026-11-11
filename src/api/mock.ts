@@ -252,6 +252,13 @@ export const mockApi: BookingApi = {
     b.status = 'cancelled';
     return delay({ ...b });
   },
+  async reportLate(token, id, minutes, note) {
+    const b = bookings.find((x) => x.id === id && x.phone === token);
+    if (!b) throw new ApiError('booking_not_found', 404);
+    Object.assign(b, { lateMin: minutes ?? b.lateMin ?? null, lateNote: note || null, lateAt: new Date().toISOString() });
+    return delay({ ...b });
+  },
+  getAppVersion: () => delay({ ios: { min: '', latest: '', url: '' }, android: { min: '', latest: '', url: '' }, message: '' }),
   // Lista de așteptare în modul de test: se ține minte, dar nu pleacă niciun mesaj.
   getWaitlist: (token) => delay(waitlist.filter((w) => w.phone === token && w.status !== 'removed').map(({ phone: _p, ...w }) => w)),
   async joinWaitlist(token, input) {

@@ -205,6 +205,10 @@ const MESSAGES: Record<string, string> = {
   version_too_low: 'Versiunea trebuie să fie mai mare decât cea publicată acum.',
   ios_in_review: 'Apple verifică acum o versiune. Poți trimite una nouă după ce e aprobată.',
   release_running: 'O actualizare e deja în curs. Așteaptă să se termine.',
+  invalid_version_ios: 'Versiunea iPhone se scrie ca 1.0.2 (sau lasă gol).',
+  invalid_version_android: 'Versiunea Android se scrie ca 1.0.2 (sau lasă gol).',
+  latest_below_min_ios: 'La iPhone, versiunea recomandată nu poate fi mai mică decât cea obligatorie.',
+  latest_below_min_android: 'La Android, versiunea recomandată nu poate fi mai mică decât cea obligatorie.',
   invalid_domain: 'Adresa nu pare corectă. Scrie-o ca programari.tafbarbers.ro.',
   invalid_ga_id: 'Codul Google Analytics începe cu G- (de exemplu G-AB12CD34EF).',
   invalid_pixel_id: 'Meta Pixel ID are doar cifre.',
@@ -381,6 +385,10 @@ export type Booking = {
   refuseReason?: string | null;
   bonusId?: string | null;
   clientBirthday?: boolean;
+  /** „Întârzii”: clientul a anunțat din aplicație cu câte minute întârzie, notița lui și când a anunțat. */
+  lateMin?: number | null;
+  lateNote?: string | null;
+  lateAt?: string | null;
   /** Locația programării (a frizerului când s-a făcut). */
   locationId?: string | null;
   locationName?: string;

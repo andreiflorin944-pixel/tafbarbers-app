@@ -3,7 +3,7 @@ import { hashPassword, newId, normalizePhone, requireClient, sha256, tokenFrom, 
 import { clearFailures, lockedAny, loginKeys, recordFailure, validClientPassword } from '../clientPassword';
 import { checkCode, issueCode, useCode } from '../otp';
 import { createGiftCard, getAutomations, giftCard, sendNearby, type GiftCardRow } from '../growth';
-import { BOOKING_SELECT, cancelBooking, createBooking } from '../bookings';
+import { BOOKING_SELECT, cancelBooking, createBooking, reportLate } from '../bookings';
 import { booking, client, emailTaken, getBusiness, type BookingRow, type ClientRow } from '../db';
 import { createCheckout, publicBase } from '../payments';
 import { HttpError, type AppEnv } from '../env';
@@ -517,6 +517,13 @@ clientRoutes.delete('/me/waitlist/:id', async (c) => {
 
 clientRoutes.post('/bookings/:id/cancel', async (c) => {
   const b = await cancelBooking(c.env, c.req.param('id'), 'client', c.get('client').clientId);
+  return c.json((await localize(c.env, c.req.query('lang'), [b], ['serviceName']))[0]);
+});
+
+// „Întârzii”: clientul anunță echipa că ajunge mai târziu (5–30 min, cu o notiță opțională).
+clientRoutes.post('/bookings/:id/late', async (c) => {
+  const body = await c.req.json<{ minutes?: unknown; note?: unknown }>().catch(() => ({}));
+  const b = await reportLate(c.env, c.get('client').clientId, c.req.param('id'), body, (p) => c.executionCtx.waitUntil(p));
   return c.json((await localize(c.env, c.req.query('lang'), [b], ['serviceName']))[0]);
 });
 
