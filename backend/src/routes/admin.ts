@@ -1827,11 +1827,11 @@ adminRoutes.get('/app-errors', ownerOnly, async (c) => {
 
 adminRoutes.get('/advisor/styles', ownerOnly, async (c) => c.json(await stylesList(c.env)));
 
-/** „Refă cu AI”: se șterg pozele făcute până acum (color și alb-negru); la următoarea cerere se fac altele. */
+/** „Refă cu AI”: se șterg pozele făcute până acum (color, Gen Z de pe Acasă și vechea alb-negru); la următoarea cerere se fac altele. */
 adminRoutes.post('/advisor/styles/:key/regenerate', ownerOnly, async (c) => {
   const h = hairstyle(c.req.param('key') ?? '');
   if (!h) throw new HttpError(404, 'not_found');
-  await c.env.DB.prepare('DELETE FROM media WHERE id IN (?, ?)').bind(`style-${h.key}`, `style-bw-${h.key}`).run();
+  await c.env.DB.prepare('DELETE FROM media WHERE id IN (?, ?, ?)').bind(`style-${h.key}`, `style-bw-${h.key}`, `style-gz-${h.key}`).run();
   const sp = await getStylePhotos(c.env);
   await setStylePhotos(c.env, { ...sp, v: sp.v + 1 });
   return c.json(await stylesList(c.env));

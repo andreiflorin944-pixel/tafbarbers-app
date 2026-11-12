@@ -6,7 +6,7 @@ import { HttpError, type AppEnv, type Env } from './env';
 import { mediaUrl } from './identity';
 import { iso } from './time';
 import { aiOf } from './translate';
-import { hairstyle, HAIRSTYLES, stylePrompt, stylePromptBw } from './hairstyles';
+import { hairstyle, HAIRSTYLES, stylePrompt, stylePromptHome } from './hairstyles';
 
 // Consilierul AI de tunsori („Ce tunsoare mi se potrivește?”): clientul face o poză, modelul cu vedere descrie fața și
 // părul, apoi asistentul recomandă 2-4 tunsori concrete (din lista fixă din hairstyles.ts), fiecare cu o poză de exemplu,
@@ -359,7 +359,7 @@ const STYLE_FAILS_PER_DAY = 40;
 /**
  * GET /advisor/style/:key — poza de exemplu a unei tunsori din listă. Se generează cu AI la prima cerere și se păstrează
  * în media (id fix „style-<cheie>”), deci fiecare tunsoare costă un singur apel. Publică (aplicația o încarcă direct).
- * Cu `?bw=1`: varianta alb-negru din profil („style-bw-<cheie>”), pentru cardul TAF Identity de pe Acasă.
+ * Cu `?bw=1`: varianta Gen Z („style-gz-<cheie>”) pentru cardul TAF Identity de pe Acasă (înainte era alb-negru).
  */
 advisorRoutes.get('/advisor/style/:key', async (c) => {
   const env = c.env;
@@ -368,7 +368,7 @@ advisorRoutes.get('/advisor/style/:key', async (c) => {
   const bw = c.req.query('bw') === '1';
   // O poză proprie pusă din panou are întâietate (aceeași și pentru varianta alb-negru).
   const own = (await getStylePhotos(env)).photos[h.key]?.match(/^\/v1\/media\/([\w-]+)$/)?.[1];
-  const id = own ?? (bw ? `style-bw-${h.key}` : `style-${h.key}`);
+  const id = own ?? (bw ? `style-gz-${h.key}` : `style-${h.key}`);
   // Aplicația cere poza cu `?v=<versiune>`, care se schimbă la orice modificare din panou, deci poate sta mult în cache.
   // Fără `v` (aplicațiile mai vechi), cache scurt, ca o poză schimbată să ajungă și la ele.
   const maxAge = c.req.query('v') ? 604800 : 3600;
@@ -385,7 +385,7 @@ advisorRoutes.get('/advisor/style/:key', async (c) => {
   if ((fails?.n ?? 0) >= STYLE_FAILS_PER_DAY) throw new HttpError(404, 'not_found');
   let bytes: Uint8Array | null = null;
   try {
-    const out = (await ai.run(STYLE_IMAGE, { prompt: bw ? stylePromptBw(h) : stylePrompt(h), steps: 6 })) as { image?: string };
+    const out = (await ai.run(STYLE_IMAGE, { prompt: bw ? stylePromptHome(h) : stylePrompt(h), steps: 6 })) as { image?: string };
     if (typeof out?.image === 'string') bytes = Uint8Array.from(atob(out.image), (ch) => ch.charCodeAt(0));
   } catch (e) {
     console.error('advisor style image', e instanceof Error ? e.message.slice(0, 200) : 'error');

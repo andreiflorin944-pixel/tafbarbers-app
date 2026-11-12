@@ -23,8 +23,8 @@ import { colors, radius, space } from '@/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
-// Pozele de exemplu din cardul TAF Identity: tunsorile generate cu AI pe care serverul le servește deja consilierului.
-const IDENTITY_STYLES = ['textured_crop', 'skin_fade', 'quiff'];
+// Pozele de exemplu din cardul TAF Identity (stil Gen Z): tunsorile generate cu AI pe care serverul le servește deja consilierului.
+const IDENTITY_STYLES = ['textured_crop', 'modern_mullet', 'curly_top_fade'];
 
 // Beneficiile clientului, în grila 2×2.
 const PERKS: Array<[IconName, 'home.q.rewards' | 'home.q.gift' | 'home.q.subs' | 'home.q.shop', '/rewards' | '/gift-cards' | '/subscriptions' | '/shop']> = [

@@ -29,13 +29,16 @@ export const HAIRSTYLES: Hairstyle[] = [
 
 export const hairstyle = (key: string) => HAIRSTYLES.find((h) => h.key === key);
 
-/** Tunsorile din cardul TAF Identity de pe Acasă (aceleași ca în aplicație, src/app/(tabs)/index.tsx). */
-export const HOME_STYLES = ['textured_crop', 'skin_fade', 'quiff'];
+/** Tunsorile din cardul TAF Identity de pe Acasă (aceleași ca în aplicație, src/app/(tabs)/index.tsx, și pe site). */
+export const HOME_STYLES = ['textured_crop', 'modern_mullet', 'curly_top_fade'];
 
 /** Textul pentru poza de exemplu: o poză de portofoliu de frizerie, fără text sau logo-uri. */
 export const stylePrompt = (h: Hairstyle) =>
   `Professional barbershop portfolio photo of a young man with ${h.look}. Three-quarter view of the head, soft studio lighting, plain dark background, photorealistic, sharp focus on the haircut, no text, no logo.`;
 
-/** Varianta alb-negru, din profil, pentru cardul TAF Identity de pe Acasă. */
-export const stylePromptBw = (h: Hairstyle) =>
-  `Black and white barbershop portrait photo of a young man with ${h.look}. Side profile view of the head, dramatic studio lighting, dark background, monochrome, photorealistic, sharp focus on the haircut, no text, no logo.`;
+/**
+ * Varianta pentru cardul TAF Identity de pe Acasă (cerută cu `?bw=1`, numele a rămas de la vechea variantă alb-negru):
+ * stil Gen Z, poză de telefon cu bliț, lumini colorate calde (auriu ca aplicația, magenta), haine streetwear.
+ */
+export const stylePromptHome = (h: Hairstyle) =>
+  `Candid Gen Z street style photo of a stylish 20 year old guy with ${h.look}. Three-quarter view, shot on a phone with direct flash, vivid gold and magenta neon color gel lighting, dark moody background, oversized streetwear hoodie, thin silver chain, confident cool expression, slight film grain, photorealistic, sharp focus on the haircut, no text, no logo.`;

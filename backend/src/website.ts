@@ -493,7 +493,7 @@ function promoCard(p){var bg=p.imageUrl?' style="background-image:url(&quot;'+e(
 // Prima pagină, ca în aplicație: salutul, prima oră liberă, recomandările, serviciile, echipa, adresa.
 // Prima pagină, în aceeași ordine ca în aplicație: salutul, prima oră, asistentul, TAF Identity, recomandările, beneficiile, invită un prieten, adresa.
 // Ce există doar în aplicație (asistentul, bonusurile, magazinul...) duce la pagina cu aplicația.
-var STYLES=['textured_crop','skin_fade','quiff'];
+var STYLES=['textured_crop','modern_mullet','curly_top_fade'];
 var PERKS=[['gift','qRewards'],['card','qGift'],['calnum','qSubs'],['bag-handle','qShop']];
 function home(){return Promise.all([soft('services','/services',[]),soft('barbers','/barbers',[]),soft('promos','/promos',[]),api('GET','/next-free').then(null,function(){return null}),soft('biz','/business',null)]).then(function(r){var svcs=r[0]||[],team=r[1]||[],promos=r[2]||[],free=r[3],b=r[4]||{};data.free=free;
 var welcome=W.welcome[lang]||(S.look&&S.look.welcome&&S.look.welcome[lang])||t('sub');
