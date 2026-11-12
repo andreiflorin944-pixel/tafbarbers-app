@@ -228,15 +228,17 @@ tr.click:hover td { background: var(--card-alt); }
 
 /* Calendar, ca în machetă: frizerii cu avatar sus, ora în stânga, programările ca niște carduri cu dungă aurie. */
 :root {
-  --ev-bg: #1b1b1f;
-  --ev-border: #2a2a30;
+  --ev-bg: #0d0d0f;
+  --ev-border: rgba(245, 197, 66, 0.55);
+  --cal-free: #26262c;
   --pause-bg: #202024;
-  --line: #3c3c44;
-  --line-hour: #6a6a74;
+  --line: #44444d;
+  --line-hour: #8a8a94;
 }
 :root[data-theme='light'] {
   --ev-bg: #fdf9ee;
-  --ev-border: #eee5c8;
+  --ev-border: #e2cf94;
+  --cal-free: #f7f7f3;
   --pause-bg: #f1f1ee;
   --line: #d2d2cb;
   --line-hour: #9d9d95;
@@ -272,8 +274,8 @@ tr.click:hover td { background: var(--card-alt); }
 .cal-times span { position: absolute; right: 10px; font-size: 12px; font-weight: 600; color: var(--text); opacity: 0.8; transform: translateY(-50%); font-variant-numeric: tabular-nums; }
 .cal-times span.hour { font-size: 15px; font-weight: 800; opacity: 1; color: var(--text); }
 .cal-times span.cal-now-label { color: var(--accent-text); font-size: 11.5px; font-weight: 800; opacity: 1; background: var(--card); padding: 1px 0 1px 4px; z-index: 2; }
-.cal-col { position: relative; border-left: 1px solid var(--border); background: color-mix(in srgb, var(--text) 5%, transparent); }
-.cal-col.today { background: color-mix(in srgb, var(--gold) 4%, transparent); }
+.cal-col { position: relative; border-left: 1px solid var(--border); background: var(--cal-free); }
+.cal-col.today { background: color-mix(in srgb, var(--gold) 5%, var(--cal-free)); }
 .cal-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); }
 .cal-line.hour { border-top: 2px solid var(--line-hour); }
 .cal-off { position: absolute; left: 0; right: 0; background: repeating-linear-gradient(45deg, #111113, #111113 6px, #17171a 6px, #17171a 12px); }
