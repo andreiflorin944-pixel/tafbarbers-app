@@ -88,6 +88,8 @@ export async function unregisterPush(token: string): Promise<void> {
 export function pushTarget(data: Record<string, unknown> | undefined): { url?: string; route?: { pathname: string; params?: Record<string, string> } } | null {
   if (!data) return null;
   if (typeof data.url === 'string' && /^https:\/\//.test(data.url)) return { url: data.url };
+  // Amintirea cu taskuri (începutul și sfârșitul programului): lista de notițe a frizerului.
+  if (data.staff && data.screen === 'notes') return { route: { pathname: '/staff/notes' } };
   // Anunț pentru echipă: calendarul, în ziua programării.
   if (data.staff) return { route: { pathname: '/staff/calendar', params: typeof data.day === 'string' ? { day: data.day } : {} } };
   if (data.bookingId) return { route: { pathname: '/bookings' } };

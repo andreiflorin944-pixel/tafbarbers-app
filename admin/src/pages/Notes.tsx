@@ -57,7 +57,8 @@ export function NotesPage({ me }: { me: Me }) {
       </div>
       <p className="muted small" style={{ marginTop: -8, maxWidth: 760 }}>
         Sarcini și scripturi de filmat pentru frizeri. Fiecare frizer le vede pe ale lui (și pe cele pentru toată echipa) în aplicație, la Meniu → Notițele mele, și le
-        bifează când le-a făcut.
+        bifează când le-a făcut. Taskurile nebifate îi vin și pe telefon: cu 10 minute înainte de începerea programului și la sfârșitul lui (nu în zilele
+        libere sau de concediu). Fiecare frizer le poate opri din aplicație, la Meniu.
       </p>
       <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <div className="tabs" style={{ marginBottom: 0 }}>

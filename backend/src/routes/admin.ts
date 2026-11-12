@@ -167,12 +167,12 @@ adminRoutes.post('/logout', async (c) => {
 });
 
 adminRoutes.get('/me', async (c) => {
-  const a = await c.env.DB.prepare('SELECT a.id, a.email, a.name, a.barber_id, a.notify_bookings, b.photo_url, b.bio, b.nickname, b.role AS rank FROM admins a LEFT JOIN barbers b ON b.id = a.barber_id WHERE a.id = ?')
+  const a = await c.env.DB.prepare('SELECT a.id, a.email, a.name, a.barber_id, a.notify_bookings, a.notify_tasks, b.photo_url, b.bio, b.nickname, b.role AS rank FROM admins a LEFT JOIN barbers b ON b.id = a.barber_id WHERE a.id = ?')
     .bind(c.get('admin').adminId)
-    .first<{ id: string; email: string; name: string; barber_id: string | null; notify_bookings: number; photo_url: string | null; bio: string | null; nickname: string | null; rank: string | null }>();
+    .first<{ id: string; email: string; name: string; barber_id: string | null; notify_bookings: number; notify_tasks: number; photo_url: string | null; bio: string | null; nickname: string | null; rank: string | null }>();
   const s = c.get('admin');
   // `onlinePayments`: plata cu cardul din aplicație e pornită (altfel acțiunea „Cere plata în aplicație” nu apare).
-  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, barberPhotoUrl: a!.photo_url ?? null, barberProfile: a!.barber_id ? { bio: a!.bio ?? '', nickname: a!.nickname ?? '', rank: a!.rank ?? '' } : null, role: s.role, owner: s.owner, permissions: s.perms, locationId: s.locationId, notifyBookings: !!a!.notify_bookings, onlinePayments: onlinePaymentsOn(c.env) });
+  return c.json({ id: a!.id, email: a!.email, name: a!.name, barberId: a!.barber_id, barberPhotoUrl: a!.photo_url ?? null, barberProfile: a!.barber_id ? { bio: a!.bio ?? '', nickname: a!.nickname ?? '', rank: a!.rank ?? '' } : null, role: s.role, owner: s.owner, permissions: s.perms, locationId: s.locationId, notifyBookings: !!a!.notify_bookings, notifyTasks: !!a!.notify_tasks, onlinePayments: onlinePaymentsOn(c.env) });
 });
 
 // Telefonul din aplicația echipei primește anunțurile despre programări (programare nouă, anulare, mutare).
@@ -195,12 +195,16 @@ adminRoutes.delete('/me/push', async (c) => {
   return c.json({ ok: true });
 });
 
-// Pornește sau oprește anunțurile despre programări pentru contul ăsta.
+// Pornește sau oprește anunțurile despre programări și amintirile cu taskuri pentru contul ăsta.
 adminRoutes.patch('/me/notify', async (c) => {
-  const b = await c.req.json<{ bookings?: unknown }>();
-  if (typeof b.bookings !== 'boolean') throw new HttpError(400, 'invalid_body');
-  await c.env.DB.prepare('UPDATE admins SET notify_bookings = ? WHERE id = ?').bind(b.bookings ? 1 : 0, c.get('admin').adminId).run();
-  return c.json({ ok: true, notifyBookings: b.bookings });
+  const b = await c.req.json<{ bookings?: unknown; tasks?: unknown }>();
+  if (typeof b.bookings !== 'boolean' && typeof b.tasks !== 'boolean') throw new HttpError(400, 'invalid_body');
+  const id = c.get('admin').adminId;
+  if (typeof b.bookings === 'boolean') await c.env.DB.prepare('UPDATE admins SET notify_bookings = ? WHERE id = ?').bind(b.bookings ? 1 : 0, id).run();
+  // Amintirile cu taskuri la începutul și la sfârșitul programului.
+  if (typeof b.tasks === 'boolean') await c.env.DB.prepare('UPDATE admins SET notify_tasks = ? WHERE id = ?').bind(b.tasks ? 1 : 0, id).run();
+  const a = await c.env.DB.prepare('SELECT notify_bookings, notify_tasks FROM admins WHERE id = ?').bind(id).first<{ notify_bookings: number; notify_tasks: number }>();
+  return c.json({ ok: true, notifyBookings: !!a?.notify_bookings, notifyTasks: !!a?.notify_tasks });
 });
 
 // Frizerul își schimbă singur poza de profil (corpul cererii = poza). Doar pe a lui; patronul o poate schimba din fișa frizerului.

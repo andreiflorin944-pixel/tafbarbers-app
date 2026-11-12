@@ -12,6 +12,7 @@ import { advanceReleases } from './stores';
 import { alertServerErrors, markCronRun, recordServerError } from './serverErrors';
 import { applyRetention, retentionDue } from './retention';
 import { cleanInactive } from './inactive';
+import { sendTaskReminders } from './taskReminders';
 
 /**
  * Rulează la fiecare 5 minute: reminder-e (24h și 2h înainte), cererile de programare expirate, lista de așteptare, campanii programate, urări de ziua clientului,
@@ -51,6 +52,13 @@ export async function scheduled(env: Env) {
     for (const c of sending.results) await runCampaign(env, c.id);
   } catch (e) {
     await recordServerError(env, 'cron: campaigns failed', e);
+  }
+
+  // Taskurile frizerilor pe telefon, la începutul și la sfârșitul programului (pentru personal: nu intră sub pauza mesajelor către clienți).
+  try {
+    await sendTaskReminders(env, new Date(now));
+  } catch (e) {
+    await recordServerError(env, 'cron: task reminders failed', e);
   }
 
   try {

@@ -6,7 +6,7 @@
     "dev": "wrangler dev --ip 0.0.0.0",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "node test-api.mjs && node test-security.mjs && node test-custom-subs.mjs && node test-late.mjs",
+    "test": "node test-api.mjs && node test-security.mjs && node test-custom-subs.mjs && node test-late.mjs && node test-task-reminders.mjs",
     "db:migrate:local": "wrangler d1 migrations apply tafbarbers --local",
     "db:migrate:remote": "wrangler d1 migrations apply tafbarbers --remote",
     "backup": "sh scripts/backup.sh",

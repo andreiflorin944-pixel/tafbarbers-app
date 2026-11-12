@@ -106,6 +106,19 @@ export default function StaffMenu() {
     }
   };
 
+  // Taskurile nebifate pe telefon, cu 10 minute înainte de program și la sfârșitul lui (doar pentru frizeri).
+  const tasksOn = staff.notifyTasks !== false;
+  const toggleTasks = async (on: boolean) => {
+    if (!staffToken) return;
+    staffPatch({ notifyTasks: on });
+    try {
+      await staffApi.setNotifyTasks(staffToken, on);
+    } catch (e) {
+      staffPatch({ notifyTasks: !on });
+      tellErr(e);
+    }
+  };
+
   const signOutOthers = async () => {
     if (!staffToken) return;
     const tell = (m: string) => (Platform.OS === 'web' ? window.alert(m) : Alert.alert(m));
@@ -144,6 +157,18 @@ export default function StaffMenu() {
                 <Text style={[ui.muted, { fontSize: 12 }]}>{t(staff.role === 'barber' ? 'menu.bookingAlertsSubMine' : 'menu.bookingAlertsSubAll')}</Text>
               </View>
               <Switch value={notifyOn} onValueChange={toggleNotify} trackColor={{ true: colors.gold, false: colors.border }} thumbColor={colors.text} />
+            </View>
+          </View>
+        ) : null}
+        {Platform.OS !== 'web' && staff.barberId ? (
+          <View style={s.row}>
+            <Ionicons name="checkbox-outline" size={26} color={colors.gold} style={{ width: 34 }} />
+            <View style={s.rowBody}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>{t('menu.taskAlerts')}</Text>
+                <Text style={[ui.muted, { fontSize: 12 }]}>{t('menu.taskAlertsSub')}</Text>
+              </View>
+              <Switch value={tasksOn} onValueChange={toggleTasks} trackColor={{ true: colors.gold, false: colors.border }} thumbColor={colors.text} />
             </View>
           </View>
         ) : null}
