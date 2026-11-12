@@ -350,8 +350,9 @@ const JOB_NAMES: Record<string, string> = {
 
 async function setRelease(env: Env, id: string, patch: Partial<Pick<ReleaseRow, 'status' | 'step' | 'error'>>) {
   const now = iso(new Date());
-  await env.DB.prepare('UPDATE app_releases SET status = coalesce(?, status), step = coalesce(?, step), error = ?, updated_at = ? WHERE id = ?')
-    .bind(patch.status ?? null, patch.step ?? null, patch.error ?? null, now, id)
+  // `error` nedat = rămâne cel de dinainte (ex. Android a căzut, iar iPhone merge mai departe la verificare).
+  await env.DB.prepare('UPDATE app_releases SET status = coalesce(?, status), step = coalesce(?, step), error = CASE WHEN ? THEN ? ELSE error END, updated_at = ? WHERE id = ?')
+    .bind(patch.status ?? null, patch.step ?? null, 'error' in patch ? 1 : 0, patch.error ?? null, now, id)
     .run();
 }
 
@@ -378,7 +379,19 @@ export async function advanceReleases(env: Env) {
         } else if (run.status === 'failure' || run.status === 'canceled') {
           const bad = run.jobs.filter((j) => j.status === 'failure');
           const why = bad.map((j) => `${JOB_NAMES[j.key] ?? j.name}${j.errors?.[0] ? `: ${j.errors[0].message ?? j.errors[0].title}` : ''}`).join('; ');
-          await setRelease(env, r.id, { status: 'failed', step: run.status === 'canceled' ? 'Oprită din Expo.' : 'Nu a mers.', error: why || 'Vezi detaliile în Expo.' });
+          // Partea de iPhone a ajuns la Apple chiar dacă Android a căzut: o trimitem totuși la verificare, iar eroarea Android rămâne afișată.
+          const iosUploaded = run.status === 'failure' && r.kind !== 'ota' && r.platform !== 'android' && run.jobs.some((j) => j.key === 'submit_ios' && j.status === 'success');
+          if (iosUploaded && creds.apple) {
+            // De aici e o versiune doar pentru iPhone (mesajul de la final nu mai spune „și la Google”).
+            await env.DB.prepare(`UPDATE app_releases SET platform = 'ios' WHERE id = ?`).bind(r.id).run();
+            await setRelease(env, r.id, { status: 'apple', step: 'Versiunea a ajuns la Apple; o trimit la verificare după ce Apple o procesează.', error: why || null });
+            continue;
+          }
+          await setRelease(env, r.id, {
+            status: 'failed',
+            step: run.status === 'canceled' ? 'Oprită din Expo.' : iosUploaded ? 'Versiunea a ajuns la Apple (TestFlight); trimite-o la verificare din App Store Connect.' : 'Nu a mers.',
+            error: why || 'Vezi detaliile în Expo.',
+          });
         } else {
           const now = run.jobs.filter((j) => j.status === 'in-progress').map((j) => JOB_NAMES[j.key] ?? j.name);
           await setRelease(env, r.id, { step: now.length ? `Acum: ${now.join(', ')}.` : 'În coada Expo, pornește în curând.' });
