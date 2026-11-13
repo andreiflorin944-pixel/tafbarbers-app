@@ -32,6 +32,7 @@ export async function sendTemplate(
   for (const k of ['servicename', 'membershipplanname']) if (vars[k]) tr[k] = await localizeText(env, c.lang, vars[k]);
   const t = await renderTemplate(env, event, c.lang, {
     businessname: biz.name,
+    businessphone: biz.phone ?? '',
     customerfullname: name,
     customerfirstname: name.split(/\s+/)[0] ?? '',
     ...vars,

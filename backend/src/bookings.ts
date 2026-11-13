@@ -171,7 +171,8 @@ export async function cancelBooking(env: Env, id: string, by: 'client' | 'admin'
     console.error('refund on cancel', id, e);
   }
   const updated = (await getBooking(env, id))!;
-  if (by === 'admin') await notifyBooking(env, updated, 'cancel');
+  // Clientul care anulează singur primește confirmarea anulării (ca la Barberly), pe canalele bifate la „Programare anulată de client”.
+  await notifyBooking(env, updated, by === 'admin' ? 'cancel' : 'client_cancel');
   await notifyStaff(env, updated, 'cancelled', by === 'admin' ? (adminId ?? null) : null);
   await freedSlot(env, updated.start);
   return updated;
@@ -182,11 +183,13 @@ type BookingJson = NonNullable<Awaited<ReturnType<typeof getBooking>>>;
 export async function notifyBooking(
   env: Env,
   b: BookingJson,
-  kind: Extract<TplEvent, 'confirm' | 'cancel' | 'booking_moved' | 'reminder_24h' | 'reminder_2h' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'pay_request'>,
+  kind: Extract<TplEvent, 'confirm' | 'cancel' | 'client_cancel' | 'booking_moved' | 'reminder_24h' | 'reminder_2h' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'pay_request'>,
   extra: Record<string, string> = {},
 ) {
   const c = await env.DB.prepare('SELECT lang FROM clients WHERE id = ?').bind(b.clientId).first<{ lang: string }>();
   if (!c) return null;
+  const biz = await getBusiness(env);
+  const base = (env.PUBLIC_URL ?? '').replace(/\/+$/, '');
   return sendTemplate(
     env,
     kind,
@@ -195,6 +198,10 @@ export async function notifyBooking(
       servicename: b.serviceName ?? '',
       barbername: b.barberName ?? '',
       datetime: formatLocal(env.TIMEZONE, b.start, c.lang),
+      price: b.price > 0 ? `${Number.isInteger(b.price) ? b.price : b.price.toFixed(2)} lei` : '',
+      // Pagina programării (/b/:id): o vede, o mută sau o anulează și fără să fie logat în aplicație.
+      managelink: base ? `${base}/b/${b.id}` : '',
+      cancelhours: String(biz.cancelHours),
       ...(await locationVars(env, b.locationId, c.lang)),
       ...extra,
     },

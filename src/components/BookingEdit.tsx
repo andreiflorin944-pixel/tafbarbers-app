@@ -190,6 +190,7 @@ const MSG: Record<string, Key> = {
   reminder_24h: "hmsg.reminder24",
   reminder_2h: "hmsg.reminder2",
   cancel: "hmsg.cancel",
+  client_cancel: "hmsg.clientCancel",
   booking_moved: "hmsg.moved",
   booking_request: "hmsg.request",
   booking_request_refused: "hmsg.refused",
