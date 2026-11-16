@@ -55,6 +55,10 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
 
 const MESSAGES: Record<string, string> = {
   network: 'Nu ne putem conecta la server.',
+  barberly_key_rejected: 'Barberly nu acceptă cheia.',
+  barberly_push_incomplete: 'Lipsește cheia, locația sau numărul salonului.',
+  barberly_push_off: 'Trimiterea în Barberly e oprită.',
+  invalid_key: 'Cheia nu pare corectă.',
   wrong_credentials: 'E-mail sau parolă greșită.',
   login_locked: 'Prea multe încercări greșite. Așteaptă 15 minute și încearcă din nou.',
   forbidden: 'Cheia de configurare nu e corectă.',

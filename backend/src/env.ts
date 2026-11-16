@@ -41,6 +41,8 @@ export type Env = {
   SOCIAL_KEY?: string;
   MEDIA?: R2Bucket;
   SOCIAL_MOCK_BASE?: string;
+  // Doar local: server de probă în locul booking-api.barberly.com (trimiterea programărilor în Barberly).
+  BARBERLY_API_BASE?: string;
   // Doar local: server de probă în locul Apple, Google Play și Expo (Panou → Aplicații).
   STORES_MOCK_BASE?: string;
   // Doar local: server de probă în locul Workers AI pentru asistent.

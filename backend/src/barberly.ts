@@ -4,6 +4,7 @@ import { HOLDS_SLOT, logBookingEvent } from './bookings';
 import { getSetting, setSetting } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
 import { iso, localToUtc } from './time';
+import { pushedPhone } from './barberlyPush';
 
 // Copierea programărilor din Barberly, cât timp clienții se mută în aplicația nouă.
 // Barberly nu are export și nici API cu lista programărilor, dar trimite proprietarului un e-mail la fiecare programare
@@ -175,6 +176,8 @@ export async function applyMail(env: Env, p: ParsedMail, now = new Date()): Prom
   if (p.kind === 'unknown') return out('ignored', 'Nu pare un e-mail de programare de la Barberly.');
   if (!p.phone) return out('error', 'Lipsește telefonul clientului.');
   if (!p.day || p.minutes === null) return out('error', 'Nu am înțeles data și ora.');
+  // Programările trimise de noi în Barberly (cu numărul salonului drept „client”) sunt deja la noi: nu se copiază înapoi.
+  if (p.phone === (await pushedPhone(env))) return out('ignored', 'Programare trimisă din aplicația TAF în Barberly.');
   const start = localToUtc(env.TIMEZONE, p.day, p.minutes);
 
   if (p.kind === 'cancel') {
