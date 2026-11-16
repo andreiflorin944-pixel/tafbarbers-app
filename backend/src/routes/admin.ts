@@ -5,6 +5,7 @@ import { qrAdmin } from '../qr';
 import { storesAdmin } from '../stores';
 import { websiteAdmin } from '../website';
 import { barberlyAdmin } from '../barberly';
+import { barberlyPushAdmin } from '../barberlyPush';
 import { clearFailures, lockedAny, loginKeys, recordFailure } from '../clientPassword';
 import { barberHours, bookingsBrief, hoursConflicts, overlapping } from '../scheduleConflicts';
 import {
@@ -159,6 +160,7 @@ adminRoutes.route('/', storesAdmin);
 adminRoutes.route('/', websiteAdmin);
 // Copierea programărilor din Barberly (scriptul din Gmail, jurnalul).
 adminRoutes.route('/', barberlyAdmin);
+adminRoutes.route('/', barberlyPushAdmin);
 
 adminRoutes.post('/logout', async (c) => {
   const t = tokenFrom(c);

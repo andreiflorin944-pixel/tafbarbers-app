@@ -41,6 +41,7 @@ const MSG_KIND: Record<string, string> = {
   reminder_24h: 'Reminder cu o zi înainte',
   reminder_2h: 'Reminder cu 2 ore înainte',
   cancel: 'Programare anulată',
+  client_cancel: 'Anulare confirmată clientului',
   booking_moved: 'Programare mutată',
   booking_request: 'Cerere primită',
   booking_request_refused: 'Cerere refuzată',

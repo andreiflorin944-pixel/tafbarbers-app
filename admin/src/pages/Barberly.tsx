@@ -153,6 +153,8 @@ export function BarberlyPage() {
             ) : null}
           </div>
 
+          <BarberlyPushCard />
+
           <div className="card" style={{ marginBottom: 16, maxWidth: 760 }}>
             <h3 style={{ marginTop: 0 }}>Copiază de mână un e-mail</h3>
             <p className="muted small">Deschide e-mailul de la Barberly, selectează tot textul, copiază-l și lipește-l aici.</p>
@@ -220,5 +222,213 @@ export function BarberlyPage() {
         </>
       )}
     </>
+  );
+}
+
+type PushEntry = { bookingId: string; state: 'synced' | 'error' | 'cancelled'; detail: string; tries: number; updatedAt: string; startsAt: string; clientName: string; barberName: string };
+type Named = { id: string; name: string };
+type PushView = {
+  enabled: boolean;
+  hasKey: boolean;
+  keyHint: string;
+  locationId: string;
+  phone: string;
+  barberMap: Record<string, string>;
+  serviceMap: Record<string, string>;
+  ourBarbers: Named[];
+  ourServices: Named[];
+  catalog: { locations: Named[]; locationId: string; teamMembers: Named[]; services: Array<Named & { duration: number }> } | null;
+  catalogError: string;
+  counts: Record<string, number>;
+  log: PushEntry[];
+};
+const PUSH_STATE: Record<PushEntry['state'], [string, string]> = {
+  synced: ['În Barberly', 'completed'],
+  error: ['Nu s-a putut trimite', 'cancelled'],
+  cancelled: ['Anulată și în Barberly', 'off'],
+};
+
+/** Calendarul invers: programările făcute la noi se pun și în Barberly (ora ocupată acolo), cât timp se lucrează pe ambele. */
+export function BarberlyPushCard() {
+  const data = useLoad(() => api<PushView>('GET', '/admin/barberly/push'));
+  const { busy, error, run } = useAction();
+  const [key, setKey] = useState('');
+  const [phone, setPhone] = useState<string | null>(null);
+  const [ran, setRan] = useState<string>('');
+  const v = data.data;
+  const save = (body: Record<string, unknown>) =>
+    run(async () => {
+      await api<PushView>('PUT', '/admin/barberly/push', body);
+      setKey('');
+      setPhone(null);
+      data.reload();
+    });
+  const runNow = (retry = false) =>
+    run(async () => {
+      const r = await api<{ sent: number; moved: number; cancelled: number; errors: number }>('POST', '/admin/barberly/push/run', { retry });
+      setRan(`Trimise ${r.sent}, mutate ${r.moved}, anulate ${r.cancelled}${r.errors ? `, cu eroare ${r.errors}` : ''}.`);
+      data.reload();
+    });
+
+  return (
+    <div className="card" style={{ marginBottom: 16, maxWidth: 760 }}>
+      <h3 style={{ marginTop: 0 }}>Trimite și programările noastre în Barberly</h3>
+      <p className="muted small">
+        Programările făcute în aplicația TAF, pe site sau în panou apar și în calendarul Barberly, la același frizer și oră, ca nimeni să nu poată lua ora
+        acolo. Mutarea și anularea de la noi se fac și acolo (la 5 minute). În Barberly „clientul” e numărul salonului, ca Barberly să nu-i trimită clientului
+        SMS-uri; numele clientului e în notiță. O programare din Barberly pusă de mână în panou s-ar trimite înapoi: pe acelea copiază-le din e-mail (mai sus).
+      </p>
+      {error ? <div className="err">{error}</div> : null}
+      {!v ? (
+        <Loading error={data.error} />
+      ) : (
+        <>
+          <p>
+            {v.enabled ? <span className="pill completed">Pornit</span> : <span className="pill off">Oprit</span>}{' '}
+            <span className="muted small">
+              {v.hasKey ? `cheie salvată (…${v.keyHint})` : 'fără cheie'} · în Barberly: {v.counts.synced ?? 0} · cu eroare: {v.counts.error ?? 0}
+            </span>
+          </p>
+          <label className="small">
+            Cheia API din Barberly (portal.barberly.com → Aplicații → API de rezervare). Lipește-o doar aici; se păstrează criptată.
+            <div className="row" style={{ gap: 8, marginTop: 4 }}>
+              <input type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={v.hasKey ? 'Cheie nouă (opțional)' : 'bk_live_…'} style={{ flex: 1 }} />
+              <button disabled={busy || !key.trim()} onClick={() => save({ key })}>
+                Salvează cheia
+              </button>
+              {v.hasKey ? (
+                <button className="danger" disabled={busy} onClick={() => confirm('Ștergi cheia? Trimiterea se oprește.') && save({ key: null })}>
+                  Șterge
+                </button>
+              ) : null}
+            </div>
+          </label>
+          {v.catalogError ? <div className="err">{v.catalogError}</div> : null}
+          {v.catalog ? (
+            <>
+              <div className="row" style={{ gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
+                <label className="small">
+                  Locația din Barberly
+                  <select value={v.locationId} onChange={(e) => save({ locationId: e.target.value })} disabled={busy}>
+                    {v.catalog.locations.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="small">
+                  Numărul salonului („clientul” din Barberly)
+                  <div className="row" style={{ gap: 8 }}>
+                    <input value={phone ?? v.phone} onChange={(e) => setPhone(e.target.value)} placeholder="07…" />
+                    {phone !== null && phone !== v.phone ? (
+                      <button disabled={busy} onClick={() => save({ phone })}>
+                        Salvează
+                      </button>
+                    ) : null}
+                  </div>
+                </label>
+              </div>
+              <table style={{ marginTop: 12 }}>
+                <thead>
+                  <tr>
+                    <th>Frizerul la noi</th>
+                    <th>În Barberly</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {v.ourBarbers.map((b) => (
+                    <tr key={b.id}>
+                      <td>{b.name}</td>
+                      <td>
+                        <select value={v.barberMap[b.id] ?? ''} disabled={busy} onChange={(e) => save({ barbers: { ...v.barberMap, [b.id]: e.target.value } })}>
+                          <option value="">— nelegat —</option>
+                          {v.catalog!.teamMembers.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <table style={{ marginTop: 12 }}>
+                <thead>
+                  <tr>
+                    <th>Serviciul la noi</th>
+                    <th>În Barberly (durata se ia de la noi)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {v.ourServices.map((s) => (
+                    <tr key={s.id}>
+                      <td>{s.name}</td>
+                      <td>
+                        <select value={v.serviceMap[s.id] ?? ''} disabled={busy} onChange={(e) => save({ services: { ...v.serviceMap, [s.id]: e.target.value } })}>
+                          <option value="">— primul legat —</option>
+                          {v.catalog!.services.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} ({t.duration} min)
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <button disabled={busy} className={v.enabled ? 'danger' : undefined} onClick={() => save({ enabled: !v.enabled })}>
+                  {v.enabled ? 'Oprește trimiterea' : 'Pornește trimiterea'}
+                </button>
+                {v.enabled ? (
+                  <>
+                    <button disabled={busy} onClick={() => runNow()}>
+                      Trimite acum
+                    </button>
+                    {v.counts.error ? (
+                      <button disabled={busy} onClick={() => runNow(true)}>
+                        Reîncearcă erorile
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+                {ran ? <span className="small muted">{ran}</span> : null}
+              </div>
+            </>
+          ) : null}
+          {v.log.length ? (
+            <div className="table-wrap" style={{ marginTop: 12 }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Programarea</th>
+                    <th>Stare</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {v.log.map((e) => (
+                    <tr key={e.bookingId}>
+                      <td>
+                        {e.clientName || 'Client'}
+                        <div className="muted small">
+                          {date(e.startsAt)}, {time(e.startsAt)} · {e.barberName}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`pill ${PUSH_STATE[e.state][1]}`}>{PUSH_STATE[e.state][0]}</span>
+                        {e.detail ? <div className="muted small">{e.detail}</div> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 }

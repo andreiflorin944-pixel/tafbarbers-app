@@ -41,7 +41,7 @@ La final, adresa Worker-ului se pune în aplicație, în `app.json` → `expo.ex
 ## Dezvoltare locală
 
 ```bash
-printf 'DEV_OTP=1\nADMIN_SETUP_KEY=local-setup-key-123\n' > .dev.vars
+printf 'DEV_OTP=1\nADMIN_SETUP_KEY=local-setup-key-123\nBARBERLY_API_BASE=http://127.0.0.1:8799\n' > .dev.vars
 npm run db:migrate:local
 npx wrangler dev            # http://127.0.0.1:8787
 node test-api.mjs           # testele API (pe o bază locală goală)
