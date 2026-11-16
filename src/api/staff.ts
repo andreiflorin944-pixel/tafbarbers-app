@@ -268,6 +268,8 @@ export type StaffBarber = {
   photoUrl: string | null;
   initials: string;
   active: boolean;
+  /** Culoarea frizerului în calendar (aleasă în panou → Frizeri), ex. „#F28C28”. */
+  color?: string | null;
   hours: Array<{ weekday: number; start: number; end: number }>; // minute de la miezul nopții
 };
 export type BlockKind = 'lunch' | 'off' | 'education' | 'other' | 'members';
