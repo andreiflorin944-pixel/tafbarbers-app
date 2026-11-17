@@ -27,6 +27,14 @@ const server = http.createServer((q, s) => {
     if (q.method === 'GET' && q.url === '/v1/locations') return send(200, [{ id: LOC, name: 'TAF Barbers Iasi' }]);
     if (q.method === 'POST' && q.url === `/v1/locations/${LOC}/team-members`) return send(200, [{ id: 'tm-florin', firstName: 'Florin', lastName: 'T' }, { id: 'tm-andrei', firstName: 'Andrei', lastName: null }]);
     if (q.method === 'POST' && q.url === `/v1/locations/${LOC}/services`) return send(200, [{ id: null, name: 'Toate', services: [{ id: 'bs-beard', name: 'Barbă', duration: 30 }, { id: 'bs-other', name: 'Altceva', duration: 45 }] }]);
+    const acct = { customer: { customerId: 'cust-1', firstName: 'Florin', lastName: 'T', phoneNumber: '+40747857517' } };
+    if (q.url === '/v1/accounts/login') return body.password === Buffer.from('parola-bună').toString('base64') ? send(200, acct) : send(401, { title: 'Unauthorized' });
+    if (q.url === '/v1/accounts/password/reset') return send(202);
+    if (q.url === '/v1/accounts/password/reset/confirm') return body.confirmationCode === '123456' ? send(200, acct) : send(400, { title: 'Invalid code' });
+    // Salonul cere clienți înregistrați, ca TAFBarber's.
+    if ((q.method === 'POST' && q.url === '/v1/bookings') || (q.method === 'PUT' && q.url.startsWith('/v1/bookings/'))) {
+      if (!body.customer?.customerId) return send(400, { title: 'Bad Request', detail: 'This salon requires customers to be registered. Provide the customer id of a registered customer.' });
+    }
     if (q.method === 'POST' && q.url === '/v1/bookings') return send(201, { id: `bb-${++n}`, status: 'Confirmed' });
     if (q.method === 'PUT' && q.url.startsWith('/v1/bookings/')) return send(200, { id: q.url.split('/')[3], status: 'Confirmed' });
     if (q.method === 'POST' && /\/v1\/bookings\/[^/]+\/cancel$/.test(q.url)) return send(204);
@@ -58,12 +66,33 @@ try {
   r = await req('POST', '/admin/bookings', { phone: '0722000999', name: 'Ion Sincron', serviceId: 'svc-beard', barberId: 'barber-andrei', start, force: true, notify: false }, at);
   ok(r.status === 201, 'booking created at us');
   const bk = r.body;
+  r = await req('POST', '/admin/barberly/push/run', {}, at);
+  ok(r.status === 200 && r.body.sent === 0 && r.body.errors >= 1, 'without a registered customer Barberly refuses');
+  r = await req('GET', '/admin/barberly/push', null, at);
+  ok(r.body.log.some((e) => e.state === 'error' && e.detail.includes('registered')), 'refusal reason shown in panel');
+
+  // Legarea contului de client Barberly: parolă greșită, apoi „nu știu parola” cu cod, apoi intrare cu parola.
+  r = await req('POST', '/admin/barberly/push/account', { action: 'login', password: 'gresita' }, at);
+  ok(r.status === 400 && r.body.error === 'barberly_account_failed' && /Parola/.test(r.body.message), 'wrong password refused');
+  r = await req('POST', '/admin/barberly/push/account', { action: 'reset', password: 'parola-bună' }, at);
+  ok(r.status === 200 && r.body.codeSent && r.body.recipient === '+40747857517', 'reset code sent to salon phone');
+  const reset = calls.find((c) => c.url === '/v1/accounts/password/reset');
+  ok(reset && reset.body.newPassword === Buffer.from('parola-bună').toString('base64'), 'new password sent Base64');
+  r = await req('POST', '/admin/barberly/push/account', { action: 'reset_confirm', code: '000000' }, at);
+  ok(r.status === 400, 'wrong code refused');
+  r = await req('POST', '/admin/barberly/push/account', { action: 'reset_confirm', code: '123456' }, at);
+  ok(r.status === 200 && r.body.customerId === 'cust-1' && r.body.customerName === 'Florin T', 'account linked after reset');
+  await req('POST', '/admin/barberly/push/account', { action: 'unlink' }, at);
+  r = await req('POST', '/admin/barberly/push/account', { action: 'login', password: 'parola-bună' }, at);
+  ok(r.status === 200 && r.body.customerId === 'cust-1', 'account linked with password');
+  ok(!JSON.stringify(r.body).includes('parola'), 'password not returned');
+
   calls.length = 0;
   r = await req('POST', '/admin/barberly/push/run', {}, at);
-  ok(r.status === 200 && r.body.sent >= 1 && r.body.errors === 0, `run: ${JSON.stringify(r.body)}`);
+  ok(r.status === 200 && r.body.sent >= 1 && r.body.errors === 0, `run after linking retries the refused ones: ${JSON.stringify(r.body)}`);
   const post = calls.find((c) => c.method === 'POST' && c.url === '/v1/bookings' && c.body.note.includes('Ion Sincron'));
   ok(!!post, 'POST /v1/bookings sent');
-  ok(post && post.body.teamMemberId === 'tm-andrei' && post.body.locationId === LOC && post.body.customer.phoneNumber === '+40747857517', 'right barber, location, salon phone as customer');
+  ok(post && post.body.teamMemberId === 'tm-andrei' && post.body.locationId === LOC && post.body.customer.phoneNumber === '+40747857517' && post.body.customer.customerId === 'cust-1', 'right barber, location, registered salon customer');
   const local = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Bucharest', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(start)).split(':');
   ok(post && post.body.timeSlot.date === start.slice(0, 10) && post.body.timeSlot.startMinutesOfDay === +local[0] * 60 + +local[1], `local wall time ${JSON.stringify(post?.body.timeSlot)}`);
   ok(post && post.body.timeSlot.durationMinutes === Math.round((Date.parse(bk.end) - Date.parse(bk.start)) / 60000), 'duration from our booking');

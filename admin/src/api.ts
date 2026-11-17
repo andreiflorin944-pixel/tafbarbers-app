@@ -58,6 +58,7 @@ const MESSAGES: Record<string, string> = {
   barberly_key_rejected: 'Barberly nu acceptă cheia.',
   barberly_push_incomplete: 'Lipsește cheia, locația sau numărul salonului.',
   barberly_push_off: 'Trimiterea în Barberly e oprită.',
+  barberly_account_failed: 'Barberly nu a acceptat contul.',
   invalid_key: 'Cheia nu pare corectă.',
   wrong_credentials: 'E-mail sau parolă greșită.',
   login_locked: 'Prea multe încercări greșite. Așteaptă 15 minute și încearcă din nou.',
