@@ -233,6 +233,8 @@ type PushView = {
   keyHint: string;
   locationId: string;
   phone: string;
+  customerId: string;
+  customerName: string;
   barberMap: Record<string, string>;
   serviceMap: Record<string, string>;
   ourBarbers: Named[];
@@ -329,6 +331,7 @@ export function BarberlyPushCard() {
                   </div>
                 </label>
               </div>
+              <BarberlyAccount v={v} onDone={() => data.reload()} />
               <table style={{ marginTop: 12 }}>
                 <thead>
                   <tr>
@@ -427,6 +430,94 @@ export function BarberlyPushCard() {
               </table>
             </div>
           ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Contul de client Barberly sub care se pun programările (salonul cere clienți înregistrați). Parola nu se păstrează la noi. */
+function BarberlyAccount({ v, onDone }: { v: PushView; onDone: () => void }) {
+  const { busy, error, run } = useAction();
+  const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('Florin');
+  const [code, setCode] = useState('');
+  const [waiting, setWaiting] = useState(false);
+  const call = (body: Record<string, unknown>, after?: () => void) =>
+    run(async () => {
+      const r = await api<{ codeSent?: boolean }>('POST', '/admin/barberly/push/account', { phone: v.phone, ...body });
+      if (r.codeSent) setWaiting(true);
+      else {
+        setWaiting(false);
+        setPassword('');
+        setCode('');
+        onDone();
+      }
+      after?.();
+    });
+  return (
+    <div style={{ marginTop: 12, padding: 12, border: '1px solid var(--line, #333)', borderRadius: 12 }}>
+      <b>Contul de client din Barberly</b>
+      <p className="muted small" style={{ margin: '4px 0 8px' }}>
+        Salonul tău din Barberly primește doar programări de la clienți cu cont. Programările din aplicația TAF se pun sub contul de client Barberly al numărului
+        salonului ({v.phone || 'nesetat'}). Parola merge doar spre Barberly; la noi nu se păstrează.
+      </p>
+      {error ? <div className="err">{error}</div> : null}
+      {v.customerId ? (
+        <p className="small">
+          <span className="pill completed">Legat</span> {v.customerName || 'cont Barberly'}{' '}
+          <button className="danger" disabled={busy} onClick={() => confirm('Dezlegi contul? Barberly va refuza programările până legi altul.') && call({ action: 'unlink' })}>
+            Dezleagă
+          </button>
+        </p>
+      ) : (
+        <>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+            {(
+              [
+                ['login', 'Am cont, știu parola'],
+                ['reset', 'Am cont, nu știu parola'],
+                ['register', 'Nu am cont'],
+              ] as const
+            ).map(([m, label]) => (
+              <button key={m} className={mode === m ? undefined : 'ghost'} disabled={busy} onClick={() => (setMode(m), setWaiting(false))}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {waiting ? (
+            <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+              <span className="small">Barberly a trimis un cod de 6 cifre (SMS sau e-mail). Scrie-l aici:</span>
+              <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" style={{ width: 120 }} />
+              <button disabled={busy || code.trim().length < 4} onClick={() => call({ action: mode === 'register' ? 'register_confirm' : 'reset_confirm', code })}>
+                Confirmă
+              </button>
+            </div>
+          ) : (
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {mode === 'register' ? (
+                <>
+                  <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Prenume" style={{ width: 120 }} />
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" />
+                </>
+              ) : null}
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={mode === 'login' ? 'Parola contului Barberly' : 'Parolă nouă'}
+              />
+              <button
+                disabled={busy || !password || (mode === 'register' && (!email.trim() || !firstName.trim()))}
+                onClick={() => call(mode === 'login' ? { action: 'login', password } : mode === 'register' ? { action: 'register', password, email, firstName } : { action: 'reset', password })}
+              >
+                {mode === 'login' ? 'Leagă contul' : 'Trimite codul'}
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

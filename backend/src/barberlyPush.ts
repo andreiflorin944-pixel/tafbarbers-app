@@ -18,11 +18,14 @@ export type PushSettings = {
   keyHint: string;
   locationId: string;
   phone: string; // „clientul” din Barberly pentru programările trimise de noi (numărul salonului)
+  // Saloanele care cer clienți înregistrați: contul de client Barberly sub care se pun programările (doar id-ul și numele; parola nu se păstrează).
+  customerId: string;
+  customerName: string;
   barbers: Record<string, string>; // frizerul nostru → membrul echipei din Barberly
   services: Record<string, string>; // serviciul nostru → serviciul din Barberly
 };
 const KEY = 'barberly_push';
-const EMPTY: PushSettings = { enabled: false, keySealed: null, keyHint: '', locationId: '', phone: '', barbers: {}, services: {} };
+const EMPTY: PushSettings = { enabled: false, keySealed: null, keyHint: '', locationId: '', phone: '', customerId: '', customerName: '', barbers: {}, services: {} };
 export const getPushSettings = async (env: Env) => ({ ...EMPTY, ...(await getSetting<Partial<PushSettings>>(env, KEY, {})) });
 
 /** Numărul folosit ca „client” în Barberly: e-mailurile Barberly pentru el sunt programările trimise de noi. */
@@ -50,7 +53,14 @@ async function bapi<T>(env: Env, apiKey: string, method: string, path: string, b
     const p = (j ?? {}) as { title?: string; detail?: string; errors?: Record<string, string[]> };
     const errs = p.errors ? Object.values(p.errors).flat().join(' ') : '';
     const why = [p.detail || p.title, errs].filter(Boolean).join(' ') || text.slice(0, 200);
-    throw new Error(r.status === 401 || r.status === 403 ? 'Barberly nu acceptă cheia (verific-o în Barberly → API de rezervare).' : `Barberly ${r.status}: ${why}`.slice(0, 300));
+    const account = path.startsWith('/v1/accounts');
+    throw new Error(
+      (r.status === 401 || r.status === 403) && !account
+        ? 'Barberly nu acceptă cheia (verific-o în Barberly → API de rezervare).'
+        : account && r.status === 401
+          ? 'Parola sau codul nu sunt bune.'
+          : `Barberly ${r.status}: ${why}`.slice(0, 300),
+    );
   }
   return j as T;
 }
@@ -160,7 +170,9 @@ export async function runBarberlyPush(env: Env, now = new Date(), limit = 20) {
       teamMemberId: tm,
       serviceIds: [svc],
       timeSlot: { date: day, startMinutesOfDay: +hm.slice(0, 2) * 60 + +hm.slice(3, 5), durationMinutes: Math.max(5, Math.round((Date.parse(r.ends_at) - Date.parse(r.starts_at)) / 60_000)) },
-      customer: { firstName: 'Aplicatia', lastName: 'TAF', phoneNumber: s.phone },
+      customer: s.customerId
+        ? { customerId: s.customerId, firstName: s.customerName.split(' ')[0] || 'Aplicatia', phoneNumber: s.phone }
+        : { firstName: 'Aplicatia', lastName: 'TAF', phoneNumber: s.phone },
       note: `Din aplicatia TAF: ${(r.client_name || 'client').slice(0, 60)}`,
     };
     try {
@@ -235,6 +247,8 @@ async function view(env: Env) {
     keyHint: s.keyHint,
     locationId: s.locationId,
     phone: s.phone,
+    customerId: s.customerId,
+    customerName: s.customerName,
     barberMap: s.barbers,
     serviceMap: s.services,
     ourBarbers: barbers.results,
@@ -295,6 +309,68 @@ barberlyPushAdmin.put('/barberly/push', async (c) => {
   }
   await setSetting(c.env, KEY, next);
   return c.json(await view(c.env));
+});
+
+// Contul de client din Barberly (când salonul cere clienți înregistrați). Trei căi, toate pe numărul salonului:
+// intrare cu parola, cont nou (cod prin SMS/e-mail) sau parolă nouă (cod). Parola trece doar spre Barberly (Base64, cum cer ei).
+type AuthResult = { customer?: { customerId?: string | null; firstName?: string | null; lastName?: string | null; phoneNumber?: string | null } | null };
+const b64pw = (p: string) => btoa(String.fromCharCode(...new TextEncoder().encode(p)));
+
+async function linkCustomer(c: Context<AppEnv>, s: PushSettings, r: AuthResult) {
+  const cu = r?.customer;
+  if (!cu?.customerId) return c.json({ error: 'barberly_account_failed', message: 'Barberly nu a întors contul clientului.' }, 400);
+  let phone = s.phone;
+  try {
+    if (cu.phoneNumber) phone = normalizePhone(cu.phoneNumber);
+  } catch {
+    /* rămâne numărul salvat */
+  }
+  await setSetting(c.env, KEY, { ...s, customerId: cu.customerId, customerName: [cu.firstName, cu.lastName].filter(Boolean).join(' ').slice(0, 80), phone });
+  // Programările refuzate până acum (fără client înregistrat) se reîncearcă la următoarea trimitere.
+  await c.env.DB.prepare(`UPDATE barberly_outbox SET tries = 0 WHERE state = 'error'`).run();
+  return c.json(await view(c.env));
+}
+
+barberlyPushAdmin.post('/barberly/push/account', async (c) => {
+  const b = await c.req.json<{ action?: string; phone?: string; password?: string; email?: string; firstName?: string; code?: string; recipient?: string }>();
+  const s = await getPushSettings(c.env);
+  if (!s.keySealed) throw new HttpError(400, 'barberly_push_incomplete');
+  const apiKey = await unseal(c.env, s.keySealed);
+  const phone = normalizePhone(b.phone || s.phone);
+  const pw = (b.password ?? '').slice(0, 200);
+  try {
+    switch (b.action) {
+      case 'login':
+        if (!pw) throw new HttpError(400, 'invalid_body');
+        return await linkCustomer(c, { ...s, phone }, await bapi<AuthResult>(c.env, apiKey, 'POST', '/v1/accounts/login', { phoneNumber: phone, password: b64pw(pw) }));
+      case 'register':
+        if (!pw || !b.email || !b.firstName) throw new HttpError(400, 'invalid_body');
+        await bapi(c.env, apiKey, 'POST', '/v1/accounts/register', { email: b.email.trim().slice(0, 120), firstName: b.firstName.trim().slice(0, 60), lastName: 'TAF', phoneNumber: phone, password: b64pw(pw) });
+        return c.json({ codeSent: true, phone });
+      case 'register_confirm':
+        if (!b.code) throw new HttpError(400, 'invalid_body');
+        return await linkCustomer(c, { ...s, phone }, await bapi<AuthResult>(c.env, apiKey, 'POST', '/v1/accounts/register/confirm', { phoneNumber: phone, confirmationCode: b.code.trim() }));
+      case 'reset': {
+        if (!pw) throw new HttpError(400, 'invalid_body');
+        const recipient = (b.recipient ?? '').trim() || phone;
+        await bapi(c.env, apiKey, 'POST', '/v1/accounts/password/reset', { recipient, newPassword: b64pw(pw) });
+        return c.json({ codeSent: true, recipient });
+      }
+      case 'reset_confirm': {
+        if (!b.code) throw new HttpError(400, 'invalid_body');
+        const recipient = (b.recipient ?? '').trim() || phone;
+        return await linkCustomer(c, { ...s, phone }, await bapi<AuthResult>(c.env, apiKey, 'POST', '/v1/accounts/password/reset/confirm', { recipient, confirmationCode: b.code.trim() }));
+      }
+      case 'unlink':
+        await setSetting(c.env, KEY, { ...s, customerId: '', customerName: '' });
+        return c.json(await view(c.env));
+      default:
+        throw new HttpError(400, 'invalid_body');
+    }
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    return c.json({ error: 'barberly_account_failed', message: String(e instanceof Error ? e.message : e) }, 400);
+  }
 });
 
 // „Trimite acum” (fără să aștepte cronul) și „Reîncearcă” pentru cele care au dat eroare de 5 ori.

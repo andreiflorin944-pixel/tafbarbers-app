@@ -176,9 +176,17 @@ export async function applyMail(env: Env, p: ParsedMail, now = new Date()): Prom
   if (p.kind === 'unknown') return out('ignored', 'Nu pare un e-mail de programare de la Barberly.');
   if (!p.phone) return out('error', 'Lipsește telefonul clientului.');
   if (!p.day || p.minutes === null) return out('error', 'Nu am înțeles data și ora.');
-  // Programările trimise de noi în Barberly (cu numărul salonului drept „client”) sunt deja la noi: nu se copiază înapoi.
-  if (p.phone === (await pushedPhone(env))) return out('ignored', 'Programare trimisă din aplicația TAF în Barberly.');
   const start = localToUtc(env.TIMEZONE, p.day, p.minutes);
+  // Programările trimise de noi în Barberly (cu numărul salonului drept „client”) sunt deja la noi: nu se copiază înapoi.
+  // Doar când chiar am trimis una la ora asta: numărul salonului poate fi și al cuiva care se programează de-adevăratelea în Barberly.
+  if (p.phone === (await pushedPhone(env))) {
+    const ours = await env.DB.prepare(
+      `SELECT 1 FROM barberly_outbox o JOIN bookings b ON b.id = o.booking_id WHERE o.barberly_id IS NOT NULL AND (b.starts_at = ?1 OR o.starts_at = ?1) LIMIT 1`,
+    )
+      .bind(iso(start))
+      .first();
+    if (ours) return out('ignored', 'Programare trimisă din aplicația TAF în Barberly.');
+  }
 
   if (p.kind === 'cancel') {
     const b = await env.DB.prepare(
