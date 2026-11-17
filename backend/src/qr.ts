@@ -3,6 +3,7 @@ import { newId, sha256 } from './auth';
 import { getBusiness } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
 import { getAutomations } from './growth';
+import { STORE_LINKS } from './stores';
 import { iso } from './time';
 
 // Coduri QR pentru campanii: fiecare cod are linkul lui (/q/<cod>). La scanare numărăm vizita și deschidem
@@ -98,6 +99,36 @@ qrPublic.get('/q/:code', async (c) => {
   const deep = camp.target === 'book' ? `tafbarbers://book?qr=${code}` : `tafbarbers://?qr=${code}`;
   return c.html(await openAppPage(c.env, deep));
 });
+
+// --- Linkul de descărcare (pentru codul QR tipărit: cărți de vizită, afișe, oglinzi) ---
+// Un singur cod pentru ambele telefoane: iPhone merge în App Store, Android în Google Play,
+// iar pe calculator (sau alt telefon) arătăm o pagină cu ambele butoane.
+
+async function storeLinks(env: Env) {
+  const auto = await getAutomations(env).catch(() => null);
+  return {
+    ios: auto?.links.appStoreUrl || STORE_LINKS.appStore,
+    android: auto?.links.playStoreUrl || STORE_LINKS.play,
+  };
+}
+
+async function downloadPage(c: Context<AppEnv>) {
+  const links = await storeLinks(c.env);
+  const dev = device(c.req.header('User-Agent') ?? '');
+  if (dev === 'ios') return c.redirect(links.ios, 302);
+  if (dev === 'android') return c.redirect(links.android, 302);
+  const biz = await getBusiness(c.env).catch(() => ({ name: 'TAF Barbers' }));
+  const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+  return c.html(`<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Descarcă aplicația ${esc(biz.name)}</title>
+<meta property="og:title" content="Descarcă aplicația ${esc(biz.name)}"><meta property="og:description" content="Programări în câteva secunde, pe iPhone și Android.">
+<style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:480px;margin:0 auto;padding:56px 20px;text-align:center}h1{font-size:28px;margin:0 0 6px}a.s{display:block;background:#F9A11B;color:#000;font-weight:800;text-decoration:none;padding:16px;border-radius:999px;margin-top:14px}.m{color:#999;font-size:14px}a{color:#F9A11B}</style></head>
+<body><main><h1>${esc(biz.name)}</h1><p class="m">Descarcă aplicația și programează-te în câteva secunde.</p>
+<a class="s" href="${esc(links.ios)}">App Store (iPhone)</a><a class="s" href="${esc(links.android)}">Google Play (Android)</a>
+<p class="m" style="margin-top:26px">Sau programează-te direct pe <a href="/">site</a>.</p></main></body></html>`);
+}
+
+qrPublic.get('/descarca', downloadPage);
+qrPublic.get('/download', downloadPage);
 
 // --- Panoul (doar proprietarul) ---
 
