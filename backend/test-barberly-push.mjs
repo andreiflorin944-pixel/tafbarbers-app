@@ -86,6 +86,9 @@ try {
   // E-mailul Barberly pentru programarea trimisă de noi (client = numărul salonului) nu se copiază înapoi.
   r = await req('POST', '/admin/barberly/paste', { subject: 'Numire nouă: Aplicatia TAF', text: `Numire nouă: Aplicatia TAF\nCLIENT\nAplicatia TAF\n+40747857517\nCÂND\n${later.slice(0, 10)} 12:00\nSERVICII\nBarbă\nCU\nAndrei` }, at);
   ok(r.status === 200 && r.body.result === 'ignored', `own booking e-mail ignored (${r.body?.result}: ${r.body?.detail})`);
+  // O programare reală în Barberly a cuiva cu același număr (ex. proprietarul se programează singur), la altă oră: se copiază.
+  r = await req('POST', '/admin/barberly/paste', { subject: 'Numire nouă: Florin Test', text: `Numire nouă: Florin Test\nCLIENT\nFlorin Test\n+40747857517\nCÂND\n${later.slice(0, 10)} 17:00\nSERVICII\nBarbă\nCU\nAndrei` }, at);
+  ok(r.status === 200 && r.body.result === 'created', `real booking with salon phone still copied (${r.body?.result}: ${r.body?.detail})`);
 
   // Anulată la noi → anulată în Barberly.
   r = await req('PATCH', `/admin/bookings/${bk.id}`, { status: 'cancelled' }, at);
