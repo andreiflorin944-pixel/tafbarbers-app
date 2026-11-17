@@ -196,6 +196,7 @@ export function CalendarPage({ me }: { me: Me }) {
           left: `calc(5px + (100% - 10px) * ${lane.lane / lane.n})`,
           width: `calc((100% - 10px) / ${lane.n} - ${lane.n > 1 ? 3 : 0}px)`,
           ['--c' as string]: color,
+          ['--bc' as string]: color,
         }}
         onClick={() => {
           setHover(null);
@@ -354,7 +355,7 @@ export function CalendarPage({ me }: { me: Me }) {
           );
         })}
         {week && isToday && nowIn ? <div className="cal-now" style={{ top: (nowMin - startMin) * PX }} /> : null}
-        {list.map((x) => card(x, lane.get(x.id) ?? { lane: 0, n: 1 }, week ? colorOf(x.barberId) : 'var(--gold)', withBarber))}
+        {list.map((x) => card(x, lane.get(x.id) ?? { lane: 0, n: 1 }, colorOf(x.barberId), withBarber))}
       </div>
     );
   };

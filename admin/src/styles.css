@@ -279,14 +279,21 @@ tr.click:hover td { background: var(--card-alt); }
 .cal-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); }
 .cal-line.hour { border-top: 2px solid var(--line-hour); }
 .cal-off { position: absolute; left: 0; right: 0; background: repeating-linear-gradient(45deg, #111113, #111113 6px, #17171a 6px, #17171a 12px); }
+/* Fiecare programare ia culoarea frizerului (--bc, aleasă în Frizeri), ca în Barberly: fundal nuanțat
+   cu culoarea lui peste cardul închis, dungă plină în stânga și bordură în aceeași culoare.
+   Nuanța e dozată (--ev-tint) ca textul alb să rămână ușor de citit pe tema întunecată. */
+:root { --ev-tint: 34%; }
+:root[data-theme='light'] { --ev-tint: 26%; }
 .cal-ev {
   --c: var(--gold);
+  --bc: var(--gold);
   position: absolute; left: 5px; width: calc(100% - 10px); border-radius: 8px; padding: 6px 10px 6px 10px; font-size: 12px; overflow: hidden; cursor: pointer;
-  background: var(--ev-bg); border: 1px solid var(--ev-border); border-left: 4px solid var(--c); color: var(--text); line-height: 1.3;
+  background: color-mix(in srgb, var(--bc) var(--ev-tint), var(--ev-bg)); border: 1px solid color-mix(in srgb, var(--bc) 70%, var(--ev-bg)); border-left: 5px solid var(--c); color: var(--text); line-height: 1.3;
   display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto; column-gap: 8px; align-content: start;
   container-type: inline-size; z-index: 1;
 }
-.cal-ev:hover { background: color-mix(in srgb, var(--c) 7%, var(--ev-bg)); border-color: color-mix(in srgb, var(--c) 35%, var(--ev-border)); border-left-color: var(--c); }
+.cal-ev:hover { background: color-mix(in srgb, var(--bc) calc(var(--ev-tint) + 12%), var(--ev-bg)); border-color: var(--bc); border-left-color: var(--c); }
+.cal-ev .cal-ev-time, .cal-ev .cal-ev-svc, .cal-ev .cal-ev-id { color: color-mix(in srgb, var(--text) 82%, var(--bc)); }
 .cal-ev.sel { box-shadow: 0 0 0 2px var(--c); }
 .cal-ev-time { grid-column: 1; grid-row: 1; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-ev b { grid-column: 1; grid-row: 2; display: block; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

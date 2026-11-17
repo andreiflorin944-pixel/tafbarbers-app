@@ -23,6 +23,20 @@ const ink = (a: number) => `${colors.text.slice(0, 7)}${Math.round(a * 255).toSt
 const LINE_HOUR = ink(0.55);
 const LINE_STEP = ink(0.22);
 const GRID_BG = ink(0.09);
+// Culoarea frizerului (aleasă în panou → Frizeri), ca în Barberly. Fără culoare aleasă, aceeași paletă ca în panou.
+const BARBER_PALETTE = ['#F28C28', '#E5484D', '#3E7BFA', '#30A46C', '#8E4EC6', '#12A594', '#D6409F', '#AD7F58'];
+const HEX6 = /^#[0-9A-Fa-f]{6}$/;
+const barberColor = (list: StaffBarber[], id: string) => {
+  const i = list.findIndex((b) => b.id === id);
+  const c = i >= 0 ? list[i].color : null;
+  return c && HEX6.test(c) ? c : BARBER_PALETTE[Math.max(i, 0) % BARBER_PALETTE.length];
+};
+// Amestecă culoarea frizerului peste fundalul cardului: nuanță vizibilă, dar textul rămâne lizibil.
+const mix = (a: string, b: string, k: number) => {
+  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [x, y] = [p(a), p(HEX6.test(b.slice(0, 7)) ? b.slice(0, 7) : '#0F0F10')];
+  return `#${x.map((v, i) => Math.round(v * k + y[i] * (1 - k)).toString(16).padStart(2, '0')).join('')}`;
+};
 const hm = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 type Range = { start: number; end: number };
 
@@ -161,7 +175,8 @@ export default function StaffCalendar() {
       {canAll && barbers.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0, height: 54 }} contentContainerStyle={{ gap: space.xs, padding: space.sm, alignItems: 'center' }}>
           {['all', ...barbers.map((b) => b.id)].map((id) => (
-            <Pressable key={id} onPress={() => setSel(id)} style={[s.chip, sel === id && s.chipOn]}>
+            <Pressable key={id} onPress={() => setSel(id)} style={[s.chip, sel === id && s.chipOn, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+              {id !== 'all' ? <View style={[s.dot, { backgroundColor: barberColor(barbers, id) }]} /> : null}
               <Text style={[s.chipText, sel === id && { color: colors.onGold }]}>{id === 'all' ? t('cal.all') : barbers.find((b) => b.id === id)?.name}</Text>
             </Pressable>
           ))}
@@ -181,9 +196,12 @@ export default function StaffCalendar() {
           {shown.length > 1 ? (
             <View style={{ flexDirection: 'row', paddingLeft: 60 }}>
               {shown.map((b) => (
-                <Text key={b.id} style={s.colHead} numberOfLines={1}>
-                  {b.name}
-                </Text>
+                <View key={b.id} style={s.colHeadBox}>
+                  <View style={[s.dot, { backgroundColor: barberColor(barbers, b.id) }]} />
+                  <Text style={s.colHead} numberOfLines={1}>
+                    {b.name}
+                  </Text>
+                </View>
               ))}
             </View>
           ) : null}
@@ -226,8 +244,15 @@ export default function StaffCalendar() {
                     const e0 = toMin(x.end);
                     const st = BOOKING_STATUS[x.status];
                     const h = Math.max(ROW, y(e0) - y(s0)) - 3;
+                    const bc = barberColor(barbers, x.barberId);
                     return (
-                      <Pressable key={x.id} onPress={() => setOpen(x)} style={[s.booking, { top: y(s0) + 1.5, height: h, borderLeftColor: st.color }]} accessibilityLabel={t('cal.booking', { name: x.clientName ?? '' })}>
+                      <Pressable
+                        key={x.id}
+                        onPress={() => setOpen(x)}
+                        style={[
+                          s.booking,
+                          { top: y(s0) + 1.5, height: h, backgroundColor: mix(bc, colors.card, 0.34), borderColor: mix(bc, colors.card, 0.7), borderLeftColor: x.status === 'confirmed' ? bc : st.color },
+                        ]} accessibilityLabel={t('cal.booking', { name: x.clientName ?? '' })}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                           {x.clientBirthday ? <Candle size={14} /> : null}
                           {x.lateMin && x.status === 'confirmed' ? <Text style={[s.bName, { color: colors.gold }]}>⏰+{x.lateMin}′</Text> : null}
@@ -296,7 +321,9 @@ const s = StyleSheet.create({
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   chipOn: { backgroundColor: colors.gold, borderColor: colors.gold },
   chipText: { color: colors.text, fontWeight: '600' },
-  colHead: { flex: 1, color: colors.text, fontWeight: '700', textAlign: 'center', paddingVertical: 6 },
+  colHeadBox: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 6 },
+  colHead: { flexShrink: 1, color: colors.text, fontWeight: '700', textAlign: 'center' },
+  dot: { width: 10, height: 10, borderRadius: 5 },
   timeCell: { height: ROW, alignItems: 'center', paddingTop: 3, borderRightWidth: 1, borderRightColor: LINE_HOUR },
   timeCellHour: { borderTopWidth: 2, borderTopColor: LINE_HOUR, paddingTop: 1 },
   timeText: { color: ink(0.85), fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
@@ -308,7 +335,7 @@ const s = StyleSheet.create({
   stripe: { position: 'absolute', width: 4, backgroundColor: colors.border, transform: [{ rotate: '45deg' }] },
   booking: { position: 'absolute', left: 4, right: 4, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 5, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
   bName: { color: colors.text, fontWeight: '800', fontSize: 14 },
-  bLine: { color: colors.muted, fontSize: 12, marginTop: 1 },
+  bLine: { color: ink(0.85), fontSize: 12, marginTop: 1 },
   now: { position: 'absolute', left: 0, right: 0, height: 2, backgroundColor: colors.danger },
   nowPill: { position: 'absolute', left: 3, right: 3, height: 18, borderRadius: 6, backgroundColor: colors.danger, alignItems: 'center', justifyContent: 'center' },
   nowPillText: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '800', fontVariant: ['tabular-nums'] },
