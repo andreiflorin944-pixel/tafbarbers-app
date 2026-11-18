@@ -709,6 +709,15 @@ function NewBooking({
   const [name, setName] = useState('');
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   const [barberId, setBarberId] = useState(initial.barberId ?? me.barberId ?? barbers[0]?.id ?? '');
+  const barber = barbers.find((b) => b.id === barberId);
+  // Alt frizer, care nu face serviciul ales: trecem pe primul serviciu pe care îl face.
+  useEffect(() => {
+    if (barber?.serviceIds?.length && !barber.serviceIds.includes(serviceId)) {
+      const first = services.find((s) => barber.serviceIds.includes(s.id));
+      if (first) setServiceId(first.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [barberId]);
   const [day, setDay] = useState(initialDay);
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [start, setStart] = useState<string | null>(null);
@@ -833,11 +842,14 @@ function NewBooking({
         )}
         <Field label="Serviciu">
           <select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
-            {services.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} · {s.durationMin} min · {lei(s.price)}
-              </option>
-            ))}
+            {services
+              .filter((s) => !barber?.serviceIds?.length || barber.serviceIds.includes(s.id))
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {/* Durata și prețul frizerului ales (din Frizeri → Servicii, prețuri și durate), altfel cele standard. */}
+                  {s.name} · {barber?.durations?.[s.id] ?? s.durationMin} min · {lei(barber?.prices?.[s.id] ?? s.price)}
+                </option>
+              ))}
           </select>
         </Field>
         <div className="grid two">
