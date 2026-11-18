@@ -328,10 +328,10 @@ clientRoutes.get('/me/custom-sub/hint', async (c) => c.json(await customSubHint(
  */
 clientRoutes.post('/me/custom-sub/pay', async (c) => {
   const clientId = c.get('client').clientId;
-  const b = await c.req.json<{ items?: unknown; autoRenew?: boolean }>().catch(() => ({}) as { items?: unknown; autoRenew?: boolean });
+  const b = await c.req.json<{ items?: unknown; autoRenew?: boolean; barberId?: string | null }>().catch(() => ({}) as { items?: unknown; autoRenew?: boolean; barberId?: string | null });
   const s = await getCustomSubSettings(c.env);
   if (!s.enabled) throw new HttpError(409, 'custom_sub_off');
-  const q = await quoteCustom(c.env, b.items, s);
+  const q = await quoteCustom(c.env, b.items, s, b.barberId);
   const planId = await ensureCustomPlan(c.env, q);
   const shop = (await getBusiness(c.env)).name;
   const base = publicBase(c.env, c.req.url);

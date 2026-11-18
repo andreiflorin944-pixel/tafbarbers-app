@@ -280,6 +280,10 @@ function BarberModal({
           Durata contează la orele libere din aplicație.
         </p>
         <div className="grid">
+          <div className="row muted small" style={{ justifyContent: 'flex-end', flexWrap: 'nowrap', gap: 10, marginBottom: -6 }}>
+            <span style={{ width: 110 }}>Preț (lei)</span>
+            <span style={{ width: 90 }}>Durată (min)</span>
+          </div>
           {services.map((s) => (
             <div key={s.id} className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', gap: 10 }}>
               <label className="check small" style={{ flex: 1 }}>

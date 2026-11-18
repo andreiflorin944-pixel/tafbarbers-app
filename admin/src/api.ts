@@ -131,6 +131,7 @@ const MESSAGES: Record<string, string> = {
   too_few_visits: 'Abonamentul personalizat are prea puține vizite (vezi minimul din Abonamente → Abonament personalizat).',
   too_many_visits: 'Abonamentul personalizat are prea multe vizite (maxim pe lună, din Abonamente → Abonament personalizat).',
   service_not_allowed: 'Un serviciu ales nu poate intra în abonamentul personalizat.',
+  service_not_offered: 'Frizerul ales nu face unul dintre serviciile alese.',
   custom_sub_off: 'Abonamentul personalizat e oprit (Abonamente → Abonament personalizat).',
   invalid_min_visits: 'Minimul de vizite nu e corect.',
   invalid_max_visits: 'Maximul de vizite trebuie să fie cel puțin cât minimul.',

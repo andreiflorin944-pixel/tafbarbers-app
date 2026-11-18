@@ -105,7 +105,7 @@ type Svc = { id: string; name: string; price_bani: number };
  * Calculează prețul unei combinații cu prețurile de acum. Aruncă eroare dacă nu se poate cumpăra
  * (oprit, prea puține / prea multe vizite, serviciu inexistent sau neinclus).
  */
-export async function quoteCustom(env: Env, raw: unknown, s?: CustomSubSettings) {
+export async function quoteCustom(env: Env, raw: unknown, s?: CustomSubSettings, barberIdRaw?: unknown) {
   const st = s ?? (await getCustomSubSettings(env));
   if (!Array.isArray(raw)) throw new HttpError(400, 'invalid_body');
   const merged = new Map<string, number>();
@@ -128,28 +128,44 @@ export async function quoteCustom(env: Env, raw: unknown, s?: CustomSubSettings)
   for (const i of items) {
     if (!byId.has(i.serviceId) || (st.serviceIds.length && !st.serviceIds.includes(i.serviceId))) throw new HttpError(400, 'service_not_allowed');
   }
+  // Frizerul ales: prețurile lui proprii (Frizeri → Servicii, prețuri și durate), doar serviciile pe care le face.
+  let barber: { id: string; name: string } | null = null;
+  const barberId = barberIdRaw === undefined || barberIdRaw === null || barberIdRaw === '' ? null : String(barberIdRaw);
+  if (barberId) {
+    barber = await env.DB.prepare('SELECT id, name FROM barbers WHERE id = ? AND active = 1').bind(barberId).first<{ id: string; name: string }>();
+    if (!barber) throw new HttpError(404, 'barber_not_found');
+    const own = await env.DB.prepare(`SELECT service_id, price_bani FROM barber_services WHERE barber_id = ? AND service_id IN (${ids.map(() => '?').join(',')})`)
+      .bind(barberId, ...ids)
+      .all<{ service_id: string; price_bani: number | null }>();
+    const does = new Map(own.results.map((x) => [x.service_id, x.price_bani]));
+    for (const i of items) {
+      if (!does.has(i.serviceId)) throw new HttpError(400, 'service_not_offered');
+      const p = does.get(i.serviceId);
+      if (p !== null && p !== undefined) byId.set(i.serviceId, { ...byId.get(i.serviceId)!, price_bani: p });
+    }
+  }
   const fullBani = items.reduce((a, i) => a + byId.get(i.serviceId)!.price_bani * i.qty, 0);
   const pct = discountFor(st, visits);
   // Rotunjit în jos la leu întreg.
   const priceBani = Math.floor((fullBani * (100 - pct)) / 100 / 100) * 100;
   const lines = items.map((i) => ({ serviceId: i.serviceId, name: byId.get(i.serviceId)!.name, qty: i.qty, price: byId.get(i.serviceId)!.price_bani / 100 }));
-  const name = `Abonament personalizat: ${lines.map((l) => `${l.qty} × ${l.name}`).join(' + ')}`.slice(0, 200);
-  return { items, lines, visits, pct, fullBani, priceBani, periodDays: st.periodDays, name };
+  const name = `Abonament personalizat${barber ? ` cu ${barber.name}` : ''}: ${lines.map((l) => `${l.qty} × ${l.name}`).join(' + ')}`.slice(0, 200);
+  return { items, lines, visits, pct, fullBani, priceBani, periodDays: st.periodDays, name, barberId: barber?.id ?? null, barberName: barber?.name ?? null };
 }
 export type CustomQuote = Awaited<ReturnType<typeof quoteCustom>>;
 
 /** Planul ascuns al combinației (același conținut, preț și durată = același plan), creat la nevoie. */
 export async function ensureCustomPlan(env: Env, q: CustomQuote) {
   const text = itemsText(q.items);
-  const found = await env.DB.prepare('SELECT id FROM plans WHERE custom = 1 AND items = ? AND price_bani = ? AND period_days = ? LIMIT 1')
-    .bind(text, q.priceBani, q.periodDays)
+  const found = await env.DB.prepare('SELECT id FROM plans WHERE custom = 1 AND items = ? AND price_bani = ? AND period_days = ? AND barber_id IS ? LIMIT 1')
+    .bind(text, q.priceBani, q.periodDays, q.barberId)
     .first<{ id: string }>();
   if (found) return found.id;
   const id = newId('pc');
   await env.DB.prepare(
-    `INSERT INTO plans (id, name, description, price_bani, period_days, cuts, service_ids, sort, active, custom, items) VALUES (?, ?, ?, ?, ?, ?, ?, 1000, 1, 1, ?)`,
+    `INSERT INTO plans (id, name, description, price_bani, period_days, cuts, service_ids, sort, active, custom, items, barber_id) VALUES (?, ?, ?, ?, ?, ?, ?, 1000, 1, 1, ?, ?)`,
   )
-    .bind(id, q.name, `Reducere ${q.pct}%`, q.priceBani, q.periodDays, q.visits, q.items.map((i) => i.serviceId).join(','), text)
+    .bind(id, q.name, `Reducere ${q.pct}%`, q.priceBani, q.periodDays, q.visits, q.items.map((i) => i.serviceId).join(','), text, q.barberId)
     .run();
   return id;
 }
@@ -177,12 +193,17 @@ export async function usedByService(env: Env, subIds: string[]) {
  * Cât se returnează la anularea unui abonament personalizat: suma plătită minus vizitele folosite la prețul întreg (fără reducere), minim 0.
  * Prețul întreg = prețul de acum al serviciului.
  */
-export async function customRefundBani(env: Env, sub: { id: string; price_bani: number; items: string | null }) {
+export async function customRefundBani(env: Env, sub: { id: string; price_bani: number; items: string | null; barber_id?: string | null }) {
   const used = (await usedByService(env, [sub.id])).get(sub.id) ?? new Map<string, number>();
   if (!used.size) return sub.price_bani;
   const ids = [...used.keys()];
-  const r = await env.DB.prepare(`SELECT id, price_bani FROM services WHERE id IN (${ids.map(() => '?').join(',')})`)
-    .bind(...ids)
+  // Prețul întreg al frizerului abonamentului (dacă are), altfel cel standard.
+  const r = await env.DB.prepare(
+    `SELECT s.id, coalesce(bs.price_bani, s.price_bani) AS price_bani FROM services s
+       LEFT JOIN barber_services bs ON bs.service_id = s.id AND bs.barber_id = ?
+     WHERE s.id IN (${ids.map(() => '?').join(',')})`,
+  )
+    .bind(sub.barber_id ?? null, ...ids)
     .all<{ id: string; price_bani: number }>();
   const price = new Map(r.results.map((x) => [x.id, x.price_bani]));
   const usedBani = [...used].reduce((a, [id, n]) => a + (price.get(id) ?? 0) * n, 0);

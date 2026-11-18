@@ -16,7 +16,11 @@ import { colors, space } from '@/theme';
 // și alege cum plătește: retragere automată lunară de pe card sau plătește el în fiecare lună.
 // Prețul îl calculează serverul (aceleași reguli ca la plată).
 export default function CustomSub() {
-  const { token, services, business } = useApp();
+  const { token, services, business, barbers: allBarbers } = useApp();
+  const barbers = allBarbers;
+  // Frizerul abonamentului: prețurile lui; cu un singur frizer, e ales singur.
+  const [barberId, setBarberId] = useState<string | null>(null);
+  const barber = barbers.length === 1 ? barbers[0] : barbers.find((b) => b.id === barberId) ?? null;
   const { t } = useT();
   const gate = useLoginGate();
   const [cfg, setCfg] = useState<CustomSubConfig | null>(null);
@@ -48,9 +52,9 @@ export default function CustomSub() {
   const key = JSON.stringify(items);
   useEffect(() => {
     setQuote(null);
-    if (!cfg || visits < cfg.minVisits) return;
+    if (!cfg || visits < cfg.minVisits || (barbers.length > 1 && !barber)) return;
     let live = true;
-    api.quoteCustomSub(items).then(
+    api.quoteCustomSub(items, barber?.id ?? null).then(
       (q) => live && setQuote(q),
       (e) => live && setError(errorMessage(e)),
     );
@@ -58,13 +62,13 @@ export default function CustomSub() {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, cfg]);
+  }, [key, cfg, barber?.id]);
 
   const pay = async () => {
     if (!token || !quote) return;
     setPaying(true);
     try {
-      const { url } = await api.payCustomSub(token, items, autoRenew);
+      const { url } = await api.payCustomSub(token, items, autoRenew, barber?.id ?? null);
       await Linking.openURL(url);
       router.replace('/subscriptions');
     } catch (e) {
@@ -78,7 +82,7 @@ export default function CustomSub() {
   if (gate) return gate;
   if (!cfg) return <Screen edges={[]}>{error ? <Text style={{ color: colors.danger }}>{error}</Text> : <ActivityIndicator color={colors.gold} />}</Screen>;
 
-  const list = services.filter((s) => !cfg.serviceIds.length || cfg.serviceIds.includes(s.id));
+  const list = services.filter((s) => (!cfg.serviceIds.length || cfg.serviceIds.includes(s.id)) && (!barber?.serviceIds?.length || barber.serviceIds.includes(s.id)));
   const tiers = Object.entries(cfg.discounts)
     .filter(([n, p]) => Number(n) >= cfg.minVisits && Number(n) <= cfg.maxVisits && p > 0)
     .sort(([a], [b]) => Number(a) - Number(b));
@@ -121,6 +125,33 @@ export default function CustomSub() {
         )}
       </Card>
 
+      {barbers.length > 1 ? (
+        <View style={{ marginTop: space.md, gap: space.xs }}>
+          <Text style={styles.label}>{t('customSub.barber')}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.xs }}>
+            {barbers.map((b) => {
+              const on = barber?.id === b.id;
+              return (
+                <Pressable
+                  key={b.id}
+                  onPress={() => {
+                    setBarberId(b.id);
+                    // Serviciile pe care noul frizer nu le face ies din coș.
+                    if (b.serviceIds?.length) setQty((q) => Object.fromEntries(Object.entries(q).filter(([id]) => b.serviceIds!.includes(id))));
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: on ? colors.gold : colors.border, backgroundColor: on ? colors.gold : colors.card }}
+                >
+                  <Text style={{ color: on ? colors.onGold : colors.text, fontWeight: '700' }}>{b.name}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={[styles.muted, { fontSize: 13 }]}>{t('customSub.barberInfo')}</Text>
+        </View>
+      ) : null}
+
       <View style={{ gap: space.sm, marginTop: space.md }}>
         {list.map((s) => {
           const q = qty[s.id] ?? 0;
@@ -128,7 +159,7 @@ export default function CustomSub() {
             <Card key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, borderColor: q ? colors.gold : undefined }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>{s.name}</Text>
-                <Text style={[styles.muted, { fontSize: 13 }]}>{lei(s.price)}</Text>
+                <Text style={[styles.muted, { fontSize: 13 }]}>{lei(barber ? (barber.prices?.[s.id] ?? s.price) : s.price)}</Text>
               </View>
               <Pressable
                 onPress={() => setQty({ ...qty, [s.id]: Math.max(0, q - 1) })}
