@@ -566,3 +566,15 @@ button.bk-row:disabled { opacity: 1; cursor: default; }
   .cl-stats { grid-column: 2 / 3; grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
   .cl-chev { grid-row: 1; grid-column: 3; }
 }
+
+/* Meniul de la click pe o oră liberă din calendar (programare, blochează, eveniment, pauză, liber). */
+.slot-menu-back { position: fixed; inset: 0; z-index: 60; }
+.slot-menu { position: fixed; background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); overflow: hidden; }
+.slot-menu-head { display: grid; gap: 2px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--card-alt); }
+.slot-menu-head b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.slot-menu-item { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 11px 14px; background: transparent; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; color: var(--text); text-align: left; font-weight: 400; cursor: pointer; }
+.slot-menu-item:last-child { border-bottom: 0; }
+.slot-menu-item:hover { background: var(--hover); }
+.slot-menu-item svg { flex: none; margin-top: 2px; }
+.slot-menu-item > span { display: grid; gap: 2px; }
+.slot-menu-item b { font-size: 14px; }

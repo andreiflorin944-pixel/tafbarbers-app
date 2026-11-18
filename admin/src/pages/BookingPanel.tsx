@@ -24,6 +24,9 @@ const ICONS: Record<string, string> = {
   edit: 'M4 20h4L19 9l-4-4L4 16v4Zm10-14l4 4',
   image: 'M4 5h16v14H4V5Zm0 11 4.5-4.5 4 4 2.5-2.5L20 17M15 9.5h.01',
   coffee: 'M5 9h11v4a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5V9Zm11 1h1.5a2.5 2.5 0 0 1 0 5H16M8 3v3m3-3v3m3-3v3',
+  plus: 'M12 5v14M5 12h14',
+  clock: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+  lock: 'M7 11V8a5 5 0 0 1 10 0v3M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z',
   chevL: 'M15 6l-6 6 6 6',
   chevR: 'M9 6l6 6-6 6',
 };
