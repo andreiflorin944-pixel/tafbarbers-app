@@ -71,6 +71,9 @@ const MESSAGES: Record<string, string> = {
   client_deleted: 'Clientul cu acest număr și-a șters contul.',
   email_taken: 'Există deja un cont cu acest e-mail.',
   slot_unavailable: 'Ora nu mai e liberă la frizerul ales.',
+  criteria_required: 'Alege cel puțin un criteriu.',
+  invalid_criteria: 'Criteriu greșit (verifică numerele).',
+  confirm_required: 'Scrie STERGE ca să confirmi.',
   no_time_for_extra: 'Nu mai e timp liber după programare pentru acest serviciu (urmează altă programare sau se termină programul).',
   service_already_added: 'Serviciul e deja pe programare.',
   too_many_extras: 'Se pot adăuga cel mult 3 servicii la o programare.',
@@ -503,6 +506,8 @@ export type Client = {
   /** Membru TAF Club acum (abonament activ sau bifat de mână) și bifa manuală. */
   clubMember?: boolean;
   clubManual?: boolean;
+  /** Blocat din panou: nu intră în cont și nu se programează din aplicație sau de pe site. */
+  blocked?: { at: string; reason: string } | boolean | null;
   visits?: number;
   lastVisit?: string | null;
   bookings?: Booking[];

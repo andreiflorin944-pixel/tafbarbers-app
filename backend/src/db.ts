@@ -284,6 +284,8 @@ export type ClientRow = {
   referred_by?: string | null;
   club_member?: number;
   password_hash?: string | null;
+  blocked_at?: string | null;
+  blocked_reason?: string;
 };
 // Hash-ul parolei nu pleacă niciodată din server: în răspunsuri apare doar dacă există o parolă.
 export const client = (r: ClientRow) => ({

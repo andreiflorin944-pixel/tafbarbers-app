@@ -810,6 +810,45 @@ function ClientModal({ id, canDelete, canConsents, onClose, onChange }: { id: st
             </div>
           ) : null}
           {canConsents ? <Consents clientId={id} /> : null}
+          {canDelete && c.data.blocked && typeof c.data.blocked === 'object' ? (
+            <div className="card" style={{ borderColor: 'var(--danger)', padding: '10px 14px' }}>
+              <b>⛔ Client blocat</b> din {date(c.data.blocked.at)}
+              {c.data.blocked.reason ? <div className="muted small">Motiv: {c.data.blocked.reason}</div> : null}
+              <div className="muted small">Nu poate intra în cont și nu se poate programa din aplicație sau de pe site.</div>
+              <button
+                className="ghost sm"
+                style={{ marginTop: 6 }}
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    await api('DELETE', `/admin/clients/${id}/block`);
+                    c.reload();
+                    onChange();
+                  })
+                }
+              >
+                Deblochează
+              </button>
+            </div>
+          ) : canDelete ? (
+            <div>
+              <button
+                className="ghost sm"
+                disabled={busy}
+                onClick={() => {
+                  const reason = prompt('Blochezi clientul? Nu va mai putea intra în cont și nu se va mai putea programa din aplicație sau de pe site.\n\nMotivul (îl vezi doar tu, opțional):', '');
+                  if (reason === null) return;
+                  run(async () => {
+                    await api('POST', `/admin/clients/${id}/block`, { reason });
+                    c.reload();
+                    onChange();
+                  });
+                }}
+              >
+                ⛔ Blochează clientul
+              </button>
+            </div>
+          ) : null}
           {canDelete ? (
             <div>
               <button

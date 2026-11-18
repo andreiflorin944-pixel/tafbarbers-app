@@ -252,7 +252,9 @@ publicRoutes.post('/auth/otp', async (c) => {
   if (channel === 'email' && !rawEmail) throw new HttpError(400, 'invalid_email');
   const email = rawEmail || null;
 
-  const client = await c.env.DB.prepare('SELECT email FROM clients WHERE phone = ?').bind(phone).first<{ email: string | null }>();
+  const client = await c.env.DB.prepare('SELECT email, blocked_at FROM clients WHERE phone = ?').bind(phone).first<{ email: string | null; blocked_at: string | null }>();
+  // Cont blocat din panou: nu trimitem niciun cod (nici SMS, nici e-mail).
+  if (client?.blocked_at) throw new HttpError(403, 'account_blocked');
   if (channel === 'email' && client) {
     // Contul există deja: codul merge doar pe adresa salvată în el, altfel oricine ar putea
     // intra în contul altcuiva scriind numărul lui și propriul e-mail.

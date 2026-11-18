@@ -75,6 +75,7 @@ import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCa
 import { sendPush, sendSms } from '../notify';
 import { autoTranslate } from '../translate';
 import { addExtra, removeExtra } from '../bookingExtras';
+import { blockClient, cleanupDelete, cleanupMatches, unblockClient } from '../clientCleanup';
 import { ensureTranslated, langOf, localize, localizeBookings, lookup, saveTranslations, withTranslations, type ManualTr } from '../contentI18n';
 import { translateAll } from '../translateAll';
 import { listConsents } from '../consents';
@@ -1470,7 +1471,7 @@ adminRoutes.get('/clients', async (c) => {
     )
       .bind(phone ?? like)
       .all<ClientRow & { visits: number; last_visit: string | null }>();
-    return c.json(r.results.map((x) => ({ ...client(x), visits: x.visits, lastVisit: x.last_visit })));
+    return c.json(r.results.map((x) => ({ ...client(x), visits: x.visits, lastVisit: x.last_visit, blocked: !!x.blocked_at })));
   }
   const r = await c.env.DB.prepare(
     `SELECT c.*,
@@ -1481,7 +1482,7 @@ adminRoutes.get('/clients', async (c) => {
   )
     .bind(...(q ? [like, `%${q.replace(/[^\d+]/g, '') || q}%`, `%${q.replace(/[^\d]/g, '') || q}%`, like] : []))
     .all<ClientRow & { visits: number; last_visit: string | null }>();
-  return c.json(r.results.map((x) => ({ ...client(x), visits: x.visits, lastVisit: x.last_visit })));
+  return c.json(r.results.map((x) => ({ ...client(x), visits: x.visits, lastVisit: x.last_visit, blocked: !!x.blocked_at })));
 });
 
 // Lista de clienți ca în Barberly (clasament, etichete, statistici). Doar cu dreptul de a vedea datele de contact:
@@ -1670,6 +1671,30 @@ adminRoutes.post('/clients/import', ownerOnly, async (c) => {
   return c.json({ ...res, skipped: res.skipped.slice(0, 200), skippedCount: res.skipped.length });
 });
 
+// Curățenie conturi: previzualizarea clienților care îndeplinesc criteriile, apoi ștergerea celor confirmați (în tranșe).
+adminRoutes.post('/clients/cleanup/preview', ownerOnly, async (c) => {
+  const { items, kept } = await cleanupMatches(c.env, await c.req.json().catch(() => ({})));
+  return c.json({ count: items.length, kept, items: items.slice(0, 2000) });
+});
+
+adminRoutes.post('/clients/cleanup/delete', ownerOnly, async (c) => {
+  const b = await c.req.json<{ criteria?: unknown; ids?: unknown; confirm?: unknown }>().catch(() => ({}) as { criteria?: unknown; ids?: unknown; confirm?: unknown });
+  if (b.confirm !== 'STERGE') throw new HttpError(400, 'confirm_required');
+  return c.json(await cleanupDelete(c.env, b.criteria, b.ids));
+});
+
+// Blocare: clientul nu mai intră în cont și nu se mai programează din aplicație sau de pe site.
+adminRoutes.post('/clients/:id/block', ownerOnly, async (c) => {
+  const b = await c.req.json<{ reason?: unknown }>().catch(() => ({}) as { reason?: unknown });
+  await blockClient(c.env, c.req.param('id')!, b.reason, c.get('admin').adminId);
+  return c.json({ ok: true });
+});
+
+adminRoutes.delete('/clients/:id/block', ownerOnly, async (c) => {
+  await unblockClient(c.env, c.req.param('id')!);
+  return c.json({ ok: true });
+});
+
 adminRoutes.delete('/clients/:id', ownerOnly, async (c) => {
   await deleteClient(c.env, c.req.param('id')!);
   return c.json({ ok: true });
@@ -1708,6 +1733,7 @@ adminRoutes.get('/clients/:id', async (c) => {
     // TAF Club: membru prin abonament activ sau marcat de mână (bifa din fișă).
     clubMember: await isClubMember(c.env, id),
     clubManual: !!r.club_member,
+    blocked: r.blocked_at ? { at: r.blocked_at, reason: r.blocked_reason ?? '' } : null,
     referredBy: ref,
     referredCount: referred?.n ?? 0,
     beforeAfter: await beforeAfterOf(c.env, id),
