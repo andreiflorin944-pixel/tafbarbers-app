@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, blockKind, errorText, type Barber, type BlockOccurrence, type Booking, type Client, type Location, type Me, type Service, type Slot, type TimeOff } from '../api';
+import { api, BLOCK_KINDS, blockKind, errorText, type Barber, type BlockKind, type BlockOccurrence, type Booking, type Client, type Location, type Me, type Service, type Slot, type TimeOff } from '../api';
 import { Field, Loading, Modal, TopBar, useAction, useLoad } from '../ui';
 import { BOOKINGS_CHANGED } from '../Requests';
 import { addDays, date, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
@@ -74,6 +74,10 @@ export function CalendarPage({ me }: { me: Me }) {
   const [hover, setHover] = useState<{ b: Booking; x: number; y: number } | null>(null);
   const [quickErr, setQuickErr] = useState<string | null>(null);
   const [create, setCreate] = useState<{ barberId?: string; time?: string; outside?: boolean; day?: string } | null>(null);
+  // Click pe o oră liberă: un meniu mic, ca în Barberly (programare, blochează, eveniment, pauză, liber).
+  const [menu, setMenu] = useState<{ x: number; y: number; barberId: string | null; time: string; outside: boolean; day: string } | null>(null);
+  const [blockNew, setBlockNew] = useState<{ barberId: string | null; day: string; start: string; kind: BlockKind; label: string; len: number } | null>(null);
+  const [blockOpen, setBlockOpen] = useState<BlockOccurrence | null>(null);
   const datePick = useRef<HTMLInputElement>(null);
   // „Toată ziua”: calendarul se întinde 07:00–22:00, cu orele din afara programului hașurate (și programabile). Ținut minte în browser.
   const [wide, setWide] = useState(() => {
@@ -310,9 +314,12 @@ export function CalendarPage({ me }: { me: Me }) {
           const m = Math.floor((startMin + y / PX) / step) * step;
           // Pe zona hașurată (în afara programului sau concediu): programarea se deschide direct „la altă oră”.
           const outside = all.some(([gs, ge]) => m >= gs && m < ge);
-          if (me.permissions.bookings_create) setCreate({ barberId: barberId ?? undefined, time: hm(m), outside, day: d });
+          const canBlock = me.permissions.timeoff && (me.owner || !me.barberId || !barberId || barberId === me.barberId);
+          if (!me.permissions.bookings_create && !canBlock) return;
+          setHover(null);
+          setMenu({ x: e.clientX, y: e.clientY, barberId, time: hm(m), outside, day: d });
         }}
-        title="Click pe o zonă liberă pentru programare nouă"
+        title="Click pe o oră: programare nouă, blochează intervalul sau adaugă un eveniment"
       >
         {Array.from({ length: Math.ceil((endMin - startMin) / step) }, (_, i) => (
           <div key={i} className={(i * step) % 60 ? 'cal-line' : 'cal-line hour'} style={{ top: i * step * PX }} />
@@ -344,8 +351,13 @@ export function CalendarPage({ me }: { me: Me }) {
             <div
               key={o.blockId}
               className="cal-block cal-pause"
-              style={{ top: (s - startMin) * PX + 1, height: Math.max((e - s) * PX - 2, 20), ['--c' as string]: blockKind(o.kind).color }}
+              style={{ top: (s - startMin) * PX + 1, height: Math.max((e - s) * PX - 2, 20), ['--c' as string]: blockKind(o.kind).color, cursor: 'pointer' }}
               title={title}
+              onClick={(ev) => {
+                ev.stopPropagation();
+                setHover(null);
+                setBlockOpen(o);
+              }}
             >
               <span className="cal-ev-time">
                 {hm(s)} – {hm(e)} <Icon name="coffee" size={14} />
@@ -615,6 +627,48 @@ export function CalendarPage({ me }: { me: Me }) {
           onChange={reload}
         />
       ) : null}
+      {menu ? (
+        <SlotMenu
+          menu={menu}
+          canBook={me.permissions.bookings_create}
+          canBlock={me.permissions.timeoff && (me.owner || !me.barberId || !menu.barberId || menu.barberId === me.barberId)}
+          barberName={barbers.find((b) => b.id === menu.barberId)?.name}
+          onClose={() => setMenu(null)}
+          onBook={() => {
+            setCreate({ barberId: menu.barberId ?? undefined, time: menu.time, outside: menu.outside, day: menu.day });
+            setMenu(null);
+          }}
+          onBlock={(kind, label, len) => {
+            setBlockNew({ barberId: menu.barberId ?? (me.owner ? null : me.barberId), day: menu.day, start: menu.time, kind, label, len });
+            setMenu(null);
+          }}
+        />
+      ) : null}
+      {blockNew ? (
+        <BlockModal
+          init={blockNew}
+          barbers={activeBarbers}
+          canAll={me.owner}
+          onClose={() => setBlockNew(null)}
+          onDone={() => {
+            setBlockNew(null);
+            blocks.reload();
+            reload();
+          }}
+        />
+      ) : null}
+      {blockOpen ? (
+        <BlockInfo
+          o={blockOpen}
+          barberName={blockOpen.barberId ? barbers.find((b) => b.id === blockOpen.barberId)?.name ?? '' : 'Toți frizerii'}
+          canDelete={me.permissions.timeoff && (me.owner || (me.barberId ? blockOpen.barberId === me.barberId : me.permissions.bookings_all))}
+          onClose={() => setBlockOpen(null)}
+          onDone={() => {
+            setBlockOpen(null);
+            blocks.reload();
+          }}
+        />
+      ) : null}
       {create && meta.data ? (
         <NewBooking
           me={me}
@@ -850,6 +904,195 @@ function NewBooking({
           </button>
         </div>
         {dayOf(new Date()) > day ? <div className="muted small">Atenție: ziua aleasă e în trecut.</div> : null}
+      </div>
+    </Modal>
+  );
+}
+
+const plus = (t: string, min: number) => {
+  const [h, m] = t.split(':').map(Number);
+  const v = Math.min(h * 60 + m + min, 24 * 60);
+  return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`;
+};
+
+/** Meniul de la click pe o oră liberă din calendar, ca în Barberly. */
+function SlotMenu({
+  menu,
+  canBook,
+  canBlock,
+  barberName,
+  onClose,
+  onBook,
+  onBlock,
+}: {
+  menu: { x: number; y: number; time: string; day: string };
+  canBook: boolean;
+  canBlock: boolean;
+  barberName?: string;
+  onClose: () => void;
+  onBook: () => void;
+  onBlock: (kind: BlockKind, label: string, len: number) => void;
+}) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
+  const W = 300;
+  const H = 440;
+  const left = Math.max(8, Math.min(menu.x + 6, window.innerWidth - W - 8));
+  const top = Math.max(8, Math.min(menu.y + 6, window.innerHeight - H - 8));
+  const item = (icon: string, title: string, sub: string, go: () => void) => (
+    <button type="button" className="slot-menu-item" onClick={go}>
+      <Icon name={icon} size={18} />
+      <span>
+        <b>{title}</b>
+        <span className="muted small">{sub}</span>
+      </span>
+    </button>
+  );
+  return (
+    <div className="slot-menu-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="slot-menu" style={{ left, top, width: W }} role="menu">
+        <div className="slot-menu-head">
+          <b>
+            {menu.time} – {plus(menu.time, 15)}
+          </b>
+          <span className="muted small">
+            {barberName ? `${barberName} · ` : ''}
+            {date(menu.day + 'T12:00:00Z')}
+          </span>
+        </div>
+        {canBook ? item('plus', 'Programare nouă', 'Deschide formularul de programare', onBook) : null}
+        {canBlock ? (
+          <>
+            {item('ban', 'Blochează intervalul', 'Marchează ora ca ocupată, nu se mai poate programa', () => onBlock('other', 'Ocupat', 30))}
+            {item('clock', 'Adaugă eveniment în calendar…', 'Întâlnire, curs, treabă personală', () => onBlock('other', '', 60))}
+            {item('coffee', 'Pauză de masă', 'Blochează ca pauză de masă', () => onBlock('lunch', '', 30))}
+            {item('lock', 'Timp liber (nelucrat)', 'Scoate orele din program în ziua asta', () => onBlock('off', '', 60))}
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Blocare / eveniment pe o zi: tip, nume, de la – până la. Se salvează ca bloc în program (apare și în aplicație). */
+function BlockModal({
+  init,
+  barbers,
+  canAll,
+  onClose,
+  onDone,
+}: {
+  init: { barberId: string | null; day: string; start: string; kind: BlockKind; label: string; len: number };
+  barbers: Barber[];
+  canAll: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [kind, setKind] = useState<BlockKind>(init.kind);
+  const [label, setLabel] = useState(init.label);
+  const [barberId, setBarberId] = useState(init.barberId ?? '');
+  const [start, setStart] = useState(init.start);
+  const [end, setEnd] = useState(plus(init.start, init.len));
+  const [warn, setWarn] = useState<string | null>(null);
+  const { busy, error, run } = useAction();
+  const kinds = BLOCK_KINDS.filter((k) => k.kind !== 'members');
+  const title = init.kind === 'lunch' ? 'Pauză de masă' : init.kind === 'off' ? 'Timp liber' : init.label ? 'Blochează intervalul' : 'Eveniment în calendar';
+  const ok = start < end && (kind !== 'other' || label.trim()) && (barberId || canAll);
+  const save = () =>
+    run(async () => {
+      const r = await api<{ conflicts: number }>('POST', '/admin/blocks', { barberId: barberId || null, kind, label: label.trim(), repeat: false, day: init.day, start, end });
+      if (r.conflicts) {
+        setWarn(
+          `Salvat. Atenție: ${r.conflicts === 1 ? 'o programare deja făcută se suprapune' : `${r.conflicts} programări deja făcute se suprapun`} cu intervalul. Programările nu au fost anulate.`,
+        );
+        setTimeout(onDone, 2500);
+      } else onDone();
+    });
+  return (
+    <Modal title={title} onClose={onClose}>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        {longDate(init.day + 'T12:00:00Z')}. Orele dispar din programările online (aplicație și site).
+      </p>
+      <div className="grid two">
+        <Field label="Tip">
+          <select value={kind} onChange={(e) => setKind(e.target.value as BlockKind)}>
+            {kinds.map((k) => (
+              <option key={k.kind} value={k.kind}>
+                {k.kind === 'other' ? 'Ocupat / eveniment (cu nume)' : k.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Frizer">
+          <select value={barberId} onChange={(e) => setBarberId(e.target.value)} disabled={!canAll && !!init.barberId}>
+            {canAll ? <option value="">Toți frizerii</option> : null}
+            {barbers.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      {kind === 'other' ? (
+        <Field label="Nume (se vede în calendar)">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={60} placeholder="Ex.: Ocupat, Întâlnire, Dominic" autoFocus />
+        </Field>
+      ) : null}
+      <div className="grid two">
+        <Field label="De la">
+          <input type="time" step={300} value={start} onChange={(e) => setStart(e.target.value)} />
+        </Field>
+        <Field label="Până la">
+          <input type="time" step={300} value={end} onChange={(e) => setEnd(e.target.value)} />
+        </Field>
+      </div>
+      {error ? <div className="err">{error}</div> : null}
+      {warn ? <p className="small" style={{ color: 'var(--accent-text)' }}>{warn}</p> : null}
+      <div className="row" style={{ gap: 8, marginTop: 8 }}>
+        <button disabled={!ok || busy || !!warn} onClick={save}>
+          Salvează
+        </button>
+        <button className="ghost" onClick={onClose}>
+          Renunță
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Click pe un bloc din calendar: ce e și butonul de ștergere. */
+function BlockInfo({ o, barberName, canDelete, onClose, onDone }: { o: BlockOccurrence; barberName: string; canDelete: boolean; onClose: () => void; onDone: () => void }) {
+  const { busy, error, run } = useAction();
+  const del = () =>
+    run(async () => {
+      if (o.repeat && !window.confirm('Blocul se repetă în fiecare săptămână. Îl ștergi din toate săptămânile?')) return;
+      await api('DELETE', `/admin/blocks/${o.blockId}`);
+      onDone();
+    });
+  return (
+    <Modal title={o.kind === 'lunch' ? 'Pauză de masă' : o.label} onClose={onClose}>
+      <p style={{ marginTop: 0 }}>
+        {time(o.start)} – {time(o.end)}, {longDate(o.start)}
+        <br />
+        <span className="muted small">
+          {barberName}
+          {o.repeat ? ' · se repetă în fiecare săptămână' : ''}
+        </span>
+      </p>
+      {error ? <div className="err">{error}</div> : null}
+      <div className="row" style={{ gap: 8 }}>
+        {canDelete ? (
+          <button className="danger" disabled={busy} onClick={del}>
+            {o.repeat ? 'Șterge (toate săptămânile)' : 'Șterge, eliberează orele'}
+          </button>
+        ) : null}
+        <button className="ghost" onClick={onClose}>
+          Închide
+        </button>
       </div>
     </Modal>
   );
