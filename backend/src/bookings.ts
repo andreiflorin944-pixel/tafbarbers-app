@@ -11,6 +11,7 @@ import { locationVars } from './locations';
 import { discounted, serviceOffers } from './offers';
 import { notifyStaff } from './staffNotify';
 import { recordServerError } from './serverErrors';
+import { cleanExtraIds, extraQuotes, insertExtras } from './bookingExtras';
 
 /** Stările care țin ora ocupată: programările confirmate și cererile încă fără răspuns. */
 export const HOLDS_SLOT = `('confirmed','requested')`;
@@ -23,7 +24,9 @@ export function needsApproval(biz: { requireApproval?: boolean; approvalBarberId
 }
 
 export const BOOKING_SELECT = `
-  SELECT b.*, c.name AS client_name, c.phone AS client_phone, c.birth_date AS client_birth_date, s.name AS service_name, br.name AS barber_name, loc.name AS location_name
+  SELECT b.*, c.name AS client_name, c.phone AS client_phone, c.birth_date AS client_birth_date, s.name AS service_name, br.name AS barber_name, loc.name AS location_name,
+    (SELECT json_group_array(json_object('id', e.id, 'serviceId', e.service_id, 'name', es.name, 'durationMin', e.duration_min, 'price', e.price_bani))
+       FROM booking_extras e JOIN services es ON es.id = e.service_id WHERE e.booking_id = b.id) AS extras_json
   FROM bookings b
   JOIN clients c ON c.id = b.client_id
   JOIN services s ON s.id = b.service_id
@@ -45,6 +48,8 @@ export async function createBooking(
   input: {
     clientId: string;
     serviceId: string;
+    /** Servicii în plus la aceeași programare (ex. Tuns + Vopsit barbă): durata și prețul se adună. */
+    extraServiceIds?: string[];
     barberId: string | null;
     /** „Orice frizer” dintr-o locație anume (aplicația trimite locația aleasă la primul pas). */
     locationId?: string | null;
@@ -65,6 +70,7 @@ export async function createBooking(
     .bind(input.serviceId)
     .first<{ id: string; duration_min: number; price_bani: number }>();
   if (!service) throw new HttpError(404, 'service_not_found');
+  const extraIds = cleanExtraIds(input.extraServiceIds, service.id);
 
   let barberId = input.barberId;
   if (!input.skipAvailabilityCheck) {
@@ -80,6 +86,7 @@ export async function createBooking(
       day: localDay(env.TIMEZONE, start),
       access: input.source === 'admin' ? 'staff' : await accessFor(env, input.clientId),
       anyTime: input.source === 'admin',
+      extraServiceIds: extraIds,
     });
     const slot = slots.find((s) => Date.parse(s.start) === start.getTime());
     if (!slot) throw new HttpError(409, 'slot_unavailable');
@@ -95,10 +102,12 @@ export async function createBooking(
     .first<{ price_bani: number | null; duration_min: number | null }>();
   // Reducerea din bannerul activ acum (ex. -15%), pe prețul frizerului sau pe cel standard.
   const offer = (await serviceOffers(env)).get(service.id);
-  const price = offer ? discounted(own?.price_bani ?? service.price_bani, offer.percent) : (own?.price_bani ?? service.price_bani);
+  const mainPrice = offer ? discounted(own?.price_bani ?? service.price_bani, offer.percent) : (own?.price_bani ?? service.price_bani);
 
+  const extras = await extraQuotes(env, barberId, extraIds);
+  const price = mainPrice + extras.reduce((a, x) => a + x.priceBani, 0);
   const id = newId('bk');
-  const end = new Date(start.getTime() + (own?.duration_min ?? service.duration_min) * 60_000);
+  const end = new Date(start.getTime() + ((own?.duration_min ?? service.duration_min) + extras.reduce((a, x) => a + x.durationMin, 0)) * 60_000);
   const now = iso(new Date());
   // Limita de programări viitoare se verifică în aceeași instrucțiune, ca două rezervări trimise odată să n-o depășească.
   const limit = input.maxActive ? `AND (SELECT count(*) FROM bookings WHERE client_id = ? AND status IN ${HOLDS_SLOT} AND starts_at > ?) < ?` : '';
@@ -136,6 +145,7 @@ export async function createBooking(
     }
     throw new HttpError(409, 'slot_unavailable');
   }
+  if (extras.length) await insertExtras(env, id, extras);
 
   const created = (await getBooking(env, id))!;
   // Clientul are acum programare confirmată în ziua aceea: iese de pe lista de așteptare pentru serviciul ăsta.
@@ -195,7 +205,7 @@ export async function notifyBooking(
     kind,
     b.clientId,
     {
-      servicename: b.serviceName ?? '',
+      servicename: [b.serviceName ?? '', ...(b.extras ?? []).map((e) => e.name)].filter(Boolean).join(' + '),
       barbername: b.barberName ?? '',
       datetime: formatLocal(env.TIMEZONE, b.start, c.lang),
       price: b.price > 0 ? `${Number.isInteger(b.price) ? b.price : b.price.toFixed(2)} lei` : '',
@@ -295,12 +305,18 @@ export async function editBooking(env: Env, id: string, input: BookingEdit, admi
   const own = await env.DB.prepare('SELECT price_bani, duration_min FROM barber_services WHERE barber_id = ? AND service_id = ?')
     .bind(barberId, serviceId)
     .first<{ price_bani: number | null; duration_min: number | null }>();
+  // Serviciile adăugate rămân pe programare; la alt frizer se iau duratele lui (și el trebuie să le facă).
+  const extraIds = cur.extras.map((e) => e.serviceId);
+  if (extraIds.includes(serviceId)) throw new HttpError(409, 'service_already_added');
+  const extras = barberChanged ? await extraQuotes(env, barberId, extraIds) : cur.extras.map((e) => ({ serviceId: e.serviceId, durationMin: e.durationMin, priceBani: Math.round(e.price * 100) }));
+  const extrasMin = extras.reduce((a, x) => a + x.durationMin, 0);
+  const extrasBani = cur.extras.reduce((a, e) => a + Math.round(e.price * 100), 0);
   // Durata: a serviciului (sau a frizerului) când se schimbă unul dintre ei; altfel rămâne cea de acum.
-  const durMs = serviceChanged || barberChanged ? (own?.duration_min ?? service.duration_min) * 60_000 : Date.parse(cur.end) - Date.parse(cur.start);
+  const durMs = serviceChanged || barberChanged ? ((own?.duration_min ?? service.duration_min) + extrasMin) * 60_000 : Date.parse(cur.end) - Date.parse(cur.start);
   const end = new Date(start.getTime() + durMs);
 
   let price = Math.round(cur.price * 100);
-  if (serviceChanged) price = own?.price_bani ?? service.price_bani;
+  if (serviceChanged) price = (own?.price_bani ?? service.price_bani) + extrasBani;
   if (input.price !== undefined && input.price !== null) {
     const p = Math.round(Number(input.price) * 100);
     if (!(p >= 0 && p <= 10_000_000)) throw new HttpError(400, 'invalid_amount');
@@ -312,7 +328,7 @@ export async function editBooking(env: Env, id: string, input: BookingEdit, admi
   if (!moved && !serviceChanged && !priceChanged) return cur;
 
   if ((moved || serviceChanged) && !input.force) {
-    const slots = await availability(env, { serviceId, barberId, day: localDay(env.TIMEZONE, start), excludeBookingId: id, access: 'staff', anyTime: true });
+    const slots = await availability(env, { serviceId, barberId, day: localDay(env.TIMEZONE, start), excludeBookingId: id, access: 'staff', anyTime: true, extraServiceIds: extraIds });
     if (!slots.some((s) => Date.parse(s.start) === start.getTime() && s.barberId === barberId)) throw new HttpError(409, 'slot_unavailable');
   }
   // Suprapunerea cu altă programare se verifică în aceeași instrucțiune (și cu `force`).
@@ -328,6 +344,9 @@ export async function editBooking(env: Env, id: string, input: BookingEdit, admi
   if (!r.meta.changes) {
     const now = await env.DB.prepare('SELECT status FROM bookings WHERE id = ?').bind(id).first<{ status: string }>();
     throw new HttpError(409, now?.status !== 'confirmed' ? 'booking_not_editable' : 'slot_unavailable');
+  }
+  if (barberChanged && extras.length) {
+    await env.DB.batch(extras.map((x) => env.DB.prepare('UPDATE booking_extras SET duration_min = ? WHERE booking_id = ? AND service_id = ?').bind(x.durationMin, id, x.serviceId)));
   }
   const updated = (await getBooking(env, id))!;
   if (moved) {

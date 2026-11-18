@@ -74,7 +74,8 @@ import { adjustMove, cancelNir, createNir, getNir, listNir, stockOut, type NirIn
 import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCard, saveAutomations, switchMessage, type GiftCardRow } from '../growth';
 import { sendPush, sendSms } from '../notify';
 import { autoTranslate } from '../translate';
-import { ensureTranslated, langOf, localize, lookup, saveTranslations, withTranslations, type ManualTr } from '../contentI18n';
+import { addExtra, removeExtra } from '../bookingExtras';
+import { ensureTranslated, langOf, localize, localizeBookings, lookup, saveTranslations, withTranslations, type ManualTr } from '../contentI18n';
 import { translateAll } from '../translateAll';
 import { listConsents } from '../consents';
 import { advisorStats, getAdvisor, getStylePhotos, setAdvisor, setStylePhotos } from '../advisor';
@@ -979,7 +980,7 @@ adminRoutes.get('/bookings', async (c) => {
   }
   const list = r.results.map((x) => ({ ...booking(x), identity: withIdentity.has(x.client_id) }));
   // Aplicația echipei cere limba ei: numele serviciilor vin traduse (panoul nu trimite limba, rămâne în română).
-  return c.json(await localize(c.env, q.lang, list, ['serviceName']));
+  return c.json(await localizeBookings(c.env, q.lang, list));
 });
 
 /** Programare făcută din panou (telefon/walk-in). Clientul se creează după număr dacă nu există. */
@@ -989,6 +990,7 @@ adminRoutes.post('/bookings', async (c) => {
     clientId?: string;
     name?: string;
     serviceId?: string;
+    extraServiceIds?: string[];
     barberId?: string | null;
     start?: string;
     note?: string;
@@ -1018,6 +1020,7 @@ adminRoutes.post('/bookings', async (c) => {
   const created = await createBooking(c.env, {
     clientId: cl.id,
     serviceId: b.serviceId,
+    extraServiceIds: b.extraServiceIds,
     barberId,
     locationId: ownLocation(c),
     start: b.start,
@@ -1029,6 +1032,22 @@ adminRoutes.post('/bookings', async (c) => {
     defer: (p) => c.executionCtx.waitUntil(p),
   });
   return c.json(created, 201);
+});
+
+// Serviciu adăugat la o programare (ex. Tuns & Barbă + Vopsit barbă): durata și prețul se adună. `force` = chiar dacă nu mai e timp în program.
+adminRoutes.post('/bookings/:id/extras', async (c) => {
+  need(c, 'bookings_manage');
+  const cur = await getBooking(c.env, c.req.param('id')!);
+  if (!cur || !inScope(c, cur)) throw new HttpError(404, 'not_found');
+  const body = await c.req.json<{ serviceId?: unknown; force?: boolean }>().catch(() => ({}) as { serviceId?: unknown; force?: boolean });
+  return c.json(await addExtra(c.env, cur.id, body.serviceId, { adminId: c.get('admin').adminId }, { force: !!body.force, defer: (p) => c.executionCtx.waitUntil(p) }));
+});
+
+adminRoutes.delete('/bookings/:id/extras/:extraId', async (c) => {
+  need(c, 'bookings_manage');
+  const cur = await getBooking(c.env, c.req.param('id')!);
+  if (!cur || !inScope(c, cur)) throw new HttpError(404, 'not_found');
+  return c.json(await removeExtra(c.env, cur.id, c.req.param('extraId')!, { adminId: c.get('admin').adminId }));
 });
 
 adminRoutes.patch('/bookings/:id', async (c) => {
@@ -1167,9 +1186,9 @@ adminRoutes.get('/bookings/:id/checkout', async (c) => {
 adminRoutes.get('/bookings/requests', async (c) => {
   need(c, 'bookings_manage');
   const [pending, late] = await Promise.all([pendingRequests(c.env, ownBarber(c)), recentLate(c.env, ownBarber(c))]);
-  const items = await localize(c.env, c.req.query('lang'), pending.filter((x) => inScope(c, x)), ['serviceName']);
+  const items = await localizeBookings(c.env, c.req.query('lang'), pending.filter((x) => inScope(c, x)));
   // „Întârzii”: clienții care au anunțat din aplicație că ajung mai târziu (mesaj și sunet în panou, ca la cereri).
-  const lateItems = await localize(c.env, c.req.query('lang'), late.filter((x) => inScope(c, x)), ['serviceName']);
+  const lateItems = await localizeBookings(c.env, c.req.query('lang'), late.filter((x) => inScope(c, x)));
   return c.json({ count: items.length, items, late: lateItems });
 });
 
@@ -1213,7 +1232,7 @@ adminRoutes.get('/bookings/unclosed', async (c) => {
   )
     .bind(...(scoped ? [iso(new Date()), iso(new Date(Date.now() - 90 * 86_400_000)), scoped] : [iso(new Date()), iso(new Date(Date.now() - 90 * 86_400_000))]))
     .all<BookingRow>();
-  return c.json(await localize(c.env, c.req.query('lang'), r.results.map(booking).filter((x) => inScope(c, x)), ['serviceName']));
+  return c.json(await localizeBookings(c.env, c.req.query('lang'), r.results.map(booking).filter((x) => inScope(c, x))));
 });
 
 /** Frizerul confirmă tunsoarea: `{ payment: 'paid', amount }` sau `{ payment: 'subscription' }`, opțional `bonusId`. */

@@ -165,6 +165,8 @@ export const BARBER_SERVICE_COLS = `(SELECT group_concat(service_id) FROM barber
 
 export type BookingRow = {
   id: string;
+  /** JSON din BOOKING_SELECT: serviciile adăugate la programare. */
+  extras_json?: string | null;
   client_id: string;
   barber_id: string;
   service_id: string;
@@ -201,11 +203,23 @@ export type BookingRow = {
   location_id?: string | null;
   location_name?: string | null;
 };
+export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number };
+const parseExtras = (j: string | null | undefined): BookingExtra[] => {
+  if (!j) return [];
+  try {
+    const a = JSON.parse(j) as Array<{ id: string; serviceId: string; name: string; durationMin: number; price: number } | null>;
+    return a.filter((x): x is NonNullable<typeof x> => !!x && !!x.id).map((x) => ({ ...x, price: x.price / 100 }));
+  } catch {
+    return [];
+  }
+};
 export const booking = (r: BookingRow) => ({
   id: r.id,
   clientId: r.client_id,
   barberId: r.barber_id,
   serviceId: r.service_id,
+  // Serviciile adăugate la aceeași programare (incluse deja în `end` și `price`).
+  extras: parseExtras(r.extras_json),
   start: r.starts_at,
   end: r.ends_at,
   price: r.price_bani / 100,

@@ -15,7 +15,8 @@ import { createOrder, getOrder, getOrders, notifyOrder, setOrderStatus } from '.
 import { myReferrals } from '../referrals';
 import { getStylePhotos } from '../advisor';
 import { hairstyle } from '../hairstyles';
-import { localize, localizeText } from '../contentI18n';
+import { localize, localizeBookings, localizeText } from '../contentI18n';
+import { addExtra, removeExtra } from '../bookingExtras';
 import { mySubscriptions } from '../subscriptions';
 import { customSubHint, ensureCustomPlan, getCustomSubSettings, quoteCustom } from '../customSubs';
 import { cardPortalUrl, createRecurringCheckout, setRenewal } from '../recurring';
@@ -470,11 +471,11 @@ clientRoutes.get('/me/bookings', async (c) => {
   const r = await c.env.DB.prepare(`${BOOKING_SELECT} WHERE b.client_id = ? ORDER BY b.starts_at DESC LIMIT 100`)
     .bind(c.get('client').clientId)
     .all<BookingRow>();
-  return c.json(await localize(c.env, c.req.query('lang'), r.results.map(booking), ['serviceName']));
+  return c.json(await localizeBookings(c.env, c.req.query('lang'), r.results.map(booking)));
 });
 
 clientRoutes.post('/bookings', async (c) => {
-  const b = await c.req.json<{ serviceId?: string; barberId?: string | null; locationId?: string | null; start?: string; note?: string }>();
+  const b = await c.req.json<{ serviceId?: string; extraServiceIds?: string[]; barberId?: string | null; locationId?: string | null; start?: string; note?: string }>();
   if (!b.serviceId || !b.start) throw new HttpError(400, 'invalid_body');
   // „Orice frizer” din locația aleasă (cu frizer ales, locația e a lui).
   const locationId = b.barberId ? null : await activeLocationId(c.env, b.locationId);
@@ -489,6 +490,7 @@ clientRoutes.post('/bookings', async (c) => {
     maxActive: 10,
     clientId: c.get('client').clientId,
     serviceId: b.serviceId,
+    extraServiceIds: b.extraServiceIds,
     barberId: b.barberId ?? null,
     locationId,
     start: b.start,
@@ -497,7 +499,7 @@ clientRoutes.post('/bookings', async (c) => {
     defer: (p) => c.executionCtx.waitUntil(p),
   });
   // Numele serviciului în limba aplicației (ca în lista programărilor).
-  return c.json((await localize(c.env, c.req.query('lang'), [created], ['serviceName']))[0], 201);
+  return c.json((await localizeBookings(c.env, c.req.query('lang'), [created]))[0], 201);
 });
 
 // --- Lista de așteptare: „Anunță-mă dacă se eliberează un loc” ---
@@ -517,14 +519,26 @@ clientRoutes.delete('/me/waitlist/:id', async (c) => {
 
 clientRoutes.post('/bookings/:id/cancel', async (c) => {
   const b = await cancelBooking(c.env, c.req.param('id'), 'client', c.get('client').clientId);
-  return c.json((await localize(c.env, c.req.query('lang'), [b], ['serviceName']))[0]);
+  return c.json((await localizeBookings(c.env, c.req.query('lang'), [b]))[0]);
+});
+
+// Clientul adaugă un serviciu la programarea lui (ex. Vopsit barbă), dacă frizerul are timp după; sau îl scoate.
+clientRoutes.post('/bookings/:id/extras', async (c) => {
+  const body = await c.req.json<{ serviceId?: unknown }>().catch(() => ({}) as { serviceId?: unknown });
+  const b = await addExtra(c.env, c.req.param('id'), body.serviceId, { clientId: c.get('client').clientId }, { defer: (p) => c.executionCtx.waitUntil(p) });
+  return c.json((await localizeBookings(c.env, c.req.query('lang'), [b]))[0]);
+});
+
+clientRoutes.delete('/bookings/:id/extras/:extraId', async (c) => {
+  const b = await removeExtra(c.env, c.req.param('id'), c.req.param('extraId'), { clientId: c.get('client').clientId });
+  return c.json((await localizeBookings(c.env, c.req.query('lang'), [b]))[0]);
 });
 
 // „Întârzii”: clientul anunță echipa că ajunge mai târziu (5–30 min, cu o notiță opțională).
 clientRoutes.post('/bookings/:id/late', async (c) => {
   const body = await c.req.json<{ minutes?: unknown; note?: unknown }>().catch(() => ({}));
   const b = await reportLate(c.env, c.get('client').clientId, c.req.param('id'), body, (p) => c.executionCtx.waitUntil(p));
-  return c.json((await localize(c.env, c.req.query('lang'), [b], ['serviceName']))[0]);
+  return c.json((await localizeBookings(c.env, c.req.query('lang'), [b]))[0]);
 });
 
 // --- Magazin ---

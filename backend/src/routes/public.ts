@@ -213,7 +213,7 @@ publicRoutes.get('/promos', async (c) => {
   return c.json(r.results.filter((p) => p.action_type !== 'custom_sub' || customOn).map((p) => promo(p, lang)));
 });
 
-/** GET /availability?serviceId=…&barberId=…&locationId=…&day=YYYY-MM-DD (fără frizer: orice frizer din locație) */
+/** GET /availability?serviceId=…&barberId=…&locationId=…&day=YYYY-MM-DD&extra=… (fără frizer: orice frizer din locație) */
 publicRoutes.get('/availability', async (c) => {
   const { serviceId, barberId, day } = c.req.query();
   const locationId = await activeLocationId(c.env, c.req.query('locationId'));
@@ -227,7 +227,9 @@ publicRoutes.get('/availability', async (c) => {
   if ((day < today && who?.kind !== 'admin') || day > addDays(today, biz.maxDaysAhead ?? 30)) return c.json([]);
   // Panoul, la mutarea unei programări: ora ei de acum contează ca liberă (`exclude` = programarea mutată).
   const exclude = who?.kind === 'admin' ? c.req.query('exclude') || undefined : undefined;
-  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, locationId, day, access, excludeBookingId: exclude, anyTime: who?.kind === 'admin' }));
+  // `extra=a,b`: servicii adăugate la aceeași programare (durata lor se adună).
+  const extraServiceIds = (c.req.query('extra') ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 3);
+  return c.json(await availability(c.env, { serviceId, barberId: barberId || null, locationId, day, access, excludeBookingId: exclude, anyTime: who?.kind === 'admin', extraServiceIds }));
 });
 
 publicRoutes.get('/legal/:doc', async (c) => {
