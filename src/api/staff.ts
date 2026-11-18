@@ -1,4 +1,4 @@
-import type { Bonus, Identity, IdentityPhoto, Plan, Service, Subscription } from '@/data/types';
+import type { Bonus, Identity, IdentityPhoto, Plan, Service, Subscription, BookingExtra } from '@/data/types';
 import Constants from 'expo-constants';
 import { tr, type Key } from '@/i18n';
 import { ApiError } from './client';
@@ -29,6 +29,8 @@ export type StaffBooking = {
   clientId: string;
   barberId: string;
   serviceId: string;
+  /** Servicii adăugate la aceeași programare (timpul și prețul lor sunt incluse în end și price). */
+  extras?: BookingExtra[];
   start: string;
   end: string;
   price: number;
@@ -132,13 +134,16 @@ export const staffApi = {
     body: { start?: string; barberId?: string; serviceId?: string; price?: number; discount?: string | null; force?: boolean; notify?: boolean; note?: string },
   ) => call<StaffBooking>('PATCH', `/admin/bookings/${encodeURIComponent(id)}`, t, body),
   /** Orele libere pentru mutare: ora de acum a programării (`exclude`) contează ca liberă. */
-  freeSlots: (t: string, serviceId: string, barberId: string, day: string, exclude: string) =>
+  freeSlots: (t: string, serviceId: string, barberId: string, day: string, exclude: string, extra: string[] = []) =>
     call<Array<{ start: string; end: string; barberId: string; membersOnly?: boolean }>>(
       'GET',
-      `/availability?serviceId=${encodeURIComponent(serviceId)}&barberId=${encodeURIComponent(barberId)}&day=${day}&exclude=${encodeURIComponent(exclude)}`,
+      `/availability?serviceId=${encodeURIComponent(serviceId)}&barberId=${encodeURIComponent(barberId)}&day=${day}&exclude=${encodeURIComponent(exclude)}${extra.length ? `&extra=${extra.map(encodeURIComponent).join(',')}` : ''}`,
       t,
     ),
   /** Istoricul programării (jurnal, plăți, mesaje) și linkul ei pentru client, ca în panou. */
+  addExtra: (t: string, id: string, serviceId: string, force = false) =>
+    call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/extras`, t, { serviceId, force }),
+  removeExtra: (t: string, id: string, extraId: string) => call<StaffBooking>('DELETE', `/admin/bookings/${encodeURIComponent(id)}/extras/${encodeURIComponent(extraId)}`, t),
   activity: (t: string, id: string) => call<StaffActivity>('GET', `/admin/bookings/${encodeURIComponent(id)}/activity`, t),
   /** Anulează confirmarea plății (doar proprietarul): programarea revine la confirmată. */
   undoComplete: (t: string, id: string) => call<StaffBooking>('DELETE', `/admin/bookings/${encodeURIComponent(id)}/complete`, t),

@@ -1,5 +1,5 @@
 import { barbers, business, locations, promos, services } from '@/data/mock';
-import type { Booking, Identity, Me, Slot, WaitlistEntry } from '@/data/types';
+import type { Booking, BookingExtra, Identity, Me, Slot, WaitlistEntry } from '@/data/types';
 import { tr } from '@/i18n';
 import { dayKey, formatTime, fromDayKey, parseHM } from '@/lib/dates';
 import { ApiError, type BookingApi } from './client';
@@ -250,6 +250,22 @@ export const mockApi: BookingApi = {
     const b = bookings.find((x) => x.id === id && x.phone === token);
     if (!b) throw new ApiError('booking_not_found', 404);
     b.status = 'cancelled';
+    return delay({ ...b });
+  },
+  async addBookingExtra(token, id, serviceId) {
+    const b = bookings.find((x) => x.id === id && x.phone === token) as (typeof bookings)[number] & { extras?: BookingExtra[]; end?: string };
+    const s = services.find((x) => x.id === serviceId);
+    if (!b || !s) throw new ApiError('booking_not_found', 404);
+    b.extras = [...(b.extras ?? []), { id: `bx-${Date.now()}`, serviceId, name: s.name, durationMin: s.durationMin, price: s.price }];
+    b.price = (b.price ?? 0) + s.price;
+    return delay({ ...b });
+  },
+  async removeBookingExtra(token, id, extraId) {
+    const b = bookings.find((x) => x.id === id && x.phone === token) as (typeof bookings)[number] & { extras?: BookingExtra[] };
+    const x = b?.extras?.find((e) => e.id === extraId);
+    if (!b || !x) throw new ApiError('extra_not_found', 404);
+    b.extras = b.extras!.filter((e) => e.id !== extraId);
+    b.price = (b.price ?? 0) - x.price;
     return delay({ ...b });
   },
   async reportLate(token, id, minutes, note) {

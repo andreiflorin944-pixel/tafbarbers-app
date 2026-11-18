@@ -43,7 +43,7 @@ export default function ChooseService() {
           price={barber ? lei(barberPrice(s, barber)) : priceLabel(s, here)}
           duration={barber ? barberDuration(s, barber) : undefined}
           onPress={() => {
-            setDraft({ serviceId: s.id, start: null, slotBarberId: null });
+            setDraft({ serviceId: s.id, extraServiceIds: [], start: null, slotBarberId: null });
             router.push('/book/time');
           }}
         />

@@ -268,7 +268,7 @@ export default function StaffCalendar() {
                         ) : null}
                         {h > 60 ? (
                           <Text style={s.bLine} numberOfLines={h > 90 ? 2 : 1}>
-                            {x.serviceName}
+                            {[x.serviceName, ...(x.extras ?? []).map((e) => e.name)].join(" + ")}
                           </Text>
                         ) : null}
                         {x.status !== 'confirmed' ? <Text style={[s.bLine, { color: st.color, fontWeight: '700' }]}>{t(st.label)}</Text> : null}

@@ -10,6 +10,8 @@ import { Platform } from 'react-native';
 type Draft = {
   locationId: string | null; // locația aleasă la primul pas
   serviceId: string | null;
+  /** Servicii în plus la aceeași programare (ex. Vopsit barbă), alese după serviciul principal. */
+  extraServiceIds: string[];
   /** Serviciul a venit ales dinainte (pagina serviciului, un banner, un link): pasul „Serviciul” se sare. */
   presetService: boolean;
   barberId: string | null; // null = oricine
@@ -51,7 +53,7 @@ type AppState = {
 };
 
 const TOKEN_KEY = SESSION_KEY;
-const emptyDraft: Draft = { locationId: null, serviceId: null, presetService: false, barberId: null, start: null, slotBarberId: null };
+const emptyDraft: Draft = { locationId: null, serviceId: null, extraServiceIds: [], presetService: false, barberId: null, start: null, slotBarberId: null };
 const Ctx = createContext<AppState | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {

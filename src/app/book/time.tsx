@@ -9,6 +9,8 @@ import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
 import { addDays, dayKey, dayOfMonth, formatTime, hourOf, shortDay, shortMonth, startOfDay, weekdayOf } from '@/lib/dates';
 import { useLoginGate } from '@/components/LoginGate';
+import { barbersAt, doesService } from '@/lib/bookFlow';
+import { barberDuration, barberPrice, lei } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
 
@@ -16,7 +18,7 @@ import { colors, radius, space } from '@/theme';
 const daysAhead = (n: number | undefined) => Math.min(60, Math.max(1, (n ?? 30) + 1));
 
 export default function ChooseTime() {
-  const { draft, setDraft, serviceById, barberById, locationById, business, token } = useApp();
+  const { draft, setDraft, serviceById, barberById, locationById, business, token, services, barbers, locations } = useApp();
   const gate = useLoginGate();
   const { t } = useT();
   // Linkul din mesajul „s-a eliberat un loc” deschide direct ziua din lista de așteptare.
@@ -31,6 +33,9 @@ export default function ChooseTime() {
   const [goneLocation, setGoneLocation] = useState(false);
   // „Orice frizer”: orele frizerilor din locația aleasă (cu frizer ales, locația e a lui).
   const locationId = draft.barberId ? null : draft.locationId;
+  // Servicii în plus la aceeași programare (ex. Vopsit barbă după tuns): orele se recalculează cu timpul adunat.
+  const extraIds = draft.extraServiceIds ?? [];
+  const extraKey = extraIds.join(',');
 
   useEffect(() => {
     if (token) api.getWaitlist(token).then(setWaitlist, () => undefined);
@@ -41,11 +46,11 @@ export default function ChooseTime() {
     setSlots(null);
     setSelected(null);
     setGoneLocation(false);
-    api.getAvailability({ serviceId: service.id, barberId: draft.barberId, locationId, day, token }).then(setSlots, (e) => {
+    api.getAvailability({ serviceId: service.id, barberId: draft.barberId, locationId, day, token, extraServiceIds: extraKey ? extraKey.split(',') : [] }).then(setSlots, (e) => {
       setGoneLocation(e instanceof ApiError && e.code === 'location_not_found');
       setSlots([]);
     });
-  }, [service, draft.barberId, locationId, day, token]);
+  }, [service, draft.barberId, locationId, day, token, extraKey]);
 
   if (gate) return gate;
   if (!service) return <Redirect href="/book/location" />;
@@ -53,13 +58,45 @@ export default function ChooseTime() {
   const barber = barberById(draft.barberId);
   const location = locationById(draft.locationId ?? barber?.locationId);
   const groups = groupByPart(slots ?? []);
+  // Ce se mai poate adăuga: serviciile frizerului ales (sau ale unui frizer din locație), fără cele „doar membri”.
+  const here = barber ? [barber] : barbersAt(barbers, locationId, locations.length <= 1);
+  const addable = services.filter((x) => x.id !== service.id && !x.membersOnly && here.some((b) => doesService(b, x.id)));
+  const toggleExtra = (id: string) =>
+    setDraft({ extraServiceIds: extraIds.includes(id) ? extraIds.filter((x) => x !== id) : extraIds.length < 3 ? [...extraIds, id] : extraIds });
 
   return (
     <Screen edges={['bottom']} scroll={false}>
       <Steps current={4} />
       <Text style={[ui.muted, { marginBottom: space.sm }]}>
-        {[location?.name, service.name, barber ? barber.name : t('book.anyBarber')].filter(Boolean).join(' · ')}
+        {[location?.name, [service.name, ...extraIds.map((id) => serviceById(id)?.name)].filter(Boolean).join(' + '), barber ? barber.name : t('book.anyBarber')].filter(Boolean).join(' · ')}
       </Text>
+      {addable.length ? (
+        <View style={{ marginBottom: space.sm }}>
+          <Text style={[ui.muted, { fontSize: 13, marginBottom: 4 }]}>{t('book.addExtra')}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm }}>
+            {addable.map((x) => {
+              const on = extraIds.includes(x.id);
+              return (
+                <Pressable
+                  key={x.id}
+                  onPress={() => toggleExtra(x.id)}
+                  style={[s.part, { paddingVertical: 8 }, on && s.slotActive]}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: on }}
+                >
+                  <Text style={[s.slotText, { fontSize: 13 }, on && { color: colors.onGold }]}>
+                    {on ? '✓ ' : '+ '}
+                    {x.name}
+                  </Text>
+                  <Text style={[ui.muted, { fontSize: 11 }, on && { color: colors.onGold }]}>
+                    +{barberDuration(x, barber)} min · +{lei(barberPrice(x, barber))}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
 
       <View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingVertical: space.xs }}>

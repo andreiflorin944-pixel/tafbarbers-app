@@ -37,7 +37,7 @@ export function BookingEdit({ booking: b, onCancel, onDone }: { booking: StaffBo
   useEffect(() => {
     if (!staffToken) return;
     setSlots(null);
-    staffApi.freeSlots(staffToken, serviceId, barberId, day, b.id).then(
+    staffApi.freeSlots(staffToken, serviceId, barberId, day, b.id, (b.extras ?? []).map((e) => e.serviceId)).then(
       (list) => {
         setSlots(list);
         // Ora aleasă rămâne doar dacă e liberă și în ziua nouă (la alt serviciu sau frizer se alege din nou).
@@ -49,7 +49,9 @@ export function BookingEdit({ booking: b, onCancel, onDone }: { booking: StaffBo
 
   const barber = barbers.find((x) => x.id === barberId);
   const service = services.find((x) => x.id === serviceId);
-  const listPrice = serviceId === b.serviceId && barberId === b.barberId ? b.price : (barber?.prices?.[serviceId] ?? service?.price ?? b.price);
+  // Serviciile adăugate rămân pe programare, cu prețul lor de la adăugare.
+  const extrasPrice = (b.extras ?? []).reduce((acc, e) => acc + e.price, 0);
+  const listPrice = serviceId === b.serviceId && barberId === b.barberId ? b.price : (barber?.prices?.[serviceId] ?? service?.price ?? b.price - extrasPrice) + extrasPrice;
   const priceNum = Number(price.replace(",", "."));
   const priceChanged = p.stats && price.trim() !== "" && priceNum !== listPrice;
   const moved = !!start && (start !== b.start || barberId !== b.barberId);

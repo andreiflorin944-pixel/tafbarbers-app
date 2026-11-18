@@ -19,6 +19,8 @@ export interface BookingApi {
     /** Pentru „orice frizer”: doar frizerii din această locație. */
     locationId?: string | null;
     day: string; // YYYY-MM-DD
+    /** Servicii în plus la aceeași programare: timpul lor se adună. */
+    extraServiceIds?: string[];
     /** Cu contul clientului (membrii TAF Club văd și orele pentru membri) sau al echipei (le vede pe toate). */
     token?: string | null;
   }): Promise<Slot[]>;
@@ -83,9 +85,12 @@ export interface BookingApi {
   listBookings(token: string): Promise<Booking[]>;
   createBooking(
     token: string,
-    input: { serviceId: string; barberId: string | null; locationId?: string | null; start: string; note?: string },
+    input: { serviceId: string; extraServiceIds?: string[]; barberId: string | null; locationId?: string | null; start: string; note?: string },
   ): Promise<Booking>;
   cancelBooking(token: string, id: string): Promise<Booking>;
+  /** Adaugă un serviciu la o programare viitoare (dacă frizerul are timp după) sau îl scoate. */
+  addBookingExtra(token: string, id: string, serviceId: string): Promise<Booking>;
+  removeBookingExtra(token: string, id: string, extraId: string): Promise<Booking>;
   /** Mesaj către frizer despre programare, cu „întârzii `minutes` min” opțional (5, 10, 15, 20 sau 30). */
   reportLate(token: string, id: string, minutes: number | null, note?: string): Promise<Booking>;
   /** Ce versiune a aplicației cere salonul (ecranul „Actualizare disponibilă / obligatorie”). */
