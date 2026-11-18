@@ -3,6 +3,7 @@ import { newId, sha256 } from './auth';
 import { getBusiness } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
 import { getAutomations } from './growth';
+import { STORE_LINKS } from './stores';
 import { iso } from './time';
 
 // Coduri QR pentru campanii: fiecare cod are linkul lui (/q/<cod>). La scanare numărăm vizita și deschidem
@@ -98,6 +99,38 @@ qrPublic.get('/q/:code', async (c) => {
   const deep = camp.target === 'book' ? `tafbarbers://book?qr=${code}` : `tafbarbers://?qr=${code}`;
   return c.html(await openAppPage(c.env, deep));
 });
+
+// --- Linkul de descărcare (pentru codul QR tipărit: cărți de vizită, afișe, oglinzi) ---
+// Un singur cod pentru ambele telefoane: o pagină cu logo și două butoane (iPhone / Android),
+// clientul apasă pe cel al telefonului lui și ajunge în magazinul potrivit.
+
+async function storeLinks(env: Env) {
+  const auto = await getAutomations(env).catch(() => null);
+  return {
+    ios: auto?.links.appStoreUrl || STORE_LINKS.appStore,
+    android: auto?.links.playStoreUrl || STORE_LINKS.play,
+  };
+}
+
+async function downloadPage(c: Context<AppEnv>) {
+  const links = await storeLinks(c.env);
+  // Clientul alege singur telefonul; butonul potrivit telefonului lui îl punem primul și îl colorăm.
+  const dev = device(c.req.header('User-Agent') ?? '');
+  const biz = await getBusiness(c.env).catch(() => ({ name: 'TAF Barbers' }));
+  const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+  const ios = `<a class="s${dev === 'ios' ? ' p' : ''}" href="${esc(links.ios)}"><b>iPhone</b><span>Descarcă din App Store</span></a>`;
+  const android = `<a class="s${dev === 'android' ? ' p' : ''}" href="${esc(links.android)}"><b>Android</b><span>Descarcă din Google Play</span></a>`;
+  const buttons = dev === 'android' ? android + ios : ios + android;
+  return c.html(`<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Descarcă aplicația ${esc(biz.name)}</title>
+<meta property="og:title" content="Descarcă aplicația ${esc(biz.name)}"><meta property="og:description" content="Programări în câteva secunde, pe iPhone și Android.">
+<style>body{margin:0;background:#000;color:#eee;font:16px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:440px;margin:0 auto;padding:48px 20px;text-align:center}img{width:112px;height:112px;border-radius:24px;border:2px solid #F9A11B}h1{font-size:26px;margin:18px 0 4px}.m{color:#999;font-size:15px;margin:0 0 26px}a.s{display:block;border:2px solid #F9A11B;color:#F9A11B;text-decoration:none;padding:16px;border-radius:18px;margin-top:14px}a.s.p{background:#F9A11B;color:#000}a.s b{display:block;font-size:22px}a.s span{font-size:15px;font-weight:600}.f{margin-top:30px}.f a{color:#F9A11B}</style></head>
+<body><main><img src="/app-icon.png" alt=""><h1>Aplicația ${esc(biz.name)}</h1><p class="m">Alege telefonul tău și instalează aplicația.</p>
+${buttons}
+<p class="m f">Sau programează-te direct pe <a href="/">site</a>.</p></main></body></html>`);
+}
+
+qrPublic.get('/descarca', downloadPage);
+qrPublic.get('/download', downloadPage);
 
 // --- Panoul (doar proprietarul) ---
 
