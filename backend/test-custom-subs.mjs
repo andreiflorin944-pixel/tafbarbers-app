@@ -104,6 +104,26 @@ for (const [i, svc] of [['svc-skin-fade', 0], ['svc-skin-fade', 1], ['svc-beard'
 r = await req('GET', '/me/custom-sub/hint', null, tok2);
 ok(r.body && r.body.visits === 3 && r.body.discount === 10 && r.body.fullPrice === 175 && r.body.price === 157 && r.body.save === 18, `hint: 3 visits, would save 18 lei (${JSON.stringify(r.body)})`);
 
+// Abonament pe frizer: prețurile lui, valabil doar la el.
+r = await req('PATCH', '/admin/barbers/barber-andrei', { prices: { 'svc-skin-fade': 50 } }, at); ok(r.status === 200, 'Andrei: own price 50 lei for Skin Fade');
+r = await req('POST', '/custom-sub/quote', { items: [{ serviceId: 'svc-skin-fade', qty: 2 }], barberId: 'barber-andrei' });
+ok(r.status === 200 && r.body.fullPrice === 100 && r.body.price === 95 && r.body.barberId === 'barber-andrei', `2 × Skin Fade at Andrei = 95 lei (${JSON.stringify(r.body)})`);
+r = await req('POST', '/custom-sub/quote', { items: [{ serviceId: 'svc-skin-fade', qty: 2 }], barberId: 'barber-florin' });
+ok(r.body.fullPrice === 140 && r.body.price === 133, '2 × Skin Fade at Florin = standard 133 lei');
+r = await req('POST', '/custom-sub/quote', { items: [{ serviceId: 'svc-skin-fade', qty: 2 }], barberId: 'nope' }); ok(r.status === 404, 'unknown barber refused');
+r = await req('POST', `/admin/clients/${client2}/custom-sub`, { items: [{ serviceId: 'svc-skin-fade', qty: 2 }], payMethod: 'cash', barberId: 'barber-andrei' }, at);
+ok(r.status === 201 && r.body.price === 95, 'salon activation with Andrei = 95 lei');
+const andreiSub = r.body.id;
+const soon = new Date(Date.now() + 3 * 86400000).toISOString();
+let bkF = await req('POST', '/admin/bookings', { clientId: client2, serviceId: 'svc-skin-fade', barberId: 'barber-florin', start: soon, force: true, notify: false }, at);
+r = await req('GET', `/admin/bookings/${bkF.body.id}/checkout`, null, at); ok(r.status === 200 && !r.body.subscription, 'Andrei subscription does not cover a booking at Florin');
+let bkA = await req('POST', '/admin/bookings', { clientId: client2, serviceId: 'svc-skin-fade', barberId: 'barber-andrei', start: new Date(Date.now() + 4 * 86400000).toISOString(), force: true, notify: false }, at);
+r = await req('GET', `/admin/bookings/${bkA.body.id}/checkout`, null, at); ok(r.body.subscription?.id === andreiSub && r.body.subscription?.barberId === 'barber-andrei', 'covers the booking at Andrei');
+await req('PATCH', `/admin/bookings/${bkF.body.id}`, { status: 'cancelled' }, at);
+await req('PATCH', `/admin/bookings/${bkA.body.id}`, { status: 'cancelled' }, at);
+await req('PATCH', `/admin/subscriptions/${andreiSub}`, { status: 'cancelled' }, at);
+await req('PATCH', '/admin/barbers/barber-andrei', { prices: { 'svc-skin-fade': null } }, at);
+
 // Banner „abonament personalizat”: apare doar cât funcția e pornită.
 r = await req('POST', '/admin/promos', { kicker: 'NOU', title: 'Abonamentul tău', cta: 'Creează-l', action: { type: 'custom_sub' } }, at); ok(r.status === 201, 'custom_sub banner created');
 const promoId = r.body.id;

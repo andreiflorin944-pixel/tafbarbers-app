@@ -192,11 +192,11 @@ publicRoutes.get('/custom-sub', async (c) => {
 
 /** Prețul unei combinații (același calcul ca la plată), ex. `{ items: [{ serviceId, qty }] }`. */
 publicRoutes.post('/custom-sub/quote', async (c) => {
-  const b = await c.req.json<{ items?: unknown }>().catch(() => ({}) as { items?: unknown });
+  const b = await c.req.json<{ items?: unknown; barberId?: string | null }>().catch(() => ({}) as { items?: unknown; barberId?: string | null });
   const s = await getCustomSubSettings(c.env);
   if (!s.enabled) throw new HttpError(409, 'custom_sub_off');
-  const q = await quoteCustom(c.env, b.items, s);
-  return c.json({ items: q.lines, visits: q.visits, discount: q.pct, fullPrice: q.fullBani / 100, price: q.priceBani / 100, periodDays: q.periodDays });
+  const q = await quoteCustom(c.env, b.items, s, b.barberId);
+  return c.json({ items: q.lines, visits: q.visits, discount: q.pct, fullPrice: q.fullBani / 100, price: q.priceBani / 100, periodDays: q.periodDays, barberId: q.barberId });
 });
 
 publicRoutes.get('/promos', async (c) => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type CustomQuote, type CustomSubSettings, type Service, type Subscription } from '../api';
+import { api, type Barber, type CustomQuote, type CustomSubSettings, type Service, type Subscription } from '../api';
 import { Field, Loading, useAction, useLoad } from '../ui';
 import { lei } from '../util';
 
@@ -128,6 +128,9 @@ export function CustomSubSettingsCard({ owner, services }: { owner: boolean; ser
 export function CustomSubBuilder({ clientId, onDone, onCancel }: { clientId: string; onDone: () => void; onCancel: () => void }) {
   const settings = useLoad(() => api<CustomSubSettings>('GET', '/admin/custom-sub'));
   const services = useLoad(() => api<Service[]>('GET', '/admin/services'));
+  const barbers = useLoad(() => api<Barber[]>('GET', '/admin/barbers'));
+  // Frizerul abonamentului: prețurile lui, valabil doar la el.
+  const [barberId, setBarberId] = useState('');
   const [qty, setQty] = useState<Record<string, number>>({});
   const [payMethod, setPayMethod] = useState('cash');
   const [quote, setQuote] = useState<CustomQuote | null>(null);
@@ -141,9 +144,9 @@ export function CustomSubBuilder({ clientId, onDone, onCancel }: { clientId: str
   useEffect(() => {
     setQuote(null);
     setQErr(null);
-    if (!settings.data || visits < settings.data.minVisits) return;
+    if (!settings.data || visits < settings.data.minVisits || !barberId) return;
     let live = true;
-    api<CustomQuote>('POST', '/admin/custom-sub/quote', { items }).then(
+    api<CustomQuote>('POST', '/admin/custom-sub/quote', { items, barberId }).then(
       (q) => live && setQuote(q),
       (e: Error) => live && setQErr(e.message),
     );
@@ -151,11 +154,13 @@ export function CustomSubBuilder({ clientId, onDone, onCancel }: { clientId: str
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, settings.data]);
+  }, [key, settings.data, barberId]);
 
-  if (!settings.data || !services.data) return <Loading error={settings.error ?? services.error} />;
+  if (!settings.data || !services.data || !barbers.data) return <Loading error={settings.error ?? services.error ?? barbers.error} />;
   const st = settings.data;
-  const list = services.data.filter((s) => s.active && (!st.serviceIds.length || st.serviceIds.includes(s.id)));
+  const active = barbers.data.filter((b) => b.active);
+  const barber = active.find((b) => b.id === barberId);
+  const list = services.data.filter((s) => s.active && (!st.serviceIds.length || st.serviceIds.includes(s.id)) && (!barber || barber.serviceIds.includes(s.id)));
   return (
     <div className="card grid">
       <b>Abonament personalizat plătit la salon</b>
@@ -165,13 +170,31 @@ export function CustomSubBuilder({ clientId, onDone, onCancel }: { clientId: str
           .map(([n, p]) => `${n} vizite: ${p}%`)
           .join(' · ')}
       </div>
+      <Field label="Frizerul (prețurile lui; abonamentul e valabil doar la el)">
+        <select
+          value={barberId}
+          onChange={(e) => {
+            const b = active.find((x) => x.id === e.target.value);
+            setBarberId(e.target.value);
+            if (b) setQty((q) => Object.fromEntries(Object.entries(q).filter(([id]) => b.serviceIds.includes(id))));
+          }}
+          style={{ maxWidth: 260 }}
+        >
+          <option value="">Alege frizerul…</option>
+          {active.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+      </Field>
       <div className="grid" style={{ gap: 6 }}>
         {list.map((s) => {
           const q = qty[s.id] ?? 0;
           return (
             <div key={s.id} className="row small" style={{ justifyContent: 'space-between' }}>
               <span>
-                {s.name} <span className="muted">· {lei(s.price)}</span>
+                {s.name} <span className="muted">· {lei(barber?.prices?.[s.id] ?? s.price)}</span>
               </span>
               <span className="row" style={{ gap: 6 }}>
                 <button className="ghost sm" disabled={q === 0} onClick={() => setQty({ ...qty, [s.id]: q - 1 })}>
@@ -191,7 +214,7 @@ export function CustomSubBuilder({ clientId, onDone, onCancel }: { clientId: str
           {quote.visits} vizite · reducere {quote.discount}% · <s className="muted">{lei(quote.fullPrice)}</s> <b>{lei(quote.price)}</b>
         </div>
       ) : (
-        <div className="muted small">{qErr ?? `Alege cel puțin ${st.minVisits} vizite.`}</div>
+        <div className="muted small">{qErr ?? (barberId ? `Alege cel puțin ${st.minVisits} vizite.` : 'Alege frizerul și serviciile.')}</div>
       )}
       <Field label="Cum a plătit">
         <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)} style={{ maxWidth: 220 }}>
@@ -208,7 +231,7 @@ export function CustomSubBuilder({ clientId, onDone, onCancel }: { clientId: str
             quote &&
             confirm(`Clientul a plătit ${lei(quote.price)} pentru „${quote.name}”?`) &&
             run(async () => {
-              await api('POST', `/admin/clients/${clientId}/custom-sub`, { items, payMethod });
+              await api('POST', `/admin/clients/${clientId}/custom-sub`, { items, payMethod, barberId });
               onDone();
             })
           }

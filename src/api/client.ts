@@ -112,8 +112,9 @@ export interface BookingApi {
   paySubscription(token: string, planId: string): Promise<{ url: string; recurring?: boolean }>;
   /** Abonamentul personalizat: setările, prețul unei combinații și plata (`autoRenew` = retragere automată lunară de pe card). */
   getCustomSub(): Promise<CustomSubConfig>;
-  quoteCustomSub(items: CustomSubItem[]): Promise<CustomSubQuote>;
-  payCustomSub(token: string, items: CustomSubItem[], autoRenew: boolean): Promise<{ url: string; recurring?: boolean }>;
+  /** `barberId`: prețurile frizerului ales (abonamentul e valabil la el). */
+  quoteCustomSub(items: CustomSubItem[], barberId?: string | null): Promise<CustomSubQuote>;
+  payCustomSub(token: string, items: CustomSubItem[], autoRenew: boolean, barberId?: string | null): Promise<{ url: string; recurring?: boolean }>;
   customSubHint(token: string): Promise<CustomSubHint | null>;
   /** Oprește sau pornește reînnoirea automată; pornită după ce s-a încheiat, întoarce pagina de plată (`url`). */
   setSubscriptionRenewal(token: string, id: string, on: boolean): Promise<{ ok: true; on: boolean; url?: string }>;

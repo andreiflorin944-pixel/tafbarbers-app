@@ -1158,7 +1158,7 @@ adminRoutes.get('/bookings/:id/checkout', async (c) => {
   const bonuses = (await getBonuses(c.env, cur.clientId, false)).filter((b) => b.status === 'active');
   return c.json({
     booking: cur,
-    subscription: await usableSubscription(c.env, cur.clientId, cur.serviceId),
+    subscription: await usableSubscription(c.env, cur.clientId, cur.serviceId, undefined, cur.barberId),
     bonuses,
   });
 });
@@ -1370,17 +1370,17 @@ adminRoutes.get('/custom-sub', async (c) => c.json(await getCustomSubSettings(c.
 adminRoutes.put('/custom-sub', ownerOnly, async (c) => c.json(await saveCustomSubSettings(c.env, await c.req.json<Partial<CustomSubSettings>>())));
 /** Prețul unei combinații, pentru panou (merge și cu abonamentul personalizat oprit în aplicație). */
 adminRoutes.post('/custom-sub/quote', async (c) => {
-  const b = await c.req.json<{ items?: unknown }>();
-  const q = await quoteCustom(c.env, b.items);
-  return c.json({ items: q.lines, visits: q.visits, discount: q.pct, fullPrice: q.fullBani / 100, price: q.priceBani / 100, periodDays: q.periodDays, name: q.name });
+  const b = await c.req.json<{ items?: unknown; barberId?: string | null }>();
+  const q = await quoteCustom(c.env, b.items, undefined, b.barberId);
+  return c.json({ items: q.lines, visits: q.visits, discount: q.pct, fullPrice: q.fullBani / 100, price: q.priceBani / 100, periodDays: q.periodDays, name: q.name, barberId: q.barberId });
 });
 
 /** Activează un abonament personalizat plătit la salon: `{ items: [{ serviceId, qty }], payMethod, note }`. */
 adminRoutes.post('/clients/:id/custom-sub', async (c) => {
   const id = c.req.param('id')!;
   await needClient(c, id);
-  const b = await c.req.json<{ items?: unknown; note?: string; payMethod?: string }>();
-  const q = await quoteCustom(c.env, b.items);
+  const b = await c.req.json<{ items?: unknown; note?: string; payMethod?: string; barberId?: string | null }>();
+  const q = await quoteCustom(c.env, b.items, undefined, b.barberId);
   const planId = await ensureCustomPlan(c.env, q);
   const sid = await activateSubscription(c.env, id, planId, c.get('admin').adminId, String(b.note ?? '').trim(), false, { anyPlan: true });
   await c.env.DB.prepare('UPDATE subscriptions SET pay_method = ? WHERE id = ?').bind(payMethodOf(b.payMethod), sid).run();
@@ -1407,9 +1407,9 @@ adminRoutes.patch('/subscriptions/:id', ownerOnly, async (c) => {
     .run();
   // Cumpărat online: nefolosit, banii se returnează singuri; cu tunsori folosite, plata apare „de returnat” (decizi tu cât).
   if (r.meta.changes) {
-    const sub = await c.env.DB.prepare('SELECT id, cuts_used, price_bani, items FROM subscriptions WHERE id = ?')
+    const sub = await c.env.DB.prepare('SELECT id, cuts_used, price_bani, items, barber_id FROM subscriptions WHERE id = ?')
       .bind(id)
-      .first<{ id: string; cuts_used: number; price_bani: number; items: string | null }>();
+      .first<{ id: string; cuts_used: number; price_bani: number; items: string | null; barber_id: string | null }>();
     const used = sub?.cuts_used ?? 0;
     // Abonament personalizat folosit parțial: se returnează plătit minus vizitele folosite la preț întreg (suma apare în motiv, la „de returnat”).
     const why =

@@ -23,6 +23,7 @@ export type PlanRow = {
   photo_url?: string | null;
   custom?: number;
   items?: string | null;
+  barber_id?: string | null;
 };
 export const plan = (r: PlanRow) => ({
   id: r.id,
@@ -102,6 +103,7 @@ type SubRow = {
   created_by_name?: string | null;
   recurring_id?: string | null;
   items?: string | null;
+  barber_id?: string | null;
   // Din recurring_subs (doar în listele care le cer, cu RENEWAL_JOIN).
   rec_auto_renew?: number | null;
   rec_status?: string | null;
@@ -141,6 +143,8 @@ export const subscription = (r: SubRow, used?: Map<string, number>) => {
     cutsUsed: r.cuts_used,
     cutsLeft: r.cuts_total === null ? null : Math.max(0, r.cuts_total - r.cuts_used),
     serviceIds: r.service_ids ? r.service_ids.split(',') : [],
+    // Abonament personalizat pe un frizer: valabil doar la el (null = orice frizer).
+    barberId: r.barber_id ?? null,
     // Abonament personalizat: serviciile alese, de câte ori, și câte s-au folosit. null = abonament obișnuit.
     items: r.items ? parseItems(r.items).map((i) => ({ ...i, used: used?.get(i.serviceId) ?? 0 })) : null,
     startsAt: r.starts_at,
@@ -198,10 +202,10 @@ export async function activateSubscription(
   const end = iso(new Date(new Date(start).getTime() + p.period_days * 86_400_000));
   const id = opts.id ?? newId('sb');
   await env.DB.prepare(
-    `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by, pay_method, recurring_id, items)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO subscriptions (id, client_id, plan_id, name, price_bani, cuts_total, service_ids, starts_at, ends_at, note, created_by, pay_method, recurring_id, items, barber_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(id, clientId, p.id, p.name, gift ? 0 : p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId, opts.payMethod ?? null, opts.recurringId ?? null, p.items ?? null)
+    .bind(id, clientId, p.id, p.name, gift ? 0 : p.price_bani, p.cuts, p.service_ids, start, end, note.slice(0, 300), adminId, opts.payMethod ?? null, opts.recurringId ?? null, p.items ?? null, p.barber_id ?? null)
     .run();
   const enddate = new Date(end).toLocaleDateString('ro-RO', { timeZone: env.TIMEZONE, day: 'numeric', month: 'long', year: 'numeric' });
   try {
@@ -213,14 +217,15 @@ export async function activateSubscription(
 }
 
 /** Abonamentul care poate acoperi tunsoarea: activ acum, cu tunsori rămase și care include serviciul. Cel care expiră primul. */
-export async function usableSubscription(env: Env, clientId: string, serviceId: string, at: string = iso(new Date())) {
+/** `barberId`: abonamentul personalizat făcut pe un frizer acoperă doar programările la el. */
+export async function usableSubscription(env: Env, clientId: string, serviceId: string, at: string = iso(new Date()), barberId?: string | null) {
   const r = await env.DB.prepare(
     `SELECT * FROM subscriptions WHERE client_id = ? AND status = 'active' AND starts_at <= ? AND ends_at > ?
        AND (cuts_total IS NULL OR cuts_used < cuts_total) ORDER BY ends_at LIMIT 20`,
   )
     .bind(clientId, at, at)
     .all<SubRow>();
-  const fits = r.results.filter((s) => !s.service_ids || s.service_ids.split(',').includes(serviceId));
+  const fits = r.results.filter((s) => (!s.service_ids || s.service_ids.split(',').includes(serviceId)) && (!s.barber_id || !barberId || s.barber_id === barberId));
   // Abonament personalizat: mai trebuie să aibă vizite rămase din acest serviciu (ex. 2 × Barbă, ambele folosite → nu mai acoperă barba).
   const used = await usedByService(env, fits.filter((s) => s.items).map((s) => s.id));
   const row = fits.find((s) => {
@@ -242,9 +247,9 @@ export async function completeBooking(
   b: { payment?: string; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null; payMethod?: string | null },
   adminId: string,
 ) {
-  const bk = await env.DB.prepare('SELECT id, client_id, service_id, price_bani, status, payment, online_paid_bani FROM bookings WHERE id = ?')
+  const bk = await env.DB.prepare('SELECT id, client_id, service_id, barber_id, price_bani, status, payment, online_paid_bani FROM bookings WHERE id = ?')
     .bind(bookingId)
-    .first<{ id: string; client_id: string; service_id: string; price_bani: number; status: string; payment: string | null; online_paid_bani: number | null }>();
+    .first<{ id: string; client_id: string; service_id: string; barber_id: string; price_bani: number; status: string; payment: string | null; online_paid_bani: number | null }>();
   if (!bk) throw new HttpError(404, 'not_found');
   if (bk.status === 'cancelled') throw new HttpError(409, 'booking_cancelled');
   // O cerere încă neacceptată nu se poate încheia.
@@ -259,7 +264,7 @@ export async function completeBooking(
     if (!(amount >= 0 && amount <= 100000)) throw new HttpError(400, 'invalid_amount');
     paidBani = Math.round(amount * 100);
   } else {
-    sub = await usableSubscription(env, bk.client_id, bk.service_id);
+    sub = await usableSubscription(env, bk.client_id, bk.service_id, undefined, bk.barber_id);
     if (!sub) throw new HttpError(409, 'no_active_subscription');
   }
 
