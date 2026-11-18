@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { barberDuration } from '@/lib/price';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { api } from '@/api';
@@ -143,7 +144,7 @@ export default function StaffNewBooking() {
         {services.map((sv) => (
           <Pressable key={sv.id} onPress={() => setServiceId(sv.id)} style={[s.chip, sv.id === serviceId && s.chipOn]}>
             <Text style={[s.chipText, sv.id === serviceId && { color: colors.onGold }]}>
-              {sv.name.split(' / ')[0]} · {sv.durationMin}m
+              {sv.name.split(' / ')[0]} · {barberDuration(sv, barbers.find((b) => b.id === barberId))}m
             </Text>
           </Pressable>
         ))}
