@@ -12,6 +12,7 @@ import {
   PasswordLogin,
 } from "@/components/PasswordLogin";
 import { StaffLoginForm } from "@/components/StaffLoginForm";
+import { useCaptcha } from "@/components/Captcha";
 import { Button, Segmented, styles } from "@/components/ui";
 import { useT } from "@/i18n";
 import { parseBirth } from "@/lib/dates";
@@ -85,6 +86,8 @@ export function PhoneLogin({
   // Intrarea cu cod (pe e-mailul contului sau prin SMS) în loc de parolă: pentru clienții fără parolă (ex. aduși din panou)
   // sau al căror e-mail din cont nu mai e la îndemână. Codul prin SMS dovedește numărul.
   const [codeLogin, setCodeLogin] = useState(false);
+  // Verificarea „nu sunt robot” înainte de trimiterea codului (doar cât e pornită din panou).
+  const captcha = useCaptcha();
 
   const register = mode === "register";
   // Intrarea e implicit cu parolă; cu cod când clientul alege asta sau când leagă un cont Apple / Google de un cont existent.
@@ -127,6 +130,7 @@ export function PhoneLogin({
           phone: cleanPhone,
           email: emailOk ? cleanEmail : undefined,
           channel: via,
+          captcha: captcha.token,
         },
         lang,
       );
@@ -155,6 +159,8 @@ export function PhoneLogin({
       } else setError(errorMessage(e));
     } finally {
       setBusy(false);
+      // Fiecare bifă merge pentru un singur cod: pentru „Retrimite” sau altă încercare se face una nouă.
+      if (captcha.required) captcha.reset();
     }
   };
 
@@ -561,6 +567,8 @@ export function PhoneLogin({
             </Text>
           ) : null}
 
+          {!sentTo && !(socialOnly && register) ? captcha.element : null}
+
           <View style={{ marginTop: space.lg }}>
             {socialOnly && register ? (
               <Button
@@ -591,18 +599,18 @@ export function PhoneLogin({
               <>
                 <Button
                   title={t(register ? "login.continue" : "login.sendCode")}
-                  disabled={!canSend || !emailOk}
+                  disabled={!canSend || !emailOk || !captcha.ready}
                   loading={busy}
                   onPress={() => send("email")}
                 />
                 {business?.otpSms === false ? null : (
                   <Pressable
                     onPress={() => send("sms")}
-                    disabled={!canSend || busy}
+                    disabled={!canSend || busy || !captcha.ready}
                     style={{
                       marginTop: space.md,
                       alignItems: "center",
-                      opacity: !canSend ? 0.4 : 1,
+                      opacity: !canSend || !captcha.ready ? 0.4 : 1,
                     }}
                     accessibilityRole="button"
                   >

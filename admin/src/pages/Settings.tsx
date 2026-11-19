@@ -9,6 +9,7 @@ const SECTIONS: Array<{ subs: string[]; title: string; el: (me: Me) => ReactNode
   { subs: ['salon', 'firma', 'reguli'], title: 'Datele salonului', el: () => <BusinessForm /> },
   { subs: ['locatii'], title: 'Locații', el: () => <Locations /> },
   { subs: ['plati'], title: 'Plăți online', el: () => <OnlinePayments /> },
+  { subs: ['antirobot'], title: 'Protecție anti-robot', el: () => <AntiRobot /> },
   { subs: ['traduceri'], title: 'Traduceri', el: () => <TranslateAll /> },
   { subs: ['consilier'], title: 'Consilier AI de tunsori', el: () => <HairAdvisor /> },
   { subs: ['echipa'], title: 'Utilizatori și drepturi', el: (me) => <Team me={me} /> },
@@ -245,6 +246,76 @@ function OnlinePayments() {
  * Locațiile salonului. Clientul alege întâi locația, apoi frizerul din ea; fiecare frizer lucrează într-o singură locație
  * (se alege în fișa frizerului). O locație dezactivată nu mai apare în aplicație.
  */
+type CaptchaView = { siteKey: string; hasSecret: boolean; secretHint: string; enforce: boolean; savedAt: string | null; lastFailAt: string | null };
+
+/**
+ * Verificarea „nu sunt robot” (Cloudflare Turnstile, gratuită) înainte de trimiterea unui cod pe SMS sau e-mail,
+ * ca nimeni să nu poată consuma SMS-urile cerând coduri la nesfârșit. Cheia secretă nu se mai arată după salvare.
+ */
+function AntiRobot() {
+  const st = useLoad(() => api<CaptchaView>('GET', '/admin/captcha'));
+  const [siteKey, setSiteKey] = useState<string | null>(null);
+  const [secret, setSecret] = useState('');
+  const [msg, setMsg] = useState('');
+  const { busy, error, run } = useAction();
+  const s = st.data;
+  const save = (body: Record<string, unknown>, done: string) =>
+    run(async () => {
+      await api('PUT', '/admin/captcha', body);
+      setSecret('');
+      setSiteKey(null);
+      setMsg(done);
+      st.reload();
+    });
+  return (
+    <div className="card grid">
+      <h2 id="set-antirobot" style={{ margin: 0, scrollMarginTop: 16 }}>Protecție anti-robot la codurile SMS</h2>
+      <p className="muted small" style={{ margin: 0 }}>
+        Înainte să plece un cod de intrare (SMS sau e-mail), clientul trece printr-o verificare „nu sunt robot” de la Cloudflare (gratuită). De obicei se bifează singură
+        într-o secundă. Așa nimeni nu-ți poate consuma SMS-urile cerând coduri la nesfârșit. Merge în aplicație, pe site și pe pagina de ștergere a contului.
+      </p>
+      {!s ? (
+        <Loading />
+      ) : (
+        <>
+          <div className="row" style={{ gap: 8 }}>
+            <span className={s.enforce ? 'pill completed' : 'pill off'}>{s.enforce ? 'Pornită: fără bifă nu pleacă niciun cod' : s.siteKey && s.hasSecret ? 'Cheile sunt puse, verificarea e oprită' : 'Oprită (lipsesc cheile)'}</span>
+            {s.lastFailAt ? <span className="muted small">Ultimul robot oprit: {date(s.lastFailAt)}, {time(s.lastFailAt)}</span> : null}
+          </div>
+          <div className="grid two">
+            <Field label="Cheia de site (Site Key)">
+              <input value={siteKey ?? s.siteKey} placeholder="0x4AAAAAAA…" onChange={(e) => setSiteKey(e.target.value)} autoComplete="off" />
+            </Field>
+            <Field label={s.hasSecret ? `Cheia secretă (salvată, se termină în …${s.secretHint})` : 'Cheia secretă (Secret Key)'}>
+              <input type="password" value={secret} placeholder={s.hasSecret ? 'Lasă gol ca să rămână cea salvată' : '0x4AAAAAAA…'} onChange={(e) => setSecret(e.target.value)} autoComplete="off" />
+            </Field>
+          </div>
+          {error ? <div className="err">{error}</div> : null}
+          <div className="row">
+            <button disabled={busy || (siteKey === null && !secret)} onClick={() => save({ ...(siteKey !== null && { siteKey }), ...(secret && { secret }) }, 'Cheile au fost salvate.')}>
+              Salvează cheile
+            </button>
+            {s.enforce ? (
+              <button className="ghost" disabled={busy} onClick={() => save({ enforce: false }, 'Verificarea e oprită. Codurile pleacă fără bifă.')}>
+                Oprește verificarea
+              </button>
+            ) : (
+              <button className="ghost" disabled={busy || !s.siteKey || !s.hasSecret} onClick={() => save({ enforce: true }, 'Verificarea e pornită.')}>
+                Pornește verificarea
+              </button>
+            )}
+            {msg ? <span className="success small">{msg}</span> : null}
+          </div>
+          <p className="muted small" style={{ margin: 0 }}>
+            Cât timp verificarea e oprită, bifa apare deja în aplicație și pe site, dar codurile pleacă și fără ea. Porneșt-o după ce versiunea nouă a aplicației e
+            în App Store și Google Play (versiunile vechi nu au bifa și n-ar mai putea cere cod).
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Locations() {
   const list = useLoad(() => api<Location[]>('GET', '/admin/locations'));
   const [edit, setEdit] = useState<(Partial<Location> & { coords?: string }) | null>(null);

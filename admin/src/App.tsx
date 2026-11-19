@@ -214,7 +214,7 @@ const NAV: NavSection[] = [
     icon: 'settings',
     groups: [
       { title: 'Salonul', items: [{ label: 'Datele salonului', to: 'settings/salon' }, { label: 'Locații', to: 'settings/locatii' }, { label: 'Datele firmei', to: 'settings/firma' }, { label: 'Reguli de programare', to: 'settings/reguli' }] },
-      { title: 'Altele', items: [{ label: 'Plăți online (chei Stripe)', to: 'settings/plati' }, { label: 'Traduceri (engleză, franceză)', to: 'settings/traduceri' }, { label: 'Regulamente și GDPR', to: 'legal' }] },
+      { title: 'Altele', items: [{ label: 'Plăți online (chei Stripe)', to: 'settings/plati' }, { label: 'Protecție anti-robot (coduri SMS)', to: 'settings/antirobot' }, { label: 'Traduceri (engleză, franceză)', to: 'settings/traduceri' }, { label: 'Regulamente și GDPR', to: 'legal' }] },
     ],
   },
 ];

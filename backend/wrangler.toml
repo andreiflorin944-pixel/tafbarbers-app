@@ -45,8 +45,10 @@ crons = ["*/5 * * * *"]
 
 [vars]
 TIMEZONE = "Europe/Bucharest"
-# Domenii permise pentru panoul admin și aplicația web (separate prin virgulă).
-CORS_ORIGINS = "*"
+# Site-urile care au voie să citească răspunsurile serverului dintr-un browser (separate prin virgulă).
+# Panoul, site-ul și paginile publice cheamă serverul de pe aceeași adresă, iar aplicația de pe telefon nu e browser,
+# deci nu au nevoie de „*”. Un site străin nu poate citi răspunsurile serverului din browserul cuiva.
+CORS_ORIGINS = "https://app.tafbarbers.ro,https://panou.tafbarbers.ro,https://api.tafbarbers.ro,https://tafbarbers-api.andreiflorin944.workers.dev"
 # Adresa din linkurile trimise clienților (QR, plată, programare, pagini legale).
 PUBLIC_URL = "https://app.tafbarbers.ro"
 

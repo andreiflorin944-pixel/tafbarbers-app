@@ -194,6 +194,8 @@ export type Business = {
   /** Versiunea pozelor de tunsori (se schimbă când sunt refăcute sau înlocuite din panou). */
   styleV?: number;
   otpSms?: boolean; // codul de intrare poate fi cerut și prin SMS
+  /** Cheia Turnstile: verificarea „nu sunt robot” înainte de trimiterea unui cod (null = oprită). */
+  captchaSiteKey?: string | null;
   // Logare cu Apple / Google (Google apare doar cu id-urile de client OAuth puse pe server).
   social?: { apple: boolean; google: { iosClientId: string | null; androidClientId: string | null; webClientId: string | null } | null };
   requireApproval?: boolean; // programările din aplicație intră ca cereri, confirmate de salon
