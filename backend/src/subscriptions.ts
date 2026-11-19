@@ -5,6 +5,7 @@ import { HttpError, onlinePaymentsOn, type Env } from './env';
 import { iso } from './time';
 import { sendTemplate } from './sendTemplate';
 import { parseItems, usedByService } from './customSubs';
+import { addDebt, settleDebts, undoDebtStatements } from './debts';
 
 // Abonamente la tuns: adminul definește planurile, clientul plătește la salon și frizerul
 // (sau adminul) îl activează. La fiecare tunsoare finalizată, frizerul confirmă „a plătit X lei”
@@ -244,7 +245,21 @@ export async function usableSubscription(env: Env, clientId: string, serviceId: 
 export async function completeBooking(
   env: Env,
   bookingId: string,
-  b: { payment?: string; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null; payMethod?: string | null },
+  b: {
+    payment?: string;
+    amount?: number;
+    tip?: number | null;
+    bonusId?: string | null;
+    giftCode?: string | null;
+    giftAmount?: number | null;
+    payMethod?: string | null;
+    /** Serviciu gratuit, oferit de salon: nu se încasează nimic și apare în fișă la „Servicii gratuite primite”. */
+    free?: boolean;
+    /** Rest de plată (lei): rămâne pe client și se încasează data viitoare. */
+    debt?: number | null;
+    /** Resturi mai vechi ale clientului, încasate acum odată cu programarea. */
+    settleDebtIds?: string[] | null;
+  },
   adminId: string,
 ) {
   const bk = await env.DB.prepare('SELECT id, client_id, service_id, barber_id, price_bani, status, payment, online_paid_bani FROM bookings WHERE id = ?')
@@ -257,10 +272,28 @@ export async function completeBooking(
   if (bk.payment) throw new HttpError(409, 'already_completed');
   if (b.payment !== 'paid' && b.payment !== 'subscription') throw new HttpError(400, 'invalid_payment');
 
+  const free = b.free === true;
+  if (free && (b.payment !== 'paid' || b.giftCode || (b.debt ?? 0) > 0)) throw new HttpError(400, 'invalid_free');
+  const debtLei = b.debt === undefined || b.debt === null ? 0 : Number(b.debt);
+  if (!(debtLei >= 0 && debtLei * 100 <= bk.price_bani)) throw new HttpError(400, 'invalid_debt');
+  const debtBani = Math.round(debtLei * 100);
+  if (debtBani && (b.payment !== 'paid' || b.payMethod === 'app')) throw new HttpError(400, 'invalid_debt');
+
+  // Resturile vechi de încasat acum: trebuie să fie ale clientului și încă neîncasate (verificat înainte de închidere).
+  const settleIds = [...new Set((b.settleDebtIds ?? []).filter((x) => typeof x === 'string'))].slice(0, 20);
+  if (settleIds.length) {
+    const n = await env.DB.prepare(
+      `SELECT count(*) AS n FROM client_debts WHERE client_id = ? AND settled_at IS NULL AND cancelled_at IS NULL AND id IN (${settleIds.map(() => '?').join(',')})`,
+    )
+      .bind(bk.client_id, ...settleIds)
+      .first<{ n: number }>();
+    if ((n?.n ?? 0) !== settleIds.length) throw new HttpError(409, 'debt_not_open');
+  }
+
   let paidBani: number | null = null;
   let sub: Subscription | null = null;
   if (b.payment === 'paid') {
-    const amount = b.amount === undefined || b.amount === null ? bk.price_bani / 100 : Number(b.amount);
+    const amount = free ? 0 : b.amount === undefined || b.amount === null ? bk.price_bani / 100 - debtLei : Number(b.amount);
     if (!(amount >= 0 && amount <= 100000)) throw new HttpError(400, 'invalid_amount');
     paidBani = Math.round(amount * 100);
   } else {
@@ -308,10 +341,10 @@ export async function completeBooking(
 
   const now = iso(new Date());
   const claimed = await env.DB.prepare(
-    `UPDATE bookings SET status = 'completed', payment = ?, paid_bani = ?, subscription_id = ?, bonus_id = ?, tip_bani = ?, gift_card_id = ?, gift_bani = ?, pay_method = ?, completed_at = ?, completed_by = ?
+    `UPDATE bookings SET status = 'completed', payment = ?, paid_bani = ?, subscription_id = ?, bonus_id = ?, tip_bani = ?, gift_card_id = ?, gift_bani = ?, pay_method = ?, completed_at = ?, completed_by = ?, free = ?
      WHERE id = ? AND payment IS NULL AND status NOT IN ('cancelled','requested')`,
   )
-    .bind(b.payment, paidBani, sub?.id ?? null, bonusId, tipBani, gift?.id ?? null, gift?.take ?? null, payMethod, now, adminId, bookingId)
+    .bind(b.payment, paidBani, sub?.id ?? null, bonusId, tipBani, gift?.id ?? null, gift?.take ?? null, payMethod, now, adminId, free ? 1 : 0, bookingId)
     .run();
   if (!claimed.meta.changes) {
     if (gift) await refundGiftCard(env, gift.id, gift.take);
@@ -348,6 +381,9 @@ export async function completeBooking(
   if (bonusId) {
     await env.DB.prepare(`UPDATE bonuses SET status = 'used', used_at = ?, used_by = ? WHERE id = ? AND status = 'active'`).bind(now, adminId, bonusId).run();
   }
+  if (debtBani) await addDebt(env, bk.client_id, bookingId, debtBani, adminId);
+  // Resturile vechi încasate acum: aceeași metodă ca plata (cererea în aplicație nu acoperă restul: numerar).
+  if (settleIds.length) await settleDebts(env, bk.client_id, settleIds, adminId, payMethod === 'app' ? 'cash' : payMethod, bookingId);
 }
 
 /** Anulează confirmarea (greșeală): programarea revine la „confirmată”, tunsoarea se întoarce în abonament, bonusul redevine activ. */
@@ -357,10 +393,14 @@ export async function undoCompletion(env: Env, bookingId: string) {
     .first<{ payment: string | null; subscription_id: string | null; bonus_id: string | null; gift_card_id: string | null; gift_bani: number | null }>();
   if (!bk) throw new HttpError(404, 'not_found');
   if (!bk.payment) throw new HttpError(409, 'not_completed');
+  // Restul lăsat atunci s-a încasat deja: întâi se anulează încasarea aceea (la programarea unde s-a plătit).
+  const paidDebt = await env.DB.prepare('SELECT 1 FROM client_debts WHERE booking_id = ? AND settled_at IS NOT NULL').bind(bookingId).first();
+  if (paidDebt) throw new HttpError(409, 'debt_settled');
   const stmts = [
     env.DB.prepare(
-      `UPDATE bookings SET status = 'confirmed', payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, gift_card_id = NULL, gift_bani = NULL, pay_method = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
+      `UPDATE bookings SET status = 'confirmed', payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, gift_card_id = NULL, gift_bani = NULL, pay_method = NULL, completed_at = NULL, completed_by = NULL, free = 0 WHERE id = ?`,
     ).bind(bookingId),
+    ...undoDebtStatements(env, bookingId),
   ];
   if (bk.subscription_id) stmts.push(env.DB.prepare('UPDATE subscriptions SET cuts_used = max(0, cuts_used - 1) WHERE id = ?').bind(bk.subscription_id));
   if (bk.bonus_id) stmts.push(env.DB.prepare(`UPDATE bonuses SET status = 'active', used_at = NULL, used_by = NULL WHERE id = ? AND status = 'used'`).bind(bk.bonus_id));

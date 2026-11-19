@@ -19,6 +19,8 @@ const D: Record<string, T2> = {
   'Plăți': ['Payments', 'Paiements'],
   'Plăți în funcție de membrul echipei': ['Payments by team member', 'Paiements par membre de l’équipe'],
   'Bacșișuri pe membru de echipă': ['Tips by team member', 'Pourboires par membre de l’équipe'],
+  'Rest de plată (clienți care datorează)': ['Outstanding balances (clients who owe)', 'Restes à payer (clients débiteurs)'],
+  'Servicii oferite gratuit': ['Services given for free', 'Services offerts'],
   'Clienți TOP-100': ['TOP-100 clients', 'TOP-100 clients'],
   'Păstrarea clienților': ['Client retention', 'Fidélisation des clients'],
   'Clienți noi vs. clienți care revin': ['New vs. returning clients', 'Nouveaux clients vs. clients fidèles'],

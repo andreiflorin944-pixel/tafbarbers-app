@@ -198,6 +198,8 @@ export type BookingRow = {
   created_at: string;
   payment?: string | null;
   paid_bani?: number | null;
+  free?: number | null;
+  debt_open_bani?: number | null;
   subscription_id?: string | null;
   bonus_id?: string | null;
   completed_at?: string | null;
@@ -250,6 +252,10 @@ export const booking = (r: BookingRow) => ({
   // La finalizare frizerul confirmă plata: suma încasată sau pe abonament.
   payment: (r.payment ?? null) as 'paid' | 'subscription' | null,
   paidAmount: r.paid_bani === null || r.paid_bani === undefined ? null : r.paid_bani / 100,
+  /** Închisă „Gratuit”, oferită de salon. */
+  free: !!r.free,
+  /** Rest de plată lăsat la această programare și încă neîncasat (lei). */
+  debtLeft: r.debt_open_bani ? r.debt_open_bani / 100 : null,
   subscriptionId: r.subscription_id ?? null,
   bonusId: r.bonus_id ?? null,
   completedAt: r.completed_at ?? null,

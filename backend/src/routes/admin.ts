@@ -89,6 +89,7 @@ import { adminWaitlist, checkWaitlist, removeWaitlist } from '../waitlist';
 import { blockOccurrences, createBlock, deleteBlock, listBlocks, type BlockInput } from '../blocks';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 import { addAlbumPhoto, BARBER_ALBUM_COL, deleteAlbumPhoto, getAlbum } from '../barberAlbum';
+import { cancelDebt, clientDebts, settleDebts } from '../debts';
 
 /** Iconițele pe care le poate avea un banner (nume din Ionicons; aplicația folosește varianta cu contur). */
 const PROMO_ICONS: string[] = ['pricetag', 'flame', 'school', 'bag-handle', 'cut', 'sparkles', 'star', 'diamond', 'gift', 'water', 'hourglass', 'trophy', 'people', 'ribbon', 'flash', 'heart'];
@@ -1291,7 +1292,7 @@ adminRoutes.get('/bookings/unclosed', async (c) => {
 /** Frizerul confirmă tunsoarea: `{ payment: 'paid', amount }` sau `{ payment: 'subscription' }`, opțional `bonusId`. */
 adminRoutes.post('/bookings/:id/complete', async (c) => {
   const cur = await bookingForStaff(c);
-  const b = await c.req.json<{ payment?: string; amount?: number; tip?: number | null; bonusId?: string | null; giftCode?: string | null; giftAmount?: number | null; payMethod?: string | null }>();
+  const b = await c.req.json<Parameters<typeof completeBooking>[2]>();
   await completeBooking(c.env, cur.id, b, c.get('admin').adminId);
   // „Cere plata în aplicație”: încheiată acum, iar clientul primește cererea de plată pentru suma rămasă.
   if (b.payMethod === 'app' && b.payment === 'paid') {
@@ -1803,7 +1804,52 @@ adminRoutes.get('/clients/:id/wallet', async (c) => {
   const gifts = (await clientGiftCards(c, id, r.phone)).filter(
     (g) => g.status === 'active' && g.balance > 0 && (g.role === 'received' || g.forSelf) && (!g.expiresAt || g.expiresAt > now),
   );
-  return c.json({ subscriptions: subs, giftCards: gifts });
+  return c.json({ subscriptions: subs, giftCards: gifts, debts: await clientDebts(c.env, id, true) });
+});
+
+/**
+ * Serviciile primite gratuit: închise cu „Gratuit” la încasare sau cu un bonus „serviciu gratuit”.
+ * Data, serviciul, frizerul și cine l-a dat. Frizerul fără „toate programările” vede doar ale lui.
+ */
+async function freeServices(c: Context<AppEnv>, clientId: string) {
+  const own = ownBarber(c);
+  const r = await c.env.DB.prepare(
+    `SELECT b.id, b.starts_at, b.price_bani, s.name AS service_name, br.name AS barber_name, coalesce(nullif(a.name, ''), a.email) AS given_by, bn.title AS bonus_title
+     FROM bookings b JOIN services s ON s.id = b.service_id JOIN barbers br ON br.id = b.barber_id
+     LEFT JOIN admins a ON a.id = b.completed_by LEFT JOIN bonuses bn ON bn.id = b.bonus_id
+     WHERE b.client_id = ? AND b.status = 'completed' AND (b.free = 1 OR bn.kind = 'free') ${own ? 'AND b.barber_id = ?' : ''}
+     ORDER BY b.starts_at DESC LIMIT 50`,
+  )
+    .bind(...(own ? [clientId, own] : [clientId]))
+    .all<{ id: string; starts_at: string; price_bani: number; service_name: string; barber_name: string; given_by: string | null; bonus_title: string | null }>();
+  return r.results.map((x) => ({
+    bookingId: x.id,
+    at: x.starts_at,
+    serviceName: x.service_name,
+    barberName: x.barber_name,
+    /** Cât ar fi costat (prețul de pe programare). */
+    value: x.price_bani / 100,
+    givenByName: x.given_by,
+    /** Prin bonus („Tunsoare gratuită” etc.) sau direct „Gratuit” la încasare. */
+    bonusTitle: x.bonus_title,
+  }));
+}
+
+/** Încasează resturi de plată ale clientului fără o programare nouă: `{ ids, payMethod }` (numerar implicit). */
+adminRoutes.post('/clients/:id/debts/settle', async (c) => {
+  need(c, 'bookings_manage');
+  const id = c.req.param('id')!;
+  await needClient(c, id);
+  const b = await c.req.json<{ ids?: string[]; payMethod?: string }>().catch(() => ({}) as { ids?: string[]; payMethod?: string });
+  if (!Array.isArray(b.ids) || !b.ids.length) throw new HttpError(400, 'invalid_body');
+  const total = await settleDebts(c.env, id, b.ids, c.get('admin').adminId, b.payMethod);
+  return c.json({ ok: true, amount: total / 100, debts: await clientDebts(c.env, id) });
+});
+
+/** Proprietarul iartă un rest de plată (sau îl șterge, trecut din greșeală). */
+adminRoutes.post('/debts/:id/cancel', ownerOnly, async (c) => {
+  await cancelDebt(c.env, c.req.param('id')!, c.get('admin').adminId);
+  return c.json({ ok: true });
 });
 
 adminRoutes.get('/clients/:id', async (c) => {
@@ -1824,6 +1870,8 @@ adminRoutes.get('/clients/:id', async (c) => {
     bonuses: await getBonuses(c.env, id, true),
     subscriptions: await getSubscriptions(c.env, id, true),
     giftCards: await clientGiftCards(c, id, r.phone),
+    debts: await clientDebts(c.env, id),
+    freeServices: await freeServices(c, id),
     // TAF Club: membru prin abonament activ sau marcat de mână (bifa din fișă).
     clubMember: await isClubMember(c.env, id),
     clubManual: !!r.club_member,

@@ -403,6 +403,10 @@ export type Booking = {
   barberName: string;
   payment?: 'paid' | 'subscription' | null;
   paidAmount?: number | null;
+  /** Închisă „Gratuit”. */
+  free?: boolean;
+  /** Rest de plată lăsat aici și încă neîncasat (lei). */
+  debtLeft?: number | null;
   onlinePaid?: number | null; // plătită cu cardul din aplicație, înainte de vizită
   onlineRefunded?: boolean;
   payMethod?: string | null; // cash | card | transfer | online | app (= plata cerută în aplicație, încă neplătită)
@@ -515,6 +519,10 @@ export type Client = {
   subscriptions?: Subscription[];
   /** Cardurile cadou cumpărate de client sau primite pe numărul lui (fără cele anulate). */
   giftCards?: import('./pages/ClientWallet').ClientGiftCard[];
+  /** Resturile de plată (neîncasate întâi, apoi istoricul). */
+  debts?: import('./pages/ClientWallet').Debt[];
+  /** Serviciile primite gratuit. */
+  freeServices?: import('./pages/ClientWallet').FreeService[];
   referredBy?: { id: string; name: string } | null;
   referredCount?: number;
   /** Membru TAF Club acum (abonament activ sau bifat de mână) și bifa manuală. */

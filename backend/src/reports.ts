@@ -25,6 +25,8 @@ export const REPORTS = [
   { kind: 'payments-member', title: 'Plăți în funcție de membrul echipei', range: 'period' },
   { kind: 'online-payments', title: 'Plăți online (card în aplicație)', range: 'period' },
   { kind: 'tips-member', title: 'Bacșișuri pe membru de echipă', range: 'period' },
+  { kind: 'debts', title: 'Rest de plată (clienți care datorează)', range: 'period' },
+  { kind: 'free-services', title: 'Servicii oferite gratuit', range: 'period' },
   { kind: 'top100', title: 'Clienți TOP-100', range: 'period', clients: true },
   { kind: 'retention', title: 'Păstrarea clienților', range: 'months' },
   { kind: 'new-returning', title: 'Clienți noi vs. clienți care revin', range: 'period' },
@@ -69,6 +71,10 @@ type BRow = {
   barber_name: string;
   canceller_name: string | null;
   completer_name: string | null;
+  /** Închisă „Gratuit” (oferită de salon). */
+  free: number;
+  /** Rest de plată lăsat la închidere (fără cel iertat). */
+  debt_bani: number | null;
   day: string;
 };
 /** Cererile la care nu a răspuns nimeni se anulează singure: nu sunt anulări ale echipei. */
@@ -122,7 +128,8 @@ async function loadBookings(env: Env, scope: Scope, from: string, to: string, f:
     `SELECT b.id, b.client_id, b.barber_id, b.service_id, b.starts_at, b.created_at, b.price_bani, b.status, b.source, b.payment, b.paid_bani,
        b.tip_bani, b.gift_bani, b.pay_method, b.ends_at, b.cancelled_at, b.cancelled_by, b.request_outcome, b.completed_by, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
        s.name AS service_name, br.name AS barber_name, coalesce(nullif(ca.name, ''), ca.email) AS canceller_name,
-       coalesce(nullif(cb.name, ''), cb.email) AS completer_name
+       coalesce(nullif(cb.name, ''), cb.email) AS completer_name, b.free,
+       (SELECT sum(d.amount_bani) FROM client_debts d WHERE d.booking_id = b.id AND d.cancelled_at IS NULL) AS debt_bani
      FROM bookings b JOIN clients c ON c.id = b.client_id JOIN services s ON s.id = b.service_id JOIN barbers br ON br.id = b.barber_id
      LEFT JOIN admins ca ON ca.id = b.cancelled_by_admin LEFT JOIN admins cb ON cb.id = b.completed_by
      WHERE ${where.join(' AND ')} ORDER BY b.starts_at LIMIT 30000`,
@@ -180,6 +187,55 @@ async function loadSubscriptions(env: Env, scope: Scope, from: string, to: strin
     )
     .all<SRow>();
   for (const x of r.results) x.day = dayKey(x.created_at);
+  return r.results;
+}
+
+type DRow = {
+  id: string;
+  client_id: string;
+  amount_bani: number;
+  created_at: string;
+  settled_at: string | null;
+  settled_method: string | null;
+  cancelled_at: string | null;
+  client_name: string;
+  client_phone: string;
+  service_name: string | null;
+  barber_name: string | null;
+  starts_at: string | null;
+  created_by_name: string | null;
+  settled_by_name: string | null;
+  settled_barber: string | null;
+  settled_barber_name: string | null;
+};
+
+/**
+ * Resturile de plată: `by: 'settled'` = încasate în perioadă (bani intrați, pe cine i-a încasat),
+ * `by: 'created'` = lăsate în perioadă (cu starea de acum). Frizerul fără „toate programările” vede doar ale lui.
+ */
+async function loadDebts(env: Env, scope: Scope, from: string, to: string, by: 'settled' | 'created') {
+  const { start, end } = range(from, to);
+  const col = by === 'settled' ? 'd.settled_at' : 'd.created_at';
+  const where = [`${col} >= ?`, `${col} < ?`];
+  const vals: unknown[] = [start, end];
+  if (by === 'settled') where.push('d.cancelled_at IS NULL');
+  if (scope.barberId) {
+    if (by === 'settled') where.push('d.settled_by = ?'), vals.push(scope.session.adminId);
+    else where.push('b.barber_id = ?'), vals.push(scope.barberId);
+  }
+  if (scope.locationId) where.push('b.location_id = ?'), vals.push(scope.locationId);
+  const r = await env.DB.prepare(
+    `SELECT d.id, d.client_id, d.amount_bani, d.created_at, d.settled_at, d.settled_method, d.cancelled_at, c.name AS client_name, c.phone AS client_phone,
+       s.name AS service_name, br.name AS barber_name, b.starts_at,
+       coalesce(nullif(a.name, ''), a.email) AS created_by_name, coalesce(nullif(z.name, ''), z.email) AS settled_by_name,
+       z.barber_id AS settled_barber, zb.name AS settled_barber_name
+     FROM client_debts d JOIN clients c ON c.id = d.client_id LEFT JOIN bookings b ON b.id = d.booking_id
+     LEFT JOIN services s ON s.id = b.service_id LEFT JOIN barbers br ON br.id = b.barber_id
+     LEFT JOIN admins a ON a.id = d.created_by LEFT JOIN admins z ON z.id = d.settled_by LEFT JOIN barbers zb ON zb.id = z.barber_id
+     WHERE ${where.join(' AND ')} ORDER BY ${col} LIMIT 30000`,
+  )
+    .bind(...vals)
+    .all<DRow>();
   return r.results;
 }
 
@@ -258,12 +314,14 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
 
   switch (kind) {
     case 'day': {
-      const [bk, subs, firsts, addons] = await Promise.all([
+      const [bk, subs, firsts, addons, debtsIn] = await Promise.all([
         loadBookings(env, scope, from, to, filters),
         loadSubscriptions(env, scope, from, to),
         firstVisits(env),
         loadAddons(env, scope, from, to, filters),
+        loadDebts(env, scope, from, to, 'settled'),
       ]);
+      const debtsInSum = debtsIn.reduce((n, d) => n + d.amount_bani, 0);
       const visits = bk.filter((b) => isVisit(b, now));
       const clientsSeen = new Set(visits.map((b) => b.client_id));
       const newClients = [...clientsSeen].filter((id) => (firsts.get(id) ?? '') >= range(from, to).start).length;
@@ -289,14 +347,17 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         line('Abonamente vândute', subs.filter((s) => s.kind !== 'gift').length),
         line('Carduri cadou vândute', subs.filter((s) => s.kind === 'gift').length),
         line('Plătit cu carduri cadou (lei)', lei(bk.reduce((n, b) => n + (b.gift_bani ?? 0), 0))),
+        line('Servicii oferite gratuit', bk.filter((b) => b.status === 'completed' && b.free).length),
+        line('Rest de plată lăsat azi (lei, de încasat data viitoare)', lei(bk.reduce((n, b) => n + (b.debt_bani ?? 0), 0))),
       ];
       if (perms.stats)
         rows.push(
           line('Încasat din servicii (lei)', lei(cuts)),
           line('Încasat din abonamente și carduri cadou (lei)', lei(subsSum)),
+          line('Rest de plată încasat (de la vizite trecute, lei)', lei(debtsInSum)),
           line('Bacșiș (lei)', lei(tips)),
           line(`Extra fără timp: ${addons.length} (lei, incluși în servicii)`, lei(addons.reduce((n, x) => n + x.price_bani, 0))),
-          line('Total încasat, fără bacșiș (lei)', lei(cuts + subsSum)),
+          line('Total încasat, fără bacșiș (lei)', lei(cuts + subsSum + debtsInSum)),
         );
       for (const [, list] of group(bk.filter((b) => b.status !== 'cancelled'), (b) => b.barber_name)) {
         const done = list.filter((b) => b.status === 'completed');
@@ -479,7 +540,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
     }
 
     case 'payments': {
-      const [bk, subs] = await Promise.all([loadBookings(env, scope, from, to, filters), loadSubscriptions(env, scope, from, to)]);
+      const [bk, subs, debtsIn] = await Promise.all([loadBookings(env, scope, from, to, filters), loadSubscriptions(env, scope, from, to), loadDebts(env, scope, from, to, 'settled')]);
       columns = [
         { key: 'date', label: 'Data', type: 'datetime' },
         { key: 'client', label: 'Client', type: 'text' },
@@ -499,7 +560,12 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
               date: localDT(b.starts_at),
               client: b.client_name || 'Fără nume',
               what: `${b.service_name} · ${b.barber_name}`,
-              method: b.payment === 'paid' ? (b.gift_bani ? 'Plată serviciu (și card cadou)' : 'Plată serviciu') : 'Tunsoare din abonament',
+              method:
+                b.payment !== 'paid'
+                  ? 'Tunsoare din abonament'
+                  : b.free
+                    ? 'Gratuit (oferit de salon)'
+                    : `${b.gift_bani ? 'Plată serviciu (și card cadou)' : 'Plată serviciu'}${b.debt_bani ? ` · rest de plată ${lei(b.debt_bani)} lei` : ''}`,
               how: b.pay_method ? METHOD[b.pay_method] ?? b.pay_method : '',
               amount: lei(collected(b)),
               tip: b.tip_bani ? lei(b.tip_bani) : null,
@@ -509,6 +575,19 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         ...subs.map((s) => ({
           t: s.created_at,
           row: { date: localDT(s.created_at), client: s.client_name || 'Fără nume', what: s.name, method: s.kind === 'gift' ? 'Card cadou vândut' : 'Abonament vândut', how: s.pay_method ? METHOD[s.pay_method] ?? s.pay_method : '', amount: lei(s.price_bani), tip: null, by: s.admin_name ?? '' },
+        })),
+        ...debtsIn.map((d) => ({
+          t: d.settled_at!,
+          row: {
+            date: localDT(d.settled_at!),
+            client: d.client_name || 'Fără nume',
+            what: `Rest de plată${d.service_name ? ` · ${d.service_name}` : ''}${d.starts_at ? ` din ${roLocal(d.starts_at).day}` : ''}`,
+            method: 'Rest de plată încasat',
+            how: d.settled_method ? METHOD[d.settled_method] ?? d.settled_method : '',
+            amount: lei(d.amount_bani),
+            tip: null,
+            by: d.settled_by_name ?? '',
+          },
         })),
       ];
       items.sort((a, b) => a.t.localeCompare(b.t));
@@ -736,9 +815,48 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
       break;
     }
 
+    case 'debts': {
+      // Resturile lăsate în perioadă și starea lor de acum (neîncasat / încasat / iertat).
+      const list = await loadDebts(env, scope, from, to, 'created');
+      columns = [
+        { key: 'date', label: 'Lăsat pe', type: 'datetime' },
+        { key: 'client', label: 'Client', type: 'text' },
+        ...(perms.contacts ? [{ key: 'phone', label: 'Telefon', type: 'text' as const }] : []),
+        { key: 'what', label: 'Programarea', type: 'text' },
+        { key: 'amount', label: 'Rest (lei)', type: 'money' },
+        { key: 'open', label: 'Încă de încasat (lei)', type: 'money' },
+        { key: 'state', label: 'Stare', type: 'text' },
+        { key: 'by', label: 'Lăsat de', type: 'text' },
+      ];
+      rows = list.map((d) => ({
+        date: localDT(d.created_at),
+        client: d.client_name || 'Fără nume',
+        ...(perms.contacts && { phone: d.client_phone }),
+        what: [d.service_name, d.barber_name, d.starts_at ? roLocal(d.starts_at).day : null].filter(Boolean).join(' · '),
+        amount: lei(d.amount_bani),
+        open: d.settled_at || d.cancelled_at ? 0 : lei(d.amount_bani),
+        state: d.cancelled_at ? 'Iertat' : d.settled_at ? `Încasat pe ${roLocal(d.settled_at).day} (${METHOD[d.settled_method ?? 'cash'] ?? d.settled_method})` : 'NEÎNCASAT',
+        by: d.created_by_name ?? '',
+      }));
+      const open = list.filter((d) => !d.settled_at && !d.cancelled_at).length;
+      totals = sumRows(rows, columns, open ? `Total · ${open} neîncasate` : `Total: ${rows.length}`);
+      break;
+    }
+
+    case 'free-services': {
+      const bk = (await loadBookings(env, scope, from, to, filters)).filter((b) => b.status === 'completed' && b.free);
+      columns = bookingCols([
+        { key: 'value', label: 'Valoare (lei)', type: 'money' },
+        { key: 'by', label: 'Oferit de', type: 'text' },
+      ]);
+      rows = bk.map((b) => ({ ...bookingRow(b), value: lei(b.price_bani), by: b.completer_name ?? '' }));
+      totals = sumRows(rows, columns, `Total: ${rows.length} gratuite`);
+      break;
+    }
+
     case 'register': {
       // Registrul de încasări: fiecare programare din zi (sau perioadă) cu felul în care s-a închis și cum s-a plătit.
-      const [bk, subs] = await Promise.all([loadBookings(env, scope, from, to, filters), loadSubscriptions(env, scope, from, to)]);
+      const [bk, subs, debtsIn] = await Promise.all([loadBookings(env, scope, from, to, filters), loadSubscriptions(env, scope, from, to), loadDebts(env, scope, from, to, 'settled')]);
       columns = [
         { key: 'date', label: 'Data și ora', type: 'datetime' },
         { key: 'client', label: 'Client', type: 'text' },
@@ -762,7 +880,11 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
             ? 'Încheiată · din abonament'
             : b.pay_method === 'app'
               ? 'Încheiată · așteaptă plata în aplicație'
-              : 'Încheiată · plătită'
+              : b.free
+                ? 'Încheiată · gratuit (oferit de salon)'
+                : b.debt_bani
+                  ? `Încheiată · plătită parțial, rest ${lei(b.debt_bani)} lei`
+                  : 'Încheiată · plătită'
           : b.status === 'no_show'
             ? 'Nu a venit'
             : b.status === 'cancelled'
@@ -797,6 +919,19 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
             what: x.kind === 'gift' ? x.name : `Abonament: ${x.name}`,
             state: 'Vândut',
             ...split(x.pay_method ?? 'cash', x.price_bani),
+            gift: null,
+            tip: null,
+          } as Row,
+        })),
+        ...debtsIn.map((d) => ({
+          t: d.settled_at!,
+          row: {
+            date: localDT(d.settled_at!),
+            client: d.client_name || 'Fără nume',
+            barber: d.settled_barber_name ?? d.settled_by_name ?? '',
+            what: `Rest de plată${d.service_name ? ` · ${d.service_name}` : ''}${d.starts_at ? ` din ${roLocal(d.starts_at).day}` : ''}`,
+            state: 'Rest de plată încasat',
+            ...split(d.settled_method ?? 'cash', d.amount_bani),
             gift: null,
             tip: null,
           } as Row,
