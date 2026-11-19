@@ -3,6 +3,7 @@ import { useContext, type ComponentProps, type ReactNode } from 'react';
 import { HeaderHeightContext } from 'expo-router/react-navigation';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { dirIcon } from '@/lib/rtl';
 import type { Barber, Service } from '@/data/types';
 import { mediaUrl } from '@/api/staff';
 import { usePriceLabel } from '@/lib/price';
@@ -225,7 +226,7 @@ export function MenuButton({ icon, title, onPress }: { icon: ComponentProps<type
     <Pressable onPress={onPress} style={({ pressed }) => [styles.menuButton, pressed && { opacity: 0.85 }]}>
       <Ionicons name={icon} size={30} color={colors.onGold} />
       <Text style={styles.menuButtonText}>{title}</Text>
-      <Ionicons name="chevron-forward" size={22} color={colors.onGold} />
+      <Ionicons name={dirIcon('chevron-forward')} size={22} color={colors.onGold} />
     </Pressable>
   );
 }

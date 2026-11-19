@@ -178,15 +178,16 @@ const TERMS: Record<string, { ro: string; fr: string }> = {
   stubble: { ro: 'barbă de câteva zile', fr: 'barbe de quelques jours' },
   full: { ro: 'barbă plină', fr: 'barbe fournie' },
 };
-const term = (v: string, lang: string) => (lang === 'en' ? v : (TERMS[v.toLowerCase()]?.[lang === 'fr' ? 'fr' : 'ro'] ?? v));
+// Pentru engleză și arabă rămân termenii în engleză (modelul îi scrie în arabă singur).
+const term = (v: string, lang: string) => (lang === 'en' || lang === 'ar' ? v : (TERMS[v.toLowerCase()]?.[lang === 'fr' ? 'fr' : 'ro'] ?? v));
 
 const MAX_STYLES = 4;
 
 /** Alegerea tunsorilor potrivite (doar din lista fixă), cu motivul și ce să ceară la frizer, în limba clientului. */
 async function pick(env: Env, look: Look, services: ServiceRow[], lang: string) {
   const biz = await getBusiness(env);
-  const language = lang === 'en' ? 'engleză' : lang === 'fr' ? 'franceză' : 'română';
-  const you = lang === 'en' ? '"you"' : lang === 'fr' ? '"tu"' : '"tu"';
+  const language = lang === 'en' ? 'engleză' : lang === 'fr' ? 'franceză' : lang === 'ar' ? 'arabă (araba standard modernă)' : 'română';
+  const you = lang === 'en' ? '"you"' : lang === 'ar' ? '"أنت"' : '"tu"';
   const T = (v: string) => (v ? term(v, lang) : '');
   const styles = HAIRSTYLES.map((h) => `- ${h.key}: ${h.name.en} (${h.about})`).join('\n');
   const list = services.map((s) => `- ${s.name} (id ${s.id}): ${s.duration_min} min${s.description ? `. ${s.description.slice(0, 120)}` : ''}`).join('\n');
@@ -306,7 +307,7 @@ advisorRoutes.post('/advisor', requireClient, async (c) => {
 
   const clientId = c.get('client').clientId;
   // Consilierul propune doar servicii pe care le vede oricine (fără cele „doar membri”).
-  const services = (await env.DB.prepare('SELECT * FROM services WHERE active = 1 AND members_only = 0 ORDER BY sort, name').all<ServiceRow>()).results;
+  const services = (await env.DB.prepare('SELECT * FROM services WHERE active = 1 AND members_only = 0 AND addon = 0 ORDER BY sort, name').all<ServiceRow>()).results;
   if (!services.length) throw new HttpError(409, 'advisor_off');
   const left = await takeSlot(env, clientId);
 
@@ -347,7 +348,7 @@ advisorRoutes.post('/advisor', requireClient, async (c) => {
       .all<{ before_media: string; after_media: string }>();
     examples.set(id, ex.results.map((p) => ({ before: mediaUrl(p.before_media), after: mediaUrl(p.after_media) })));
   }
-  const name = (key: string) => hairstyle(key)!.name[lang === 'en' ? 'en' : lang === 'fr' ? 'fr' : 'ro'];
+  const name = (key: string) => hairstyle(key)!.name[lang];
   const styleV = styleVersion(await getStylePhotos(env));
   const styles = picked!.chosen.map((x) => {
     const s = x.serviceId ? shown.find((y) => y.id === x.serviceId) : undefined;

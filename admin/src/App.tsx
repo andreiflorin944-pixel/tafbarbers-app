@@ -170,7 +170,7 @@ const NAV: NavSection[] = [
     icon: 'reports',
     groups: [
       { items: [{ label: 'Tablou de bord', to: 'dashboard' }, { label: 'Raportul zilei', to: 'reports/day' }] },
-      { title: 'Vânzări', items: [{ label: 'Vânzări pe frizer', to: 'reports/sales-barber' }, { label: 'Vânzări pe servicii', to: 'reports/sales-service' }] },
+      { title: 'Vânzări', items: [{ label: 'Vânzări pe frizer', to: 'reports/sales-barber' }, { label: 'Vânzări pe servicii', to: 'reports/sales-service' }, { label: 'Extra fără timp', to: 'reports/sales-addons' }] },
       { title: 'Programări', items: [{ label: 'Rezervări pe frizer', to: 'reports/bookings-barber' }, { label: 'Anulări din partea echipei', to: 'reports/cancel-staff' }, { label: 'Anulări de către client', to: 'reports/cancel-client' }] },
       { items: [{ label: 'Toate rapoartele', to: 'reports' }] },
     ],

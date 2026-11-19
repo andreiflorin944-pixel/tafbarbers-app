@@ -4,7 +4,7 @@ import { emptyTr, Field, Loading, TranslationFields, useAction, useLoad } from '
 import { date } from '../util';
 
 type V = { title: string; body: string } | null;
-type DocData = { updatedAt: string | null; isDefault: boolean; versions: { ro: V; en: V; fr: V } };
+type DocData = { updatedAt: string | null; isDefault: boolean; versions: { ro: V; en: V; fr: V; ar?: V } };
 const DOCS = [
   { key: 'terms', label: 'Termeni și condiții' },
   { key: 'privacy', label: 'Confidențialitate (GDPR)' },
@@ -25,8 +25,8 @@ export function LegalPage({ me }: { me: Me }) {
     setVersions({
       ro: d.versions.ro ?? { title: '', body: '' },
     });
-    // Engleza și franceza = traducerea automată a textului românesc salvat (corectabilă de mână).
-    setTr({ en: { title: d.versions.en?.title ?? '', body: d.versions.en?.body ?? '' }, fr: { title: d.versions.fr?.title ?? '', body: d.versions.fr?.body ?? '' } });
+    // Engleza, franceza și araba = traducerea automată a textului românesc salvat (corectabilă de mână).
+    setTr({ en: { title: d.versions.en?.title ?? '', body: d.versions.en?.body ?? '' }, fr: { title: d.versions.fr?.title ?? '', body: d.versions.fr?.body ?? '' }, ar: { title: d.versions.ar?.title ?? '', body: d.versions.ar?.body ?? '' } });
     setSaved('');
   }, [data.data, doc]);
 
@@ -98,7 +98,7 @@ export function LegalPage({ me }: { me: Me }) {
               disabled={busy || !versions.ro?.title || !versions.ro?.body}
               onClick={() =>
                 run(async () => {
-                  const r = await api<{ translationPending?: boolean }>('PUT', `/admin/legal/${doc}`, { versions: { ro: versions.ro, en: tr.en, fr: tr.fr } });
+                  const r = await api<{ translationPending?: boolean }>('PUT', `/admin/legal/${doc}`, { versions: { ro: versions.ro, en: tr.en, fr: tr.fr, ar: tr.ar } });
                   setSaved(r.translationPending ? 'pending' : 'done');
                   data.reload();
                 })

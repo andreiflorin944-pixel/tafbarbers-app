@@ -1,11 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { DevSettings, I18nManager, Platform } from 'react-native';
+import * as Updates from 'expo-updates';
 import { storage } from '@/lib/storage';
+import { ar } from './i18n-ar';
 
-export type Lang = 'ro' | 'en' | 'fr';
+export type Lang = 'ro' | 'en' | 'fr' | 'ar';
 export const LANGS: Array<{ code: Lang; flag: string; name: string }> = [
   { code: 'ro', flag: '🇷🇴', name: 'Română' },
   { code: 'en', flag: '🇬🇧', name: 'English' },
   { code: 'fr', flag: '🇫🇷', name: 'Français' },
+  { code: 'ar', flag: '🇸🇦', name: 'العربية' },
 ];
 
 const ro = {
@@ -1150,7 +1154,10 @@ const ro = {
   'book.addExtra': 'Mai adaugi ceva la aceeași programare?',
   'extra.add': '+ Adaugă serviciu',
   'extra.title': 'Adaugă un serviciu',
-  'extra.hint': 'Se face în continuarea programării tale. Timpul și prețul se adună.',
+  'extra.hint': 'Serviciile se fac în continuarea programării (timpul și prețul se adună). Extra-urile fără timp adaugă doar prețul.',
+  'addon.noTime': 'fără timp în plus',
+  'addon.added': 'Extra adăugat. Prețul s-a actualizat, ora rămâne aceeași.',
+  'addon.title': 'Ceva în plus? (fără timp în plus)',
   'extra.none': 'Nu mai sunt servicii de adăugat la acest frizer.',
   'extra.removeTitle': 'Scoate serviciul',
   'extra.removeAsk': 'Scoți „{name}” de pe programare?',
@@ -1160,9 +1167,25 @@ const ro = {
   'extra.added': 'Serviciul a fost adăugat. Programarea s-a prelungit și prețul s-a actualizat.',
   'err.no_time_for_extra': 'Frizerul nu mai are timp liber după programarea ta pentru acest serviciu. Sună la salon sau alege altă oră.',
   'err.service_already_added': 'Serviciul e deja pe programare.',
-  'err.too_many_extras': 'Poți adăuga cel mult 3 servicii la o programare.',
+  'err.too_many_extras': 'Poți adăuga cel mult 3 servicii și 5 extra fără timp la o programare.',
+  'err.addon_not_bookable': 'Acesta e un extra: se adaugă la o programare, nu se programează singur.',
   'err.barber_no_service': 'Frizerul ales nu face acest serviciu.',
   'err.booking_started': 'Programarea a început deja.',
+  'err.booking_not_found': 'Programarea nu mai există. Reîmprospătează lista.',
+  'err.booking_changed': 'Programarea tocmai s-a schimbat. Reîmprospătează și încearcă din nou.',
+  'err.extra_not_found': 'Serviciul adăugat nu mai e pe programare.',
+  'err.invalid_extras': 'Serviciile adăugate nu sunt valide. Alege din nou.',
+  'err.service_required': 'Alege serviciul.',
+  'err.custom_sub_off': 'Abonamentul personalizat nu e disponibil acum.',
+  'err.service_not_allowed': 'Serviciul ăsta nu poate intra în abonament.',
+  'err.service_not_offered': 'Frizerul ales nu face serviciul ăsta. Alege alt serviciu sau alt frizer.',
+  'err.too_few_visits': 'Alege mai multe vizite ca să primești reducerea.',
+  'err.too_many_visits': 'Ai ales prea multe vizite pentru o lună.',
+  'err.invalid_body': 'Datele trimise nu sunt corecte. Încearcă din nou.',
+  'err.invalid_token': 'Linkul nu mai e valabil.',
+  'err.server_error': 'A apărut o problemă pe server. Încearcă din nou peste puțin timp.',
+  'err.message_required': 'Scrie un mesaj.',
+  'err.invalid_start': 'Ora aleasă nu e validă. Alege alta.',
   'late.again': 'Trimite alt mesaj',
   'late.title': 'Mesaj pentru {name}',
   'late.hint': 'Programarea ta e la {time}. Frizerul primește mesajul imediat, ca notificare pe telefon.',
@@ -2353,7 +2376,10 @@ const en: Record<Key, string> = {
   'book.addExtra': 'Add something to the same appointment?',
   'extra.add': '+ Add a service',
   'extra.title': 'Add a service',
-  'extra.hint': 'It is done right after your appointment. Time and price add up.',
+  'extra.hint': 'Services are done right after your appointment (time and price add up). Extras with no time only add to the price.',
+  'addon.noTime': 'no extra time',
+  'addon.added': 'Extra added. The price is updated, the time stays the same.',
+  'addon.title': 'Anything extra? (no extra time)',
   'extra.none': 'No more services to add with this barber.',
   'extra.removeTitle': 'Remove service',
   'extra.removeAsk': 'Remove “{name}” from the appointment?',
@@ -2363,9 +2389,25 @@ const en: Record<Key, string> = {
   'extra.added': 'Service added. The appointment is longer and the price is updated.',
   'err.no_time_for_extra': 'The barber has no free time after your appointment for this service. Call the salon or choose another time.',
   'err.service_already_added': 'This service is already on the appointment.',
-  'err.too_many_extras': 'You can add at most 3 services to an appointment.',
+  'err.too_many_extras': 'You can add at most 3 services and 5 extras with no time to an appointment.',
+  'err.addon_not_bookable': 'This is an extra: it is added to an appointment, it cannot be booked on its own.',
   'err.barber_no_service': 'The chosen barber does not do this service.',
   'err.booking_started': 'The appointment has already started.',
+  'err.booking_not_found': 'The booking no longer exists. Refresh the list.',
+  'err.booking_changed': 'The booking was just changed. Refresh and try again.',
+  'err.extra_not_found': 'The added service is no longer on the booking.',
+  'err.invalid_extras': 'The added services are not valid. Choose again.',
+  'err.service_required': 'Choose the service.',
+  'err.custom_sub_off': 'The custom subscription is not available right now.',
+  'err.service_not_allowed': 'This service cannot be part of the subscription.',
+  'err.service_not_offered': 'The chosen barber does not do this service. Choose another service or barber.',
+  'err.too_few_visits': 'Choose more visits to get the discount.',
+  'err.too_many_visits': 'You chose too many visits for one month.',
+  'err.invalid_body': 'The data sent is not correct. Please try again.',
+  'err.invalid_token': 'The link is no longer valid.',
+  'err.server_error': 'There was a problem on the server. Try again in a little while.',
+  'err.message_required': 'Write a message.',
+  'err.invalid_start': 'The chosen time is not valid. Choose another.',
   'late.again': 'Send another message',
   'late.title': 'Message for {name}',
   'late.hint': 'Your booking is at {time}. Your barber gets the message right away as a phone notification.',
@@ -3553,7 +3595,10 @@ const fr: Record<Key, string> = {
   'book.addExtra': 'Ajouter quelque chose au même rendez-vous ?',
   'extra.add': '+ Ajouter un service',
   'extra.title': 'Ajouter un service',
-  'extra.hint': 'Il est fait juste après votre rendez-vous. Le temps et le prix s’additionnent.',
+  'extra.hint': 'Les services sont faits juste après votre rendez-vous (le temps et le prix s’additionnent). Les extras sans temps ajoutent seulement le prix.',
+  'addon.noTime': 'sans temps en plus',
+  'addon.added': 'Extra ajouté. Le prix est mis à jour, l’heure reste la même.',
+  'addon.title': 'Un petit extra ? (sans temps en plus)',
   'extra.none': 'Plus aucun service à ajouter chez ce barbier.',
   'extra.removeTitle': 'Retirer le service',
   'extra.removeAsk': 'Retirer « {name} » du rendez-vous ?',
@@ -3563,9 +3608,25 @@ const fr: Record<Key, string> = {
   'extra.added': 'Service ajouté. Le rendez-vous est prolongé et le prix mis à jour.',
   'err.no_time_for_extra': 'Le barbier n’a plus de temps libre après votre rendez-vous pour ce service. Appelez le salon ou choisissez une autre heure.',
   'err.service_already_added': 'Ce service est déjà sur le rendez-vous.',
-  'err.too_many_extras': 'Vous pouvez ajouter au plus 3 services à un rendez-vous.',
+  'err.too_many_extras': 'Vous pouvez ajouter au plus 3 services et 5 extras sans temps à un rendez-vous.',
+  'err.addon_not_bookable': 'C’est un extra : il s’ajoute à un rendez-vous, il ne se réserve pas seul.',
   'err.barber_no_service': 'Le barbier choisi ne fait pas ce service.',
   'err.booking_started': 'Le rendez-vous a déjà commencé.',
+  'err.booking_not_found': 'Le rendez-vous n’existe plus. Actualisez la liste.',
+  'err.booking_changed': 'Le rendez-vous vient d’être modifié. Actualisez et réessayez.',
+  'err.extra_not_found': 'Le service ajouté n’est plus sur le rendez-vous.',
+  'err.invalid_extras': 'Les services ajoutés ne sont pas valides. Choisissez à nouveau.',
+  'err.service_required': 'Choisissez le service.',
+  'err.custom_sub_off': 'L’abonnement personnalisé n’est pas disponible pour le moment.',
+  'err.service_not_allowed': 'Ce service ne peut pas faire partie de l’abonnement.',
+  'err.service_not_offered': 'Le barbier choisi ne fait pas ce service. Choisissez un autre service ou barbier.',
+  'err.too_few_visits': 'Choisissez plus de visites pour obtenir la réduction.',
+  'err.too_many_visits': 'Vous avez choisi trop de visites pour un mois.',
+  'err.invalid_body': 'Les données envoyées ne sont pas correctes. Réessayez.',
+  'err.invalid_token': 'Le lien n’est plus valable.',
+  'err.server_error': 'Un problème est survenu sur le serveur. Réessayez dans un instant.',
+  'err.message_required': 'Écrivez un message.',
+  'err.invalid_start': 'L’heure choisie n’est pas valide. Choisissez-en une autre.',
   'late.again': 'Envoyer un autre message',
   'late.title': 'Message pour {name}',
   'late.hint': 'Votre rendez-vous est à {time}. Le barbier reçoit le message tout de suite sur son téléphone.',
@@ -3611,7 +3672,7 @@ const fr: Record<Key, string> = {
   'err.album_full': 'L’album est plein (60 photos max). Supprimez-en d’anciennes pour en ajouter.',
 };
 
-const dict: Record<Lang, Record<Key, string>> = { ro, en, fr };
+const dict: Record<Lang, Record<Key, string>> = { ro, en, fr, ar };
 type Vars = Record<string, string | number>;
 
 const fill = (s: string, vars?: Vars) => {
@@ -3627,10 +3688,40 @@ export const currentLang = () => current;
 export const tr = (k: Key, vars?: Vars) => fill(dict[current][k] || ro[k], vars);
 export const hasKey = (k: string): k is Key => k in ro;
 /** Formatul local pentru numere și date (toLocaleString), după limba aleasă. */
-export const locale = () => ({ ro: 'ro-RO', en: 'en-GB', fr: 'fr-FR' })[current];
+export const locale = () => ({ ro: 'ro-RO', en: 'en-GB', fr: 'fr-FR', ar: 'ar' })[current];
+/** Araba se scrie de la dreapta la stânga. */
+export const isRtlLang = (l: Lang) => l === 'ar';
 
 const LANG_KEY = 'taf.lang';
-const isLang = (l: unknown): l is Lang => l === 'ro' || l === 'en' || l === 'fr';
+export const isLang = (l: unknown): l is Lang => l === 'ro' || l === 'en' || l === 'fr' || l === 'ar';
+const RTL_RELOAD_KEY = 'taf.rtlReload';
+
+/**
+ * Araba se afișează de la dreapta la stânga (meniuri, săgeți, rânduri). Telefonul schimbă direcția doar la repornirea
+ * aplicației, deci după alegerea limbii (sau la pornire, dacă direcția salvată nu se potrivește) aplicația se reîncarcă singură.
+ * O singură reîncărcare pentru aceeași direcție: dacă telefonul n-o aplică (ex. pe web), nu repornim la nesfârșit.
+ */
+async function applyDirection(l: Lang) {
+  if (Platform.OS === 'web') {
+    if (typeof document !== 'undefined') document.documentElement.dir = isRtlLang(l) ? 'rtl' : 'ltr';
+    return;
+  }
+  const rtl = isRtlLang(l);
+  if (I18nManager.isRTL === rtl) {
+    await storage.set(RTL_RELOAD_KEY, null);
+    return;
+  }
+  I18nManager.allowRTL(rtl);
+  I18nManager.forceRTL(rtl);
+  const want = rtl ? 'rtl' : 'ltr';
+  if ((await storage.get(RTL_RELOAD_KEY)) === want) return;
+  await storage.set(RTL_RELOAD_KEY, want);
+  try {
+    await Updates.reloadAsync();
+  } catch {
+    if (__DEV__) DevSettings.reload();
+  }
+}
 
 type Ctx = { lang: Lang; setLang: (l: Lang) => void; t: (k: Key, vars?: Vars) => string };
 const I18n = createContext<Ctx | null>(null);
@@ -3644,12 +3735,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
         current = l;
         setLangState(l);
       }
+      void applyDirection(isLang(l) ? l : 'ro');
     });
   }, []);
   const setLang = useCallback((l: Lang) => {
     current = l;
     setLangState(l);
-    storage.set(LANG_KEY, l);
+    void storage.set(LANG_KEY, l).then(() => applyDirection(l));
   }, []);
   const value = useMemo<Ctx>(() => ({ lang, setLang, t: (k, vars) => fill(dict[lang][k] || ro[k], vars) }), [lang, setLang]);
   return <I18n.Provider value={value}>{children}</I18n.Provider>;

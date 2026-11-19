@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Pressable, Text } from 'react-native';
+import { dirIcon } from '@/lib/rtl';
 import { useT } from '@/i18n';
 import { colors } from '@/theme';
 
@@ -18,7 +19,7 @@ export function HeaderBack() {
       accessibilityRole="button"
       accessibilityLabel={t('nav.back')}
     >
-      <Ionicons name="chevron-back" size={24} color={colors.gold} />
+      <Ionicons name={dirIcon('chevron-back')} size={24} color={colors.gold} />
       <Text style={{ color: colors.gold, fontSize: 16, fontWeight: '600' }}>{t('nav.back')}</Text>
     </Pressable>
   );

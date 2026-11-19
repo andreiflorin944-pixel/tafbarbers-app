@@ -6,7 +6,7 @@ import { getBusiness } from './db';
 import type { Env } from './env';
 import { sendEmail } from './notify';
 
-type Lang = 'ro' | 'en' | 'fr';
+type Lang = 'ro' | 'en' | 'fr' | 'ar';
 export type EmailTheme = 'dark' | 'light';
 
 export type EmailParts = {
@@ -59,6 +59,15 @@ const T: Record<Lang, { tx: string; mk: string; unsub: string; codeHint: string;
     giftCode: 'Code',
     phone: 'Tél.',
   },
+  ar: {
+    tx: 'تصلك هذه الرسالة لأن لديك حساباً لدى',
+    mk: 'تصلك هذه الرسالة لأنك وافقت على عروض',
+    unsub: 'إلغاء الاشتراك في العروض',
+    codeHint: 'تنتهي صلاحية الرمز خلال 10 دقائق.',
+    giftLabel: 'بطاقة هدية',
+    giftCode: 'الرمز',
+    phone: 'هاتف',
+  },
 };
 
 const PALETTE = {
@@ -85,7 +94,7 @@ function textHtml(body: string, link: string) {
 }
 
 export function emailLayout(o: EmailParts): string {
-  const lang = (['ro', 'en', 'fr'].includes(o.lang ?? '') ? o.lang : 'ro') as Lang;
+  const lang = (['ro', 'en', 'fr', 'ar'].includes(o.lang ?? '') ? o.lang : 'ro') as Lang;
   const t = T[lang];
   const c = PALETTE[o.theme ?? 'dark'];
   const shop = esc(o.shop);
@@ -128,7 +137,7 @@ ${o.details
   const why = `${o.transactional ? t.tx : t.mk} ${shop}.`;
   const unsub = !o.transactional && o.unsubscribeUrl ? `<br><a href="${esc(o.unsubscribeUrl)}" style="color:${c.muted};text-decoration:underline">${t.unsub}</a>` : '';
 
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  return `<!doctype html><html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="${o.theme === 'light' ? 'light' : 'dark'}"><meta name="supported-color-schemes" content="${o.theme === 'light' ? 'light' : 'dark'}"><title>${esc(o.title)}</title></head>
 <body style="margin:0;padding:0;background:${c.page};-webkit-text-size-adjust:100%">
 <div data-preheader style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${pre}&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
@@ -152,7 +161,7 @@ ${contact ? `${contact}<br>` : ''}${site ? `${site}<br>` : ''}
 
 // ——— Legătura cu restul serverului: datele firmei din panou, logo-ul, dezabonarea și trimiterea ———
 
-export const langKey = (l?: string | null): Lang => (l === 'en' || l === 'fr' ? l : 'ro');
+export const langKey = (l?: string | null): Lang => (l === 'en' || l === 'fr' || l === 'ar' ? l : 'ro');
 
 /** Etichetele din caseta de detalii și textele butoanelor, în limba clientului. */
 export const EMAIL_WORDS: Record<Lang, Record<string, string>> = {
@@ -170,6 +179,11 @@ export const EMAIL_WORDS: Record<Lang, Record<string, string>> = {
     service: 'Service', barber: 'Barbier', when: 'Quand', price: 'Prix', location: 'Adresse', plan: 'Abonnement', until: 'Valable jusqu’au',
     amount: 'Montant', order: 'Commande', times: 'Horaires libres', manage: 'Voir, déplacer ou annuler', request: 'Voir la demande', rebook: 'Choisir une autre heure',
     book: 'Réserver', bookSlot: 'Réserver', review: '★ Laisser un avis', pay: 'Payer', open: 'Ouvrir l’application', useGift: 'Utiliser la carte',
+  },
+  ar: {
+    service: 'الخدمة', barber: 'الحلاق', when: 'الموعد', price: 'السعر', location: 'العنوان', plan: 'الاشتراك', until: 'صالح حتى',
+    amount: 'المبلغ', order: 'الطلب', times: 'الأوقات المتاحة', manage: 'عرض أو نقل أو إلغاء', request: 'عرض الطلب', rebook: 'اختر وقتاً آخر',
+    book: 'احجز الآن', bookSlot: 'احجز الآن', review: '★ اترك تقييماً', pay: 'ادفع الآن', open: 'افتح التطبيق', useGift: 'استخدم البطاقة',
   },
 };
 

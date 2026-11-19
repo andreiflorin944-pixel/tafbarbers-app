@@ -29,7 +29,7 @@ const LAST_ACTIVE = `max(
 const KEEP = `NOT EXISTS (SELECT 1 FROM subscriptions WHERE client_id = c.id AND status = 'active' AND ends_at > ?1)
   AND NOT EXISTS (SELECT 1 FROM gift_cards WHERE buyer_client_id = c.id AND status = 'active' AND balance_bani > 0)`;
 
-const TEXT: Record<'ro' | 'en' | 'fr', { title: string; body: (shop: string, date: string) => string }> = {
+const TEXT: Record<'ro' | 'en' | 'fr' | 'ar', { title: string; body: (shop: string, date: string) => string }> = {
   ro: {
     title: 'Contul tău va fi șters',
     body: (shop, date) =>
@@ -44,6 +44,11 @@ const TEXT: Record<'ro' | 'en' | 'fr', { title: string; body: (shop: string, dat
     title: 'Votre compte sera supprimé',
     body: (shop, date) =>
       `Vous n’avez pas utilisé votre compte ${shop} depuis plus d’un an. Pour ne pas garder de données inutiles, votre compte sera supprimé le ${date}. Pour le garder, ouvrez l’application ou prenez rendez-vous d’ici là.`,
+  },
+  ar: {
+    title: 'سيتم حذف حسابك',
+    body: (shop, date) =>
+      `لم تستخدم حسابك في ${shop} منذ أكثر من سنة. حتى لا نحتفظ ببيانات لم نعد بحاجة إليها، سيُحذف حسابك في ${date}. للاحتفاظ به، افتح التطبيق أو احجز موعداً قبل ذلك التاريخ.`,
   },
 };
 
@@ -83,9 +88,9 @@ export async function cleanInactive(env: Env, now: number) {
     // Marcat întâi, ca o rulare suprapusă să nu trimită de două ori.
     const claimed = await env.DB.prepare('UPDATE clients SET inactive_warned_at = ? WHERE id = ? AND inactive_warned_at IS NULL').bind(nowIso, c.id).run();
     if (!claimed.meta.changes) continue;
-    const lang = c.lang === 'en' || c.lang === 'fr' ? c.lang : 'ro';
+    const lang = c.lang === 'en' || c.lang === 'fr' || c.lang === 'ar' ? c.lang : 'ro';
     const t = TEXT[lang];
-    const date = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : 'ro-RO', { timeZone: env.TIMEZONE, day: 'numeric', month: 'long', year: 'numeric' }).format(on);
+    const date = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : lang === 'ar' ? 'ar' : 'ro-RO', { timeZone: env.TIMEZONE, day: 'numeric', month: 'long', year: 'numeric' }).format(on);
     const body = t.body(shop, date);
     try {
       if (c.email) await sendBrandEmail(env, { kind: 'inactive', recipient: c.email }, t.title, { lang, title: t.title, body, transactional: true, button: publicBase(env) ? { label: EMAIL_WORDS[lang].book, url: publicBase(env) } : undefined });

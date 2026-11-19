@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { dirIcon } from '@/lib/rtl';
 import { api, ApiError } from '@/api';
 import { formatBirth, parseBirth } from '@/lib/dates';
 import { pickImage } from '@/lib/pickImage';
@@ -263,7 +264,7 @@ function ClientAccount() {
             <Text style={styles.cardTitle}>{t('account.identity')}</Text>
             <Text style={styles.muted}>{t('account.identitySub')}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          <Ionicons name={dirIcon('chevron-forward')} size={18} color={colors.muted} />
         </Card>
       </Pressable>
 
@@ -277,32 +278,32 @@ function ClientAccount() {
         <Pressable style={styles.row} onPress={() => router.push('/rewards')} accessibilityRole="button">
           <Icon name="star" />
           <Text style={[styles.text, { flex: 1 }]}>{t('account.rewards')}</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          <Ionicons name={dirIcon('chevron-forward')} size={18} color={colors.muted} />
         </Pressable>
         <Pressable style={styles.row} onPress={() => router.push('/subscriptions')} accessibilityRole="button">
           <Icon name="ribbon" />
           <Text style={[styles.text, { flex: 1 }]}>{t('account.subscriptions')}</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          <Ionicons name={dirIcon('chevron-forward')} size={18} color={colors.muted} />
         </Pressable>
         <Pressable style={styles.row} onPress={() => router.push('/gift-cards')} accessibilityRole="button">
           <Icon name="gift" />
           <Text style={[styles.text, { flex: 1 }]}>{t('account.giftCards')}</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          <Ionicons name={dirIcon('chevron-forward')} size={18} color={colors.muted} />
         </Pressable>
         <Pressable style={styles.row} onPress={() => router.push('/before-after')} accessibilityRole="button">
           <Icon name="images" />
           <Text style={[styles.text, { flex: 1 }]}>{t('account.beforeAfter')}</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          <Ionicons name={dirIcon('chevron-forward')} size={18} color={colors.muted} />
         </Pressable>
         <Pressable style={styles.row} onPress={() => router.push('/shop')} accessibilityRole="button">
           <Icon name="bag-handle" />
           <Text style={[styles.text, { flex: 1 }]}>{t('account.shopCart')}</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          <Ionicons name={dirIcon('chevron-forward')} size={18} color={colors.muted} />
         </Pressable>
         <Pressable style={styles.row} onPress={() => router.push('/about')} accessibilityRole="button">
           <Icon name="storefront" />
           <Text style={[styles.text, { flex: 1 }]}>{t('account.about')}</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          <Ionicons name={dirIcon('chevron-forward')} size={18} color={colors.muted} />
         </Pressable>
       </Card>
 

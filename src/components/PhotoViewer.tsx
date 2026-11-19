@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { dirIcon } from '@/lib/rtl';
 import { mediaUrl } from '@/api/staff';
 import type { IdentityPhoto } from '@/data/types';
 import { useT } from '@/i18n';
@@ -51,12 +52,12 @@ export function PhotoViewer({
         ) : null}
         {index > 0 ? (
           <Pressable onPress={() => onIndex(index - 1)} style={[s.nav, { left: space.sm }]} accessibilityLabel={t('photo.prev')}>
-            <Ionicons name="chevron-back" size={30} color="#fff" />
+            <Ionicons name={dirIcon('chevron-back')} size={30} color="#fff" />
           </Pressable>
         ) : null}
         {index < photos.length - 1 ? (
           <Pressable onPress={() => onIndex(index + 1)} style={[s.nav, { right: space.sm }]} accessibilityLabel={t('photo.next')}>
-            <Ionicons name="chevron-forward" size={30} color="#fff" />
+            <Ionicons name={dirIcon('chevron-forward')} size={30} color="#fff" />
           </Pressable>
         ) : null}
       </View>

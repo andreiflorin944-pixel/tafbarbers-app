@@ -5,14 +5,20 @@ import { iso } from './time';
 import { aiCalls, translateEx, type Budget, type TrResult } from './translate';
 
 // Textele scrise în panou (servicii, frizeri, produse, abonamente, despre salon, regulamente, campanii, bonusuri) se scriu
-// doar în română. La salvare se traduc singure în engleză și franceză și se păstrează în tabela `translations`, după textul
+// doar în română. La salvare se traduc singure în engleză, franceză și arabă și se păstrează în tabela `translations`, după textul
 // românesc. Aplicația cere limba (`?lang=en`) și primește traducerea; unde lipsește, primește româna.
 // O corectură făcută de mână în panou rămâne până se schimbă textul în română (atunci textul nou se traduce din nou).
 
-export type Lang = 'ro' | 'en' | 'fr';
-export const TR_LANGS = ['en', 'fr'] as const;
+export type Lang = 'ro' | 'en' | 'fr' | 'ar';
+/** Toate limbile aplicației și ale site-ului. */
+export const LANGS = ['ro', 'en', 'fr', 'ar'] as const;
+/** Limbile în care se traduce automat (din română). */
+export const TR_LANGS = ['en', 'fr', 'ar'] as const;
 export type TrLang = (typeof TR_LANGS)[number];
-export const langOf = (l: unknown): Lang => (l === 'en' || l === 'fr' ? l : 'ro');
+export const langOf = (l: unknown): Lang => (l === 'en' || l === 'fr' || l === 'ar' ? l : 'ro');
+export const isLang = (l: unknown): l is Lang => l === 'ro' || l === 'en' || l === 'fr' || l === 'ar';
+/** Formatul local pentru date (Intl). */
+export const localeOf = (l: unknown) => ({ ro: 'ro-RO', en: 'en-GB', fr: 'fr-FR', ar: 'ar' })[langOf(l)];
 
 /** Ce s-a întâmplat la o rulare: traduse acum, care nu se pot traduce automat, câte au rămas (buget terminat sau AI oprit). */
 export type TrStats = { translated: number; failed: number; remaining: number; aiDown: boolean };
@@ -53,11 +59,20 @@ export async function lookup(env: Env, lang: TrLang, texts: Array<string | null 
   return new Map([...r].map(([k, v]) => [k, v.text]));
 }
 
+/** Ce vede clientul: traducerea în limba lui; pentru arabă, cât nu e gata încă, engleza (mai ușor de înțeles decât româna). */
+async function shownIn(env: Env, lang: TrLang, texts: Array<string | null | undefined>): Promise<Map<string, string>> {
+  const m = await lookup(env, lang, texts);
+  if (lang !== 'ar') return m;
+  const missing = uniq(texts).filter((t) => !m.has(t));
+  if (missing.length) for (const [k, v] of await lookup(env, 'en', missing)) m.set(k, v);
+  return m;
+}
+
 /** Înlocuiește câmpurile de text ale rândurilor cu traducerea în limba cerută (unde există). */
 export async function localize<T extends object>(env: Env, lang: unknown, list: T[], fields: Array<keyof T>): Promise<T[]> {
   const l = langOf(lang);
   if (l === 'ro' || !list.length) return list;
-  const m = await lookup(
+  const m = await shownIn(
     env,
     l,
     list.flatMap((r) => fields.map((f) => r[f] as unknown as string)),
@@ -76,21 +91,26 @@ export async function localize<T extends object>(env: Env, lang: unknown, list: 
 export async function localizeText(env: Env, lang: unknown, text: string): Promise<string> {
   const l = langOf(lang);
   if (l === 'ro' || !text.trim()) return text;
-  return (await lookup(env, l, [text])).get(text) ?? text;
+  return (await shownIn(env, l, [text])).get(text) ?? text;
 }
 
 export type TrMap = Record<TrLang, Record<string, string>>;
 
-/** Pentru panou: fiecare rând primește `translations` = { en: { câmp: text }, fr: {…} } (gol = netradus încă). */
+/** Traducerile existente în toate limbile: limbă → (text românesc → traducere). */
+export async function lookupAll(env: Env, texts: Array<string | null | undefined>): Promise<Record<TrLang, Map<string, string>>> {
+  const maps = await Promise.all(TR_LANGS.map((l) => lookup(env, l, texts)));
+  return Object.fromEntries(TR_LANGS.map((l, i) => [l, maps[i]])) as Record<TrLang, Map<string, string>>;
+}
+
+/** Pentru panou: fiecare rând primește `translations` = { en: { câmp: text }, fr: {…}, ar: {…} } (gol = netradus încă). */
 export async function withTranslations<T extends object>(env: Env, list: T[], fields: Array<keyof T & string>): Promise<Array<T & { translations: TrMap }>> {
   const texts = list.flatMap((r) => fields.map((f) => r[f] as unknown as string));
-  const [en, fr] = await Promise.all([lookup(env, 'en', texts), lookup(env, 'fr', texts)]);
+  const m = await lookupAll(env, texts);
   return list.map((r) => {
-    const tr: TrMap = { en: {}, fr: {} };
+    const tr = { en: {}, fr: {}, ar: {} } as TrMap;
     for (const f of fields) {
       const v = r[f] as unknown;
-      tr.en[f] = typeof v === 'string' ? (en.get(v) ?? '') : '';
-      tr.fr[f] = typeof v === 'string' ? (fr.get(v) ?? '') : '';
+      for (const l of TR_LANGS) tr[l][f] = typeof v === 'string' ? (m[l].get(v) ?? '') : '';
     }
     return { ...r, translations: tr };
   });
@@ -111,7 +131,7 @@ async function forget(env: Env, lang: TrLang, ro: string) {
   await env.DB.prepare('DELETE FROM translations WHERE lang = ? AND hash = ?').bind(lang, await sha256(ro)).run();
 }
 
-/** Corecturile venite din panou: { en: { câmp: text }, fr: {…} }. */
+/** Corecturile venite din panou: { en: { câmp: text }, fr: {…}, ar: {…} }. */
 export type ManualTr = Partial<Record<TrLang, Record<string, unknown>>>;
 
 /**
@@ -231,10 +251,28 @@ export async function localizeBookings<T extends { serviceName?: string | null; 
   const l = langOf(lang);
   if (l === 'ro' || !list.length) return list;
   const texts = list.flatMap((b) => [b.serviceName ?? '', ...(b.extras ?? []).map((e) => e.name)]).filter(Boolean);
-  const m = await lookup(env, l, texts);
+  const m = await shownIn(env, l, texts);
   return list.map((b) => ({
     ...b,
     serviceName: (b.serviceName && m.get(b.serviceName)) || b.serviceName,
     ...(b.extras && { extras: b.extras.map((e) => ({ ...e, name: m.get(e.name) ?? e.name })) }),
   }));
 }
+
+/**
+ * Limba unei pagini web deschise din link (QR, invitație, plată, programare): `?lang=` dacă e dat,
+ * altfel prima limbă cunoscută din setările browserului (Accept-Language), altfel româna.
+ */
+export function requestLang(c: { req: { query(k: string): string | undefined; header(k: string): string | undefined } }): Lang {
+  const q = c.req.query('lang');
+  if (isLang(q)) return q;
+  for (const part of (c.req.header('Accept-Language') ?? '').split(',')) {
+    const code = part.trim().slice(0, 2).toLowerCase();
+    if (isLang(code)) return code;
+  }
+  return 'ro';
+}
+/** Direcția textului pe paginile web (araba de la dreapta la stânga). */
+export const dirOf = (l: Lang) => (l === 'ar' ? 'rtl' : 'ltr');
+/** Codul de limbă pentru verificarea „nu sunt robot” (Cloudflare Turnstile cere „ar-eg” pentru arabă). */
+export const turnstileLang = (l: string) => (l === 'ar' ? 'ar-eg' : l);

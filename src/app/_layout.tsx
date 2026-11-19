@@ -10,7 +10,7 @@ import { PushLink } from '@/components/PushLink';
 import { installCrashReporter, reportError } from '@/lib/crash';
 import { QrLink } from '@/components/QrLink';
 import { UpdateGate } from '@/components/UpdateGate';
-import { I18nProvider, useT } from '@/i18n';
+import { currentLang, I18nProvider, useT } from '@/i18n';
 // Importat aici ca sarcina de fundal să fie definită și când sistemul pornește aplicația doar pentru ea.
 import { syncNearby } from '@/lib/nearby';
 import { AppStateProvider } from '@/state/AppState';
@@ -54,18 +54,27 @@ export default function RootLayout() {
 
 /**
  * Un ecran care nu se poate afișa nu mai închide aplicația: apare mesajul ăsta, eroarea ajunge la noi,
- * iar „Încearcă din nou” redesenează ecranul. Fără traduceri aici: și ele pot fi cauza.
+ * iar „Încearcă din nou” redesenează ecranul. Textele sunt chiar aici, nu din dicționar: și el poate fi cauza.
  */
+// Textele ecranului de eroare, scrise aici (nu din dicționar), în limba aleasă.
+const CRASH_TEXT = {
+  ro: ['Ceva nu a mers', 'Am trimis eroarea echipei. Încearcă din nou.', 'Încearcă din nou'],
+  en: ['Something went wrong', 'We sent the error to our team. Please try again.', 'Try again'],
+  fr: ['Un problème est survenu', 'Nous avons envoyé l’erreur à l’équipe. Réessayez.', 'Réessayer'],
+  ar: ['حدث خطأ ما', 'أرسلنا الخطأ إلى فريقنا. حاول مجدداً.', 'حاول مجدداً'],
+} as const;
+
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const [title, text, again] = CRASH_TEXT[currentLang()] ?? CRASH_TEXT.ro;
   useEffect(() => {
     void reportError(error, true);
   }, [error]);
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }}>
-      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' }}>Ceva nu a mers</Text>
-      <Text style={{ color: colors.muted, textAlign: 'center' }}>Am trimis eroarea echipei. Încearcă din nou.</Text>
+      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' }}>{title}</Text>
+      <Text style={{ color: colors.muted, textAlign: 'center' }}>{text}</Text>
       <Pressable onPress={() => void retry()} style={{ backgroundColor: colors.gold, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 28 }}>
-        <Text style={{ color: colors.bg, fontWeight: '700' }}>Încearcă din nou</Text>
+        <Text style={{ color: colors.bg, fontWeight: '700' }}>{again}</Text>
       </Pressable>
     </View>
   );

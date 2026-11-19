@@ -2,7 +2,7 @@ import * as Speech from 'expo-speech';
 
 // Vocea asistentului: cea mai bună voce a telefonului pentru limba aleasă (pe iPhone, varianta „îmbunătățită” sau
 // „premium”, dacă e descărcată), puțin mai lentă decât cea standard, ca să sune mai cald și mai liniștit.
-const SPEECH_LANG = { ro: 'ro-RO', en: 'en-GB', fr: 'fr-FR' } as const;
+const SPEECH_LANG = { ro: 'ro-RO', en: 'en-GB', fr: 'fr-FR', ar: 'ar-SA' } as const;
 type Lang = keyof typeof SPEECH_LANG;
 
 const chosen = new Map<Lang, string | null>();

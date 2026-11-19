@@ -3,7 +3,8 @@ import { api } from '../api';
 import { Field, ImagePicker, Loading, useAction, useLoad } from '../ui';
 import { textOn } from './Appearance';
 
-type Lang = 'ro' | 'en' | 'fr';
+type Lang = 'ro' | 'en' | 'fr' | 'ar';
+const ALL_LANGS: Lang[] = ['ro', 'en', 'fr', 'ar'];
 type Website = {
   background: string;
   backgroundImage: string | null;
@@ -26,7 +27,9 @@ type Website = {
 };
 
 const SITE_URL = 'https://app.tafbarbers.ro';
-const LANG_NAMES: Record<Lang, string> = { ro: 'Română', en: 'English', fr: 'Français' };
+const LANG_NAMES: Record<Lang, string> = { ro: 'Română', en: 'English', fr: 'Français', ar: 'العربية (arabă)' };
+const WELCOME_DEFAULT: Record<Lang, string> = { ro: '„Bine ați venit”', en: '“Welcome”', fr: '« Bienvenue »', ar: '„أهلاً وسهلاً”' };
+const SEO_PH: Record<Lang, string> = { ro: 'TAFBarbers · Frizerie, programare online', en: 'TAFBarbers · Barbershop, book online', fr: 'TAFBarbers · Barbier, réservation en ligne', ar: 'TAFBarbers · صالون حلاقة، احجز عبر الإنترنت' };
 const ACCENTS = ['#F9A11B', '#E8C547', '#D64545', '#2E86DE', '#1ABC9C', '#27AE60', '#9B59B6', '#FFFFFF'];
 const BACKGROUNDS = ['#000000', '#1E1F22', '#2B2D31', '#FFFFFF'];
 
@@ -243,7 +246,7 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
           <p className="muted small" style={{ margin: 0 }}>
             Clientul alege limba din colțul din dreapta sus. Serviciile și descrierile apar traduse automat, ca în aplicație.
           </p>
-          {(['ro', 'en', 'fr'] as Lang[]).map((l) => (
+          {ALL_LANGS.map((l) => (
             <label key={l} className="row" style={{ gap: 8, alignItems: 'center' }}>
               <input
                 type="checkbox"
@@ -251,7 +254,7 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
                 checked={v.languages.includes(l)}
                 disabled={v.languages.length === 1 && v.languages.includes(l)}
                 onChange={(e) => {
-                  const languages = e.target.checked ? (['ro', 'en', 'fr'] as Lang[]).filter((x) => x === l || v.languages.includes(x)) : v.languages.filter((x) => x !== l);
+                  const languages = e.target.checked ? ALL_LANGS.filter((x) => x === l || v.languages.includes(x)) : v.languages.filter((x) => x !== l);
                   set({ languages, defaultLang: languages.includes(v.defaultLang) ? v.defaultLang : languages[0] });
                 }}
               />
@@ -268,8 +271,8 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
             </select>
           </Field>
           {v.languages.map((l) => (
-            <Field key={l} label={`Textul din bara de sus, ${LANG_NAMES[l]} (gol = ${l === 'ro' ? '„Bine ați venit”' : l === 'en' ? '“Welcome”' : '« Bienvenue »'})`}>
-              <input value={v.welcome[l]} maxLength={40} onChange={(e) => set({ welcome: { ...v.welcome, [l]: e.target.value } })} />
+            <Field key={l} label={`Textul din bara de sus, ${LANG_NAMES[l]} (gol = ${WELCOME_DEFAULT[l]}${l !== 'ro' ? '; scris în română se traduce singur' : ''})`}>
+              <input dir={l === 'ar' ? 'rtl' : undefined} value={v.welcome[l] ?? ''} maxLength={40} onChange={(e) => set({ welcome: { ...v.welcome, [l]: e.target.value } })} />
             </Field>
           ))}
         </>
@@ -330,11 +333,11 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
           </p>
           {v.languages.map((l) => (
             <div key={l} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <Field label={`Titlul în Google, ${LANG_NAMES[l]} (cel mult 60 de caractere: ${v.seo.title[l].length})`}>
-                <input value={v.seo.title[l]} maxLength={70} placeholder={l === 'ro' ? 'TAFBarbers · Frizerie, programare online' : l === 'en' ? 'TAFBarbers · Barbershop, book online' : 'TAFBarbers · Barbier, réservation en ligne'} onChange={(e) => set({ seo: { ...v.seo, title: { ...v.seo.title, [l]: e.target.value } } })} />
+              <Field label={`Titlul în Google, ${LANG_NAMES[l]} (cel mult 60 de caractere: ${(v.seo.title[l] ?? '').length})`}>
+                <input dir={l === 'ar' ? 'rtl' : undefined} value={v.seo.title[l] ?? ''} maxLength={70} placeholder={SEO_PH[l]} onChange={(e) => set({ seo: { ...v.seo, title: { ...v.seo.title, [l]: e.target.value } } })} />
               </Field>
-              <Field label={`Descrierea în Google, ${LANG_NAMES[l]} (cel mult 160 de caractere: ${v.seo.description[l].length})`}>
-                <textarea rows={2} maxLength={300} value={v.seo.description[l]} onChange={(e) => set({ seo: { ...v.seo, description: { ...v.seo.description, [l]: e.target.value } } })} />
+              <Field label={`Descrierea în Google, ${LANG_NAMES[l]} (cel mult 160 de caractere: ${(v.seo.description[l] ?? '').length})`}>
+                <textarea dir={l === 'ar' ? 'rtl' : undefined} rows={2} maxLength={300} value={v.seo.description[l] ?? ''} onChange={(e) => set({ seo: { ...v.seo, description: { ...v.seo.description, [l]: e.target.value } } })} />
               </Field>
             </div>
           ))}

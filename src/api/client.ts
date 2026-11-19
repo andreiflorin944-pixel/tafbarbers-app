@@ -12,6 +12,8 @@ export interface BookingApi {
   getBusiness(): Promise<Business>;
   /** Cu token-ul unui membru TAF Club apar și serviciile „doar membri”. */
   getServices(token?: string | null): Promise<Service[]>;
+  /** „Extra fără timp” (ex. Spălat, Ceară pe față), care se pun în plus pe o programare. */
+  getAddons(token?: string | null): Promise<Service[]>;
   getBarbers(): Promise<Barber[]>;
   /** Locațiile active (primul pas la programare). */
   getLocations(): Promise<Location[]>;

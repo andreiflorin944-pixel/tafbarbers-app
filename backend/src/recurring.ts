@@ -9,7 +9,7 @@ import { iso } from './time';
 // la fiecare perioadă (ex. la 30 de zile) și ne anunță prin webhook. Fiecare perioadă plătită devine un rând nou în `subscriptions`,
 // cu tunsorile ei, legat de abonamentul Stripe prin `recurring_id`. Reînnoirea se poate opri și porni din aplicație sau din panou.
 
-const LANGS = ['ro', 'en', 'fr'];
+const LANGS = ['ro', 'en', 'fr', 'ar'];
 const DAY = 86_400_000;
 /** Stripe cere ca o perioadă de probă (aici: până se termină abonamentul deja plătit) să se termine la cel puțin 48 de ore după cumpărare. */
 const MIN_TRIAL_MS = 49 * 3600_000;
@@ -115,7 +115,7 @@ export async function createRecurringCheckout(
   const build = (customer: string) => {
     const form = new URLSearchParams({
       mode: 'subscription',
-      locale: lang,
+      locale: lang === 'ar' ? 'en' : lang, // Stripe nu are pagina în arabă
       customer,
       'line_items[0][quantity]': '1',
       'line_items[0][price_data][currency]': 'ron',
@@ -516,7 +516,7 @@ export async function cardPortalUrl(env: Env, clientId: string, base: string, la
   if (!c?.stripe_customer_id || !live) throw new HttpError(409, 'not_recurring');
   const form = new URLSearchParams({ customer: c.stripe_customer_id, return_url: `${base}/plata/deschide?tip=sub` });
   const l = LANGS.includes(lang ?? '') ? lang! : 'ro';
-  form.set('locale', l);
+  form.set('locale', l === 'ar' ? 'en' : l); // Stripe nu are portalul în arabă
   const r = await stripeCall(env, 'POST', '/v1/billing_portal/sessions', form, `portal-${clientId}-${Date.now()}`);
   if (!r.ok || !r.json?.url) {
     // De obicei: portalul nu e salvat încă în Stripe (Settings → Billing → Customer portal).

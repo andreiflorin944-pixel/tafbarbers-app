@@ -1,9 +1,11 @@
 import { getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
-import { autoTranslate, type Texts3 } from './translate';
+import { lookup } from './contentI18n';
+import { autoTranslate, pick3, type Texts3 } from './translate';
 
 // Șabloanele mesajelor automate (cod de intrare, programări, comenzi, abonamente), pe canale: SMS, push, e-mail.
-// Adminul le scrie în română, cu variabile de tipul ##customerfirstname##; engleza și franceza se traduc singure.
+// Adminul le scrie în română, cu variabile de tipul ##customerfirstname##; engleza, franceza și araba se traduc singure.
+// Textele de pornire au engleza și franceza scrise aici; araba lor se traduce automat (vezi defaultTexts / translateAll).
 
 export type TplEvent = 'otp' | 'confirm' | 'cancel' | 'client_cancel' | 'booking_moved' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_ready_paid' | 'order_cancelled' | 'sub_started' | 'sub_renewed' | 'sub_payment_failed' | 'pay_request';
 export type TplField = 'sms' | 'pushTitle' | 'pushBody' | 'emailSubject' | 'emailBody';
@@ -573,7 +575,12 @@ export async function listTemplates(env: Env) {
     fields: Object.fromEntries(
       TEMPLATE_DEFS[e].fields.map((f) => {
         const v = s[e]?.[f];
-        return [f, v?.ro ? { ro: v.ro, en: v.en || v.ro, fr: v.fr || v.ro, custom: true, max: MAX[f] } : { ro: defaultText(e, f, 'ro'), en: defaultText(e, f, 'en'), fr: defaultText(e, f, 'fr'), custom: false, max: MAX[f] }];
+        return [
+          f,
+          v?.ro
+            ? { ro: v.ro, en: v.en || v.ro, fr: v.fr || v.ro, ar: v.ar || '', custom: true, max: MAX[f] }
+            : { ro: defaultText(e, f, 'ro'), en: defaultText(e, f, 'en'), fr: defaultText(e, f, 'fr'), ar: '', custom: false, max: MAX[f] },
+        ];
       }),
     ),
   }));
@@ -597,7 +604,7 @@ export async function saveTemplate(env: Env, e: TplEvent, patch: Partial<Record<
     if (unknown.length) throw new HttpError(400, 'unknown_wildcard');
     // Româna neschimbată (panoul trimite toate câmpurile): traducerile rămân cum erau, nu se refac (și nu se pierd dacă AI-ul nu răspunde).
     if (cur[f]?.ro === ro) continue;
-    cur[f] = await autoTranslate(env, cur[f], { ro, en: '', fr: '' });
+    cur[f] = await autoTranslate(env, cur[f], { ro, en: '', fr: '', ar: '' });
   }
   await setSetting(env, 'templates', { ...s, [e]: cur });
 }
@@ -616,13 +623,18 @@ export type Rendered = Record<TplField, string>;
 
 /** Textele gata de trimis pentru un client (în limba lui). SMS-ul pleacă fără diacritice: altfel încap doar 70 de caractere. */
 export async function renderTemplate(env: Env, e: TplEvent, lang: string, vars: Record<string, string>): Promise<Rendered> {
-  const l: Lang = lang === 'en' || lang === 'fr' ? lang : 'ro';
+  const l = lang === 'en' || lang === 'fr' || lang === 'ar' ? lang : 'ro';
   const s = (await getStored(env))[e] ?? {};
+  // Araba textelor de pornire: traducerea automată a românei (tabela translations); până e gata, engleza.
+  const defs = TEMPLATE_DEFS[e].fields.map((f) => defaultText(e, f, 'ro'));
+  const arDefs = l === 'ar' ? await lookup(env, 'ar', defs) : null;
   const fill = (t: string) => t.replace(/##([a-z_]+)##/g, (m, k: string) => vars[k] ?? '').replace(/\(\s*\)/g, '').replace(/\s+([,.!?])/g, '$1').replace(/ {2,}/g, ' ').trim();
   const pick = (f: TplField) => {
     const v = s[f];
     // O limbă netradusă încă (AI indisponibil) folosește româna salvată, nu textul vechi.
-    return v ? v[l] || v.ro : defaultText(e, f, l);
+    if (v) return pick3(v, l);
+    if (l === 'ar') return arDefs?.get(defaultText(e, f, 'ro')) || defaultText(e, f, 'en');
+    return defaultText(e, f, l);
   };
   return {
     sms: strip(fill(pick('sms'))),
@@ -631,4 +643,10 @@ export async function renderTemplate(env: Env, e: TplEvent, lang: string, vars: 
     emailSubject: fill(pick('emailSubject')),
     emailBody: fill(pick('emailBody')),
   };
+}
+
+/** Textele de pornire în română (cele nemodificate din panou), ca să fie traduse automat în arabă. */
+export async function defaultTemplateTexts(env: Env): Promise<string[]> {
+  const s = await getStored(env);
+  return TEMPLATE_EVENTS.flatMap((e) => TEMPLATE_DEFS[e].fields.filter((f) => !s[e]?.[f]?.ro).map((f) => defaultText(e, f, 'ro')));
 }

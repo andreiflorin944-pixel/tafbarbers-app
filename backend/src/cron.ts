@@ -90,7 +90,7 @@ export async function scheduled(env: Env) {
     await recordServerError(env, 'cron: social posts failed', e);
   }
 
-  // Textele din panou netraduse încă în engleză și franceză (o dată, pe bucăți, până nu mai lipsește nimic).
+  // Textele din panou netraduse încă în engleză, franceză și arabă (o dată, pe bucăți, până nu mai lipsește nimic).
   try {
     await translateAllOnce(env);
   } catch (e) {

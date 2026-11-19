@@ -147,10 +147,11 @@ export function useSub(): string {
   return sub;
 }
 
-export const emptyTr = (): Translations => ({ en: {}, fr: {} });
+export const emptyTr = (): Translations => ({ en: {}, fr: {}, ar: {} });
+const TR_NAMES = { en: 'Engleză', fr: 'Franceză', ar: 'Arabă' } as const;
 
 /**
- * Engleza și franceza unor texte scrise în română. Se traduc singure când salvezi; aici le poți corecta de mână.
+ * Engleza, franceza și araba unor texte scrise în română. Se traduc singure când salvezi; aici le poți corecta de mână.
  * Corectura rămâne până schimbi textul în română (atunci textul nou se traduce din nou). Un câmp golit se traduce din nou automat.
  */
 export function TranslationFields({
@@ -170,29 +171,30 @@ export function TranslationFields({
 }) {
   const shown = fields.filter((f) => (ro[f.key] ?? '').trim());
   if (!shown.length) return null;
-  const missing = shown.some((f) => !value.en[f.key]?.trim() || !value.fr[f.key]?.trim());
-  const set = (l: 'en' | 'fr', k: string, v: string) => onChange({ ...value, [l]: { ...value[l], [k]: v } });
+  const missing = shown.some((f) => (['en', 'fr', 'ar'] as const).some((l) => !value[l]?.[f.key]?.trim()));
+  const set = (l: 'en' | 'fr' | 'ar', k: string, v: string) => onChange({ ...value, [l]: { ...value[l], [k]: v } });
   return (
     <details className="translations">
       <summary>
-        Engleză și franceză <span className="muted small">{missing ? '· se traduc singure la salvare' : '· traduse'}</span>
+        Engleză, franceză și arabă <span className="muted small">{missing ? '· se traduc singure la salvare' : '· traduse'}</span>
       </summary>
       <p className="muted small">
         Se traduc singure din română când salvezi. Dacă o traducere nu sună bine, corecteaz-o aici: corectura rămâne până schimbi textul în română. Golește un
         câmp ca să se traducă din nou automat.
       </p>
-      {(['en', 'fr'] as const).map((l) => (
+      {(['en', 'fr', 'ar'] as const).map((l) => (
         <div key={l} className="grid" style={{ marginBottom: 8 }}>
-          <strong className="small">{l === 'en' ? 'Engleză' : 'Franceză'}</strong>
+          <strong className="small">{TR_NAMES[l]}</strong>
           {shown.map((f) => {
             const changed = initialRo !== undefined && (initialRo[f.key] ?? '') !== (ro[f.key] ?? '');
-            const v = value[l][f.key] ?? '';
+            const v = value[l]?.[f.key] ?? '';
+            const dir = l === 'ar' ? 'rtl' : undefined;
             return (
               <Field key={f.key} label={f.label}>
                 {f.multiline ? (
-                  <textarea value={v} onChange={(e) => set(l, f.key, e.target.value)} style={{ minHeight: f.tall ? 320 : 60, lineHeight: f.tall ? 1.5 : undefined }} placeholder="Se traduce la salvare" />
+                  <textarea dir={dir} value={v} onChange={(e) => set(l, f.key, e.target.value)} style={{ minHeight: f.tall ? 320 : 60, lineHeight: f.tall ? 1.5 : undefined }} placeholder="Se traduce la salvare" />
                 ) : (
-                  <input value={v} onChange={(e) => set(l, f.key, e.target.value)} placeholder="Se traduce la salvare" />
+                  <input dir={dir} value={v} onChange={(e) => set(l, f.key, e.target.value)} placeholder="Se traduce la salvare" />
                 )}
                 {changed ? <span className="muted small">Ai schimbat textul în română: dacă nu corectezi aici, se traduce din nou la salvare.</span> : null}
               </Field>
