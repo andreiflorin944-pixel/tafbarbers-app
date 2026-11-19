@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import { Avatar, Button, Card, Empty, Screen, Steps, styles } from '@/components/ui';
 import { useLoginGate } from '@/components/LoginGate';
 import { barbersAt, doesService } from '@/lib/bookFlow';
-import { barberPrice, lei, priceLabel } from '@/lib/price';
+import { barberDuration, barberPrice, lei, priceLabel } from '@/lib/price';
 import { useT } from '@/i18n';
 import { useApp } from '@/state/AppState';
 import { space } from '@/theme';
@@ -67,7 +67,13 @@ export default function ChooseBarber() {
               </Text>
             ) : null}
           </View>
-          {service ? <Text style={styles.price}>{lei(barberPrice(service, b))}</Text> : null}
+          {service ? (
+            // Prețul și durata aceluiași frizer, împreună (nu prețul unuia cu durata standard).
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.price}>{lei(barberPrice(service, b))}</Text>
+              <Text style={styles.muted}>{barberDuration(service, b)} min</Text>
+            </View>
+          ) : null}
         </Card>
       ))}
     </Screen>
