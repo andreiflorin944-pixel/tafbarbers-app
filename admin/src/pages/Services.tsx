@@ -1,10 +1,17 @@
 import { useState } from 'react';
-import { api, type Me, type Service } from '../api';
+import { api, type Barber, type Me, type Service } from '../api';
 import { emptyTr, Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 import { lei } from '../util';
 
 export function ServicesPage(_: { me: Me }) {
   const list = useLoad(() => api<Service[]>('GET', '/admin/services'));
+  // Prețurile și duratele proprii ale frizerilor (Frizeri → servicii): le arătăm aici, ca să se vadă de ce aplicația
+  // arată alt preț la un frizer. Un preț propriu nu se schimbă când schimbi prețul standard.
+  const barbers = useLoad(() => api<Barber[]>('GET', '/admin/barbers'));
+  const own = (s: Service, kind: 'prices' | 'durations') =>
+    (barbers.data ?? [])
+      .filter((b) => b.active && (!b.serviceIds?.length || b.serviceIds.includes(s.id)) && b[kind]?.[s.id] != null && b[kind]![s.id] !== (kind === 'prices' ? s.price : s.durationMin))
+      .map((b) => `${b.name}: ${kind === 'prices' ? lei(b[kind]![s.id]!) : `${b[kind]![s.id]} min`}`);
   const [edit, setEdit] = useState<Partial<Service> | null>(null);
 
   return (
@@ -37,8 +44,14 @@ export function ServicesPage(_: { me: Me }) {
                     {s.name}
                     {s.description ? <div className="muted small">{s.description}</div> : null}
                   </td>
-                  <td>{s.durationMin} min</td>
-                  <td>{lei(s.price)}</td>
+                  <td>
+                    {s.durationMin} min
+                    {own(s, 'durations').length ? <div className="muted small">{own(s, 'durations').join(' · ')}</div> : null}
+                  </td>
+                  <td>
+                    {lei(s.price)}
+                    {own(s, 'prices').length ? <div className="muted small">{own(s, 'prices').join(' · ')}</div> : null}
+                  </td>
                   <td>{s.sort}</td>
                   <td>
                     {s.active ? null : <span className="pill off">ascuns</span>} {s.membersOnly ? <span className="pill confirmed">TAF Club</span> : null}

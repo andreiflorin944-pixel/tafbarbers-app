@@ -17,12 +17,12 @@ export function barberDuration(service: Service, barber?: Barber | null): number
   return barber?.durations?.[service.id] ?? service.durationMin;
 }
 
-/** „90 lei” sau, dacă frizerii au prețuri diferite, „de la 90 lei”. */
-export function priceLabel(service: Service, barbers: Barber[]): string {
-  const doing = barbers.filter((b) => !b.serviceIds?.length || b.serviceIds.includes(service.id));
-  const all = doing.length ? doing.map((b) => barberPrice(service, b)) : [barberPrice(service)];
-  const min = Math.min(...all);
-  const label = min === Math.max(...all) ? lei(min) : tr('price.from', { price: lei(min) });
+/**
+ * Prețul din listele de servicii (fără frizer ales): prețul standard din panou (Servicii), ca pe site.
+ * Prețul propriu al unui frizer apare după ce clientul îl alege. `barbers` rămâne pentru compatibilitate.
+ */
+export function priceLabel(service: Service, _barbers?: Barber[]): string {
+  const label = lei(barberPrice(service));
   return service.offer ? tr('price.offer', { price: label, n: service.offer.percent }) : label;
 }
 
