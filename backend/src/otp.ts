@@ -4,7 +4,8 @@ import { getBusiness } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
 import { getAutomations } from './growth';
 import { otpEmail, resetEmail } from './messages';
-import { sendEmail, sendSms } from './notify';
+import { sendBrandEmail } from './emailLayout';
+import { sendSms } from './notify';
 import { renderTemplate } from './templates';
 import { ipHash } from './qr';
 import { iso } from './time';
@@ -90,7 +91,7 @@ export async function issueCode(
   const t = await renderTemplate(c.env, 'otp', lang, { businessname: biz.name, code });
   if (channel === 'email') {
     const m = o.purpose === 'reset' ? resetEmail(lang, biz.name, code) : otpEmail(lang, biz.name, code, { subject: t.emailSubject, intro: t.emailBody });
-    await sendEmail(c.env, { kind: 'otp', recipient: email! }, m.subject, m.html);
+    await sendBrandEmail(c.env, { kind: 'otp', recipient: email! }, m.subject, m.content);
   } else {
     await sendSms(c.env, { kind: 'otp', recipient: phone }, t.sms);
   }
