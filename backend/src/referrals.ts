@@ -81,7 +81,9 @@ export async function applyReferral(env: Env, newClientId: string, rawCode: unkn
   if (!s.enabled) return;
   const ref = await env.DB.prepare('SELECT id FROM clients WHERE referral_code = ? AND deleted_at IS NULL').bind(code).first<{ id: string }>();
   if (!ref || ref.id === newClientId) return;
-  await env.DB.prepare('UPDATE clients SET referred_by = ? WHERE id = ? AND referred_by IS NULL').bind(ref.id, newClientId).run();
+  // Un client poate fi recomandat o singură dată (primul cod rămâne); fără legătură nouă nu se dă nici beneficiu.
+  const linked = await env.DB.prepare('UPDATE clients SET referred_by = ? WHERE id = ? AND referred_by IS NULL').bind(ref.id, newClientId).run();
+  if (!linked.meta.changes) return;
   if (!s.auto) return;
   if (s.toReferrer) await giveBonus(env, ref.id, s.standard, 'referral', newClientId);
   // Bonusul clientului nou e legat de cel care l-a adus (referral_of = cel care a recomandat).

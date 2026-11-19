@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { api, usingMock } from "@/api";
 import { ApiError, type LegalSignature } from "@/api/client";
@@ -56,6 +56,14 @@ export function PhoneLogin({
   const [phoneSent, setPhoneSent] = useState<string | null>(null);
   const [birth, setBirth] = useState("");
   const [ref, setRef] = useState(initialRef?.toUpperCase() ?? "");
+  // Ecranul de intrare poate rămâne deschis când vine alt link de recomandare (ex. /r/COD2 după /r/COD1):
+  // codul din link îl înlocuiește pe cel vechi, altfel contul nou s-ar lega de cine a trimis primul link.
+  useEffect(() => {
+    if (initialRef) {
+      setRef(initialRef.toUpperCase());
+      setMode("register");
+    }
+  }, [initialRef]);
   const [devCode, setDevCode] = useState<string | undefined>();
   // Termenii și politica se semnează în fereastra lor (derulare până jos, bifă, numele ca semnătură); `accepted` = semnat.
   const [signed, setSigned] = useState<LegalSignature | null>(null);
@@ -234,7 +242,9 @@ export function PhoneLogin({
         marketing: register ? marketing : false,
         birthDate: register ? (parseBirth(birth) ?? undefined) : undefined,
         email: emailOk ? cleanEmail : undefined,
-        ref: register ? ref.trim() || undefined : undefined,
+        // Codul de recomandare merge și când numărul avea deja cont (ex. client adus din panou sau din Barberly, care intră
+        // prima dată în aplicație și a trecut singur pe „Intră”); serverul îl leagă doar la prima intrare.
+        ref: ref.trim() || undefined,
         qr: await pendingQr(),
         socialTicket: social?.ticket,
         password: register && !social ? password : undefined,

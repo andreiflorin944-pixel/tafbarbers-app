@@ -270,6 +270,6 @@ export type GiftCard = {
   buyerName?: string | null;
 };
 /** Campania de sezon a cardului cadou (ex. Crăciun), setată din panou; null = nu e în desfășurare. */
-export type GiftSeason = { kicker: string; title: string; text: string; cta: string; wish: string; imageUrl: string | null };
+export type GiftSeason = { kicker: string; title: string; text: string; cta: string; wish: string; imageUrl: string | null; amount?: number | null };
 export type GiftCards = { enabled: boolean; amounts: number[]; validMonths: number; season?: GiftSeason | null; bought: GiftCard[]; received: GiftCard[] };
 export type BeforeAfter = { id: string; before: string; after: string; barberName: string | null; createdAt: string; showExample?: boolean };

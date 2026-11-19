@@ -364,6 +364,9 @@ publicRoutes.post('/auth/verify', async (c) => {
       const r = await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL').bind(iso(new Date()), client.id).run();
       firstAccept = !!r.meta.changes;
     }
+    // Client care exista deja în baza de date (adus din panou sau din Barberly) și intră acum prima dată în aplicație,
+    // venit cu un cod de recomandare: recomandarea se leagă la fel ca la un cont nou (o singură dată, doar la prima intrare).
+    if (firstAccept) await applyReferral(c.env, client.id, body.ref);
     if (firstAccept || mkChanged || sign) {
       await recordConsent(c.env, c, client.id, {
         source: firstAccept ? 'first_login' : sign ? 'sign' : 'login',
@@ -426,6 +429,8 @@ publicRoutes.post('/auth/social/complete', async (c) => {
     // Client adăugat din panou care intră prima dată, cu Apple / Google: acordul îl dă acum.
     if (body.acceptTerms === true) {
       const r = await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL').bind(iso(new Date()), clientId).run();
+      // Prima intrare în aplicație a unui client care exista deja: recomandarea cu care a venit se leagă acum.
+      if (r.meta.changes) await applyReferral(c.env, clientId, body.ref);
       if (r.meta.changes || sign) await recordConsent(c.env, c, clientId, { source: r.meta.changes ? 'first_login' : 'sign', terms: true, marketing: null, lang: body.lang, sign });
     } else if (sign) {
       await recordConsent(c.env, c, clientId, { source: 'sign', terms: true, marketing: null, lang: body.lang, sign });

@@ -22,9 +22,10 @@ type Season = {
   cta: Texts;
   wish: Texts;
   imageUrl: string | null;
+  amount: number | null;
   version: number;
 };
-type Preset = Pick<Season, 'target' | 'kicker' | 'title' | 'text' | 'cta' | 'wish' | 'imageUrl'> & { label: string; dates: () => [string, string] };
+type Preset = Pick<Season, 'target' | 'kicker' | 'title' | 'text' | 'cta' | 'wish' | 'imageUrl' | 'amount'> & { label: string; dates: () => [string, string] };
 
 const t3 = (ro: string, en: string, fr: string): Texts => ({ ro, en, fr });
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -72,16 +73,17 @@ const PRESETS: Record<Theme, Preset> = {
   christmas: {
     label: '🎄 Crăciun',
     target: 'gift_card',
-    kicker: t3('CADOU DE CRĂCIUN', 'CHRISTMAS GIFT', 'CADEAU DE NOËL'),
-    title: t3('Fă cadou o tunsoare de Crăciun', 'Give a haircut for Christmas', 'Offrez une coupe pour Noël'),
+    kicker: t3('VOUCHER CADOU · 120 LEI', 'GIFT VOUCHER · 120 LEI', 'BON CADEAU · 120 LEI'),
+    title: t3('De Crăciun, oferă-i un moment TAF unui prieten.', 'This Christmas, give a friend a TAF moment.', 'À Noël, offrez un moment TAF à un ami.'),
     text: t3(
-      'Card cadou TAF Barbers, cu urarea ta. Ajunge pe loc prin SMS și în aplicație.',
-      'A TAF Barbers gift card with your wishes. Delivered instantly by SMS and in the app.',
-      'Une carte cadeau TAF Barbers avec vos vœux. Envoyée tout de suite par SMS et dans l’application.',
+      'Dăruiește Experiența TAF: tuns, aranjat barba și spa cu prosop cald, însoțită de urarea ta. Ajunge pe loc prin SMS și în aplicație.',
+      'Give the TAF Experience: haircut, beard trim and hot towel spa, with your wishes. Delivered instantly by SMS and in the app.',
+      'Offrez l’Expérience TAF : coupe, taille de barbe et soin à la serviette chaude, avec vos vœux. Envoyée par SMS et dans l’application.',
     ),
-    cta: t3('Alege cardul cadou', 'Choose a gift card', 'Choisir une carte cadeau'),
+    cta: t3('Oferă Experiența TAF', 'Give the TAF Experience', 'Offrir l’Expérience TAF'),
     wish: t3('Crăciun fericit! 🎄', 'Merry Christmas! 🎄', 'Joyeux Noël ! 🎄'),
     imageUrl: '/campanii/craciun.jpg',
+    amount: 120,
     dates: () => {
       const y = upcoming('12-24');
       return [later(today(), `${y}-11-15`), `${y}-12-24`];
@@ -100,6 +102,7 @@ const PRESETS: Record<Theme, Preset> = {
     cta: t3('Alege cardul cadou', 'Choose a gift card', 'Choisir une carte cadeau'),
     wish: t3('Paște fericit! 🐣', 'Happy Easter! 🐣', 'Joyeuses Pâques ! 🐣'),
     imageUrl: '/campanii/paste.jpg',
+    amount: null,
     dates: () => {
       const e = nextEaster();
       return [later(today(), minusDays(e, 21)), minusDays(e, 1)];
@@ -118,6 +121,7 @@ const PRESETS: Record<Theme, Preset> = {
     cta: t3('Alege cardul cadou', 'Choose a gift card', 'Choisir une carte cadeau'),
     wish: t3('Te iubesc! ❤️', 'Love you! ❤️', 'Je t’aime ! ❤️'),
     imageUrl: '/campanii/valentine.jpg',
+    amount: null,
     dates: () => {
       const y = upcoming('02-14');
       return [later(today(), `${y}-01-25`), `${y}-02-14`];
@@ -136,6 +140,7 @@ const PRESETS: Record<Theme, Preset> = {
     cta: t3('Alege cardul cadou', 'Choose a gift card', 'Choisir une carte cadeau'),
     wish: t3('La mulți ani, tată!', 'Happy Father’s Day, Dad!', 'Bonne fête, papa !'),
     imageUrl: '/campanii/tata.jpg',
+    amount: null,
     dates: () => {
       const f = nextFathers();
       return [later(today(), minusDays(f, 14)), f];
@@ -150,6 +155,7 @@ const PRESETS: Record<Theme, Preset> = {
     cta: t3('Programează-te', 'Book now', 'Réserver'),
     wish: t3('', '', ''),
     imageUrl: '/campanii/general.jpg',
+    amount: null,
     dates: () => [today(), ''],
   },
 };
@@ -179,7 +185,7 @@ export function SeasonCampaignPage({ me }: { me: Me }) {
   const pickTheme = (theme: Theme) => {
     const p = PRESETS[theme];
     const [startsAt, endsAt] = p.dates();
-    set({ theme, target: p.target, kicker: p.kicker, title: p.title, text: p.text, cta: p.cta, wish: p.wish, imageUrl: p.imageUrl, startsAt, endsAt });
+    set({ theme, target: p.target, kicker: p.kicker, title: p.title, text: p.text, cta: p.cta, wish: p.wish, imageUrl: p.imageUrl, amount: p.amount, startsAt, endsAt });
   };
   const save = () =>
     run(async () => {
@@ -259,6 +265,19 @@ export function SeasonCampaignPage({ me }: { me: Me }) {
           <Field label="Textul butonului">
             <input disabled={!owner} value={v.cta.ro} maxLength={40} onChange={(e) => setRo('cta', e.target.value)} />
           </Field>
+          {v.target === 'gift_card' ? (
+            <Field label="Suma aleasă din oficiu (lei; gol = clientul alege)">
+              <input
+                type="number"
+                min={10}
+                max={5000}
+                disabled={!owner}
+                value={v.amount ?? ''}
+                onChange={(e) => set({ amount: e.target.value ? Number(e.target.value) : null })}
+                style={{ maxWidth: 140 }}
+              />
+            </Field>
+          ) : null}
           {v.target === 'gift_card' ? (
             <Field label="Urarea scrisă din oficiu pe card (clientul o poate schimba)">
               <input disabled={!owner} value={v.wish.ro} maxLength={200} onChange={(e) => setRo('wish', e.target.value)} />

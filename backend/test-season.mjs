@@ -36,8 +36,8 @@ r = await req('PUT', '/admin/season-campaign', { startsAt: day(-1), endsAt: day(
 const ver = r.body.version;
 r = await req('GET', '/promos?lang=ro');
 const p = r.body[0];
-ok(p && p.id === `season-${ver}` && p.action.type === 'gift_card' && p.popup === true && p.title === 'Fă cadou o tunsoare de Crăciun' && p.imageUrl === '/campanii/craciun.jpg', `first banner is the season (${JSON.stringify(p).slice(0, 120)})`);
-r = await req('GET', '/promos?lang=en'); ok(r.body[0].title === 'Give a haircut for Christmas', 'english texts');
+ok(p && p.id === `season-${ver}` && p.action.type === 'gift_card' && p.popup === true && p.title === 'De Crăciun, oferă-i un moment TAF unui prieten.' && p.imageUrl === '/campanii/craciun.jpg', `first banner is the season (${JSON.stringify(p).slice(0, 120)})`);
+r = await req('GET', '/promos?lang=en'); ok(r.body[0].title === 'This Christmas, give a friend a TAF moment.', 'english texts');
 
 // Ecranul cardului cadou: titlul campaniei și urarea.
 const phone = '0734' + rnd();
@@ -47,7 +47,14 @@ r = await req('POST', '/auth/otp', { phone, email, channel: 'email' }, null, ip)
 r = await req('POST', '/auth/verify', { phone, code: r.body?.devCode, name: 'Client Sezon', email, acceptTerms: true }, null, ip);
 const tok = r.body.token;
 r = await req('GET', '/me/gift-cards?lang=ro', null, tok);
-ok(r.status === 200 && r.body.season && r.body.season.wish === 'Crăciun fericit! 🎄' && r.body.season.kicker === 'CADOU DE CRĂCIUN', 'gift card screen gets the season texts');
+ok(r.status === 200 && r.body.season && r.body.season.wish === 'Crăciun fericit! 🎄' && r.body.season.kicker === 'VOUCHER CADOU · 120 LEI' && r.body.season.amount === 120, 'gift card screen gets the season texts');
+
+// Suma campaniei (voucher 120 lei): printre sume și aleasă din oficiu.
+r = await req('PUT', '/admin/season-campaign', { amount: 5 }, at); ok(r.status === 400, 'amount below 10 refused');
+r = await req('PUT', '/admin/season-campaign', { amount: 120 }, at); ok(r.status === 200 && r.body.amount === 120, 'amount 120 saved');
+r = await req('GET', '/me/gift-cards', null, tok);
+ok(r.body.season?.amount === 120 && r.body.amounts.includes(120), `120 lei offered and preselected (${JSON.stringify(r.body.amounts)})`);
+r = await req('POST', '/me/gift-cards', { amount: 120, recipientName: 'Prieten', message: 'Crăciun fericit!' }, tok); ok(r.status === 201 || r.status === 200, `120 lei voucher ordered ${r.status}`);
 
 // Butonul duce la programare: bannerul rămâne, ecranul cardului cadou nu mai are campania.
 r = await req('PUT', '/admin/season-campaign', { target: 'book', popup: false }, at);
@@ -58,6 +65,6 @@ r = await req('GET', '/me/gift-cards', null, tok); ok(r.body.season === null, 'n
 r = await req('PUT', '/admin/season-campaign', { startsAt: day(-10), endsAt: day(-1) }, at);
 r = await req('GET', '/promos'); ok(!r.body.some((p) => p.id.startsWith('season-')), 'gone after the end day');
 
-r = await req('PUT', '/admin/season-campaign', { enabled: false, target: 'gift_card', popup: true, startsAt: '', endsAt: '' }, at); ok(r.status === 200 && !r.body.enabled, 'turned off again');
+r = await req('PUT', '/admin/season-campaign', { enabled: false, target: 'gift_card', popup: true, startsAt: '', endsAt: '', amount: null }, at); ok(r.status === 200 && !r.body.enabled, 'turned off again');
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS');
 process.exit(fails ? 1 : 0);
