@@ -63,7 +63,7 @@ export function LegalPage({ me }: { me: Me }) {
       <div className="card grid" style={{ maxWidth: 820 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <span className="muted small">
-            Scrii doar în română (varianta oficială). Clienții cu aplicația în engleză sau franceză văd traducerea automată, cu mențiunea că varianta oficială e
+            Scrii doar în română (varianta oficială). Clienții cu aplicația în engleză, franceză sau arabă văd traducerea automată, cu mențiunea că varianta oficială e
             cea în română.
           </span>
           <span className="muted small">
@@ -108,7 +108,7 @@ export function LegalPage({ me }: { me: Me }) {
             </button>
             {saved ? (
               <span className="success small">
-                {saved === 'pending' ? 'Salvat. Apare imediat în aplicație; traducerea în engleză și franceză e gata în câteva minute.' : 'Salvat. Apare imediat în aplicație.'}
+                {saved === 'pending' ? 'Salvat. Apare imediat în aplicație; traducerea în engleză, franceză și arabă e gata în câteva minute.' : 'Salvat. Apare imediat în aplicație.'}
               </span>
             ) : null}
             {!d.isDefault ? (

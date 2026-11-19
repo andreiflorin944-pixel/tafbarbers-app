@@ -77,7 +77,7 @@ export function BirthdaysPage() {
           <Field label="Mesaj. {nume} = prenumele clientului, {salon} = numele salonului">
             <textarea value={s.message.ro} onChange={(e) => set({ message: { ...s.message, ro: e.target.value } })} maxLength={300} />
           </Field>
-          <div className="muted small">Scrii doar în română. Se traduce singur în engleză și franceză când salvezi.</div>
+          <div className="muted small">Scrii doar în română. Se traduce singur în engleză, franceză și arabă când salvezi.</div>
           <label className="check">
             <input type="checkbox" checked={s.bonus} onChange={(e) => set({ bonus: e.target.checked })} /> Dă și un bonus de ziua lui (apare în contul clientului)
           </label>

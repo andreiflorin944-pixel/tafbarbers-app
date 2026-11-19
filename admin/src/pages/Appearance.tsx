@@ -136,7 +136,7 @@ export function AppearancePage() {
           <Field label="Mesaj de bun venit (gol = „Bine ai venit”)">
             <input value={v.welcome.ro} onChange={(e) => set({ welcome: { ...v.welcome, ro: e.target.value } })} placeholder="Bine ai venit" maxLength={60} />
           </Field>
-          <div className="muted small">Scrii doar în română. Se traduce singur în engleză și franceză când salvezi.</div>
+          <div className="muted small">Scrii doar în română. Se traduce singur în engleză, franceză și arabă când salvezi.</div>
           {error ? <div className="err">{error}</div> : null}
           <div className="row">
             <button

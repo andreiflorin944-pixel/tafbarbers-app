@@ -70,7 +70,7 @@ export function CampaignsPage(_: { me: Me }) {
         <Field label={`Mesaj${channel === 'sms' ? ` (${body.length}/160)` : ''}`}>
           <textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={channel === 'sms' ? 320 : 5000} />
         </Field>
-        <div className="muted small">Fiecare client o primește în limba aplicației lui: se traduce singură în engleză și franceză.</div>
+        <div className="muted small">Fiecare client o primește în limba aplicației lui: se traduce singură în engleză, franceză și arabă.</div>
         <TranslationFields
           fields={[
             ...(channel === 'sms' ? [] : [{ key: 'title', label: channel === 'email' ? 'Subiect' : 'Titlu notificare' }]),

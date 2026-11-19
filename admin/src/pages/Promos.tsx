@@ -145,7 +145,7 @@ function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Pro
   return (
     <Modal title={p.id ? 'Editează bannerul' : 'Banner nou'} onClose={onClose}>
       <div className="grid">
-        <div className="muted small">Scrii doar în română. Se traduce singur în engleză și franceză când salvezi (poți corecta traducerea mai jos).</div>
+        <div className="muted small">Scrii doar în română. Se traduce singur în engleză, franceză și arabă când salvezi (poți corecta traducerea mai jos).</div>
         <Field label="Etichetă mică (ex. OFERTA SĂPTĂMÂNII)">
           <input value={t.kicker} onChange={(e) => setT({ kicker: e.target.value })} />
         </Field>
