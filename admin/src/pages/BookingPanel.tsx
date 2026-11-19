@@ -483,7 +483,7 @@ export function BookingPanel({
               {durMin} min total · 1 serviciu
               {b.payment ? ` · ${b.payment === 'subscription' ? 'pe abonament' : b.payMethod === 'app' && b.payDue ? `are de plătit ${lei(b.payDue)} în aplicație` : `a plătit ${lei(b.paidAmount ?? b.price)}`}` : ''}
               {b.onlinePaid && !b.onlineRefunded ? ` · plătită online ${lei(b.onlinePaid)}` : ''}
-              {b.free ? ' · gratuit (oferit de salon)' : ''}
+              {b.gifts?.length ? ` · cadou: ${b.gifts.map((g) => g.name).join(', ')}` : ''}
               {b.debtLeft ? ` · rest de plată ${lei(b.debtLeft)}, neîncasat` : ''}
             </div>
             {edit === 'price' ? (
@@ -766,6 +766,8 @@ export function BookingPanel({
                 <CheckoutForm
                   b={b}
                   online={online}
+                  services={services}
+                  barber={barber}
                   onCancel={() => setCheckout(false)}
                   onDone={() => {
                     onChange();
@@ -1013,9 +1015,28 @@ function PayRequestBox({ b, online, owner, onChange }: { b: Booking; online: boo
 }
 
 /** Confirmarea tunsorii: „a plătit X lei” sau „pe abonament”, plus un bonus folosit (opțional). */
-function CheckoutForm({ b, online, onCancel, onDone }: { b: Booking; online: boolean; onCancel: () => void; onDone: () => void }) {
+function CheckoutForm({
+  b,
+  online,
+  services,
+  barber,
+  onCancel,
+  onDone,
+}: {
+  b: Booking;
+  online: boolean;
+  services: Service[];
+  barber?: Barber;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
+  // Servicii oferite cadou în plus (ex. Spălat): 0 lei pe bon, apar în fișa clientului.
+  const [gifts, setGifts] = useState<string[]>([]);
+  const [giftPick, setGiftPick] = useState(false);
+  const giftValue = (id: string) => barber?.prices?.[id] ?? services.find((s) => s.id === id)?.price ?? 0;
+  const giftName = (id: string) => services.find((s) => s.id === id)?.name ?? id;
   const data = useLoad(() => api<Checkout>('GET', `/admin/bookings/${b.id}/checkout`), [b.id]);
-  const [mode, setMode] = useState<'paid' | 'subscription' | 'free' | null>(null);
+  const [mode, setMode] = useState<'paid' | 'subscription' | null>(null);
   // Restul neplătit rămâne pe client (altfel diferența e o reducere).
   const [leaveDebt, setLeaveDebt] = useState(false);
   // Resturi mai vechi ale clientului, încasate acum odată cu programarea.
@@ -1095,12 +1116,45 @@ function CheckoutForm({ b, online, onCancel, onDone }: { b: Booking; online: boo
           </span>
         </span>
       </label>
-      <label className="check">
-        <input type="radio" checked={m === 'free'} onChange={() => setMode('free')} />
-        <span>
-          Gratuit <span className="muted small">· oferit de salon, nu se încasează nimic; apare în fișa clientului la „Servicii gratuite primite”</span>
-        </span>
-      </label>
+      <div className="drawer-card">
+        <b className="small">Servicii oferite cadou</b>
+        {gifts.map((id) => (
+          <div key={id} className="row small" style={{ justifyContent: 'space-between', gap: 8, flexWrap: 'nowrap', alignItems: 'center' }}>
+            <span>
+              🎁 <b>{giftName(id)}</b> <span className="muted">· 0 lei (valoare {lei(giftValue(id))})</span>
+            </span>
+            <button type="button" className="ghost sm" onClick={() => setGifts(gifts.filter((x) => x !== id))} aria-label={`Scoate ${giftName(id)}`}>
+              ✕
+            </button>
+          </div>
+        ))}
+        {giftPick ? (
+          <select
+            autoFocus
+            value=""
+            onChange={(e) => {
+              if (e.target.value) setGifts([...gifts, e.target.value]);
+              setGiftPick(false);
+            }}
+            aria-label="Serviciul oferit cadou"
+          >
+            <option value="">Alege serviciul oferit cadou…</option>
+            {services
+              .filter((s) => s.active && !gifts.includes(s.id))
+              .sort((x, y) => Number(!!y.addon) - Number(!!x.addon))
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} · valoare {lei(giftValue(s.id))}
+                </option>
+              ))}
+          </select>
+        ) : gifts.length < 5 ? (
+          <button type="button" className="ghost sm" style={{ justifySelf: 'start' }} onClick={() => setGiftPick(true)}>
+            + Adaugă serviciu oferit cadou
+          </button>
+        ) : null}
+        <span className="muted small">Apare pe bon cu 0 lei și în fișa clientului la „Servicii gratuite primite”. Prețul programării nu se schimbă.</span>
+      </div>
       {openDebts.length ? (
         <div className="drawer-card" style={{ border: '1px solid var(--danger, #d33)' }}>
           <b className="small">Clientul are rest de plată de la vizite trecute</b>
@@ -1156,8 +1210,8 @@ function CheckoutForm({ b, online, onCancel, onDone }: { b: Booking; online: boo
           onClick={() =>
             run(async () => {
               const r = await api<Booking & { sent?: Sent }>('POST', `/admin/bookings/${b.id}/complete`, {
-                payment: m === 'free' ? 'paid' : m,
-                ...(m === 'free' && { free: true, amount: 0 }),
+                payment: m,
+                ...(gifts.length && { giftServiceIds: gifts }),
                 ...(m === 'paid' && { amount: Number(amount), payMethod }),
                 ...(m === 'paid' && gift && { giftCode: gift.code, giftAmount: gift.take }),
                 ...(debt > 0 && { debt }),
@@ -1172,12 +1226,11 @@ function CheckoutForm({ b, online, onCancel, onDone }: { b: Booking; online: boo
         >
           {(m === 'subscription'
             ? 'Confirmă: pe abonament'
-            : m === 'free'
-              ? 'Confirmă: gratuit'
-              : payMethod === 'app'
+            : payMethod === 'app'
                 ? `Confirmă și cere ${amount || 0} lei în aplicație`
                 : `Confirmă: ${amount || 0} lei${gift ? ` + ${gift.take} lei card cadou` : ''}${debt ? ` · rest ${debt} lei de plată` : ''}`) +
-            (settleSum ? ` + ${settleSum} lei rest vechi` : '')}
+            (settleSum ? ` + ${settleSum} lei rest vechi` : '') +
+            (gifts.length ? ` · cadou: ${gifts.map(giftName).join(', ')}` : '')}
         </button>
         <button className="ghost" onClick={onCancel}>
           Înapoi

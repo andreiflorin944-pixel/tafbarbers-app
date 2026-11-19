@@ -1,4 +1,4 @@
-// Servicii gratuite și rest de plată: închidere „Gratuit”, închidere cu rest, încasarea restului la vizita următoare
+// Servicii oferite cadou și rest de plată: serviciu cadou în plus la închidere, închidere cu rest, încasarea restului la vizita următoare
 // sau din fișă, iertare, anulare a închiderii, fișa clientului, rezumatul din calendar și rapoartele.
 // Rulează după test-api.mjs (contul de proprietar), pe `wrangler dev` local.
 const B = 'http://127.0.0.1:8787/v1';
@@ -36,12 +36,18 @@ const book = async (serviceId = 'svc-classic') => {
 };
 const day = new Date(dayBase).toISOString().slice(0, 10);
 
-// --- Gratuit ---
+// --- Serviciu oferit cadou, în plus față de programare ---
 const b1 = await book();
-r = await req('POST', `/admin/bookings/${b1.id}/complete`, { payment: 'paid', free: true, amount: 50 }, at);
-ok(r.status === 200 && r.body.free === true && r.body.paidAmount === 0, 'închisă „Gratuit”: nu se încasează nimic');
-r = await req('POST', `/admin/bookings/${(await book()).id}/complete`, { payment: 'paid', free: true, giftCode: 'TAF-XXXX-XXXX' }, at);
-ok(r.status === 400, 'gratuit cu card cadou: refuzat');
+r = await req('POST', `/admin/bookings/${b1.id}/complete`, { payment: 'paid', amount: b1.price, payMethod: 'cash', giftServiceIds: ['svc-beard'] }, at);
+ok(r.status === 200 && r.body.paidAmount === b1.price && r.body.price === b1.price, 'închisă normal, după programare (prețul nu se schimbă)');
+ok(r.body.gifts?.length === 1 && r.body.gifts[0].serviceId === 'svc-beard' && r.body.gifts[0].value > 0, `pe bon: Barbă oferită cadou, 0 lei (valoare ${r.body.gifts?.[0]?.value})`);
+r = await req('POST', `/admin/bookings/${(await book()).id}/complete`, { payment: 'paid', giftServiceIds: ['nu-exista'] }, at);
+ok(r.status === 400 && r.body.error === 'invalid_gift_service', 'serviciu cadou inexistent: refuzat');
+
+const bu = await book();
+await req('POST', `/admin/bookings/${bu.id}/complete`, { payment: 'paid', giftServiceIds: ['svc-beard'] }, at);
+r = await req('DELETE', `/admin/bookings/${bu.id}/complete`, null, at);
+ok(r.status === 200 && (r.body.gifts ?? []).length === 0, 'anulez închiderea: serviciul cadou dispare');
 
 // --- Rest de plată ---
 const b2 = await book();
@@ -56,7 +62,7 @@ ok(r.status === 400, 'rest pe abonament: refuzat');
 r = await req('GET', `/admin/clients/${clientId}`, null, at);
 const open = (r.body.debts ?? []).filter((d) => d.state === 'open');
 ok(open.length === 1 && open[0].amount === 20 && open[0].serviceName && open[0].bookingAt, 'fișa: rest de plată 20 lei, cu serviciul și data');
-ok((r.body.freeServices ?? []).length === 1 && r.body.freeServices[0].bookingId === b1.id && r.body.freeServices[0].givenByName, 'fișa: serviciul gratuit, cu cine l-a dat');
+ok((r.body.freeServices ?? []).length === 1 && r.body.freeServices[0].bookingId === b1.id && r.body.freeServices[0].givenByName && r.body.freeServices[0].value > 0, 'fișa: „Servicii gratuite primite” cu serviciul cadou, valoarea și cine l-a dat');
 r = await req('GET', `/admin/clients/${clientId}/wallet`, null, at);
 ok(r.body.debts.length === 1 && r.body.debts[0].amount === 20, 'rezumat calendar: are rest de plată 20 lei');
 const debtId = r.body.debts[0].id;
@@ -105,13 +111,13 @@ const today = new Date().toISOString().slice(0, 10);
 r = await req('GET', `/admin/reports/debts?from=${today}&to=${today}`, null, at);
 ok(r.status === 200 && r.body.rows.length >= 2 && r.body.rows.some((x) => /Încasat/.test(x.state)) && r.body.rows.some((x) => x.state === 'Iertat'), `raport „Rest de plată”: rânduri, încasat și iertat (${r.status})`);
 r = await req('GET', `/admin/reports/free-services?from=${day}&to=${day}`, null, at);
-ok(r.status === 200 && r.body.rows.length >= 1, 'raport „Servicii oferite gratuit”');
+ok(r.status === 200 && r.body.rows.some((x) => /Barb/i.test(x.service)), 'raport „Servicii oferite cadou”');
 r = await req('GET', `/admin/reports/payments?from=${today}&to=${today}`, null, at);
 ok(r.body.rows.some((x) => x.method === 'Rest de plată încasat' && x.amount === x1.amount && /Transfer/.test(x.how)), 'raport „Plăți”: restul încasat azi');
 r = await req('GET', `/admin/reports/register?from=${today}&to=${today}`, null, at);
 ok(r.body.rows.some((x) => x.state === 'Rest de plată încasat' && x.other === x1.amount), 'registrul de încasări: restul, la transfer');
 r = await req('GET', `/admin/reports/register?from=${day}&to=${day}`, null, at);
-ok(r.body.rows.some((x) => /gratuit/.test(x.state)) && r.body.rows.some((x) => /rest/.test(x.state)), 'registrul zilei vizitei: gratuit și plătită parțial');
+ok(r.body.rows.some((x) => /cadou:/.test(x.state)) && r.body.rows.some((x) => /rest/.test(x.state)), 'registrul zilei vizitei: cadou și plătită parțial');
 r = await req('GET', `/admin/reports/day?from=${today}&to=${today}`, null, at);
 ok(r.body.rows.some((x) => /Rest de plată încasat/.test(x.name) && Number(x.value) >= x1.amount), 'raportul zilei: rest de plată încasat');
 

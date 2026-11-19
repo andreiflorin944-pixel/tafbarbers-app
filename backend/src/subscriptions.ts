@@ -253,8 +253,8 @@ export async function completeBooking(
     giftCode?: string | null;
     giftAmount?: number | null;
     payMethod?: string | null;
-    /** Serviciu gratuit, oferit de salon: nu se încasează nimic și apare în fișă la „Servicii gratuite primite”. */
-    free?: boolean;
+    /** Servicii oferite cadou în plus (ex. Spălat): 0 lei, apar pe bon și în fișă la „Servicii gratuite primite”. */
+    giftServiceIds?: string[] | null;
     /** Rest de plată (lei): rămâne pe client și se încasează data viitoare. */
     debt?: number | null;
     /** Resturi mai vechi ale clientului, încasate acum odată cu programarea. */
@@ -272,8 +272,19 @@ export async function completeBooking(
   if (bk.payment) throw new HttpError(409, 'already_completed');
   if (b.payment !== 'paid' && b.payment !== 'subscription') throw new HttpError(400, 'invalid_payment');
 
-  const free = b.free === true;
-  if (free && (b.payment !== 'paid' || b.giftCode || (b.debt ?? 0) > 0)) throw new HttpError(400, 'invalid_free');
+  // Serviciile oferite cadou: existente și active, cel mult 5; valoarea = prețul frizerului (sau cel standard).
+  const giftIds = [...new Set((b.giftServiceIds ?? []).filter((x) => typeof x === 'string'))].slice(0, 5);
+  const giftServices = giftIds.length
+    ? (
+        await env.DB.prepare(
+          `SELECT s.id, coalesce(bs.price_bani, s.price_bani) AS value_bani FROM services s
+           LEFT JOIN barber_services bs ON bs.service_id = s.id AND bs.barber_id = ? WHERE s.active = 1 AND s.id IN (${giftIds.map(() => '?').join(',')})`,
+        )
+          .bind(bk.barber_id, ...giftIds)
+          .all<{ id: string; value_bani: number | null }>()
+      ).results
+    : [];
+  if (giftServices.length !== giftIds.length) throw new HttpError(400, 'invalid_gift_service');
   const debtLei = b.debt === undefined || b.debt === null ? 0 : Number(b.debt);
   if (!(debtLei >= 0 && debtLei * 100 <= bk.price_bani)) throw new HttpError(400, 'invalid_debt');
   const debtBani = Math.round(debtLei * 100);
@@ -293,7 +304,7 @@ export async function completeBooking(
   let paidBani: number | null = null;
   let sub: Subscription | null = null;
   if (b.payment === 'paid') {
-    const amount = free ? 0 : b.amount === undefined || b.amount === null ? bk.price_bani / 100 - debtLei : Number(b.amount);
+    const amount = b.amount === undefined || b.amount === null ? bk.price_bani / 100 - debtLei : Number(b.amount);
     if (!(amount >= 0 && amount <= 100000)) throw new HttpError(400, 'invalid_amount');
     paidBani = Math.round(amount * 100);
   } else {
@@ -341,10 +352,10 @@ export async function completeBooking(
 
   const now = iso(new Date());
   const claimed = await env.DB.prepare(
-    `UPDATE bookings SET status = 'completed', payment = ?, paid_bani = ?, subscription_id = ?, bonus_id = ?, tip_bani = ?, gift_card_id = ?, gift_bani = ?, pay_method = ?, completed_at = ?, completed_by = ?, free = ?
+    `UPDATE bookings SET status = 'completed', payment = ?, paid_bani = ?, subscription_id = ?, bonus_id = ?, tip_bani = ?, gift_card_id = ?, gift_bani = ?, pay_method = ?, completed_at = ?, completed_by = ?
      WHERE id = ? AND payment IS NULL AND status NOT IN ('cancelled','requested')`,
   )
-    .bind(b.payment, paidBani, sub?.id ?? null, bonusId, tipBani, gift?.id ?? null, gift?.take ?? null, payMethod, now, adminId, free ? 1 : 0, bookingId)
+    .bind(b.payment, paidBani, sub?.id ?? null, bonusId, tipBani, gift?.id ?? null, gift?.take ?? null, payMethod, now, adminId, bookingId)
     .run();
   if (!claimed.meta.changes) {
     if (gift) await refundGiftCard(env, gift.id, gift.take);
@@ -382,6 +393,12 @@ export async function completeBooking(
     await env.DB.prepare(`UPDATE bonuses SET status = 'used', used_at = ?, used_by = ? WHERE id = ? AND status = 'active'`).bind(now, adminId, bonusId).run();
   }
   if (debtBani) await addDebt(env, bk.client_id, bookingId, debtBani, adminId);
+  if (giftServices.length)
+    await env.DB.batch(
+      giftServices.map((g) =>
+        env.DB.prepare('INSERT INTO booking_gifts (id, booking_id, service_id, value_bani, created_by) VALUES (?, ?, ?, ?, ?)').bind(newId('bg'), bookingId, g.id, g.value_bani ?? 0, adminId),
+      ),
+    );
   // Resturile vechi încasate acum: aceeași metodă ca plata (cererea în aplicație nu acoperă restul: numerar).
   if (settleIds.length) await settleDebts(env, bk.client_id, settleIds, adminId, payMethod === 'app' ? 'cash' : payMethod, bookingId);
 }
@@ -398,9 +415,10 @@ export async function undoCompletion(env: Env, bookingId: string) {
   if (paidDebt) throw new HttpError(409, 'debt_settled');
   const stmts = [
     env.DB.prepare(
-      `UPDATE bookings SET status = 'confirmed', payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, gift_card_id = NULL, gift_bani = NULL, pay_method = NULL, completed_at = NULL, completed_by = NULL, free = 0 WHERE id = ?`,
+      `UPDATE bookings SET status = 'confirmed', payment = NULL, paid_bani = NULL, subscription_id = NULL, bonus_id = NULL, tip_bani = NULL, gift_card_id = NULL, gift_bani = NULL, pay_method = NULL, completed_at = NULL, completed_by = NULL WHERE id = ?`,
     ).bind(bookingId),
     ...undoDebtStatements(env, bookingId),
+    env.DB.prepare('DELETE FROM booking_gifts WHERE booking_id = ?').bind(bookingId),
   ];
   if (bk.subscription_id) stmts.push(env.DB.prepare('UPDATE subscriptions SET cuts_used = max(0, cuts_used - 1) WHERE id = ?').bind(bk.subscription_id));
   if (bk.bonus_id) stmts.push(env.DB.prepare(`UPDATE bonuses SET status = 'active', used_at = NULL, used_by = NULL WHERE id = ? AND status = 'used'`).bind(bk.bonus_id));

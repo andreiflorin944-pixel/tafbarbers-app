@@ -1808,29 +1808,37 @@ adminRoutes.get('/clients/:id/wallet', async (c) => {
 });
 
 /**
- * Serviciile primite gratuit: închise cu „Gratuit” la încasare sau cu un bonus „serviciu gratuit”.
+ * Serviciile primite gratuit: oferite cadou în plus la închidere (ex. Spălat) sau programări închise cu un bonus „serviciu gratuit”.
  * Data, serviciul, frizerul și cine l-a dat. Frizerul fără „toate programările” vede doar ale lui.
  */
 async function freeServices(c: Context<AppEnv>, clientId: string) {
   const own = ownBarber(c);
   const r = await c.env.DB.prepare(
-    `SELECT b.id, b.starts_at, b.price_bani, s.name AS service_name, br.name AS barber_name, coalesce(nullif(a.name, ''), a.email) AS given_by, bn.title AS bonus_title
-     FROM bookings b JOIN services s ON s.id = b.service_id JOIN barbers br ON br.id = b.barber_id
-     LEFT JOIN admins a ON a.id = b.completed_by LEFT JOIN bonuses bn ON bn.id = b.bonus_id
-     WHERE b.client_id = ? AND b.status = 'completed' AND (b.free = 1 OR bn.kind = 'free') ${own ? 'AND b.barber_id = ?' : ''}
-     ORDER BY b.starts_at DESC LIMIT 50`,
+    `SELECT * FROM (
+       SELECT g.id AS id, b.id AS booking_id, b.starts_at, g.value_bani AS price_bani, s.name AS service_name, br.name AS barber_name,
+         coalesce(nullif(a.name, ''), a.email) AS given_by, NULL AS bonus_title
+       FROM booking_gifts g JOIN bookings b ON b.id = g.booking_id JOIN services s ON s.id = g.service_id JOIN barbers br ON br.id = b.barber_id
+       LEFT JOIN admins a ON a.id = g.created_by
+       WHERE b.client_id = ?1 AND b.status = 'completed' ${own ? 'AND b.barber_id = ?2' : ''}
+       UNION ALL
+       SELECT b.id, b.id, b.starts_at, b.price_bani, s.name, br.name, coalesce(nullif(a.name, ''), a.email), bn.title
+       FROM bookings b JOIN services s ON s.id = b.service_id JOIN barbers br ON br.id = b.barber_id
+       JOIN bonuses bn ON bn.id = b.bonus_id AND bn.kind = 'free' LEFT JOIN admins a ON a.id = b.completed_by
+       WHERE b.client_id = ?1 AND b.status = 'completed' ${own ? 'AND b.barber_id = ?2' : ''}
+     ) ORDER BY starts_at DESC LIMIT 50`,
   )
     .bind(...(own ? [clientId, own] : [clientId]))
-    .all<{ id: string; starts_at: string; price_bani: number; service_name: string; barber_name: string; given_by: string | null; bonus_title: string | null }>();
+    .all<{ id: string; booking_id: string; starts_at: string; price_bani: number; service_name: string; barber_name: string; given_by: string | null; bonus_title: string | null }>();
   return r.results.map((x) => ({
-    bookingId: x.id,
+    id: x.id,
+    bookingId: x.booking_id,
     at: x.starts_at,
     serviceName: x.service_name,
     barberName: x.barber_name,
-    /** Cât ar fi costat (prețul de pe programare). */
+    /** Cât ar fi costat. */
     value: x.price_bani / 100,
     givenByName: x.given_by,
-    /** Prin bonus („Tunsoare gratuită” etc.) sau direct „Gratuit” la încasare. */
+    /** Prin bonus („Tunsoare gratuită” etc.); null = oferit cadou la închidere. */
     bonusTitle: x.bonus_title,
   }));
 }

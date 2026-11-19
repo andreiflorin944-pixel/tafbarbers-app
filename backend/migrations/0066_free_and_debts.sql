@@ -1,5 +1,14 @@
--- Serviciu gratuit (oferit de salon) la încheierea programării: apare în fișa clientului la „Servicii gratuite primite”.
-ALTER TABLE bookings ADD COLUMN free INTEGER NOT NULL DEFAULT 0;
+-- Servicii oferite cadou la închiderea programării (ex. Spălat, Ceară): se adaugă în plus, cu 0 lei,
+-- fără să schimbe prețul sau ora programării. Apar pe bon și în fișa clientului la „Servicii gratuite primite”.
+CREATE TABLE booking_gifts (
+  id          TEXT PRIMARY KEY,
+  booking_id  TEXT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+  service_id  TEXT NOT NULL,
+  value_bani  INTEGER NOT NULL DEFAULT 0,     -- cât ar fi costat (prețul frizerului sau cel standard), pentru rapoarte
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  created_by  TEXT                            -- contul de echipă care l-a oferit
+);
+CREATE INDEX idx_booking_gifts_booking ON booking_gifts(booking_id);
 
 -- Rest de plată: clientul a plătit doar o parte; restul rămâne pe el și se încasează la o vizită următoare.
 CREATE TABLE client_debts (

@@ -25,7 +25,7 @@ export type Debt = {
   settledMethod: string | null;
   settledByName: string | null;
 };
-export type FreeService = { bookingId: string; at: string; serviceName: string; barberName: string; value: number; givenByName: string | null; bonusTitle: string | null };
+export type FreeService = { id: string; bookingId: string; at: string; serviceName: string; barberName: string; value: number; givenByName: string | null; bonusTitle: string | null };
 export type Wallet = { subscriptions: Subscription[]; giftCards: ClientGiftCard[]; debts: Debt[] };
 
 const METHOD: Record<string, string> = { cash: 'numerar', card: 'card (POS)', transfer: 'transfer' };
@@ -119,13 +119,13 @@ export function ClientDebts({ clientId, debts, owner, onChange }: { clientId: st
   );
 }
 
-/** În fișa clientului: serviciile primite gratuit (închise „Gratuit” sau cu un bonus „serviciu gratuit”). */
+/** În fișa clientului: serviciile primite gratuit (oferite cadou la închidere sau printr-un bonus „serviciu gratuit”). */
 export function ClientFreeServices({ list }: { list: FreeService[] }) {
   if (!list.length) return <div className="muted small">Nu a primit servicii gratuite.</div>;
   return (
     <div className="grid" style={{ gap: 0 }}>
       {list.map((f) => (
-        <div key={f.bookingId} className="small" style={{ borderBottom: '1px solid var(--border)', padding: '6px 0' }}>
+        <div key={f.id} className="small" style={{ borderBottom: '1px solid var(--border)', padding: '6px 0' }}>
           🎁 <b>{f.serviceName}</b>
           <span className="muted">
             {' '}

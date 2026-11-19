@@ -403,8 +403,8 @@ export type Booking = {
   barberName: string;
   payment?: 'paid' | 'subscription' | null;
   paidAmount?: number | null;
-  /** Închisă „Gratuit”. */
-  free?: boolean;
+  /** Servicii oferite cadou la închidere (0 lei), cu cât ar fi costat. */
+  gifts?: Array<{ serviceId: string; name: string; value: number }>;
   /** Rest de plată lăsat aici și încă neîncasat (lei). */
   debtLeft?: number | null;
   onlinePaid?: number | null; // plătită cu cardul din aplicație, înainte de vizită
