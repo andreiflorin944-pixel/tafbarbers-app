@@ -21,12 +21,19 @@ const EMAIL_OTP: Record<string, { subject: string; intro: string; expires: strin
     expires: 'Le code expire dans 10 minutes.',
     ignore: 'Si vous n’avez pas demandé ce code, ignorez cet e-mail.',
   },
+  ar: {
+    subject: 'رمز التأكيد الخاص بك من {shop}',
+    intro: 'رمز حسابك في {shop} هو:',
+    expires: 'تنتهي صلاحية الرمز خلال 10 دقائق.',
+    ignore: 'إذا لم تطلب هذا الرمز، يمكنك تجاهل هذه الرسالة.',
+  },
 };
 
 const TITLE: Record<string, { login: string; reset: string }> = {
   ro: { login: 'Codul tău de intrare', reset: 'Resetarea parolei' },
   en: { login: 'Your sign-in code', reset: 'Reset your password' },
   fr: { login: 'Votre code de connexion', reset: 'Réinitialisation du mot de passe' },
+  ar: { login: 'رمز تسجيل الدخول', reset: 'إعادة تعيين كلمة المرور' },
 };
 
 /** E-mailul cu codul de intrare (cont nou sau recuperare): codul mare, auriu, cu aspectul TAF (emailLayout.ts). */
@@ -49,6 +56,7 @@ const EMAIL_RESET: Record<string, { subject: string; intro: string }> = {
   ro: { subject: 'Resetarea parolei {shop}', intro: 'Ai cerut să-ți setezi o parolă nouă pentru contul tău {shop}. Codul de recuperare este:' },
   en: { subject: 'Reset your {shop} password', intro: 'You asked to set a new password for your {shop} account. Your recovery code is:' },
   fr: { subject: 'Réinitialisation du mot de passe {shop}', intro: 'Vous avez demandé un nouveau mot de passe pour votre compte {shop}. Votre code de récupération est :' },
+  ar: { subject: 'إعادة تعيين كلمة مرور {shop}', intro: 'طلبت تعيين كلمة مرور جديدة لحسابك في {shop}. رمز الاستعادة هو:' },
 };
 
 /** E-mailul cu codul pentru „Am uitat parola” / schimbarea parolei. */

@@ -3,7 +3,7 @@ import { tryLock, unlock } from './db';
 import { EMAIL_WORDS, langKey, publicBase, sendBrandEmail } from './emailLayout';
 import { sendPush, sendSms } from './notify';
 import { iso } from './time';
-import { langOf, lookup } from './contentI18n';
+import { LANGS, langOf, lookupAll } from './contentI18n';
 
 /** Câți destinatari se trimit dintr-o rulare; restul îi ia cron-ul la următoarele rulări (limita de cereri a unui Worker). */
 const BATCH = 100;
@@ -26,10 +26,14 @@ export async function runCampaign(env: Env, id: string) {
     }>();
     if (!cmp || cmp.status !== 'sending') return;
     // Fiecare client primește campania în limba aplicației lui (traducerea făcută la salvare; altfel româna).
-    const [en, fr] = await Promise.all([lookup(env, 'en', [cmp.title, cmp.body]), lookup(env, 'fr', [cmp.title, cmp.body])]);
+    const tr = await lookupAll(env, [cmp.title, cmp.body]);
     const text = (lang: string | null | undefined) => {
-      const m = langOf(lang) === 'en' ? en : langOf(lang) === 'fr' ? fr : null;
-      return { title: m?.get(cmp.title) ?? cmp.title, body: m?.get(cmp.body) ?? cmp.body };
+      const l = langOf(lang);
+      const m = l === 'ro' ? null : tr[l];
+      // Araba, cât timp nu e tradusă încă, se arată în engleză.
+      const alt = l === 'ar' ? tr.en : null;
+      const pick = (s: string) => m?.get(s) || alt?.get(s) || s;
+      return { title: pick(cmp.title), body: pick(cmp.body) };
     };
     const notYet = `NOT EXISTS (SELECT 1 FROM message_log m WHERE m.campaign_id = ?1 AND m.recipient = %s)`;
     let left = 0;
@@ -39,7 +43,7 @@ export async function runCampaign(env: Env, id: string) {
       )
         .bind(id)
         .all<{ token: string; lang: string }>();
-      for (const l of ['ro', 'en', 'fr'] as const) {
+      for (const l of LANGS) {
         const tokens = t.results.filter((x) => langOf(x.lang) === l).map((x) => x.token);
         if (tokens.length) await sendPush(env, { kind: 'campaign', campaignId: id }, tokens, text(l).title, text(l).body, { campaignId: id });
       }

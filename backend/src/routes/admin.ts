@@ -78,7 +78,7 @@ import { sendPush, sendSms } from '../notify';
 import { autoTranslate } from '../translate';
 import { addExtra, removeExtra } from '../bookingExtras';
 import { blockClient, cleanupDelete, cleanupMatches, unblockClient } from '../clientCleanup';
-import { ensureTranslated, langOf, localize, localizeBookings, lookup, saveTranslations, withTranslations, type ManualTr } from '../contentI18n';
+import { ensureTranslated, langOf, localize, localizeBookings, lookup, lookupAll, saveTranslations, TR_LANGS, withTranslations, type ManualTr, type TrLang } from '../contentI18n';
 import { translateAll } from '../translateAll';
 import { listConsents } from '../consents';
 import { advisorStats, BUNDLED_STYLES, getAdvisor, getStylePhotos, setAdvisor, setStylePhotos, styleVersion } from '../advisor';
@@ -2275,9 +2275,9 @@ adminRoutes.get('/legal', async (c) => {
     const ro = await legalDoc(c.env, d, 'ro');
     // Engleza și franceza: traducerea automată (sau corectura de mână) a textului românesc salvat.
     const base = await legalBase(c.env, d, store);
-    const [en, fr] = await Promise.all([lookup(c.env, 'en', [base.title, base.body]), lookup(c.env, 'fr', [base.title, base.body])]);
+    const all = await lookupAll(c.env, [base.title, base.body]);
     const tr = (m: Map<string, string>) => (m.get(base.body) ? { title: m.get(base.title) ?? '', body: m.get(base.body)! } : null);
-    out[d] = { updatedAt: store[d]?.updatedAt ?? null, isDefault: ro.isDefault, versions: { ro: store[d]?.versions?.ro ?? { title: ro.title, body: ro.body }, en: tr(en), fr: tr(fr) } };
+    out[d] = { updatedAt: store[d]?.updatedAt ?? null, isDefault: ro.isDefault, versions: { ro: store[d]?.versions?.ro ?? { title: ro.title, body: ro.body }, en: tr(all.en), fr: tr(all.fr), ar: tr(all.ar) } };
   }
   return c.json(out);
 });
@@ -2295,7 +2295,7 @@ adminRoutes.put('/legal/:doc', ownerOnly, async (c) => {
   store[doc] = { updatedAt: iso(new Date()), versions: { ro } };
   await saveLegal(c.env, store);
   const manual: ManualTr = {};
-  for (const l of ['en', 'fr'] as const) {
+  for (const l of TR_LANGS) {
     const t = b.versions?.[l];
     if (t && typeof t === 'object') manual[l] = { title: t.title ?? '', body: t.body ?? '' };
   }
@@ -2376,21 +2376,20 @@ function promoValues(b: PromoInput, create: boolean) {
   return v;
 }
 
-/** Engleza și franceza bannerului se completează singure din română (cele corectate de mână rămân). */
+/** Engleza, franceza și araba bannerului se completează singure din română (cele corectate de mână rămân). */
 async function translatePromo(env: Env, v: Record<string, unknown>, prev: PromoRow | null) {
-  type Tr = Partial<Record<'en' | 'fr', Record<string, string>>>;
+  type Tr = Partial<Record<TrLang, Record<string, string>>>;
   const prevTr = JSON.parse(prev?.translations || '{}') as Tr;
   const nextTr = (v.translations !== undefined ? JSON.parse(v.translations as string) : prevTr) as Tr;
-  const out = { en: { ...nextTr.en }, fr: { ...nextTr.fr } };
+  const out = { en: { ...nextTr.en }, fr: { ...nextTr.fr }, ar: { ...nextTr.ar } };
   for (const k of ['kicker', 'title', 'text', 'cta'] as const) {
     const ro = (v[k] as string | undefined) ?? prev?.[k] ?? '';
     const r = await autoTranslate(
       env,
-      { ro: prev?.[k] ?? '', en: prevTr.en?.[k] ?? '', fr: prevTr.fr?.[k] ?? '' },
-      { ro, en: out.en[k] ?? '', fr: out.fr[k] ?? '' },
+      { ro: prev?.[k] ?? '', en: prevTr.en?.[k] ?? '', fr: prevTr.fr?.[k] ?? '', ar: prevTr.ar?.[k] ?? '' },
+      { ro, en: out.en[k] ?? '', fr: out.fr[k] ?? '', ar: out.ar[k] ?? '' },
     );
-    if (r.en) out.en[k] = r.en;
-    if (r.fr) out.fr[k] = r.fr;
+    for (const l of TR_LANGS) if (r[l]) out[l][k] = r[l]!;
   }
   v.translations = JSON.stringify(out);
 }

@@ -38,12 +38,21 @@ const T = {
     again: 'Vous pouvez vous réinscrire à tout moment dans l’application, dans Compte.',
     bad: 'Ce lien n’est plus valable. Vous pouvez désactiver les offres dans l’application, dans Compte.',
   },
+  ar: {
+    title: 'العروض عبر البريد الإلكتروني',
+    ask: 'إيقاف استلام العروض عبر البريد الإلكتروني على العنوان',
+    keep: 'ستستمر رسائل مواعيدك (التأكيدات والتذكيرات) بالوصول.',
+    btn: 'نعم، ألغِ اشتراكي',
+    done: 'تم، لن تصلك العروض عبر البريد الإلكتروني بعد الآن.',
+    again: 'يمكنك الاشتراك مجدداً في أي وقت من التطبيق، في الحساب.',
+    bad: 'هذا الرابط لم يعد صالحاً. يمكنك إيقاف العروض من التطبيق، في الحساب.',
+  },
 };
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 function page(lang: keyof typeof T, shop: string, inner: string) {
-  return `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+  return `<!doctype html><html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>${T[lang].title} · ${esc(shop)}</title>
 <style>body{margin:0;background:#000;color:#E6E3DD;font:16px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}
 main{max-width:460px;margin:0 auto;padding:40px 20px;text-align:center}img{width:86px;height:auto}h1{color:#fff;font-size:24px;margin:22px 0 12px}

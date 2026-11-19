@@ -1,3 +1,4 @@
+import { turnstileLang } from './contentI18n';
 import { Hono, type Context } from 'hono';
 import { getSetting, setSetting } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
@@ -72,9 +73,9 @@ export const captchaPublic = new Hono<AppEnv>();
 captchaPublic.get('/captcha', async (c) => {
   const key = await captchaSiteKey(c.env);
   if (!key) return c.text('Not found', 404);
-  const lang = ['ro', 'en', 'fr'].includes(c.req.query('lang') ?? '') ? c.req.query('lang')! : 'ro';
+  const lang = ['ro', 'en', 'fr', 'ar'].includes(c.req.query('lang') ?? '') ? c.req.query('lang')! : 'ro';
   const theme = c.req.query('theme') === 'light' ? 'light' : 'dark';
-  const cfg = JSON.stringify({ sitekey: key, theme, language: lang });
+  const cfg = JSON.stringify({ sitekey: key, theme, language: turnstileLang(lang) });
   return c.html(
     `<!doctype html><html lang="${esc(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">` +
       `<style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}#w{display:flex;justify-content:center;padding-top:2px}</style>` +

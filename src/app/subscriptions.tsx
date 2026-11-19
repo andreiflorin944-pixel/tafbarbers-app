@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Image, Linking, Platform, Pressable, Text, View } from 'react-native';
+import { dirIcon } from '@/lib/rtl';
 import { api } from '@/api';
 import { useLoginGate } from '@/components/LoginGate';
 import { cutsText, SubscriptionRow } from '@/components/SubscriptionRow';
@@ -178,7 +179,7 @@ export default function Subscriptions() {
                 {t('customSub.ctaSub', { max: Math.max(0, ...Object.values(custom.discounts)) })}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+            <Ionicons name={dirIcon('chevron-forward')} size={20} color={colors.muted} />
           </Card>
         </Pressable>
       ) : null}

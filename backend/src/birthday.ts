@@ -1,5 +1,5 @@
-import { autoTranslate } from './translate';
-import { localizeText } from './contentI18n';
+import { autoTranslate, pick3, type Texts3 } from './translate';
+import { LANGS, langOf, localizeText } from './contentI18n';
 import { EMAIL_WORDS, publicBase, sendBrandEmail } from './emailLayout';
 import { getBusiness, getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
@@ -10,8 +10,7 @@ import { isLeap as leap, localDay, localMinutes, QUIET_FROM } from './time';
 // Ziua de naștere a clientului: programările din ziua lui se văd la frizer (lumânare),
 // iar dimineața pleacă automat „La mulți ani”, opțional cu un bonus.
 
-type Lang = 'ro' | 'en' | 'fr';
-type Texts = Record<Lang, string>;
+type Texts = Texts3;
 export type BirthdaySettings = {
   enabled: boolean;
   hour: number; // ora (locală) de la care se trimite urarea
@@ -50,7 +49,7 @@ export async function saveBirthdaySettings(env: Env, b: Partial<BirthdaySettings
   const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
   const texts = (v: Partial<Texts> | undefined, d: Texts, max: number): Texts => {
     const out = { ...d };
-    for (const l of ['ro', 'en', 'fr'] as const) if (typeof v?.[l] === 'string') out[l] = v[l]!.trim().slice(0, max);
+    for (const l of LANGS) if (typeof v?.[l] === 'string') out[l] = v[l]!.trim().slice(0, max);
     if (!out.ro) throw new HttpError(400, 'ro_required');
     return out;
   };
@@ -104,14 +103,14 @@ export async function greetBirthdays(env: Env, now = new Date()) {
       .run();
     if (!claimed.meta.changes) continue;
     n++;
-    const lang: Lang = c.lang === 'en' || c.lang === 'fr' ? c.lang : 'ro';
+    const lang = langOf(c.lang);
     const fill = (t: string) => t.replaceAll('{nume}', firstName(c.name)).replaceAll('{salon}', shop).replace(/\s+([!,])/g, '$1').trim();
-    const title = fill(s.title[lang] || s.title.ro);
-    let body = fill(s.message[lang] || s.message.ro);
+    const title = fill(pick3(s.title, lang));
+    let body = fill(pick3(s.message, lang));
     if (s.bonus) {
       await giveBonus(env, c.id, s.reward, 'manual');
       const gift = await localizeText(env, lang, s.reward.title);
-      body += lang === 'ro' ? ` Cadou de la noi: ${gift}.` : lang === 'fr' ? ` Notre cadeau : ${gift}.` : ` Our gift: ${gift}.`;
+      body += { ro: ` Cadou de la noi: ${gift}.`, en: ` Our gift: ${gift}.`, fr: ` Notre cadeau : ${gift}.`, ar: ` هديتنا لك: ${gift}.` }[lang];
     }
     // Pe toate canalele doar cu acordul pentru oferte (urarea cu cadou e un mesaj promoțional).
     if (s.push && c.marketing_push) {

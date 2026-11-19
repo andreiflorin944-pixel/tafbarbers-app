@@ -6,12 +6,12 @@ import { sha256 } from './auth';
 
 // Regulamentele afișate în aplicație și pe web. Se editează din panou (Regulamente), doar în română;
 // până atunci se folosesc modelele de mai jos. În engleză și franceză se arată traducerea automată (cu mențiunea că
-// varianta oficială e cea în română), iar până e gata, româna.
+// varianta oficială e cea în română), la fel în arabă; până e gata traducerea, româna.
 
 export const DOCS = ['terms', 'privacy'] as const;
 export type Doc = (typeof DOCS)[number];
 type Version = { title: string; body: string };
-export type LegalStore = Record<Doc, { updatedAt: string | null; versions: Partial<Record<'ro' | 'en' | 'fr', Version>> }>;
+export type LegalStore = Record<Doc, { updatedAt: string | null; versions: Partial<Record<'ro' | 'en' | 'fr' | 'ar', Version>> }>;
 
 // Modelele respectă legislația din România și UE: OUG 34/2014 (contracte la distanță, dreptul de retragere),
 // Legea 296/2004 (Codul consumului), GDPR, Legea 506/2004 (comunicări electronice). Datele firmei vin din
@@ -170,7 +170,7 @@ export async function saveLegal(env: Env, store: LegalStore) {
 }
 
 // Bucățile scrise de server în text, în limba cititorului.
-const FILL: Record<'ro' | 'en' | 'fr', { todo: string; policy: (h: number) => string; what: Record<string, string>; cookies: (t: Website['tracking']) => string }> = {
+const FILL: Record<'ro' | 'en' | 'fr' | 'ar', { todo: string; policy: (h: number) => string; what: Record<string, string>; cookies: (t: Website['tracking']) => string }> = {
   ro: {
     cookies: (t) =>
       t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId
@@ -198,6 +198,15 @@ const FILL: Record<'ro' | 'en' | 'fr', { todo: string; policy: (h: number) => st
     policy: (h) => `Vous pouvez annuler dans l’application au moins ${h} heures à l’avance.`,
     what: { company: 'nom de la société', cui: 'code fiscal', regcom: 'n° registre du commerce', seat: 'siège social', email: 'e-mail de contact', phone: 'téléphone', address: 'adresse du salon' },
   },
+  ar: {
+    cookies: (t) =>
+      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId
+        ? `لا يستخدم التطبيق ملفات تعريف ارتباط للتتبع. على الموقع، فقط إذا ضغطت «موافق» في شريط ملفات تعريف الارتباط، نشغّل ${[t.gaId && 'Google Analytics (Google Ireland Ltd.، إحصاءات الزيارات)', t.googleAdsId && 'Google Ads (Google Ireland Ltd.، قياس الإعلانات)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd.، قياس الإعلانات)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd.، قياس الإعلانات)'].filter(Boolean).join(' و')}، التي تضع ملفات تعريف ارتباط في متصفحك وقد تنقل بيانات إلى الولايات المتحدة. الأساس القانوني: موافقتك. يمكنك سحبها في أي وقت من رابط «ملفات تعريف الارتباط» أسفل الموقع.`
+        : 'لا نستخدم ملفات تعريف ارتباط للتتبع أو الإعلانات، ولا أدوات تحليل تتبعك بين التطبيقات.',
+    todo: 'يُستكمل لاحقاً',
+    policy: (h) => `يمكنك الإلغاء من التطبيق قبل ${h} ساعات على الأقل.`,
+    what: { company: 'اسم الشركة', cui: 'الرقم الضريبي', regcom: 'رقم السجل التجاري', seat: 'المقر الرئيسي', email: 'البريد الإلكتروني للتواصل', phone: 'الهاتف', address: 'عنوان الصالون' },
+  },
 };
 
 /** Textul românesc de bază al unui regulament (cel salvat în panou sau modelul), înainte de completarea datelor firmei. */
@@ -213,7 +222,7 @@ export async function legalDoc(env: Env, doc: Doc, lang: string) {
   const base = await legalBase(env, doc, store);
   const want = langOf(lang);
   let chosen = base;
-  let shown: 'ro' | 'en' | 'fr' = 'ro';
+  let shown: 'ro' | 'en' | 'fr' | 'ar' = 'ro';
   if (want !== 'ro') {
     const m = await lookup(env, want, [base.title, base.body]);
     const body = m.get(base.body);

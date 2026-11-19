@@ -151,6 +151,6 @@ export async function locationVars(env: Env, locationId: string | null | undefin
   if (!loc) return { locationname: '', locationaddress: '', location: '' };
   const many = ((await env.DB.prepare('SELECT count(*) AS n FROM locations WHERE active = 1').first<{ n: number }>())?.n ?? 0) > 1;
   const where = [loc.name, loc.address].map((x) => (x ?? '').trim()).filter(Boolean).join(', ');
-  const label = lang === 'en' ? 'Location:' : lang === 'fr' ? 'Adresse :' : 'Locația:';
+  const label = lang === 'en' ? 'Location:' : lang === 'fr' ? 'Adresse :' : lang === 'ar' ? 'العنوان:' : 'Locația:';
   return { locationname: loc.name, locationaddress: loc.address ?? '', location: many && where ? `${label} ${where}.` : '' };
 }

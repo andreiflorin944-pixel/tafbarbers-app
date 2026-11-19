@@ -217,7 +217,7 @@ const P: Array<[RegExp, (m: RegExpMatchArray, i: 0 | 1) => string]> = [
 /** Un text fix din rapoarte, în engleză sau franceză (sau neschimbat, dacă nu e unul cunoscut). */
 export function reportText(s: string, lang: Lang): string {
   if (lang === 'ro' || !s) return s;
-  const i = lang === 'en' ? 0 : 1;
+  const i = lang === 'fr' ? 1 : 0; // araba (doar echipa): engleza
   const d = D[s];
   if (d) return d[i];
   for (const [re, fn] of P) {

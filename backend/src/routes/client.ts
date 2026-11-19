@@ -75,7 +75,7 @@ clientRoutes.patch('/me', async (c) => {
     if (b.email && b.email.toLowerCase() !== (me?.email ?? '').toLowerCase() && (await emailTaken(c.env, b.email, me?.phone ?? ''))) throw new HttpError(400, 'email_in_use');
     sets.push('email = ?'), vals.push(b.email || null);
   }
-  if (b.lang && ['ro', 'en', 'fr'].includes(b.lang)) sets.push('lang = ?'), vals.push(b.lang);
+  if (b.lang && ['ro', 'en', 'fr', 'ar'].includes(b.lang)) sets.push('lang = ?'), vals.push(b.lang);
   if (b.birthDate !== undefined) {
     // Data nașterii (de ea ține cadoul de ziua clientului) se pune o singură dată; o schimbare o face salonul, din panou.
     const bd = parseBirthDate(b.birthDate);
@@ -147,7 +147,7 @@ clientRoutes.post('/me/identity/photos/style/:key', async (c) => {
   if (!m) throw new HttpError(404, 'not_found');
   const buf = m.data instanceof ArrayBuffer ? m.data : new Uint8Array(m.data).buffer;
   const lang = c.req.query('lang');
-  const name = lang === 'en' || lang === 'fr' ? h.name[lang] : h.name.ro;
+  const name = lang === 'en' || lang === 'fr' || lang === 'ar' ? h.name[lang] : h.name.ro;
   const p = await addPhoto(c.env, c.get('client').clientId, m.mime, buf, null, name);
   return c.json(p, 201);
 });

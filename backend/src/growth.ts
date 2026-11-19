@@ -1,7 +1,7 @@
 // Mesajele automate care aduc clienții înapoi și umplu programul: „Ne e dor de tine”, ore libere de ultim moment,
 // textul cardului cadou și linkurile „Programează” (Google Maps, Instagram). Textele se editează din panou, Setări → Notificări.
-import { autoTranslate } from './translate';
-import { localizeText } from './contentI18n';
+import { autoTranslate, pick3, type Texts3 } from './translate';
+import { LANGS, langOf, localizeText } from './contentI18n';
 import { availability } from './availability';
 import { EMAIL_WORDS, langKey, publicBase, sendBrandEmail } from './emailLayout';
 import { getBusiness, getSetting, setSetting } from './db';
@@ -10,8 +10,7 @@ import { sendPush, sendSms } from './notify';
 import { giveBonus, parseReward, type Reward } from './referrals';
 import { addDays, iso, localDay, localMinutes, localToUtc, QUIET_FROM, roLocal } from './time';
 
-type Lang = 'ro' | 'en' | 'fr';
-type Texts = Record<Lang, string>;
+type Texts = Texts3;
 
 export type WinbackSettings = {
   enabled: boolean;
@@ -215,7 +214,7 @@ export async function saveAutomations(env: Env, b: Partial<Automations>) {
   };
   const texts = (v: Partial<Texts> | undefined, d: Texts, max: number): Texts => {
     const out = { ...d };
-    for (const l of ['ro', 'en', 'fr'] as const) if (typeof v?.[l] === 'string') out[l] = v[l]!.trim().slice(0, max);
+    for (const l of LANGS) if (typeof v?.[l] === 'string') out[l] = v[l]!.trim().slice(0, max);
     if (!out.ro) throw new HttpError(400, 'ro_required');
     return out;
   };
@@ -297,7 +296,6 @@ export async function saveAutomations(env: Env, b: Partial<Automations>) {
 }
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? '';
-const langOf = (l: string): Lang => (l === 'en' || l === 'fr' ? l : 'ro');
 export function fillText(t: string, vars: Record<string, string>) {
   let s = t;
   for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v);
@@ -347,12 +345,12 @@ export async function sendWinback(env: Env, now = new Date()) {
     const lang = langOf(c.lang);
     const weeks = String(Math.floor((now.getTime() - Date.parse(c.last)) / (7 * 86_400_000)));
     const vars = { nume: firstName(c.name), salon: shop, saptamani: weeks };
-    const title = fillText(s.title[lang] || s.title.ro, vars);
-    let body = fillText(s.message[lang] || s.message.ro, vars);
+    const title = fillText(pick3(s.title, lang), vars);
+    let body = fillText(pick3(s.message, lang), vars);
     if (s.bonus) {
       await giveBonus(env, c.id, s.reward, 'manual');
       const gift = await localizeText(env, lang, s.reward.title);
-      body += lang === 'ro' ? ` Cadou: ${gift}.` : lang === 'fr' ? ` Cadeau : ${gift}.` : ` Gift: ${gift}.`;
+      body += { ro: ` Cadou: ${gift}.`, en: ` Gift: ${gift}.`, fr: ` Cadeau : ${gift}.`, ar: ` هديتك: ${gift}.` }[lang];
     }
     if (s.push) {
       const tokens = await pushTokens(env, c.id);
@@ -446,8 +444,8 @@ export async function sendLastMinute(env: Env, now = new Date()) {
     if (!claimed.meta.changes) continue;
     const lang = langOf(c.lang);
     const vars = { nume: firstName(c.name), salon: shop, ore };
-    const title = fillText(s.title[lang] || s.title.ro, vars);
-    const body = fillText(s.message[lang] || s.message.ro, vars);
+    const title = fillText(pick3(s.title, lang), vars);
+    const body = fillText(pick3(s.message, lang), vars);
     if (s.push && c.marketing_push) await sendPush(env, { kind: 'last_minute' }, await pushTokens(env, c.id), title, body, { screen: 'book' });
     if (s.email && c.marketing_email && c.email) await sendBrandEmail(env, { kind: 'last_minute', recipient: c.email }, title, { lang, title, body, transactional: false, details: [[EMAIL_WORDS[langKey(lang)].times, ore]], button: publicBase(env) ? { label: EMAIL_WORDS[langKey(lang)].book, url: publicBase(env) } : undefined });
     if (s.sms && c.marketing_sms) await sendSms(env, { kind: 'last_minute', recipient: c.phone }, `${title}: ${body}`);
@@ -502,7 +500,7 @@ export async function sendNearby(env: Env, clientId: string, locationId: unknown
     .map((x) => `${roLocal(x.start).hm}${x.barberName ? ` (${x.barberName})` : ''}`)
     .join(', ');
   const vars = { nume: firstName(c.name), salon: (await getBusiness(env)).name, locatie: loc.name, ore };
-  await sendPush(env, { kind: 'nearby' }, await pushTokens(env, c.id), fillText(s.title[lang] || s.title.ro, vars), fillText(s.message[lang] || s.message.ro, vars), {
+  await sendPush(env, { kind: 'nearby' }, await pushTokens(env, c.id), fillText(pick3(s.title, lang), vars), fillText(pick3(s.message, lang), vars), {
     screen: 'book',
   });
   return true;
@@ -604,14 +602,14 @@ export async function activateGiftCard(env: Env, id: string, adminId: string | n
     const lang = langOf(rc?.lang ?? 'ro');
     const vars = {
       nume: firstName(g.recipient_name || rc?.name || ''),
-      de_la: firstName(g.buyer_name ?? '') || (lang === 'ro' ? 'un prieten' : lang === 'fr' ? 'un ami' : 'a friend'),
+      de_la: firstName(g.buyer_name ?? '') || { ro: 'un prieten', en: 'a friend', fr: 'un ami', ar: 'صديق' }[lang],
       suma: String(g.amount_bani / 100),
       cod: g.code,
       mesaj: g.message,
       salon: shop,
     };
-    const title = fillText(s.title[lang] || s.title.ro, vars);
-    const body = fillText(s.message[lang] || s.message.ro, vars);
+    const title = fillText(pick3(s.title, lang), vars);
+    const body = fillText(pick3(s.message, lang), vars);
     const ch = await channelsFor(env, 'gift_card');
     if (rc && ch?.push) {
       const tokens = await pushTokens(env, rc.id);

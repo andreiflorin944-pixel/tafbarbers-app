@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { dirIcon } from '@/lib/rtl';
 import { api } from '@/api';
 import { Card, styles } from '@/components/ui';
 import type { CustomSubHint, CustomSubItem } from '@/data/types';
@@ -33,7 +34,7 @@ function PitchCard({ title, text, items, onOpen }: { title: string; text: string
           <Text style={[styles.muted, { fontSize: 13 }]}>{text}</Text>
           <Text style={{ color: colors.gold, fontWeight: '700', marginTop: 2 }}>{t('customSub.cta')}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+        <Ionicons name={dirIcon('chevron-forward')} size={20} color={colors.muted} />
       </Card>
     </Pressable>
   );

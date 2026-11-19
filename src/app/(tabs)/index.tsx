@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Animated, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { dirIcon } from '@/lib/rtl';
 import { api } from '@/api';
 import type { NextFree } from '@/api/client';
 import { mediaUrl } from '@/api/staff';
@@ -49,7 +50,7 @@ export default function Home() {
   const shopPhoto = mediaUrl((withPhoto.find((p) => p.stock !== 0) ?? withPhoto[0])?.imageUrl);
   const look = business?.appearance;
   const logo = mediaUrl(look?.logoUrl);
-  const welcome = look?.welcome?.[lang as 'ro' | 'en' | 'fr'];
+  const welcome = look?.welcome?.[lang];
   // Pozele de exemplu care nu s-au putut încărca (ex. încă negenerate): în locul lor, un chenar cu iconiță.
   const [brokenStyles, setBrokenStyles] = useState<string[]>([]);
   // Pe telefoanele înguste, etichetele din „Beneficiile tale” puțin mai mici, ca să nu fie tăiate.
@@ -214,7 +215,7 @@ export default function Home() {
             <Text style={s.cardTitle}>{t('home.assistantTitle')}</Text>
             <Text style={s.small}>{t('home.assistantSub')}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          <Ionicons name={dirIcon('chevron-forward')} size={20} color={colors.muted} />
         </Pressable>
 
         {/* TAF Identity: pozele și dorințele clientului; pozele de exemplu duc la consilierul AI, când e pornit în panou. */}
@@ -244,7 +245,7 @@ export default function Home() {
           {/* „Pregătește-ți tunsoarea”: la consilierul AI (selfie sau poză din galerie → recomandarea), când e pornit. */}
           <Pressable onPress={() => router.push(business?.advisor ? '/advisor' : '/identity')} style={({ pressed }) => [s.row, { marginTop: space.xs, alignSelf: 'flex-start', paddingVertical: 4 }, pressed && { opacity: 0.7 }]} accessibilityRole="link">
             <Text style={s.accentLink}>{t('home.identityCta')}</Text>
-            <Ionicons name="arrow-forward" size={18} color={colors.gold} />
+            <Ionicons name={dirIcon('arrow-forward')} size={18} color={colors.gold} />
           </Pressable>
         </View>
 
@@ -275,7 +276,7 @@ export default function Home() {
                   <Text style={s.badgeText}>{cartCount}</Text>
                 </View>
               ) : null}
-              <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+              <Ionicons name={dirIcon('chevron-forward')} size={16} color={colors.muted} />
             </Pressable>
           ))}
         </View>
@@ -292,10 +293,10 @@ export default function Home() {
             <Text style={s.small}>{t('home.inviteText')}</Text>
             <View style={[s.row, { marginTop: 4 }]}>
               <Text style={[s.accentLink, { fontSize: 14 }]}>{t('home.inviteCta')}</Text>
-              <Ionicons name="arrow-forward" size={16} color={colors.gold} />
+              <Ionicons name={dirIcon('arrow-forward')} size={16} color={colors.gold} />
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          <Ionicons name={dirIcon('chevron-forward')} size={20} color={colors.muted} />
         </Pressable>
 
         {business?.address || business?.phone ? (
@@ -404,7 +405,7 @@ function PromoPager({ promos, products, onPress }: { promos: Promo[]; products: 
                   <Text style={[s.accentLink, { flexShrink: 1 }]} numberOfLines={1}>
                     {p.cta}
                   </Text>
-                  <Ionicons name="arrow-forward" size={18} color={colors.gold} />
+                  <Ionicons name={dirIcon('arrow-forward')} size={18} color={colors.gold} />
                 </View>
               </View>
             </Pressable>

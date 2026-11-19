@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError } from '@/api';
 import type { Barber, Booking, Business, Location, Me, Promo, Service } from '@/data/types';
-import { useT } from '@/i18n';
+import { isLang, useT } from '@/i18n';
 import { unregisterPush } from '@/lib/push';
 import { SESSION_KEY, storage } from '@/lib/storage';
 import { LOOK_KEY, normalizeLook, readSavedLook, type SavedLook } from '@/theme';
@@ -116,7 +116,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           const me = await api.me(t);
           // Între timp clientul a intrat din nou (alt token) sau a ieșit: nu-l suprascriem.
           if (stopped || (await storage.get(TOKEN_KEY)) !== t) break;
-          if (me.lang === 'ro' || me.lang === 'en' || me.lang === 'fr') setLang(me.lang);
+          if (isLang(me.lang)) setLang(me.lang);
           setUser(me);
           setToken(t);
           break;

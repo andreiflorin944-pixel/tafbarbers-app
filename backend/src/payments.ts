@@ -23,7 +23,7 @@ export const MIN_BANI = 200;
 /** Adresa publică a serverului: PUBLIC_URL dacă e pusă, altfel adresa la care a venit cererea (ex. …workers.dev). */
 export const publicBase = (env: Env, reqUrl: string) => (env.PUBLIC_URL || new URL(reqUrl).origin).replace(/\/+$/, '');
 const stripeApi = (env: Env) => (env.STRIPE_MOCK_BASE || 'https://api.stripe.com').replace(/\/+$/, '');
-const LANGS = ['ro', 'en', 'fr'];
+const LANGS = ['ro', 'en', 'fr', 'ar'];
 
 type StripeJson = { id?: string; url?: string; error?: { message?: string; code?: string; param?: string } } & Record<string, unknown>;
 
@@ -51,7 +51,8 @@ export async function createCheckout(
   const meta: Record<string, string> = { kind: p.kind, ref: p.ref, client: p.clientId, ...p.meta };
   const form = new URLSearchParams({
     mode: 'payment',
-    locale: lang,
+    // Stripe nu are pagina de plată în arabă: clientul o vede în engleză.
+    locale: lang === 'ar' ? 'en' : lang,
     'line_items[0][quantity]': '1',
     'line_items[0][price_data][currency]': 'ron',
     'line_items[0][price_data][unit_amount]': String(p.amountBani),
