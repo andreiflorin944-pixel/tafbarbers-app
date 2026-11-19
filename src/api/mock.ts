@@ -43,6 +43,7 @@ const identityOf = (token: string) => {
 export const mockApi: BookingApi = {
   getBusiness: () => delay(business),
   getServices: () => delay(services),
+  getAddons: () => delay([]),
   getBarbers: () => delay(barbers),
   getLocations: () => delay(locations),
 

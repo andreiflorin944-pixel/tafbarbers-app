@@ -1,6 +1,6 @@
 import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, Text, TextInput, View } from 'react-native';
 import { api, ApiError } from '@/api';
 import { Button, Card, Icon, Screen, Steps, styles } from '@/components/ui';
 import { formatDate, formatTime } from '@/lib/dates';
@@ -9,11 +9,15 @@ import { useLoginGate } from '@/components/LoginGate';
 import { barberDuration, barberPrice, lei } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { useT } from '@/i18n';
-import { colors, space } from '@/theme';
+import { colors, radius, space } from '@/theme';
 
 export default function Confirm() {
-  const { draft, serviceById, barberById, locationById, user, token, addBooking, business } = useApp();
-  const extras = (draft.extraServiceIds ?? []).map((id) => serviceById(id)).filter((x): x is NonNullable<typeof x> => !!x);
+  const { draft, setDraft, serviceById, barberById, locationById, user, token, addBooking, business, addons } = useApp();
+  // „Extra fără timp” bifate aici (ex. Spălat): se adună doar la preț, ora rămâne aceeași.
+  const addonIds = (draft.addonIds ?? []).filter((id) => addons.some((a) => a.id === id));
+  const extras = [...(draft.extraServiceIds ?? []), ...addonIds].map((id) => serviceById(id)).filter((x): x is NonNullable<typeof x> => !!x);
+  const toggleAddon = (id: string) =>
+    setDraft({ addonIds: addonIds.includes(id) ? addonIds.filter((x) => x !== id) : addonIds.length < 5 ? [...addonIds, id] : addonIds });
   const gate = useLoginGate();
   const { t } = useT();
   const service = serviceById(draft.serviceId);
@@ -77,13 +81,46 @@ export default function Confirm() {
         <Line icon="cut" text={[service.name, ...extras.map((x) => x.name)].join(' + ')} />
         <Line icon="person" text={barber.name} />
         <Line icon="calendar" text={formatDate(start)} />
-        <Line icon="time" text={`${formatTime(start)} · ${[service, ...extras].reduce((a, x) => a + barberDuration(x, barber), 0)} min`} />
+        <Line icon="time" text={`${formatTime(start)} · ${[service, ...extras.filter((x) => !x.addon)].reduce((a, x) => a + barberDuration(x, barber), 0)} min`} />
         <View style={{ height: 1, backgroundColor: colors.border, marginVertical: space.xs }} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={styles.text}>{t('book.total')}</Text>
           <Text style={styles.price}>{lei([service, ...extras].reduce((a, x) => a + barberPrice(x, barber), 0))}</Text>
         </View>
       </Card>
+
+      {addons.length ? (
+        <View style={{ marginTop: space.md, gap: space.sm }}>
+          <Text style={styles.label}>{t('addon.title')}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
+            {addons.map((a) => {
+              const on = addonIds.includes(a.id);
+              return (
+                <Pressable
+                  key={a.id}
+                  onPress={() => toggleAddon(a.id)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: on }}
+                  style={{
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: radius.md,
+                    borderWidth: 1,
+                    borderColor: on ? colors.gold : colors.border,
+                    backgroundColor: on ? colors.gold : colors.card,
+                  }}
+                >
+                  <Text style={{ color: on ? colors.onGold : colors.text, fontWeight: '700', fontSize: 13 }}>
+                    {on ? '✓ ' : '+ '}
+                    {a.name}
+                  </Text>
+                  <Text style={{ color: on ? colors.onGold : colors.muted, fontSize: 11 }}>+{lei(barberPrice(a, barber))}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       <View style={{ marginTop: space.md }}>
         <Text style={styles.label}>{t('book.forWho')}</Text>

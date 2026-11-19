@@ -10,6 +10,8 @@ export type Service = {
   imageUrl?: string | null;
   /** Îl văd doar membrii TAF Club (serverul îl trimite doar lor). */
   membersOnly?: boolean;
+  /** „Extra fără timp” (ex. Spălat, Ceară pe față): se adaugă la o programare, are preț, nu adaugă minute. */
+  addon?: boolean;
   /** Reducerea din bannerul activ (ex. -15%); prețurile din aplicație o includ deja. */
   offer?: { percent: number; until: string | null };
 };
@@ -58,7 +60,7 @@ export type Slot = {
 export type BookingStatus = 'requested' | 'confirmed' | 'cancelled' | 'completed' | 'no_show';
 
 /** Serviciu adăugat la aceeași programare (ex. Vopsit barbă); timpul și prețul lui sunt incluse în end și price. */
-export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number };
+export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number; addon?: boolean };
 
 export type Booking = {
   id: string;

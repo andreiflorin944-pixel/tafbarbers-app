@@ -15,7 +15,7 @@ import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function Bookings() {
-  const { user, token, bookings, cancelBooking, reportLate, serviceById, barberById, locationById, locations, resetDraft, setDraft, business, refreshBookings, services, addBooking } = useApp();
+  const { user, token, bookings, cancelBooking, reportLate, serviceById, barberById, locationById, locations, resetDraft, setDraft, business, refreshBookings, services, addons, addBooking } = useApp();
   const [tab, setTab] = useState(0);
   // „+ Adaugă serviciu”: programarea la care clientul mai pune un serviciu (ex. Vopsit barbă).
   const [extraFor, setExtraFor] = useState<Booking | null>(null);
@@ -162,7 +162,7 @@ export default function Bookings() {
             {t('late.told')} {[b.lateMin ? t('late.min', { n: b.lateMin }) : '', b.lateNote ? `„${b.lateNote}”` : ''].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
-        {canCancel && canExtra(b) && addableServices(b, services, barberById(b.barberId), { hideMembersOnly: true }).length ? (
+        {canCancel && canExtra(b) && addableServices(b, services, barberById(b.barberId), { hideMembersOnly: true, addons }).length ? (
           <View style={{ marginTop: space.sm }}>
             <Button title={t('extra.add')} variant="ghost" onPress={() => setExtraFor(b)} />
           </View>

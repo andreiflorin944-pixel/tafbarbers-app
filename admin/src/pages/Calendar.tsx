@@ -711,6 +711,9 @@ function NewBooking({
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   // Servicii în plus la aceeași programare (ex. Vopsit barbă): timpul și prețul se adună.
   const [extraIds, setExtraIds] = useState<string[]>([]);
+  // „Extra fără timp” (ex. Spălat, Ceară pe față): doar prețul se adună, orele libere nu se schimbă.
+  const addons = useLoad(() => api<Service[]>('GET', '/admin/services?addons=1'), []);
+  const [addonIds, setAddonIds] = useState<string[]>([]);
   const [barberId, setBarberId] = useState(initial.barberId ?? me.barberId ?? barbers[0]?.id ?? '');
   const barber = barbers.find((b) => b.id === barberId);
   const doesIt = (id: string) => !barber?.serviceIds?.length || barber.serviceIds.includes(id);
@@ -719,7 +722,9 @@ function NewBooking({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceId, barberId]);
   const totalMin = [serviceId, ...extraIds].reduce((a, id) => a + (barber?.durations?.[id] ?? services.find((s) => s.id === id)?.durationMin ?? 0), 0);
-  const totalLei = [serviceId, ...extraIds].reduce((a, id) => a + (barber?.prices?.[id] ?? services.find((s) => s.id === id)?.price ?? 0), 0);
+  const totalLei =
+    [serviceId, ...extraIds].reduce((a, id) => a + (barber?.prices?.[id] ?? services.find((s) => s.id === id)?.price ?? 0), 0) +
+    addonIds.reduce((a, id) => a + (barber?.prices?.[id] ?? addons.data?.find((s) => s.id === id)?.price ?? 0), 0);
   // Alt frizer, care nu face serviciul ales: trecem pe primul serviciu pe care îl face.
   useEffect(() => {
     if (barber?.serviceIds?.length && !barber.serviceIds.includes(serviceId)) {
@@ -777,7 +782,7 @@ function NewBooking({
       await api('POST', '/admin/bookings', {
         ...(picked ? { clientId: picked.id } : { phone, name }),
         serviceId,
-        extraServiceIds: extraIds,
+        extraServiceIds: [...extraIds, ...addonIds],
         barberId,
         start: force ? localToIso(day, forceTime) : start,
         force,
@@ -891,7 +896,29 @@ function NewBooking({
               + Adaugă serviciu
             </button>
           ) : null}
-          {extraIds.length ? (
+          {(addons.data ?? []).some((a) => a.active) ? (
+            <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+              <span className="muted small">Extra fără timp:</span>
+              {(addons.data ?? [])
+                .filter((a) => a.active)
+                .map((a) => {
+                  const on = addonIds.includes(a.id);
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={on ? 'sm' : 'ghost sm'}
+                      aria-pressed={on}
+                      onClick={() => setAddonIds((x) => (on ? x.filter((y) => y !== a.id) : x.length < 5 ? [...x, a.id] : x))}
+                    >
+                      {on ? '✓ ' : '+ '}
+                      {a.name} · {lei(barber?.prices?.[a.id] ?? a.price)}
+                    </button>
+                  );
+                })}
+            </div>
+          ) : null}
+          {extraIds.length || addonIds.length ? (
             <div className="muted small" style={{ marginTop: 4 }}>
               Total: {totalMin} min · {lei(totalLei)}
             </div>

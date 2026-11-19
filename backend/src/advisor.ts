@@ -307,7 +307,7 @@ advisorRoutes.post('/advisor', requireClient, async (c) => {
 
   const clientId = c.get('client').clientId;
   // Consilierul propune doar servicii pe care le vede oricine (fără cele „doar membri”).
-  const services = (await env.DB.prepare('SELECT * FROM services WHERE active = 1 AND members_only = 0 ORDER BY sort, name').all<ServiceRow>()).results;
+  const services = (await env.DB.prepare('SELECT * FROM services WHERE active = 1 AND members_only = 0 AND addon = 0 ORDER BY sort, name').all<ServiceRow>()).results;
   if (!services.length) throw new HttpError(409, 'advisor_off');
   const left = await takeSlot(env, clientId);
 

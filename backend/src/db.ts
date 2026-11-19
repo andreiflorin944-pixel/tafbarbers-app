@@ -93,6 +93,7 @@ export type ServiceRow = {
   sort: number;
   active: number;
   members_only?: number;
+  addon?: number;
 };
 export const service = (r: ServiceRow) => ({
   id: r.id,
@@ -106,6 +107,8 @@ export const service = (r: ServiceRow) => ({
   active: !!r.active,
   // Doar pentru membrii TAF Club: ceilalți clienți nu văd serviciul.
   membersOnly: !!r.members_only,
+  // „Extra fără timp” (ex. Spălat, Ceară pe față): se adaugă doar pe o programare, cu preț și fără minute în plus.
+  addon: !!r.addon,
 });
 
 export type BarberRow = {
@@ -219,12 +222,13 @@ export type BookingRow = {
   location_id?: string | null;
   location_name?: string | null;
 };
-export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number };
+/** `addon`: „extra fără timp” (ex. Spălat): are preț, dar nu prelungește programarea. */
+export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number; addon?: boolean };
 const parseExtras = (j: string | null | undefined): BookingExtra[] => {
   if (!j) return [];
   try {
-    const a = JSON.parse(j) as Array<{ id: string; serviceId: string; name: string; durationMin: number; price: number } | null>;
-    return a.filter((x): x is NonNullable<typeof x> => !!x && !!x.id).map((x) => ({ ...x, price: x.price / 100 }));
+    const a = JSON.parse(j) as Array<{ id: string; serviceId: string; name: string; durationMin: number; price: number; addon?: number | boolean } | null>;
+    return a.filter((x): x is NonNullable<typeof x> => !!x && !!x.id).map((x) => ({ ...x, price: x.price / 100, addon: !!x.addon }));
   } catch {
     return [];
   }

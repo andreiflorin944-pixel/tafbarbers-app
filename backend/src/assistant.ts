@@ -60,7 +60,7 @@ type Ctx = {
 async function loadCtx(env: Env, access: Access = 'public'): Promise<Ctx> {
   const [s, b, o, l, offers] = await Promise.all([
     // Serviciile „doar membri” le vede (și le propune) asistentul doar pentru membrii TAF Club.
-    env.DB.prepare(`SELECT id, name, duration_min, price_bani, description FROM services WHERE active = 1${access === 'public' ? ' AND members_only = 0' : ''} ORDER BY sort, name`).all<Ctx['services'][number]>(),
+    env.DB.prepare(`SELECT id, name, duration_min, price_bani, description FROM services WHERE active = 1 AND addon = 0${access === 'public' ? ' AND members_only = 0' : ''} ORDER BY sort, name`).all<Ctx['services'][number]>(),
     // Frizerii dintr-o locație dezactivată nu mai primesc programări, deci asistentul nu-i mai propune.
     env.DB.prepare(
       `SELECT b.id, b.name, b.role, b.location_id FROM barbers b LEFT JOIN locations l ON l.id = b.location_id

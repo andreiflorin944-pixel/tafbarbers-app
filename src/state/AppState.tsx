@@ -12,6 +12,8 @@ type Draft = {
   serviceId: string | null;
   /** Servicii în plus la aceeași programare (ex. Vopsit barbă), alese după serviciul principal. */
   extraServiceIds: string[];
+  /** „Extra fără timp” (ex. Spălat) alese la confirmare: doar prețul se adună. */
+  addonIds?: string[];
   /** Serviciul a venit ales dinainte (pagina serviciului, un banner, un link): pasul „Serviciul” se sare. */
   presetService: boolean;
   barberId: string | null; // null = oricine
@@ -22,6 +24,8 @@ type Draft = {
 type AppState = {
   business: Business | null;
   services: Service[];
+  /** „Extra fără timp” (ex. Spălat, Ceară pe față), care se pun în plus pe o programare. */
+  addons: Service[];
   barbers: Barber[];
   /** Locațiile active, în ordinea din panou. */
   locations: Location[];
@@ -53,13 +57,14 @@ type AppState = {
 };
 
 const TOKEN_KEY = SESSION_KEY;
-const emptyDraft: Draft = { locationId: null, serviceId: null, extraServiceIds: [], presetService: false, barberId: null, start: null, slotBarberId: null };
+const emptyDraft: Draft = { locationId: null, serviceId: null, extraServiceIds: [], addonIds: [], presetService: false, barberId: null, start: null, slotBarberId: null };
 const Ctx = createContext<AppState | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const { lang, setLang } = useT();
   const [business, setBusiness] = useState<Business | null>(null);
   const [services, setServices] = useState<Service[]>([]);
+  const [addons, setAddons] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
@@ -86,6 +91,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setLoadError(false);
+    // Extra-urile fără timp nu opresc pornirea: un server vechi sau o eroare înseamnă doar listă goală.
+    api.getAddons(token).then((a) => setAddons(a.filter((x) => x.addon)), () => undefined);
     Promise.all([api.getBusiness(), api.getServices(token), api.getBarbers(), api.getLocations()])
       .then(([b, s, br, loc]) => {
         setBusiness(b);
@@ -158,6 +165,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     () => ({
       business,
       services,
+      addons,
       barbers,
       locations,
       promos,
@@ -204,11 +212,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const updated = await api.reportLate(token, id, minutes, note);
         setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, ...updated } : b)));
       },
-      serviceById: (id) => services.find((s) => s.id === id),
+      serviceById: (id) => services.find((s) => s.id === id) ?? addons.find((s) => s.id === id),
       barberById: (id) => barbers.find((b) => b.id === id),
       locationById: (id) => locations.find((l) => l.id === id),
     }),
-    [business, services, barbers, locations, promos, loading, loadError, draft, user, token, sessionReady, bookings, refreshBookings],
+    [business, services, addons, barbers, locations, promos, loading, loadError, draft, user, token, sessionReady, bookings, refreshBookings],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

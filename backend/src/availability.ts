@@ -58,23 +58,32 @@ export async function availability(
   const access = opts.access ?? 'public';
   const biz = await getBusiness(env);
   const tz = env.TIMEZONE;
-  const service = await env.DB.prepare('SELECT duration_min, members_only FROM services WHERE id = ? AND active = 1')
+  const service = await env.DB.prepare('SELECT duration_min, members_only, addon FROM services WHERE id = ? AND active = 1')
     .bind(opts.serviceId)
-    .first<{ duration_min: number; members_only: number }>();
+    .first<{ duration_min: number; members_only: number; addon: number }>();
   if (!service) throw new HttpError(404, 'service_not_found');
+  // „Extra fără timp” (ex. Spălat) nu se programează singur, doar se adaugă la o programare.
+  if (service.addon) return [];
   // Serviciu „doar membri”: fără TAF Club nu are ore (și nu se poate programa nici trimițând ora direct).
   if (service.members_only && access === 'public') return [];
 
   let barbers = await eligibleBarbers(env, opts.serviceId, opts.barberId, opts.locationId ?? null);
   // Serviciile adăugate: doar frizerii care le fac pe toate; fiecare cu durata lui (sau cea standard).
-  const extras = [...new Set(opts.extraServiceIds ?? [])].filter((x) => x && x !== opts.serviceId);
+  // Extra-urile fără timp (ex. Spălat) nu schimbă orele libere: le face orice frizer și nu adaugă minute.
+  let extras = [...new Set(opts.extraServiceIds ?? [])].filter((x) => x && x !== opts.serviceId);
   const extraMs = new Map<string, number>();
+  if (extras.length && barbers.length) {
+    const svc0 = await env.DB.prepare(`SELECT id, duration_min, addon FROM services WHERE active = 1 AND id IN (${extras.map(() => '?').join(',')})`)
+      .bind(...extras)
+      .all<{ id: string; duration_min: number; addon: number }>();
+    if (svc0.results.length !== extras.length) throw new HttpError(404, 'service_not_found');
+    extras = extras.filter((x) => !svc0.results.find((r) => r.id === x)?.addon);
+  }
   if (extras.length && barbers.length) {
     const xph = extras.map(() => '?').join(',');
     const svc = await env.DB.prepare(`SELECT id, duration_min FROM services WHERE active = 1 AND id IN (${xph})`)
       .bind(...extras)
       .all<{ id: string; duration_min: number }>();
-    if (svc.results.length !== extras.length) throw new HttpError(404, 'service_not_found');
     const bph = barbers.map(() => '?').join(',');
     const rows = await env.DB.prepare(`SELECT barber_id, service_id, duration_min FROM barber_services WHERE service_id IN (${xph}) AND barber_id IN (${bph})`)
       .bind(...extras, ...barbers)

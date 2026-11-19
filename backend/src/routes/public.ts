@@ -128,11 +128,13 @@ publicRoutes.get('/products', async (c) => {
 });
 
 // Serviciile „doar membri” apar doar pentru membrii TAF Club (sau abonament activ) și pentru echipă.
+// `?addons=1`: doar „extra fără timp” (ex. Spălat), care se adaugă pe o programare; fără el, doar serviciile care se programează.
 publicRoutes.get('/services', async (c) => {
   const who = await optionalSession(c);
   const all = who?.kind === 'admin' || (await accessFor(c.env, who?.kind === 'client' ? who.id : null)) === 'member';
+  const addons = c.req.query('addons') === '1' ? 1 : 0;
   const [r, offers] = await Promise.all([
-    c.env.DB.prepare(`SELECT * FROM services WHERE active = 1${all ? '' : ' AND members_only = 0'} ORDER BY sort, name`).all<ServiceRow>(),
+    c.env.DB.prepare(`SELECT * FROM services WHERE active = 1 AND addon = ?${all ? '' : ' AND members_only = 0'} ORDER BY sort, name`).bind(addons).all<ServiceRow>(),
     serviceOffers(c.env),
   ]);
   // `offer`: reducerea din bannerul activ; aplicația arată prețul redus, iar serverul îl pune la programare.
@@ -150,18 +152,18 @@ publicRoutes.get('/next-free', async (c) => {
   const access = who?.kind === 'admin' ? 'staff' : await accessFor(c.env, who?.id);
   const asked = c.req.query('serviceId');
   let serviceId: string | null = null;
-  if (asked) serviceId = (await c.env.DB.prepare('SELECT id FROM services WHERE id = ? AND active = 1').bind(asked).first<{ id: string }>())?.id ?? null;
+  if (asked) serviceId = (await c.env.DB.prepare('SELECT id FROM services WHERE id = ? AND active = 1 AND addon = 0').bind(asked).first<{ id: string }>())?.id ?? null;
   if (!serviceId && who?.kind === 'client') {
     serviceId =
       (
         await c.env.DB.prepare(
-          `SELECT b.service_id AS id FROM bookings b JOIN services s ON s.id = b.service_id AND s.active = 1${access === 'public' ? ' AND s.members_only = 0' : ''} WHERE b.client_id = ? ORDER BY b.starts_at DESC LIMIT 1`,
+          `SELECT b.service_id AS id FROM bookings b JOIN services s ON s.id = b.service_id AND s.active = 1 AND s.addon = 0${access === 'public' ? ' AND s.members_only = 0' : ''} WHERE b.client_id = ? ORDER BY b.starts_at DESC LIMIT 1`,
         )
           .bind(who.id)
           .first<{ id: string }>()
       )?.id ?? null;
   }
-  if (!serviceId) serviceId = (await c.env.DB.prepare('SELECT id FROM services WHERE active = 1 AND members_only = 0 ORDER BY sort, name LIMIT 1').first<{ id: string }>())?.id ?? null;
+  if (!serviceId) serviceId = (await c.env.DB.prepare('SELECT id FROM services WHERE active = 1 AND members_only = 0 AND addon = 0 ORDER BY sort, name LIMIT 1').first<{ id: string }>())?.id ?? null;
   if (!serviceId) return c.json(null);
   const biz = await getBusiness(c.env);
   const today = localDay(c.env.TIMEZONE, new Date());
@@ -237,7 +239,7 @@ publicRoutes.get('/availability', async (c) => {
   // Panoul, la mutarea unei programări: ora ei de acum contează ca liberă (`exclude` = programarea mutată).
   const exclude = who?.kind === 'admin' ? c.req.query('exclude') || undefined : undefined;
   // `extra=a,b`: servicii adăugate la aceeași programare (durata lor se adună).
-  const extraServiceIds = (c.req.query('extra') ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 3);
+  const extraServiceIds = (c.req.query('extra') ?? '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 8);
   return c.json(await availability(c.env, { serviceId, barberId: barberId || null, locationId, day, access, excludeBookingId: exclude, anyTime: who?.kind === 'admin', extraServiceIds }));
 });
 

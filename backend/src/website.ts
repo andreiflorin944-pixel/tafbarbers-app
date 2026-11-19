@@ -225,7 +225,7 @@ const langUrl = (origin: string, w: Website, l: Lang) => `${origin}/${l === w.de
 /** Datele salonului pentru Google (schema.org HairSalon): adresă, telefon, program, prețuri, servicii, buton de programare. */
 async function structuredData(env: Env, w: Website, biz: Business, origin: string, image: string) {
   const [svc, hours] = await Promise.all([
-    env.DB.prepare('SELECT name, description, duration_min, price_bani FROM services WHERE active = 1 AND members_only = 0 ORDER BY sort, name LIMIT 30').all<{
+    env.DB.prepare('SELECT name, description, duration_min, price_bani FROM services WHERE active = 1 AND members_only = 0 AND addon = 0 ORDER BY sort, name LIMIT 30').all<{
       name: string;
       description: string;
       duration_min: number;

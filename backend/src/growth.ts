@@ -370,7 +370,7 @@ export async function freeSlotsSoon(env: Env, now: Date, windowHours: number) {
   const day = localDay(tz, now);
   const svc = await env.DB.prepare(
     `SELECT s.id FROM services s LEFT JOIN bookings b ON b.service_id = s.id AND b.created_at > ?
-     WHERE s.active = 1 GROUP BY s.id ORDER BY count(b.id) DESC, s.sort LIMIT 1`,
+     WHERE s.active = 1 AND s.addon = 0 GROUP BY s.id ORDER BY count(b.id) DESC, s.sort LIMIT 1`,
   )
     .bind(iso(new Date(now.getTime() - 90 * 86_400_000)))
     .first<{ id: string }>();
