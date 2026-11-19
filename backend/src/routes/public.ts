@@ -20,7 +20,9 @@ import { activeLocationId, activeLocations } from '../locations';
 import { getAppearance } from '../appearance';
 import { product, type ProductRow } from '../shop';
 import { parseBirthDate } from '../identity';
-import { applyReferral } from '../referrals';
+import { applyReferral, type ReferralResult } from '../referrals';
+
+const refGiven = (v: unknown) => typeof v === 'string' && v.trim() !== '';
 import { noteWebhook, onlinePaymentsOn, publicBase, verifyStripeSignature } from '../payments';
 import { handleAnyStripeEvent } from '../recurring';
 import { advisorAvailable, getStylePhotos, styleVersion } from '../advisor';
@@ -296,6 +298,8 @@ publicRoutes.post('/auth/verify', async (c) => {
   await useCode(c.env, phone, row);
 
   const isNew = !client;
+  // Ce s-a întâmplat cu codul de recomandare (aplicația îi arată clientului dacă nu s-a aplicat).
+  let referral: ReferralResult | null = null;
   if (!client) {
     client = { id: newId('cl'), name: (body.name ?? '').trim().slice(0, 80), email };
     // Ofertele se trimit doar cu bifa separată de la creare (GDPR): fără ea, toate canalele de marketing rămân oprite.
@@ -320,7 +324,7 @@ publicRoutes.post('/auth/verify', async (c) => {
       )
       .run();
     await recordConsent(c.env, c, client.id, { source: 'register', terms: true, marketing: { push: !!mk, email: !!mk, sms: !!mk }, lang: body.lang, sign });
-    await applyReferral(c.env, client.id, body.ref);
+    referral = await applyReferral(c.env, client.id, body.ref);
   } else {
     // Contul a fost creat cu cod pe e-mail (numărul nu a fost dovedit), iar acum cineva intră cu cod prin SMS pe acel număr:
     // numărul e al lui. Contul trece la el: celelalte sesiuni se închid, iar e-mailul rămâne doar cel scris acum (dacă l-a scris).
@@ -361,9 +365,9 @@ publicRoutes.post('/auth/verify', async (c) => {
       const r = await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL').bind(iso(new Date()), client.id).run();
       firstAccept = !!r.meta.changes;
     }
-    // Client care exista deja în baza de date (adus din panou sau din Barberly) și intră acum prima dată în aplicație,
-    // venit cu un cod de recomandare: recomandarea se leagă la fel ca la un cont nou (o singură dată, doar la prima intrare).
-    if (firstAccept) await applyReferral(c.env, client.id, body.ref);
+    // Client care exista deja în baza de date (adus din panou sau din Barberly) și intră acum prima dată în aplicație, cu un cod:
+    // se leagă doar dacă n-a mai fost la salon (recomandarea e pentru clienți noi). Cine folosea deja aplicația e client existent.
+    referral = firstAccept ? await applyReferral(c.env, client.id, body.ref) : refGiven(body.ref) ? 'existing_client' : null;
     if (firstAccept || mkChanged || sign) {
       await recordConsent(c.env, c, client.id, {
         source: firstAccept ? 'first_login' : sign ? 'sign' : 'login',
@@ -395,7 +399,7 @@ publicRoutes.post('/auth/verify', async (c) => {
       .run();
   }
   const token = await createSession(c.env.DB, 'client', client.id);
-  return c.json({ token, clientId: client.id });
+  return c.json({ token, clientId: client.id, ...(referral && { referral }) });
 });
 
 // Logare cu Apple sau Google. Contul extern deja legat intră direct; altfel aplicația cere numărul de telefon.
@@ -419,6 +423,7 @@ publicRoutes.post('/auth/social/complete', async (c) => {
   const existing = await c.env.DB.prepare('SELECT id, email FROM clients WHERE phone = ? AND deleted_at IS NULL').bind(phone).first<{ id: string; email: string | null }>();
   let clientId: string;
   let isNew = false;
+  let referral: ReferralResult | null = null;
   if (existing) {
     // Numărul are deja cont: îl legăm doar dacă e același e-mail confirmat; altfel trebuie codul pe acest număr.
     if (!(t.email_verified && t.email && existing.email?.toLowerCase() === t.email)) throw new HttpError(409, 'phone_has_account');
@@ -426,8 +431,8 @@ publicRoutes.post('/auth/social/complete', async (c) => {
     // Client adăugat din panou care intră prima dată, cu Apple / Google: acordul îl dă acum.
     if (body.acceptTerms === true) {
       const r = await c.env.DB.prepare('UPDATE clients SET terms_accepted_at = ? WHERE id = ? AND terms_accepted_at IS NULL').bind(iso(new Date()), clientId).run();
-      // Prima intrare în aplicație a unui client care exista deja: recomandarea cu care a venit se leagă acum.
-      if (r.meta.changes) await applyReferral(c.env, clientId, body.ref);
+      // Prima intrare în aplicație a unui client care exista deja: recomandarea se leagă doar dacă n-a mai fost la salon.
+      referral = r.meta.changes ? await applyReferral(c.env, clientId, body.ref) : refGiven(body.ref) ? 'existing_client' : null;
       if (r.meta.changes || sign) await recordConsent(c.env, c, clientId, { source: r.meta.changes ? 'first_login' : 'sign', terms: true, marketing: null, lang: body.lang, sign });
     } else if (sign) {
       await recordConsent(c.env, c, clientId, { source: 'sign', terms: true, marketing: null, lang: body.lang, sign });
@@ -459,7 +464,7 @@ publicRoutes.post('/auth/social/complete', async (c) => {
       )
       .run();
     await recordConsent(c.env, c, clientId, { source: 'social', terms: true, marketing: { push: !!mk, email: !!mk, sms: !!mk }, lang: body.lang, sign });
-    await applyReferral(c.env, clientId, body.ref);
+    referral = await applyReferral(c.env, clientId, body.ref);
   }
   await linkTicket(c.env, t, clientId);
   try {
@@ -468,7 +473,7 @@ publicRoutes.post('/auth/social/complete', async (c) => {
     console.error('qr', e);
   }
   const token = await createSession(c.env.DB, 'client', clientId);
-  return c.json({ token, clientId });
+  return c.json({ token, clientId, ...(referral && { referral }) });
 });
 
 // --- Intrarea cu e-mail (sau telefon) și parolă; „Am uitat parola” cu cod pe e-mail ---

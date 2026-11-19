@@ -1,5 +1,6 @@
-// Recomandări: lanț A → B → C (fiecare își vede prietenii și bonusurile), un client poate fi recomandat o singură dată,
-// iar un client care exista deja (adus din panou / Barberly) și intră prima dată în aplicație cu un cod e legat și el.
+// Recomandări: lanț A → B → C (fiecare își vede prietenii și bonusurile), un client poate fi recomandat o singură dată.
+// Recomandarea e doar pentru clienți noi: cine a mai fost la salon (vizite din istoric sau programări trecute) nu e legat
+// și primește „existing_client”; un client din panou fără nicio vizită, care intră prima dată în aplicație, e legat.
 // Rulează pe `wrangler dev` local (DEV_OTP=1), după test-api.mjs.
 const B = 'http://127.0.0.1:8787/v1';
 let fails = 0;
@@ -20,9 +21,9 @@ async function register(name, ref) {
   const phone = '0741' + rnd(), email = `ref${rnd()}@test.ro`, h = ip();
   let x = await req('POST', '/auth/otp', { phone, email, channel: 'email' }, null, h);
   x = await req('POST', '/auth/verify', { phone, code: x.body?.devCode, name, email, acceptTerms: true, ref }, null, h);
-  const token = x.body?.token;
+  const token = x.body?.token, referral = x.body?.referral;
   const me = await req('GET', '/me', null, token);
-  return { token, id: me.body?.id, phone };
+  return { token, id: me.body?.id, phone, referral };
 }
 const refs = async (tok) => (await req('GET', '/me/referrals', null, tok)).body;
 
@@ -31,6 +32,8 @@ const A = await register('Karina Test');
 const codeA = (await refs(A.token)).code;
 ok(/^[A-Z2-9]{6}$/.test(codeA), `A has a code (${codeA})`);
 const Bc = await register('Bogdan Test', codeA);
+ok(Bc.referral === 'applied', 'new account: referral applied');
+ok(A.referral === undefined, 'no code: no referral field');
 let ra = await refs(A.token);
 ok(ra.referred === 1 && ra.bonuses.some((b) => b.source === 'referral'), 'A sees 1 friend + referral bonus');
 const codeB = (await refs(Bc.token)).code;
@@ -50,7 +53,7 @@ ok(tA?.people.length === 1 && tA.people[0].id === Bc.id && tB?.people.length ===
 
 // Cod greșit sau propriul cod: nimic.
 const D = await register('Dan Test', 'XXXXXX');
-r = await req('GET', `/admin/clients/${D.id}`, null, at); ok(!r.body.referredBy, 'unknown code ignored');
+r = await req('GET', `/admin/clients/${D.id}`, null, at); ok(!r.body.referredBy && D.referral === 'invalid', 'unknown code ignored + app told invalid');
 
 // Client adăugat din panou (ca cei aduși din Barberly), care intră prima dată în aplicație cu codul lui B.
 const pPhone = '0742' + rnd(), pEmail = `panou${rnd()}@test.ro`;
@@ -62,7 +65,7 @@ r = await req('POST', '/auth/otp', { phone: pPhone, email: pEmail, channel: 'ema
 ok(r.body?.newAccount === false, 'panel client: app sees existing account');
 r = await req('POST', '/auth/verify', { phone: pPhone, code: r.body?.devCode, acceptTerms: true, ref: codeB }, null, h);
 const pTok = r.body?.token;
-ok(!!pTok, 'panel client logs in first time');
+ok(!!pTok && r.body.referral === 'applied', 'panel client with no visits logs in first time, referral applied');
 r = await req('GET', `/admin/clients/${pid}`, null, at);
 ok(r.body.referredBy?.id === Bc.id, 'existing client entering the app first time with a code is linked to B');
 rb = await refs(Bc.token);
@@ -72,6 +75,7 @@ ok(rb.referred === 2 && rb.bonuses.filter((b) => b.source === 'referral').length
 h = ip();
 r = await req('POST', '/auth/otp', { phone: pPhone, email: pEmail, channel: 'email' }, null, h);
 r = await req('POST', '/auth/verify', { phone: pPhone, code: r.body?.devCode, acceptTerms: true, ref: codeA }, null, h);
+ok(r.body?.referral === 'existing_client', 'second login with code: told already a client');
 r = await req('GET', `/admin/clients/${pid}`, null, at);
 ok(r.body.referredBy?.id === Bc.id, 'later login with another code does not change referrer');
 ra = await refs(A.token);
@@ -81,7 +85,25 @@ ok(ra.referred === 1 && ra.bonuses.filter((b) => b.source === 'referral').length
 h = ip();
 r = await req('POST', '/auth/otp', { phone: D.phone, channel: 'sms' }, null, h);
 r = await req('POST', '/auth/verify', { phone: D.phone, code: r.body?.devCode, acceptTerms: true, ref: codeA }, null, h);
+ok(r.body?.referral === 'existing_client', 'existing app user told already a client');
 r = await req('GET', `/admin/clients/${D.id}`, null, at); ok(!r.body.referredBy, 'existing app user cannot be referred later');
+
+// Client din panou (ca cei din Barberly) care A MAI FOST la salon (programare trecută): nu se leagă, nu se dă bonus.
+const vPhone = '0743' + rnd(), vEmail = `vizita${rnd()}@test.ro`;
+r = await req('POST', '/admin/clients', { phone: vPhone, name: 'Client Vechi', email: vEmail }, at);
+const vid = r.body?.id;
+r = await req('GET', '/barbers'); const barberId = r.body[0].id;
+const past = new Date(Date.now() - 10 * 86_400_000); past.setUTCHours(9, 0, 0, 0);
+r = await req('POST', '/admin/bookings', { clientId: vid, serviceId: 'svc-classic', barberId, start: past.toISOString(), force: true, notify: false }, at);
+ok(r.status === 200 || r.status === 201, `past booking for old client (${r.status} ${JSON.stringify(r.body).slice(0, 80)})`);
+const before = (await refs(Bc.token)).bonuses.length;
+h = ip();
+r = await req('POST', '/auth/otp', { phone: vPhone, email: vEmail, channel: 'email' }, null, h);
+r = await req('POST', '/auth/verify', { phone: vPhone, code: r.body?.devCode, acceptTerms: true, ref: codeB }, null, h);
+ok(!!r.body?.token && r.body.referral === 'existing_client', 'old client (was at the salon) logs in, told already a client');
+r = await req('GET', `/admin/clients/${vid}`, null, at); ok(!r.body.referredBy, 'old client not linked');
+rb = await refs(Bc.token);
+ok(rb.referred === 2 && rb.bonuses.length === before, 'B got no bonus for an old client');
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');
 process.exit(fails ? 1 : 0);
