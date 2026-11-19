@@ -31,6 +31,7 @@ export type SeasonCampaign = {
   cta: Texts;
   wish: Texts; // urarea pusă din oficiu în cardul cadou (doar când butonul duce la cardul cadou)
   imageUrl: string | null;
+  amount: number | null; // suma cardului cadou aleasă din oficiu (lei); null = clientul alege
   version: number; // crește la fiecare salvare cu alt conținut: pop-up-ul apare din nou pentru campania nouă
 };
 
@@ -42,16 +43,17 @@ export const DEFAULT_SEASON: SeasonCampaign = {
   endsAt: '',
   target: 'gift_card',
   popup: true,
-  kicker: t3('CADOU DE CRĂCIUN', 'CHRISTMAS GIFT', 'CADEAU DE NOËL'),
-  title: t3('Fă cadou o tunsoare de Crăciun', 'Give a haircut for Christmas', 'Offrez une coupe pour Noël'),
+  kicker: t3('VOUCHER CADOU · 120 LEI', 'GIFT VOUCHER · 120 LEI', 'BON CADEAU · 120 LEI'),
+  title: t3('De Crăciun, oferă-i un moment TAF unui prieten.', 'This Christmas, give a friend a TAF moment.', 'À Noël, offrez un moment TAF à un ami.'),
   text: t3(
-    'Card cadou TAF Barbers, cu urarea ta. Ajunge pe loc prin SMS și în aplicație.',
-    'A TAF Barbers gift card with your wishes. Delivered instantly by SMS and in the app.',
-    'Une carte cadeau TAF Barbers avec vos vœux. Envoyée tout de suite par SMS et dans l’application.',
+    'Dăruiește Experiența TAF: tuns, aranjat barba și spa cu prosop cald, însoțită de urarea ta. Ajunge pe loc prin SMS și în aplicație.',
+    'Give the TAF Experience: haircut, beard trim and hot towel spa, with your wishes. Delivered instantly by SMS and in the app.',
+    'Offrez l’Expérience TAF : coupe, taille de barbe et soin à la serviette chaude, avec vos vœux. Envoyée par SMS et dans l’application.',
   ),
-  cta: t3('Alege cardul cadou', 'Choose a gift card', 'Choisir une carte cadeau'),
+  cta: t3('Oferă Experiența TAF', 'Give the TAF Experience', 'Offrir l’Expérience TAF'),
   wish: t3('Crăciun fericit! 🎄', 'Merry Christmas! 🎄', 'Joyeux Noël ! 🎄'),
   imageUrl: '/campanii/craciun.jpg',
+  amount: 120,
   version: 1,
 };
 
@@ -90,6 +92,7 @@ export async function saveSeasonCampaign(env: Env, v: Partial<SeasonCampaign>): 
     target: pick(v.target, SEASON_TARGETS, cur.target, 'invalid_target'),
     popup: typeof v.popup === 'boolean' ? v.popup : cur.popup,
     imageUrl: img,
+    amount: amountOf(v.amount, cur.amount),
     version: cur.version,
   } as SeasonCampaign;
   // Textele: scrise în română, engleza și franceza se completează singure (ca la bannere).
@@ -103,6 +106,14 @@ export async function saveSeasonCampaign(env: Env, v: Partial<SeasonCampaign>): 
   if (next.theme !== cur.theme || next.title.ro !== cur.title.ro || next.startsAt !== cur.startsAt || (next.enabled && !cur.enabled)) next.version = cur.version + 1;
   await setSetting(env, 'season_campaign', next);
   return next;
+}
+
+function amountOf(x: unknown, d: number | null): number | null {
+  if (x === undefined) return d;
+  if (x === null || x === '' || x === 0) return null;
+  const n = Math.round(Number(x));
+  if (!(n >= 10 && n <= 5000)) throw new HttpError(400, 'invalid_amount');
+  return n;
 }
 
 /** E în desfășurare azi, iar ce deschide butonul e pornit (cardul cadou se vinde, abonamentul personalizat e pornit). */
@@ -122,7 +133,7 @@ const langOf = (l: string | null | undefined): Lang => (l === 'en' || l === 'fr'
 export function seasonTexts(s: SeasonCampaign, lang: string | null | undefined) {
   const l = langOf(lang);
   const p = (t: Texts) => t[l] || t.ro;
-  return { kicker: p(s.kicker), title: p(s.title), text: p(s.text), cta: p(s.cta), wish: p(s.wish), imageUrl: s.imageUrl };
+  return { kicker: p(s.kicker), title: p(s.title), text: p(s.text), cta: p(s.cta), wish: p(s.wish), imageUrl: s.imageUrl, amount: s.amount ?? null };
 }
 
 /** Bannerul de pe Acasă (aplicație și site), ca unul din panou; `popup` = se arată și ca pop-up la intrare. */
