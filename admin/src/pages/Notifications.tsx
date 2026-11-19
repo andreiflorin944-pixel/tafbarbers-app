@@ -82,7 +82,7 @@ export function NotificationsPage() {
         <h1>Notificări automate</h1>
       </div>
       <p className="muted small" style={{ marginTop: -8, maxWidth: 760 }}>
-        Mesajele pe care aplicația le trimite singură. Scrii textul doar în română: la salvare se traduce singur în engleză și franceză, pentru clienții care au aplicația în acele limbi. Urarea de ziua clientului se setează la <a href="#/birthdays">Zile de naștere</a>.
+        Mesajele pe care aplicația le trimite singură. Scrii textul doar în română: la salvare se traduce singur în engleză, franceză și arabă, pentru clienții care au aplicația în acele limbi. Urarea de ziua clientului se setează la <a href="#/birthdays">Zile de naștere</a>.
       </p>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
         {TABS.map((t, i) => (

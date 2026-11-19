@@ -574,7 +574,7 @@ function BusinessForm() {
 type TrStats = { translated: number; failed: number; remaining: number; aiDown: boolean };
 
 /**
- * „Tradu tot conținutul acum”: traduce în engleză și franceză ce s-a scris în panou înainte de traducerea automată
+ * „Tradu tot conținutul acum”: traduce în engleză, franceză și arabă ce s-a scris în panou înainte de traducerea automată
  * (servicii, frizeri, produse, abonamente, bannere, despre salon, regulamente, mesaje). Merge pe bucăți, până termină.
  */
 function TranslateAll() {
@@ -604,7 +604,7 @@ function TranslateAll() {
       else
         setResult({
           ok: true,
-          text: `Gata. Am tradus ${done} texte.${failed ? ` ${failed} nu s-au putut traduce automat și apar în română; le poți traduce de mână, la „Engleză și franceză”, în fiecare formular.` : ''}`,
+          text: `Gata. Am tradus ${done} texte.${failed ? ` ${failed} nu s-au putut traduce automat și apar în română; le poți traduce de mână, la „Engleză, franceză și arabă”, în fiecare formular.` : ''}`,
         });
       status.reload();
     });
@@ -613,8 +613,8 @@ function TranslateAll() {
     <div className="card grid">
       <h2 id="set-traduceri" style={{ margin: 0, scrollMarginTop: 16 }}>Traduceri</h2>
       <div className="muted small">
-        Tot ce scrii în panou (servicii, frizeri, produse, abonamente, bannere, despre salon, regulamente, mesaje) se traduce singur în engleză și franceză
-        când salvezi. Clienții cu aplicația în engleză sau franceză văd traducerea. Cu butonul de mai jos se traduce acum și ce era scris de dinainte.
+        Tot ce scrii în panou (servicii, frizeri, produse, abonamente, bannere, despre salon, regulamente, mesaje) se traduce singur în engleză, franceză și arabă
+        când salvezi. Clienții cu aplicația în engleză, franceză sau arabă văd traducerea. Cu butonul de mai jos se traduce acum și ce era scris de dinainte.
       </div>
       <div className="small">
         {!status.data ? <Loading error={status.error} /> : left ? `Mai sunt ${left} texte netraduse.` : 'Tot conținutul e tradus.'}
