@@ -26,7 +26,10 @@ export function needsApproval(biz: { requireApproval?: boolean; approvalBarberId
 export const BOOKING_SELECT = `
   SELECT b.*, c.name AS client_name, c.phone AS client_phone, c.birth_date AS client_birth_date, s.name AS service_name, br.name AS barber_name, loc.name AS location_name,
     (SELECT json_group_array(json_object('id', e.id, 'serviceId', e.service_id, 'name', es.name, 'durationMin', e.duration_min, 'price', e.price_bani, 'addon', es.addon))
-       FROM booking_extras e JOIN services es ON es.id = e.service_id WHERE e.booking_id = b.id) AS extras_json
+       FROM booking_extras e JOIN services es ON es.id = e.service_id WHERE e.booking_id = b.id) AS extras_json,
+    (SELECT json_group_array(json_object('serviceId', g.service_id, 'name', gs.name, 'value', g.value_bani))
+       FROM booking_gifts g JOIN services gs ON gs.id = g.service_id WHERE g.booking_id = b.id) AS gifts_json,
+    (SELECT sum(d.amount_bani) FROM client_debts d WHERE d.booking_id = b.id AND d.settled_at IS NULL AND d.cancelled_at IS NULL) AS debt_open_bani
   FROM bookings b
   JOIN clients c ON c.id = b.client_id
   JOIN services s ON s.id = b.service_id

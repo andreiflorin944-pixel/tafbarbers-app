@@ -21,6 +21,8 @@ const HELP: Record<string, string> = {
   payments: 'Fiecare plată în parte: servicii, tunsori din abonament și abonamente vândute.',
   'payments-member': 'Banii încasați de fiecare cont al echipei.',
   'tips-member': 'Bacșișul primit de fiecare frizer.',
+  debts: 'Programările închise cu rest de plată în perioadă: cine datorează, cât, și dacă s-a încasat între timp.',
+  'free-services': 'Serviciile oferite cadou la închiderea programării (ex. Spălat): cui, cine le-a oferit și cât valorau.',
   top100: 'Cei mai buni 100 de clienți din perioadă, după cât au cheltuit.',
   retention: 'Pe luni: câți clienți au venit și câți dintre ei au mai venit în următoarele 60 de zile.',
   'new-returning': 'Clienții noi față de cei care au mai fost, pe zile (sau pe luni, pentru perioade lungi).',
