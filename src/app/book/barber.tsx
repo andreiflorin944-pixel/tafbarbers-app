@@ -76,7 +76,7 @@ export default function ChooseBarber() {
             >
               <Ionicons name="images-outline" size={15} color={colors.gold} />
               <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>
-                {b.album?.length ? `${t('album.see')} (${b.album.length})` : t('album.profile')}
+                {b.album?.length ? t('album.see') : t('album.profile')}
               </Text>
             </Pressable>
           </View>

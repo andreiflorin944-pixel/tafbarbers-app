@@ -12,7 +12,7 @@ import { PayDueBanner } from '@/components/PayDue';
 import { SeasonPopup } from '@/components/SeasonPopup';
 import { LoyalPitch } from '@/components/CustomSubPitch';
 import { useCart } from '@/state/Cart';
-import { Avatar, Button, styles as ui } from '@/components/ui';
+import { Button, styles as ui } from '@/components/ui';
 import type { Product, Promo, Service } from '@/data/types';
 import { whatsappUrl } from '@/lib/contact';
 import { useT } from '@/i18n';
@@ -39,7 +39,7 @@ const PERKS: Array<[IconName, 'home.q.rewards' | 'home.q.gift' | 'home.q.subs' |
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export default function Home() {
-  const { business, loading, loadError, reload, user, token, bookings, promos, barbers, serviceById, barberById, resetDraft, setDraft } = useApp();
+  const { business, loading, loadError, reload, user, token, bookings, promos, serviceById, barberById, resetDraft, setDraft } = useApp();
   const { t, lang } = useT();
   const { staff } = useStaff();
   const { products, count: cartCount } = useCart();
@@ -255,35 +255,6 @@ export default function Home() {
           <>
             <Text style={s.section}>{t('home.recommended')}</Text>
             <PromoPager promos={picks} products={products} onPress={openPromo} />
-          </>
-        ) : null}
-
-        {/* Frizerii: la apăsare, profilul cu descrierea și albumul cu tunsorile lui. */}
-        {barbers.length ? (
-          <>
-            <Text style={s.section}>{t('home.team')}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.md, paddingRight: space.md }}>
-              {barbers.map((b) => (
-                <Pressable
-                  key={b.id}
-                  onPress={() => router.push({ pathname: '/barber/[id]', params: { id: b.id } })}
-                  style={({ pressed }) => [{ width: 84, alignItems: 'center', gap: 6 }, pressed && { opacity: 0.8 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={b.name}
-                >
-                  <Avatar barber={b} size={72} />
-                  <Text style={[s.small, { color: colors.text, textAlign: 'center' }]} numberOfLines={1}>
-                    {b.nickname || b.name.split(' ')[0]}
-                  </Text>
-                  {b.album?.length ? (
-                    <View style={[s.row, { gap: 3, marginTop: -4 }]}>
-                      <Ionicons name="images-outline" size={12} color={colors.gold} />
-                      <Text style={{ color: colors.gold, fontSize: 12 }}>{b.album.length}</Text>
-                    </View>
-                  ) : null}
-                </Pressable>
-              ))}
-            </ScrollView>
           </>
         ) : null}
 

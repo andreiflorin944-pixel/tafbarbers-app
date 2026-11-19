@@ -23,7 +23,6 @@ export default function Barbers() {
             {b.bio ? (
               <Text style={[styles.muted, { marginTop: 4 }]}>{b.bio}</Text>
             ) : null}
-            {b.album?.length ? <Text style={[styles.muted, { marginTop: 4, fontSize: 13 }]}>{t('album.photos', { n: b.album.length })}</Text> : null}
           </View>
         </Card>
       ))}
