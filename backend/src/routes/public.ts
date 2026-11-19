@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getAutomations, nearbyConfig } from '../growth';
+import { activeSeason, seasonPromo } from '../seasonCampaign';
 import { publicAppVersions } from '../stores';
 import { attributeQr, ipHash } from '../qr';
 import { accessFor, availability } from '../availability';
@@ -210,7 +211,11 @@ publicRoutes.get('/promos', async (c) => {
     .all<PromoRow>();
   // Bannerul „abonament personalizat” apare doar cât funcția e pornită din panou.
   const customOn = r.results.some((p) => p.action_type === 'custom_sub') && (await getCustomSubSettings(c.env)).enabled;
-  return c.json(r.results.filter((p) => p.action_type !== 'custom_sub' || customOn).map((p) => promo(p, lang)));
+  const list: Array<ReturnType<typeof promo> | ReturnType<typeof seasonPromo>> = r.results.filter((p) => p.action_type !== 'custom_sub' || customOn).map((p) => promo(p, lang));
+  // Campania de sezon (Crăciun, Paște...): primul banner, cât ține perioada setată în panou.
+  const season = await activeSeason(c.env);
+  if (season) list.unshift(seasonPromo(season, lang));
+  return c.json(list);
 });
 
 /** GET /availability?serviceId=…&barberId=…&locationId=…&day=YYYY-MM-DD (fără frizer: orice frizer din locație) */

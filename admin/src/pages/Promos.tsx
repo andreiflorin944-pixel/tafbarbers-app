@@ -35,6 +35,7 @@ export function PromosPage(_: { me: Me }) {
       </div>
       <p className="muted small" style={{ marginTop: -8 }}>
         Apar sus pe prima pagină a aplicației, în ordinea de mai jos, și se schimbă singure. Scrii doar în română; engleza și franceza se traduc singure la salvare.
+        Bannerul de sărbători (Crăciun, Paște…) cu pop-up se face din <a href="#/season">Campanie de sezon</a> și apare primul.
       </p>
       {!data.data ? (
         <Loading error={data.error} />

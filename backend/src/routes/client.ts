@@ -3,6 +3,7 @@ import { hashPassword, newId, normalizePhone, requireClient, sha256, tokenFrom, 
 import { clearFailures, lockedAny, loginKeys, recordFailure, validClientPassword } from '../clientPassword';
 import { checkCode, issueCode, useCode } from '../otp';
 import { createGiftCard, getAutomations, giftCard, sendNearby, type GiftCardRow } from '../growth';
+import { activeSeason, seasonTexts } from '../seasonCampaign';
 import { BOOKING_SELECT, cancelBooking, createBooking, reportLate } from '../bookings';
 import { booking, client, emailTaken, getBusiness, type BookingRow, type ClientRow } from '../db';
 import { createCheckout, publicBase } from '../payments';
@@ -189,7 +190,7 @@ clientRoutes.get('/me/subscriptions', async (c) => {
 // Carduri cadou: cele cumpărate de client și cele primite pe numărul lui de telefon.
 clientRoutes.get('/me/gift-cards', async (c) => {
   const id = c.get('client').clientId;
-  const me = await c.env.DB.prepare('SELECT phone, phone_unverified FROM clients WHERE id = ?').bind(id).first<{ phone: string; phone_unverified: number | null }>();
+  const me = await c.env.DB.prepare('SELECT phone, phone_unverified, lang FROM clients WHERE id = ?').bind(id).first<{ phone: string; phone_unverified: number | null; lang: string | null }>();
   // Cardurile primite pe număr se văd doar după ce numărul e dovedit cu cod prin SMS: altfel cine își face cont
   // cu numărul altcuiva (cod pe e-mail, Apple / Google) ar vedea codurile cardurilor trimise acelui număr.
   const myPhone = me && !me.phone_unverified ? me.phone : '';
@@ -200,10 +201,13 @@ clientRoutes.get('/me/gift-cards', async (c) => {
     .bind(id, myPhone)
     .all<GiftCardRow>();
   const s = (await getAutomations(c.env)).giftCard;
+  const season = await activeSeason(c.env);
   return c.json({
     enabled: s.enabled,
     amounts: s.amounts,
     validMonths: s.validMonths,
+    // Campania de sezon care duce la cardul cadou (ex. Crăciun): titlul de sus și urarea pusă din oficiu. null = nu e.
+    season: season?.target === 'gift_card' ? seasonTexts(season, c.req.query('lang') || me?.lang) : null,
     bought: r.results.filter((g) => g.buyer_client_id === id).map((g) => giftCard(g, true)),
     // Cel care primește vede codul doar după ce cardul a fost plătit.
     received: r.results.filter((g) => !!myPhone && g.recipient_phone === myPhone && g.buyer_client_id !== id).map((g) => giftCard(g, true)),

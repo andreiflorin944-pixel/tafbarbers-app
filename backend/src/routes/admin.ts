@@ -64,6 +64,7 @@ import {
   RENEWAL_COLS,
   RENEWAL_JOIN,
 } from '../subscriptions';
+import { getSeasonCampaign, saveSeasonCampaign, type SeasonCampaign } from '../seasonCampaign';
 import { customRefundBani, usedByService, ensureCustomPlan, getCustomSubSettings, quoteCustom, saveCustomSubSettings, type CustomSubSettings } from '../customSubs';
 import { setRenewal, stopPlanRenewals, stopRecurringFor } from '../recurring';
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
@@ -1367,6 +1368,9 @@ adminRoutes.post('/clients/:id/subscriptions', async (c) => {
 
 /** Setările abonamentului personalizat (reduceri pe număr de vizite, limite, durată, servicii). */
 adminRoutes.get('/custom-sub', async (c) => c.json(await getCustomSubSettings(c.env)));
+// Campania de sezon (Crăciun, Paște...): banner + pop-up în aplicație și pe site, între două zile.
+adminRoutes.get('/season-campaign', async (c) => c.json(await getSeasonCampaign(c.env)));
+adminRoutes.put('/season-campaign', ownerOnly, async (c) => c.json(await saveSeasonCampaign(c.env, await c.req.json<Partial<SeasonCampaign>>())));
 adminRoutes.put('/custom-sub', ownerOnly, async (c) => c.json(await saveCustomSubSettings(c.env, await c.req.json<Partial<CustomSubSettings>>())));
 /** Prețul unei combinații, pentru panou (merge și cu abonamentul personalizat oprit în aplicație). */
 adminRoutes.post('/custom-sub/quote', async (c) => {

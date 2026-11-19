@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, AppState, Linking, Pressable, Share, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, Linking, Pressable, Share, Text, TextInput, View } from 'react-native';
 import { api } from '@/api';
+import { mediaUrl } from '@/api/staff';
 import { useLoginGate } from '@/components/LoginGate';
 import { Button, Card, Screen, styles } from '@/components/ui';
 import type { GiftCard, GiftCards } from '@/data/types';
@@ -23,7 +24,7 @@ const STATUS: Record<GiftCard['status'], Key> = {
 // Card cadou: clientul alege suma și cui îl dă, plătește la salon, iar destinatarul primește codul.
 export default function GiftCardsScreen() {
   const { token, business } = useApp();
-  const { t } = useT();
+  const { t, lang } = useT();
   const gate = useLoginGate();
   const [data, setData] = useState<GiftCards | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,9 +36,18 @@ export default function GiftCardsScreen() {
   const [done, setDone] = useState(false);
 
   const load = useCallback(() => {
-    if (token) api.getGiftCards(token).then(setData, (e) => setError(errorMessage(e)));
-  }, [token]);
+    if (token) api.getGiftCards(token, lang).then(setData, (e) => setError(errorMessage(e)));
+  }, [token, lang]);
   useEffect(load, [load]);
+  // În campania de sezon (ex. Crăciun) urarea e gata scrisă; clientul o poate schimba sau șterge.
+  const seasonWish = data?.season?.wish ?? '';
+  const [wishSet, setWishSet] = useState(false);
+  useEffect(() => {
+    if (seasonWish && !wishSet) {
+      setMessage((m) => m || seasonWish);
+      setWishSet(true);
+    }
+  }, [seasonWish, wishSet]);
   // După plata online clientul revine din browser: reîncărcăm ca să apară codul.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => s === 'active' && load());
@@ -58,7 +68,7 @@ export default function GiftCardsScreen() {
       setAmount(null);
       setName('');
       setPhone('');
-      setMessage('');
+      setMessage(seasonWish);
       load();
     } catch (e) {
       setError(errorMessage(e));
@@ -88,8 +98,21 @@ export default function GiftCardsScreen() {
     }
   };
 
+  const season = data.enabled ? data.season : null;
+  const seasonImg = mediaUrl(season?.imageUrl);
   return (
     <Screen edges={['bottom']}>
+      {season ? (
+        // Campania de sezon: poza festivă și textul din panou, deasupra formularului.
+        <Card style={{ padding: 0, overflow: 'hidden', borderColor: colors.gold }}>
+          {seasonImg ? <Image source={{ uri: seasonImg }} style={{ width: '100%', aspectRatio: 2 }} resizeMode="cover" accessibilityLabel={season.title} /> : null}
+          <View style={{ padding: space.md, gap: 4 }}>
+            {season.kicker ? <Text style={{ color: colors.gold, fontWeight: '800', letterSpacing: 1.5, fontSize: 12 }}>{season.kicker}</Text> : null}
+            <Text style={[styles.cardTitle, { fontSize: 20 }]}>{season.title}</Text>
+            {season.text ? <Text style={styles.muted}>{season.text}</Text> : null}
+          </View>
+        </Card>
+      ) : null}
       {data.received.length ? (
         <>
           <Text style={[styles.label, { color: colors.gold }]}>{t('gift.received')}</Text>
