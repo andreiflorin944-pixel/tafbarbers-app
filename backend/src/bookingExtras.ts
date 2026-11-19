@@ -11,17 +11,29 @@ import { iso, localDay } from './time';
 
 /** Câte servicii se pot adăuga la aceeași programare (pe lângă cel principal). */
 export const MAX_EXTRAS = 3;
+/** Câte „extra fără timp” (ex. Spălat, Ceară pe față) se pot pune pe aceeași programare, separat de cele de mai sus. */
+export const MAX_ADDONS = 5;
 
-/** Lista curată: fără repetări, fără serviciul principal, cel mult MAX_EXTRAS. */
+/** Lista curată: fără repetări, fără serviciul principal; câte din fiecare fel se verifică în extraQuotes. */
 export function cleanExtraIds(raw: unknown, mainServiceId: string): string[] {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) throw new HttpError(400, 'invalid_extras');
   const ids = [...new Set(raw.map((x) => String(x ?? '').trim()).filter(Boolean))].filter((x) => x !== mainServiceId);
-  if (ids.length > MAX_EXTRAS) throw new HttpError(400, 'too_many_extras');
+  if (ids.length > MAX_EXTRAS + MAX_ADDONS) throw new HttpError(400, 'too_many_extras');
   return ids;
 }
 
-export type ExtraQuote = { serviceId: string; durationMin: number; priceBani: number };
+/** Cel mult MAX_EXTRAS servicii cu timp și MAX_ADDONS extra fără timp (verificat înainte de orele libere). */
+export async function checkExtraCounts(env: Env, ids: string[]) {
+  if (ids.length <= MAX_EXTRAS) return;
+  const r = await env.DB.prepare(`SELECT count(*) AS n FROM services WHERE addon = 1 AND id IN (${ids.map(() => '?').join(',')})`)
+    .bind(...ids)
+    .first<{ n: number }>();
+  const addons = r?.n ?? 0;
+  if (ids.length - addons > MAX_EXTRAS || addons > MAX_ADDONS) throw new HttpError(400, 'too_many_extras');
+}
+
+export type ExtraQuote = { serviceId: string; durationMin: number; priceBani: number; addon?: boolean };
 
 /**
  * Durata și prețul serviciilor adăugate la frizerul ales: ale lui (Frizeri → servicii), altfel cele standard,
@@ -31,21 +43,26 @@ export async function extraQuotes(env: Env, barberId: string, ids: string[]): Pr
   if (!ids.length) return [];
   const ph = ids.map(() => '?').join(',');
   const rows = await env.DB.prepare(
-    `SELECT s.id, s.duration_min, s.price_bani, bs.duration_min AS own_min, bs.price_bani AS own_bani, bs.barber_id AS has
+    `SELECT s.id, s.duration_min, s.price_bani, s.addon, bs.duration_min AS own_min, bs.price_bani AS own_bani, bs.barber_id AS has
      FROM services s LEFT JOIN barber_services bs ON bs.service_id = s.id AND bs.barber_id = ?
      WHERE s.active = 1 AND s.id IN (${ph})`,
   )
     .bind(barberId, ...ids)
-    .all<{ id: string; duration_min: number; price_bani: number; own_min: number | null; own_bani: number | null; has: string | null }>();
+    .all<{ id: string; duration_min: number; price_bani: number; addon: number; own_min: number | null; own_bani: number | null; has: string | null }>();
   const offers = await serviceOffers(env);
-  return ids.map((sid) => {
+  const out = ids.map((sid) => {
     const r = rows.results.find((x) => x.id === sid);
     if (!r) throw new HttpError(404, 'service_not_found');
-    if (!r.has) throw new HttpError(409, 'barber_no_service');
     const base = r.own_bani ?? r.price_bani;
     const offer = offers.get(sid);
-    return { serviceId: sid, durationMin: r.own_min ?? r.duration_min, priceBani: offer ? discounted(base, offer.percent) : base };
+    const priceBani = offer ? discounted(base, offer.percent) : base;
+    // Extra fără timp: îl poate face orice frizer (prețul propriu, dacă are), fără minute în plus.
+    if (r.addon) return { serviceId: sid, durationMin: 0, priceBani, addon: true };
+    if (!r.has) throw new HttpError(409, 'barber_no_service');
+    return { serviceId: sid, durationMin: r.own_min ?? r.duration_min, priceBani };
   });
+  if (out.filter((x) => !x.addon).length > MAX_EXTRAS || out.filter((x) => x.addon).length > MAX_ADDONS) throw new HttpError(400, 'too_many_extras');
+  return out;
 }
 
 export async function insertExtras(env: Env, bookingId: string, extras: ExtraQuote[]) {
@@ -87,9 +104,10 @@ export async function addExtra(env: Env, id: string, serviceIdRaw: unknown, who:
   const b = await editable(env, id, who);
   const have = b.extras.map((e) => e.serviceId);
   if (serviceId === b.serviceId || have.includes(serviceId)) throw new HttpError(409, 'service_already_added');
-  if (have.length >= MAX_EXTRAS) throw new HttpError(409, 'too_many_extras');
   const [q] = await extraQuotes(env, b.barberId, [serviceId]);
+  if (b.extras.filter((e) => !!e.addon === !!q.addon).length >= (q.addon ? MAX_ADDONS : MAX_EXTRAS)) throw new HttpError(409, 'too_many_extras');
   const isAdmin = 'adminId' in who;
+  if (q.addon) return addAddon(env, b, q, who, opts);
   const start = new Date(b.start);
   const end = new Date(Date.parse(b.end) + q.durationMin * 60_000);
 
@@ -123,12 +141,30 @@ export async function addExtra(env: Env, id: string, serviceIdRaw: unknown, who:
   return updated;
 }
 
+/** Extra fără timp: doar prețul crește; ora de final și calendarul rămân la fel. */
+async function addAddon(env: Env, b: NonNullable<Awaited<ReturnType<typeof getBooking>>>, q: ExtraQuote, who: Who, opts: { defer?: (p: Promise<unknown>) => void }) {
+  const isAdmin = 'adminId' in who;
+  const r = await env.DB.prepare(`UPDATE bookings SET price_bani = price_bani + ? WHERE id = ? AND status IN ${HOLDS_SLOT} AND online_paid_bani IS NULL`)
+    .bind(q.priceBani, b.id)
+    .run();
+  if (!r.meta.changes) throw new HttpError(409, 'booking_not_editable');
+  await insertExtras(env, b.id, [q]);
+  const updated = (await getBooking(env, b.id))!;
+  const name = updated.extras.find((e) => e.serviceId === q.serviceId)?.name ?? '';
+  await logBookingEvent(env, b.id, 'extra_added', { service: name, price: q.priceBani / 100, minutes: 0, by: isAdmin ? 'staff' : 'client' }, isAdmin ? who.adminId : null);
+  const send = notifyStaff(env, updated, 'extra', isAdmin ? who.adminId : null, { extraName: name });
+  if (opts.defer) opts.defer(send);
+  else await send;
+  return updated;
+}
+
 /** Scoate un serviciu adăugat: programarea se scurtează și prețul scade cu cât a crescut la adăugare. */
 export async function removeExtra(env: Env, id: string, extraId: string, who: Who) {
   const b = await editable(env, id, who);
   const x = b.extras.find((e) => e.id === extraId);
   if (!x) throw new HttpError(404, 'extra_not_found');
-  const end = new Date(Math.max(Date.parse(b.start) + 5 * 60_000, Date.parse(b.end) - x.durationMin * 60_000));
+  // Extra fără timp: durata 0, deci ora de final rămâne aceeași.
+  const end = x.addon || !x.durationMin ? new Date(b.end) : new Date(Math.max(Date.parse(b.start) + 5 * 60_000, Date.parse(b.end) - x.durationMin * 60_000));
   const bani = Math.round(x.price * 100);
   const res = await env.DB.prepare(`UPDATE bookings SET ends_at = ?, price_bani = max(0, price_bani - ?) WHERE id = ? AND ends_at = ? AND online_paid_bani IS NULL`)
     .bind(iso(end), bani, id, b.end)

@@ -68,7 +68,7 @@ export function BookingSheet({
   const [saved, setSaved] = useState<string | null>(null);
   const [extraOpen, setExtraOpen] = useState(false);
   const services = useStaffServices();
-  const { barbers } = useApp();
+  const { barbers, addons } = useApp();
   useEffect(() => {
     setCheckout(false);
     setMode("view");
@@ -106,7 +106,7 @@ export function BookingSheet({
       nb = await staffApi.addExtra(staffToken, b.id, serviceId, true);
     }
     onChange({ ...b, ...nb });
-    setSaved(t("extra.added"));
+    setSaved(t(addons.some((a) => a.id === serviceId) ? "addon.added" : "extra.added"));
   };
   const removeExtra = async (extraId: string, name: string) => {
     if (!(await askYes(t("extra.removeAsk", { name })))) return;
@@ -339,7 +339,7 @@ export function BookingSheet({
                 {(b.extras ?? []).map((e) => (
                   <Button key={e.id} title={t("extra.removeStaff", { name: e.name })} variant="ghost" onPress={() => removeExtra(e.id, e.name)} />
                 ))}
-                {addableServices(b as never, services, barbers.find((x) => x.id === b.barberId)).length ? (
+                {addableServices(b as never, services, barbers.find((x) => x.id === b.barberId), { addons }).length ? (
                   <Button title={t("extra.add")} variant="ghost" onPress={() => setExtraOpen(true)} />
                 ) : null}
               </>

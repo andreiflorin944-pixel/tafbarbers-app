@@ -13,6 +13,7 @@ const HELP: Record<string, string> = {
   bookings: 'Toate programările din perioadă, cu filtre după frizer, serviciu și stare.',
   'sales-barber': 'Ce a încasat fiecare frizer: servicii finalizate, abonamente vândute și bacșiș.',
   'sales-service': 'Câte servicii de fiecare fel s-au făcut și cât au adus.',
+  'sales-addons': 'Extra fără timp (ex. Spălat, Ceară pe față) puse pe programările finalizate: de câte ori și cât au adus. Suma e inclusă și în încasările serviciilor.',
   'bookings-barber': 'Câte programări a avut fiecare frizer și cum s-au încheiat.',
   upcoming: 'Programările confirmate care urmează.',
   'cancel-staff': 'Programările anulate de echipă și cine le-a anulat.',

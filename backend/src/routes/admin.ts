@@ -613,19 +613,24 @@ adminRoutes.patch('/orders/:id', async (c) => {
 
 // --- Servicii ---
 
+// `?addons=1`: doar „extra fără timp” (ex. Spălat, Ceară pe față); `?addons=all`: toate. Fără: doar serviciile care se programează.
 adminRoutes.get('/services', async (c) => {
-  const r = await c.env.DB.prepare('SELECT * FROM services ORDER BY sort, name').all<ServiceRow>();
+  const q = c.req.query('addons');
+  const where = q === 'all' ? '' : q === '1' ? 'WHERE addon = 1' : 'WHERE addon = 0';
+  const r = await c.env.DB.prepare(`SELECT * FROM services ${where} ORDER BY sort, name`).all<ServiceRow>();
   return c.json(await withTranslations(c.env, r.results.map(service), ['name', 'description']));
 });
 
 adminRoutes.post('/services', ownerOnly, async (c) => {
   const b = await c.req.json<ServiceInput>();
   const id = newId('svc');
+  // Extra fără timp: durata e mereu 0 (nu ocupă loc în calendar).
+  if (b.addon) b.durationMin = 0;
   const v = serviceValues(b, true);
   await c.env.DB.prepare(
-    'INSERT INTO services (id, name, description, duration_min, price_bani, color, image_url, sort, active, members_only) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO services (id, name, description, duration_min, price_bani, color, image_url, sort, active, members_only, addon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
-    .bind(id, v.name, v.description ?? '', v.duration_min, v.price_bani, v.color ?? '#3B3FE0', v.image_url ?? null, v.sort ?? 0, v.active ?? 1, v.members_only ?? 0)
+    .bind(id, v.name, v.description ?? '', v.duration_min, v.price_bani, v.color ?? '#3B3FE0', v.image_url ?? null, v.sort ?? 0, v.active ?? 1, v.members_only ?? 0, b.addon ? 1 : 0)
     .run();
   // Serviciu nou: implicit îl fac toți frizerii.
   await c.env.DB.prepare('INSERT INTO barber_services (barber_id, service_id) SELECT id, ? FROM barbers').bind(id).run();
@@ -635,8 +640,10 @@ adminRoutes.post('/services', ownerOnly, async (c) => {
 
 adminRoutes.patch('/services/:id', ownerOnly, async (c) => {
   const b = await c.req.json<ServiceInput>();
+  const prev = await c.env.DB.prepare('SELECT name, description, addon FROM services WHERE id = ?').bind(c.req.param('id')!).first<{ name: string; description: string; addon: number }>();
+  // Felul (serviciu sau extra fără timp) nu se schimbă după creare; la un extra durata rămâne 0.
+  if (prev?.addon) delete b.durationMin;
   const v = serviceValues(b, false);
-  const prev = await c.env.DB.prepare('SELECT name, description FROM services WHERE id = ?').bind(c.req.param('id')!).first<{ name: string; description: string }>();
   await update(c.env.DB, 'services', c.req.param('id')!, v);
   const r = await c.env.DB.prepare('SELECT * FROM services WHERE id = ?').bind(c.req.param('id')!).first<ServiceRow>();
   if (!r) throw new HttpError(404, 'not_found');
@@ -664,6 +671,8 @@ type ServiceInput = {
   sort?: number;
   active?: boolean;
   membersOnly?: boolean;
+  /** Doar la creare: „extra fără timp” (ex. Spălat), cu preț și fără durată. */
+  addon?: boolean;
 };
 function serviceValues(b: ServiceInput, create: boolean) {
   const v: Record<string, unknown> = {};
@@ -672,7 +681,7 @@ function serviceValues(b: ServiceInput, create: boolean) {
     v.name = b.name.trim().slice(0, 120);
   }
   if (b.durationMin !== undefined || create) {
-    if (!Number.isInteger(b.durationMin) || b.durationMin! < 5 || b.durationMin! > 480) throw new HttpError(400, 'invalid_duration');
+    if (!(create && b.addon && b.durationMin === 0) && (!Number.isInteger(b.durationMin) || b.durationMin! < 5 || b.durationMin! > 480)) throw new HttpError(400, 'invalid_duration');
     v.duration_min = b.durationMin;
   }
   if (b.price !== undefined || create) {
@@ -869,8 +878,19 @@ async function saveBarberRelations(db: D1Database, id: string, b: Pick<BarberInp
       .bind(id)
       .all<{ service_id: string; price_bani: number | null; duration_min: number | null }>();
     const keep = new Map(old.results.map((r) => [r.service_id, r]));
-    stmts.push(db.prepare('DELETE FROM barber_services WHERE barber_id = ?').bind(id));
-    for (const s of b.serviceIds) {
+    // Extra-urile fără timp le face orice frizer: rândurile lor (prețul propriu) nu se șterg când lista nu le conține
+    // (ex. aplicația echipei, care trimite doar serviciile); se salvează doar prețul primit pentru ele.
+    const addonIds = new Set((await db.prepare('SELECT id FROM services WHERE addon = 1').all<{ id: string }>()).results.map((r) => r.id));
+    stmts.push(db.prepare('DELETE FROM barber_services WHERE barber_id = ? AND service_id NOT IN (SELECT id FROM services WHERE addon = 1)').bind(id));
+    for (const s of addonIds) {
+      if (!prices.has(s)) continue;
+      stmts.push(
+        db
+          .prepare('INSERT INTO barber_services (barber_id, service_id, price_bani) VALUES (?, ?, ?) ON CONFLICT (barber_id, service_id) DO UPDATE SET price_bani = excluded.price_bani')
+          .bind(id, s, prices.get(s)!),
+      );
+    }
+    for (const s of b.serviceIds.filter((x) => !addonIds.has(x))) {
       const price = prices.has(s) ? prices.get(s)! : (keep.get(s)?.price_bani ?? null);
       const dur = durations.has(s) ? durations.get(s)! : (keep.get(s)?.duration_min ?? null);
       stmts.push(db.prepare('INSERT INTO barber_services (barber_id, service_id, price_bani, duration_min) VALUES (?, ?, ?, ?)').bind(id, s, price, dur));

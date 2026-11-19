@@ -10,12 +10,12 @@ const ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 export function BarbersPage(_: { me: Me }) {
   const data = useLoad(() =>
-    Promise.all([api<Barber[]>('GET', '/admin/barbers'), api<Service[]>('GET', '/admin/services'), api<Location[]>('GET', '/admin/locations')]),
+    Promise.all([api<Barber[]>('GET', '/admin/barbers'), api<Service[]>('GET', '/admin/services'), api<Location[]>('GET', '/admin/locations'), api<Service[]>('GET', '/admin/services?addons=1')]),
   );
   const [edit, setEdit] = useState<Partial<Barber> | null>(null);
   // Programările rămase în afara programului nou (după „Salvează”).
   const [affected, setAffected] = useState<Booking[]>([]);
-  const [barbers, services, locations] = data.data ?? [[], [], []];
+  const [barbers, services, locations, addons] = data.data ?? [[], [], [], []];
   // Locația se arată pe fișe doar când salonul are mai multe.
   const locName = (id: string | null) => (locations.length > 1 ? (locations.find((l) => l.id === id)?.name ?? '') : '');
 
@@ -75,6 +75,7 @@ export function BarbersPage(_: { me: Me }) {
         <BarberModal
           b={edit}
           services={services}
+          addons={addons}
           locations={locations}
           onClose={() => setEdit(null)}
           onDone={(list) => {
@@ -92,12 +93,15 @@ export function BarbersPage(_: { me: Me }) {
 function BarberModal({
   b,
   services,
+  addons,
   locations,
   onClose,
   onDone,
 }: {
   b: Partial<Barber>;
   services: Service[];
+  /** „Extra fără timp”: le face orice frizer; aici se pune doar prețul lui propriu. */
+  addons: Service[];
   locations: Location[];
   onClose: () => void;
   onDone: (affected: Booking[]) => void;
@@ -125,7 +129,7 @@ function BarberModal({
   const save = () =>
     run(async () => {
       const own = Object.fromEntries(
-        services.map((s) => {
+        [...services, ...addons].map((s) => {
           const t = (prices[s.id] ?? '').trim().replace(',', '.');
           return [s.id, t === '' || Number(t) === s.price ? null : Number(t)];
         }),
@@ -314,6 +318,34 @@ function BarberModal({
             </div>
           ))}
         </div>
+        {addons.filter((a) => a.active).length ? (
+          <>
+            <h2 style={{ marginTop: 6, marginBottom: 0 }}>Extra fără timp</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Ex. Spălat, Ceară pe față. Le poate pune orice frizer pe o programare. Lasă gol pentru prețul standard sau scrie prețul doar pentru acest frizer.
+            </p>
+            <div className="grid">
+              {addons
+                .filter((a) => a.active)
+                .map((s) => (
+                  <div key={s.id} className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap', gap: 10 }}>
+                    <span className="small" style={{ flex: 1 }}>
+                      {s.name}
+                    </span>
+                    <input
+                      aria-label={`Preț ${s.name}`}
+                      style={{ width: 110 }}
+                      inputMode="decimal"
+                      placeholder={`${s.price} lei`}
+                      value={prices[s.id] ?? ''}
+                      onChange={(e) => setPrices((p) => ({ ...p, [s.id]: e.target.value }))}
+                    />
+                    <span style={{ width: 90 }} />
+                  </div>
+                ))}
+            </div>
+          </>
+        ) : null}
         <label className="check">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Activ (apare în aplicație și primește programări)
         </label>

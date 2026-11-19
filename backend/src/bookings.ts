@@ -11,7 +11,7 @@ import { locationVars } from './locations';
 import { discounted, serviceOffers } from './offers';
 import { notifyStaff } from './staffNotify';
 import { recordServerError } from './serverErrors';
-import { cleanExtraIds, extraQuotes, insertExtras } from './bookingExtras';
+import { checkExtraCounts, cleanExtraIds, extraQuotes, insertExtras } from './bookingExtras';
 
 /** Stările care țin ora ocupată: programările confirmate și cererile încă fără răspuns. */
 export const HOLDS_SLOT = `('confirmed','requested')`;
@@ -25,7 +25,7 @@ export function needsApproval(biz: { requireApproval?: boolean; approvalBarberId
 
 export const BOOKING_SELECT = `
   SELECT b.*, c.name AS client_name, c.phone AS client_phone, c.birth_date AS client_birth_date, s.name AS service_name, br.name AS barber_name, loc.name AS location_name,
-    (SELECT json_group_array(json_object('id', e.id, 'serviceId', e.service_id, 'name', es.name, 'durationMin', e.duration_min, 'price', e.price_bani))
+    (SELECT json_group_array(json_object('id', e.id, 'serviceId', e.service_id, 'name', es.name, 'durationMin', e.duration_min, 'price', e.price_bani, 'addon', es.addon))
        FROM booking_extras e JOIN services es ON es.id = e.service_id WHERE e.booking_id = b.id) AS extras_json
   FROM bookings b
   JOIN clients c ON c.id = b.client_id
@@ -66,11 +66,14 @@ export async function createBooking(
 ) {
   const start = new Date(input.start);
   if (Number.isNaN(start.getTime())) throw new HttpError(400, 'invalid_start');
-  const service = await env.DB.prepare('SELECT id, duration_min, price_bani FROM services WHERE id = ?')
+  const service = await env.DB.prepare('SELECT id, duration_min, price_bani, addon FROM services WHERE id = ?')
     .bind(input.serviceId)
-    .first<{ id: string; duration_min: number; price_bani: number }>();
+    .first<{ id: string; duration_min: number; price_bani: number; addon: number }>();
   if (!service) throw new HttpError(404, 'service_not_found');
+  // „Extra fără timp” (ex. Spălat) nu e o programare de sine stătătoare.
+  if (service.addon) throw new HttpError(400, 'addon_not_bookable');
   const extraIds = cleanExtraIds(input.extraServiceIds, service.id);
+  await checkExtraCounts(env, extraIds);
 
   let barberId = input.barberId;
   if (!input.skipAvailabilityCheck) {
@@ -294,10 +297,11 @@ export async function editBooking(env: Env, id: string, input: BookingEdit, admi
   const serviceChanged = serviceId !== cur.serviceId;
   const moved = barberChanged || start.getTime() !== Date.parse(cur.start);
 
-  const service = await env.DB.prepare('SELECT id, name, duration_min, price_bani FROM services WHERE id = ?')
+  const service = await env.DB.prepare('SELECT id, name, duration_min, price_bani, addon FROM services WHERE id = ?')
     .bind(serviceId)
-    .first<{ id: string; name: string; duration_min: number; price_bani: number }>();
+    .first<{ id: string; name: string; duration_min: number; price_bani: number; addon: number }>();
   if (!service) throw new HttpError(404, 'service_not_found');
+  if (service.addon && serviceChanged) throw new HttpError(400, 'addon_not_bookable');
   if (barberChanged) {
     const br = await env.DB.prepare('SELECT active FROM barbers WHERE id = ?').bind(barberId).first<{ active: number }>();
     if (!br?.active) throw new HttpError(404, 'barber_not_found');

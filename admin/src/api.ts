@@ -76,7 +76,8 @@ const MESSAGES: Record<string, string> = {
   confirm_required: 'Scrie STERGE ca să confirmi.',
   no_time_for_extra: 'Nu mai e timp liber după programare pentru acest serviciu (urmează altă programare sau se termină programul).',
   service_already_added: 'Serviciul e deja pe programare.',
-  too_many_extras: 'Se pot adăuga cel mult 3 servicii la o programare.',
+  too_many_extras: 'Se pot adăuga cel mult 3 servicii cu timp și 5 extra fără timp la o programare.',
+  addon_not_bookable: 'Un extra fără timp nu se programează singur: adaugă-l pe o programare.',
   barber_no_service: 'Frizerul nu face acest serviciu (Frizeri → servicii).',
   booking_changed: 'Programarea s-a schimbat între timp. Redeschide-o și încearcă din nou.',
   booking_not_editable: 'Programarea nu se mai poate modifica: doar cele confirmate se mută sau se schimbă.',
@@ -335,6 +336,8 @@ export type Service = {
   active: boolean;
   /** Îl văd doar membrii TAF Club (sau cei cu abonament activ). */
   membersOnly?: boolean;
+  /** „Extra fără timp” (ex. Spălat, Ceară pe față): se pune pe o programare, are preț, nu are durată. */
+  addon?: boolean;
 };
 export type Hours = { weekday: number; start: number; end: number };
 export type Barber = {
@@ -378,7 +381,7 @@ export type Location = {
   /** Câte programări viitoare (confirmate sau cereri) are (pentru avertismentul la dezactivare). */
   futureBookings?: number;
 };
-export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number };
+export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number; addon?: boolean };
 export type Booking = {
   id: string;
   /** Clientul are poze sau descriere în TAF Identity (doar în lista din calendar). */

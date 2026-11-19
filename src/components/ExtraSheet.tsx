@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, Icon, styles as ui } from '@/components/ui';
 import type { Barber, Booking, Service } from '@/data/types';
 import { useT } from '@/i18n';
+import { useApp } from '@/state/AppState';
 import { doesService } from '@/lib/bookFlow';
 import { errorMessage } from '@/lib/errors';
 import { barberDuration, barberPrice, lei } from '@/lib/price';
@@ -15,16 +16,29 @@ import { colors, radius, space } from '@/theme';
 /** Câte servicii se pot adăuga la aceeași programare (ca pe server). */
 export const MAX_EXTRAS = 3;
 
-/** Serviciile care se mai pot adăuga: le face frizerul, nu sunt deja pe programare. */
-export function addableServices(b: Booking, services: Service[], barber: Barber | undefined, opts: { hideMembersOnly?: boolean } = {}) {
-  if ((b.extras?.length ?? 0) >= MAX_EXTRAS) return [];
-  return services.filter(
-    (s) =>
-      s.id !== b.serviceId &&
-      !b.extras?.some((e) => e.serviceId === s.id) &&
-      (!barber || doesService(barber, s.id)) &&
-      !(opts.hideMembersOnly && s.membersOnly),
-  );
+/** Câte „extra fără timp” (ex. Spălat) se pot pune pe aceeași programare, separat de serviciile de mai sus. */
+export const MAX_ADDONS = 5;
+
+/**
+ * Ce se mai poate adăuga: serviciile pe care le face frizerul (cu timp) și extra-urile fără timp (orice frizer),
+ * fără cele deja puse pe programare.
+ */
+export function addableServices(b: Booking, services: Service[], barber: Barber | undefined, opts: { hideMembersOnly?: boolean; addons?: Service[] } = {}) {
+  const extras = b.extras ?? [];
+  const timed =
+    extras.filter((e) => !e.addon).length >= MAX_EXTRAS
+      ? []
+      : services.filter(
+          (s) =>
+            !s.addon &&
+            s.id !== b.serviceId &&
+            !extras.some((e) => e.serviceId === s.id) &&
+            (!barber || doesService(barber, s.id)) &&
+            !(opts.hideMembersOnly && s.membersOnly),
+        );
+  const addons =
+    extras.filter((e) => e.addon).length >= MAX_ADDONS ? [] : (opts.addons ?? []).filter((s) => s.addon && !extras.some((e) => e.serviceId === s.id));
+  return [...timed, ...addons];
 }
 
 export function ExtraSheet({
@@ -44,7 +58,8 @@ export function ExtraSheet({
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const list = addableServices(booking, services, barber, { hideMembersOnly: true });
+  const { addons } = useApp();
+  const list = addableServices(booking, services, barber, { hideMembersOnly: true, addons });
 
   const add = async (id: string) => {
     setBusy(id);
@@ -74,7 +89,7 @@ export function ExtraSheet({
                 <View style={{ flex: 1 }}>
                   <Text style={ui.cardTitle}>{x.name}</Text>
                   <Text style={ui.muted}>
-                    +{barberDuration(x, barber)} min · +{lei(barberPrice(x, barber))}
+                    {x.addon ? t('addon.noTime') : `+${barberDuration(x, barber)} min`} · +{lei(barberPrice(x, barber))}
                   </Text>
                 </View>
                 {busy === x.id ? <Text style={ui.muted}>…</Text> : null}

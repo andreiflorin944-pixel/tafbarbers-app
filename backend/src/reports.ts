@@ -16,6 +16,7 @@ export const REPORTS = [
   { kind: 'bookings', title: 'Lista programărilor', range: 'period' },
   { kind: 'sales-barber', title: 'Vânzări pe membru de echipă', range: 'period' },
   { kind: 'sales-service', title: 'Vânzări pe servicii', range: 'period' },
+  { kind: 'sales-addons', title: 'Extra fără timp (spălat, ceară...)', range: 'period' },
   { kind: 'bookings-barber', title: 'Rezervări pe membru de echipă', range: 'period' },
   { kind: 'upcoming', title: 'Rezervări viitoare', range: 'future' },
   { kind: 'cancel-staff', title: 'Anulări din partea echipei', range: 'period' },
@@ -132,6 +133,24 @@ async function loadBookings(env: Env, scope: Scope, from: string, to: string, f:
   return r.results;
 }
 
+/** „Extra fără timp” (ex. Spălat) puse pe programările finalizate din perioadă; prețul lor e deja în prețul programării. */
+async function loadAddons(env: Env, scope: Scope, from: string, to: string, f: { barberId?: string } = {}) {
+  const { start, end } = range(from, to);
+  const where = ["b.starts_at >= ?", "b.starts_at < ?", "b.status = 'completed'", 's.addon = 1'];
+  const vals: unknown[] = [start, end];
+  const barber = scope.barberId ?? f.barberId;
+  if (barber) where.push('b.barber_id = ?'), vals.push(barber);
+  if (scope.locationId) where.push('b.location_id = ?'), vals.push(scope.locationId);
+  const r = await env.DB.prepare(
+    `SELECT e.service_id, s.name, e.price_bani, b.barber_id, br.name AS barber_name, b.payment
+     FROM booking_extras e JOIN bookings b ON b.id = e.booking_id JOIN services s ON s.id = e.service_id JOIN barbers br ON br.id = b.barber_id
+     WHERE ${where.join(' AND ')} LIMIT 30000`,
+  )
+    .bind(...vals)
+    .all<{ service_id: string; name: string; price_bani: number; barber_id: string; barber_name: string; payment: string | null }>();
+  return r.results;
+}
+
 /** Abonamentele și cardurile cadou vândute în perioadă (cardul se numără la încasare). Un cont fără „toate programările” vede doar ce a încasat el. */
 async function loadSubscriptions(env: Env, scope: Scope, from: string, to: string) {
   const { start, end } = range(from, to);
@@ -239,7 +258,12 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
 
   switch (kind) {
     case 'day': {
-      const [bk, subs, firsts] = await Promise.all([loadBookings(env, scope, from, to, filters), loadSubscriptions(env, scope, from, to), firstVisits(env)]);
+      const [bk, subs, firsts, addons] = await Promise.all([
+        loadBookings(env, scope, from, to, filters),
+        loadSubscriptions(env, scope, from, to),
+        firstVisits(env),
+        loadAddons(env, scope, from, to, filters),
+      ]);
       const visits = bk.filter((b) => isVisit(b, now));
       const clientsSeen = new Set(visits.map((b) => b.client_id));
       const newClients = [...clientsSeen].filter((id) => (firsts.get(id) ?? '') >= range(from, to).start).length;
@@ -271,6 +295,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
           line('Încasat din servicii (lei)', lei(cuts)),
           line('Încasat din abonamente și carduri cadou (lei)', lei(subsSum)),
           line('Bacșiș (lei)', lei(tips)),
+          line(`Extra fără timp: ${addons.length} (lei, incluși în servicii)`, lei(addons.reduce((n, x) => n + x.price_bani, 0))),
           line('Total încasat, fără bacșiș (lei)', lei(cuts + subsSum)),
         );
       for (const [, list] of group(bk.filter((b) => b.status !== 'cancelled'), (b) => b.barber_name)) {
@@ -375,6 +400,28 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
       });
       rows.sort((a, b) => Number(b.paid) - Number(a.paid) || Number(b.count) - Number(a.count));
       totals = sumRows(rows, columns, 'Total');
+      totals.share = all ? 100 : 0;
+      break;
+    }
+
+    case 'sales-addons': {
+      const list = await loadAddons(env, scope, from, to, filters);
+      columns = [
+        { key: 'service', label: 'Extra', type: 'text' },
+        { key: 'count', label: 'De câte ori', type: 'int' },
+        { key: 'value', label: 'Valoare (lei)', type: 'money' },
+        { key: 'byBarber', label: 'Pe frizeri', type: 'text' },
+        { key: 'share', label: '% din total extra', type: 'pct' },
+      ];
+      const all = list.reduce((n, x) => n + x.price_bani, 0);
+      rows = [...group(list, (x) => x.service_id).values()].map((xs) => {
+        const sum = xs.reduce((n, x) => n + x.price_bani, 0);
+        const per = [...group(xs, (x) => x.barber_id).values()].map((ys) => `${ys[0].barber_name}: ${ys.length}`).join(', ');
+        return { service: xs[0].name, count: xs.length, value: lei(sum), byBarber: per, share: pct(sum, all) };
+      });
+      rows.sort((a, b) => Number(b.value) - Number(a.value) || Number(b.count) - Number(a.count));
+      totals = sumRows(rows, columns, 'Total');
+      totals.byBarber = null;
       totals.share = all ? 100 : 0;
       break;
     }
@@ -826,7 +873,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
   // Fără dreptul „Încasări”, coloanele cu bani nu pleacă de pe server.
   // Excepție: în registrul lui, frizerul își vede încasările (le-a încasat chiar el).
   if (!perms.stats && !(kind === 'register' && scope.barberId)) {
-    const money = new Set(columns.filter((c) => c.type === 'money' || (c.key === 'share' && kind === 'sales-service')).map((c) => c.key));
+    const money = new Set(columns.filter((c) => c.type === 'money' || (c.key === 'share' && (kind === 'sales-service' || kind === 'sales-addons'))).map((c) => c.key));
     columns = columns.filter((c) => !money.has(c.key));
     const keep = new Set(columns.map((c) => c.key));
     const strip = (r: Row) => Object.fromEntries(Object.entries(r).filter(([k]) => keep.has(k)));

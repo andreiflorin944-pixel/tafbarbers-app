@@ -251,9 +251,19 @@ export function BookingPanel({
   const [addId, setAddId] = useState('');
   const [noTime, setNoTime] = useState(false);
   const barberOfBooking = barbers.find((x) => x.id === b.barberId);
-  const addable = services.filter(
-    (s) => s.active && s.id !== b.serviceId && !extras.some((e) => e.serviceId === s.id) && (!barberOfBooking?.serviceIds || barberOfBooking.serviceIds.includes(s.id)),
-  );
+  // „Extra fără timp” (ex. Spălat): orice frizer, doar prețul se adună; cel mult 5, separat de cele 3 servicii cu timp.
+  const addonList = useLoad(() => api<Service[]>('GET', '/admin/services?addons=1'), []);
+  const timedCount = extras.filter((e) => !e.addon).length;
+  const addonCount = extras.filter((e) => e.addon).length;
+  const addable = [
+    ...(timedCount < 3
+      ? services.filter(
+          (s) => s.active && s.id !== b.serviceId && !extras.some((e) => e.serviceId === s.id) && (!barberOfBooking?.serviceIds || barberOfBooking.serviceIds.includes(s.id)),
+        )
+      : []),
+    ...(addonCount < 5 ? (addonList.data ?? []).filter((s) => s.active && !extras.some((e) => e.serviceId === s.id)) : []),
+  ];
+  const addingAddon = !!addonList.data?.some((s) => s.id === addId);
   const applyExtra = (nb: Booking, text: string) => {
     const next = { ...b, ...nb };
     setB(next);
@@ -268,14 +278,14 @@ export function BookingPanel({
         const nb = await api<Booking>('POST', `/admin/bookings/${b.id}/extras`, { serviceId: addId, force: forceAdd });
         setAddOpen(false);
         setNoTime(false);
-        applyExtra(nb, 'Serviciul a fost adăugat. Programarea s-a prelungit și prețul s-a actualizat.');
+        applyExtra(nb, addingAddon ? 'Extra adăugat. Prețul s-a actualizat, ora rămâne aceeași.' : 'Serviciul a fost adăugat. Programarea s-a prelungit și prețul s-a actualizat.');
       } catch (e) {
         if ((e as Error)?.message === 'no_time_for_extra' && !forceAdd) setNoTime(true);
         throw e;
       }
     });
   const removeExtra = (extraId: string, name: string) => {
-    if (!confirm(`Scoți „${name}” de pe programare? Timpul și prețul scad înapoi.`)) return;
+    if (!confirm(`Scoți „${name}” de pe programare? Prețul (și timpul, dacă are) scad înapoi.`)) return;
     run(async () => applyExtra(await api<Booking>('DELETE', `/admin/bookings/${b.id}/extras/${extraId}`), 'Serviciul a fost scos de pe programare.'));
   };
 
@@ -603,7 +613,7 @@ export function BookingPanel({
                     <div style={{ flex: 1 }}>
                       <b>{e.name}</b>
                       <div className="muted small">
-                        {e.durationMin} min · {lei(e.price)}
+                        {e.addon ? 'fără timp' : `${e.durationMin} min`} · {lei(e.price)}
                       </div>
                     </div>
                     {canExtra ? (
@@ -614,14 +624,14 @@ export function BookingPanel({
                   </div>
                 );
               })}
-              {canExtra && extras.length < 3 ? (
+              {canExtra && addable.length ? (
                 addOpen ? (
                   <div className="bk-edit">
                     <select value={addId} onChange={(e) => setAddId(e.target.value)} aria-label="Serviciul adăugat">
-                      <option value="">Alege serviciul…</option>
+                      <option value="">Alege serviciul sau extra…</option>
                       {addable.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name} · +{barberOfBooking?.durations?.[s.id] ?? s.durationMin} min · +{lei(barberOfBooking?.prices?.[s.id] ?? s.price)}
+                          {s.addon ? `${s.name} · fără timp` : `${s.name} · +${barberOfBooking?.durations?.[s.id] ?? s.durationMin} min`} · +{lei(barberOfBooking?.prices?.[s.id] ?? s.price)}
                         </option>
                       ))}
                     </select>
@@ -646,8 +656,8 @@ export function BookingPanel({
                       <Icon name="plus" />
                     </span>
                     <div>
-                      <b>Adaugă serviciu</b>
-                      <div className="muted small">ex. Vopsit barbă după tuns; timpul și prețul se adună</div>
+                      <b>Adaugă serviciu sau extra</b>
+                      <div className="muted small">ex. Vopsit barbă (timp + preț) sau Spălat, Ceară (doar preț)</div>
                     </div>
                     <span className="bk-chev">›</span>
                   </button>
