@@ -104,6 +104,7 @@ function RootStack() {
       <Stack.Screen name="before-after" options={{ title: t('nav.beforeAfter') }} />
       <Stack.Screen name="book/index" options={{ headerShown: false }} />
       <Stack.Screen name="barbers" options={{ title: t('nav.barbers') }} />
+      <Stack.Screen name="barber/[id]" options={{ title: t('nav.barber') }} />
       <Stack.Screen name="service/[id]" options={{ title: '', headerTransparent: true }} />
       <Stack.Screen name="legal/[doc]" options={{ title: '' }} />
       <Stack.Screen name="staff/login" options={{ title: t('nav.staffLogin'), presentation: 'modal', headerLeft: () => <HeaderBack /> }} />
@@ -114,6 +115,7 @@ function RootStack() {
       <Stack.Screen name="staff/reports" options={{ title: t('nav.reports') }} />
       <Stack.Screen name="staff/register" options={{ title: t('nav.register') }} />
       <Stack.Screen name="staff/notes" options={{ title: t('nav.myNotes') }} />
+      <Stack.Screen name="staff/album" options={{ title: t('nav.myAlbum') }} />
       <Stack.Screen name="staff/hours" options={{ title: t('nav.hours') }} />
       <Stack.Screen name="staff/services" options={{ title: t('nav.services') }} />
       <Stack.Screen name="staff/new" options={{ title: t('nav.newBooking') }} />

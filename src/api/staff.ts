@@ -1,4 +1,4 @@
-import type { Bonus, Identity, IdentityPhoto, Plan, Service, Subscription, BookingExtra } from '@/data/types';
+import type { AlbumPhoto, Bonus, Identity, IdentityPhoto, Plan, Service, Subscription, BookingExtra } from '@/data/types';
 import Constants from 'expo-constants';
 import { tr, type Key } from '@/i18n';
 import { ApiError } from './client';
@@ -205,6 +205,23 @@ export const staffApi = {
     return json as { photoUrl: string };
   },
   removeMyPhoto: (t: string) => call<{ ok: true }>('DELETE', '/admin/me/photo', t),
+  /** Albumul cu lucrări al frizerului legat de cont (cele mai noi întâi). */
+  myAlbum: (t: string) => call<AlbumPhoto[]>('GET', '/admin/me/album', t),
+  /** Adaugă în album o poză (deja micșorată); serverul verifică: max 1,5 MB, doar poză. */
+  addAlbumPhoto: async (t: string, uri: string): Promise<AlbumPhoto> => {
+    if (!apiUrl) throw new ApiError('no_server', 0);
+    let res: Response;
+    try {
+      const blob = await (await fetch(uri)).blob();
+      res = await fetch(`${apiUrl}/v1/admin/me/album`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${t}` }, body: blob });
+    } catch {
+      throw new ApiError('network', 0);
+    }
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+    return json as AlbumPhoto;
+  },
+  deleteAlbumPhoto: (t: string, id: string) => call<{ ok: true }>('DELETE', `/admin/me/album/${encodeURIComponent(id)}`, t),
   uploadBeforeAfter: async (t: string, id: string, uri: string): Promise<{ mediaId: string }> => {
     if (!apiUrl) throw new ApiError('no_server', 0);
     let res: Response;

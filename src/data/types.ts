@@ -30,7 +30,12 @@ export type Barber = {
   durations?: Record<string, number>;
   /** Locația în care lucrează (un frizer lucrează într-o singură locație). */
   locationId?: string | null;
+  /** Albumul cu lucrări (pozele cu tunsorile făcute), cele mai noi întâi. */
+  album?: AlbumPhoto[];
 };
+
+/** O poză din albumul cu lucrări al unui frizer; `url` e /v1/media/... */
+export type AlbumPhoto = { id: string; url: string };
 
 /** O locație a salonului: clientul o alege la primul pas al programării. */
 export type Location = {
