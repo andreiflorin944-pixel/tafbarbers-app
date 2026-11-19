@@ -1,3 +1,5 @@
+import type { EmailContent } from './emailLayout';
+
 // Textele e-mailului cu codul de intrare (restul mesajelor sunt șabloane editabile, în templates.ts).
 
 const EMAIL_OTP: Record<string, { subject: string; intro: string; expires: string; ignore: string }> = {
@@ -27,20 +29,26 @@ const EMAIL_OTP: Record<string, { subject: string; intro: string; expires: strin
   },
 };
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
+const TITLE: Record<string, { login: string; reset: string }> = {
+  ro: { login: 'Codul tău de intrare', reset: 'Resetarea parolei' },
+  en: { login: 'Your sign-in code', reset: 'Reset your password' },
+  fr: { login: 'Votre code de connexion', reset: 'Réinitialisation du mot de passe' },
+  ar: { login: 'رمز تسجيل الدخول', reset: 'إعادة تعيين كلمة المرور' },
+};
 
-/** E-mailul cu codul de intrare (cont nou sau recuperare). */
-export function otpEmail(lang: string, shop: string, code: string, tpl?: { subject: string; intro: string }): { subject: string; html: string } {
+/** E-mailul cu codul de intrare (cont nou sau recuperare): codul mare, auriu, cu aspectul TAF (emailLayout.ts). */
+export function otpEmail(
+  lang: string,
+  shop: string,
+  code: string,
+  tpl?: { subject: string; intro: string; reset?: boolean },
+): { subject: string; content: EmailContent } {
   const t = EMAIL_OTP[lang] ?? EMAIL_OTP.ro;
   const fill = (s: string) => s.replaceAll('{shop}', shop).replaceAll('{code}', code);
+  const title = (TITLE[lang] ?? TITLE.ro)[tpl?.reset ? 'reset' : 'login'];
   return {
     subject: tpl?.subject || fill(t.subject),
-    html: `<div dir="${lang === 'ar' ? 'rtl' : 'ltr'}" style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;color:#222">
-<p>${esc(tpl?.intro || fill(t.intro))}</p>
-<p style="font-size:34px;font-weight:bold;letter-spacing:8px;margin:16px 0">${code}</p>
-<p>${esc(t.expires)}</p>
-<p style="color:#777;font-size:13px">${esc(t.ignore)}</p>
-</div>`,
+    content: { lang, title, body: `${tpl?.intro || fill(t.intro)}\n\n${t.ignore}`, code, transactional: true, preheader: `${title}: ${code}` },
   };
 }
 
@@ -52,8 +60,8 @@ const EMAIL_RESET: Record<string, { subject: string; intro: string }> = {
 };
 
 /** E-mailul cu codul pentru „Am uitat parola” / schimbarea parolei. */
-export function resetEmail(lang: string, shop: string, code: string): { subject: string; html: string } {
+export function resetEmail(lang: string, shop: string, code: string): ReturnType<typeof otpEmail> {
   const t = EMAIL_RESET[lang] ?? EMAIL_RESET.ro;
   const fill = (s: string) => s.replaceAll('{shop}', shop).replaceAll('{code}', code);
-  return otpEmail(lang, shop, code, { subject: fill(t.subject), intro: fill(t.intro) });
+  return otpEmail(lang, shop, code, { subject: fill(t.subject), intro: fill(t.intro), reset: true });
 }

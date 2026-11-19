@@ -11,6 +11,7 @@ import { captchaSiteKey, requireCaptcha } from '../captcha';
 import { getPlans } from '../subscriptions';
 import { getCustomSubSettings, quoteCustom } from '../customSubs';
 import { serviceOffers } from '../offers';
+import { BARBER_ALBUM_COL } from '../barberAlbum';
 import { barber, BARBER_SERVICE_COLS, emailTaken, getBusiness, promo, service, type BarberRow, type PromoRow, type ServiceRow } from '../db';
 import { HttpError, type AppEnv } from '../env';
 import { addDays, iso, isDay, localDay } from '../time';
@@ -179,7 +180,7 @@ publicRoutes.get('/locations', async (c) => c.json(await activeLocations(c.env))
 // Fiecare frizer cu locația lui (`locationId`); frizerii dintr-o locație dezactivată nu mai apar.
 publicRoutes.get('/barbers', async (c) => {
   const r = await c.env.DB.prepare(
-    `SELECT b.*, ${BARBER_SERVICE_COLS}
+    `SELECT b.*, ${BARBER_SERVICE_COLS}, ${BARBER_ALBUM_COL}
      FROM barbers b LEFT JOIN locations l ON l.id = b.location_id
      WHERE b.active = 1 AND (b.location_id IS NULL OR l.active = 1) ORDER BY b.sort, b.name`,
   ).all<BarberRow>();

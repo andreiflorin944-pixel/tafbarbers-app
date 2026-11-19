@@ -1,32 +1,9 @@
 import type { Env } from './env';
-import { getBusiness, tryLock, unlock } from './db';
-import { sendEmail, sendPush, sendSms } from './notify';
+import { tryLock, unlock } from './db';
+import { EMAIL_WORDS, langKey, publicBase, sendBrandEmail } from './emailLayout';
+import { sendPush, sendSms } from './notify';
 import { iso } from './time';
-import { LANGS, langOf, lookupAll, type Lang } from './contentI18n';
-
-const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-
-// Rândul de jos al e-mailului, în limba clientului.
-const FOOTER: Record<Lang, { tx: (s: string) => string; mk: (s: string) => string }> = {
-  ro: { tx: (s) => `Primești acest e-mail pentru că ai cont la ${s}.`, mk: (s) => `Primești acest e-mail pentru că ai acceptat ofertele ${s} în aplicație. Te poți dezabona oricând din Cont.` },
-  en: { tx: (s) => `You are receiving this e-mail because you have an account at ${s}.`, mk: (s) => `You are receiving this e-mail because you accepted offers from ${s} in the app. You can unsubscribe at any time from Account.` },
-  fr: { tx: (s) => `Vous recevez cet e-mail parce que vous avez un compte chez ${s}.`, mk: (s) => `Vous recevez cet e-mail parce que vous avez accepté les offres de ${s} dans l’application. Désinscription possible à tout moment depuis Compte.` },
-  ar: { tx: (s) => `تصلك هذه الرسالة لأن لديك حساباً لدى ${s}.`, mk: (s) => `تصلك هذه الرسالة لأنك وافقت على عروض ${s} في التطبيق. يمكنك إلغاء الاشتراك في أي وقت من الحساب.` },
-};
-
-export function emailHtml(shop: string, title: string, body: string, transactional = false, lang: string = 'ro') {
-  const f = FOOTER[langOf(lang)];
-  // Araba se citește de la dreapta la stânga.
-  const dir = langOf(lang) === 'ar' ? 'rtl' : 'ltr';
-  return `<!doctype html><html dir="${dir}" lang="${langOf(lang)}"><body style="margin:0;background:#000;font-family:Helvetica,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
-<table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#0F0F10;border-radius:20px;overflow:hidden">
-<tr><td style="background:#F9A11B;padding:24px 28px;font-size:22px;font-weight:800;color:#000">${esc(shop)}</td></tr>
-<tr><td style="padding:28px;color:#fff"><h1 style="margin:0 0 12px;font-size:24px">${esc(title)}</h1>
-<div style="font-size:16px;line-height:1.5;color:#E6E3DD">${esc(body).replace(/\n/g, '<br>')}</div></td></tr>
-<tr><td style="padding:0 28px 24px;font-size:12px;color:#A3A09A">${transactional ? f.tx(esc(shop)) : f.mk(esc(shop))}</td></tr>
-</table></td></tr></table></body></html>`;
-}
+import { LANGS, langOf, lookupAll } from './contentI18n';
 
 /** Câți destinatari se trimit dintr-o rulare; restul îi ia cron-ul la următoarele rulări (limita de cereri a unui Worker). */
 const BATCH = 100;
@@ -48,13 +25,15 @@ export async function runCampaign(env: Env, id: string) {
       status: string;
     }>();
     if (!cmp || cmp.status !== 'sending') return;
-    const biz = await getBusiness(env);
     // Fiecare client primește campania în limba aplicației lui (traducerea făcută la salvare; altfel româna).
     const tr = await lookupAll(env, [cmp.title, cmp.body]);
     const text = (lang: string | null | undefined) => {
       const l = langOf(lang);
       const m = l === 'ro' ? null : tr[l];
-      return { title: m?.get(cmp.title) ?? cmp.title, body: m?.get(cmp.body) ?? cmp.body };
+      // Araba, cât timp nu e tradusă încă, se arată în engleză.
+      const alt = l === 'ar' ? tr.en : null;
+      const pick = (s: string) => m?.get(s) || alt?.get(s) || s;
+      return { title: pick(cmp.title), body: pick(cmp.body) };
     };
     const notYet = `NOT EXISTS (SELECT 1 FROM message_log m WHERE m.campaign_id = ?1 AND m.recipient = %s)`;
     let left = 0;
@@ -77,7 +56,13 @@ export async function runCampaign(env: Env, id: string) {
         .all<{ email: string; lang: string }>();
       for (const x of r.results) {
         const m = text(x.lang);
-        await sendEmail(env, { kind: 'campaign', recipient: x.email, campaignId: id }, m.title, emailHtml(biz.name, m.title, m.body, false, x.lang));
+        await sendBrandEmail(env, { kind: 'campaign', recipient: x.email, campaignId: id }, m.title, {
+          lang: x.lang,
+          title: m.title,
+          body: m.body,
+          transactional: false,
+          button: publicBase(env) ? { label: EMAIL_WORDS[langKey(x.lang)].book, url: publicBase(env) } : undefined,
+        });
       }
       left = r.results.length >= BATCH ? 1 : 0;
     } else {

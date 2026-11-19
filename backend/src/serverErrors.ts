@@ -1,8 +1,8 @@
-import { emailHtml } from './campaigns';
+import { sendBrandEmail } from './emailLayout';
 import { getBusiness, getSetting, setSetting } from './db';
 import type { Env } from './env';
 import { newId } from './auth';
-import { sendEmail, sendPush } from './notify';
+import { sendPush } from './notify';
 import { iso } from './time';
 
 // Erorile de pe server se păstrează lângă cele din aplicația de pe telefon (panou: Setări → Erori din aplicație, platforma „server”),
@@ -49,7 +49,7 @@ export async function alertServerErrors(env: Env, now = new Date()) {
   const body = `${lines.join('\n')}\n\nToate erorile sunt în panou: Setări → Erori din aplicație. Dacă se repetă, trimite-le mai departe ca să fie reparate.`;
   const owners = await env.DB.prepare(`SELECT id, email FROM admins WHERE role = 'org_admin'`).all<{ id: string; email: string }>();
   for (const o of owners.results) {
-    if (o.email) await sendEmail(env, { kind: 'server_error', recipient: o.email }, title, emailHtml(biz.name, title, body, true));
+    if (o.email) await sendBrandEmail(env, { kind: 'server_error', recipient: o.email }, title, { lang: 'ro', title, body, transactional: true });
   }
   const ids = owners.results.map((o) => o.id);
   if (ids.length) {

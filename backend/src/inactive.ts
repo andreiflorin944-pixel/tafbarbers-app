@@ -1,8 +1,8 @@
-import { emailHtml } from './campaigns';
+import { EMAIL_WORDS, publicBase, sendBrandEmail } from './emailLayout';
 import { getBusiness } from './db';
 import type { Env } from './env';
 import { deleteClient } from './gdpr';
-import { sendEmail, sendPush } from './notify';
+import { sendPush } from './notify';
 import { iso } from './time';
 
 // Conturile nefolosite de 1 an (fără programare, vizită, comandă sau deschiderea aplicației) se șterg, ca la „Șterge contul”.
@@ -93,7 +93,7 @@ export async function cleanInactive(env: Env, now: number) {
     const date = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : lang === 'ar' ? 'ar' : 'ro-RO', { timeZone: env.TIMEZONE, day: 'numeric', month: 'long', year: 'numeric' }).format(on);
     const body = t.body(shop, date);
     try {
-      if (c.email) await sendEmail(env, { kind: 'inactive', recipient: c.email }, t.title, emailHtml(shop, t.title, body, true, lang));
+      if (c.email) await sendBrandEmail(env, { kind: 'inactive', recipient: c.email }, t.title, { lang, title: t.title, body, transactional: true, button: publicBase(env) ? { label: EMAIL_WORDS[lang].book, url: publicBase(env) } : undefined });
       const tokens = (await env.DB.prepare('SELECT token FROM push_tokens WHERE client_id = ?').bind(c.id).all<{ token: string }>()).results.map((x) => x.token);
       if (tokens.length) await sendPush(env, { kind: 'inactive' }, tokens, t.title, body, { screen: 'home' });
     } catch (e) {

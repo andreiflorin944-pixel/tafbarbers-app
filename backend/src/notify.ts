@@ -75,6 +75,7 @@ export async function sendEmail(
   l: Omit<Log, 'channel'>,
   subject: string,
   html: string,
+  opts?: { unsubscribeUrl?: string },
 ): Promise<boolean> {
   const entry = { ...l, channel: 'email' as const };
   if (!env.EMAIL_API_KEY) {
@@ -97,6 +98,10 @@ export async function sendEmail(
         // Și varianta text: e-mailurile doar cu HTML ajung mai des în Spam (mai ales la Yahoo).
         text: htmlToText(html),
         ...(replyTo ? { reply_to: replyTo } : {}),
+        // Dezabonare dintr-un clic din Gmail / Yahoo (RFC 8058), doar la oferte.
+        ...(opts?.unsubscribeUrl
+          ? { headers: { 'List-Unsubscribe': `<${opts.unsubscribeUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } }
+          : {}),
       }),
     });
     await log(env, entry, res.ok, res.ok ? undefined : `HTTP ${res.status}`);
@@ -110,6 +115,9 @@ export async function sendEmail(
 /** Textul simplu al unui e-mail din HTML-ul lui: rândurile din paragrafe și <br>, fără etichete. */
 export function htmlToText(html: string): string {
   return html
+    .replace(/<head[\s\S]*?<\/head>/i, '')
+    .replace(/<div data-preheader[\s\S]*?<\/div>/i, '')
+    .replace(/<img [^>]*>/gi, '')
     .replace(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|h\d|li|tr)>/gi, '\n')
@@ -119,6 +127,8 @@ export function htmlToText(html: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => (Number(n) === 847 ? '' : String.fromCharCode(Number(n))))
+    .replace(/&zwnj;/g, '')
     .replace(/&amp;/g, '&')
     .split('\n')
     .map((l) => l.trim())

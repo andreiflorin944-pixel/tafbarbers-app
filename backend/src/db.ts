@@ -122,7 +122,21 @@ export type BarberRow = {
   service_ids?: string | null;
   service_prices?: string | null;
   service_durations?: string | null;
+  /** JSON din BARBER_ALBUM_COL (barberAlbum.ts): albumul de lucrări. */
+  album_json?: string | null;
 };
+
+/** Albumul de lucrări din JSON-ul subselectului: [{ id, url }], cele mai noi întâi. */
+const parseAlbum = (json: string | null | undefined): Array<{ id: string; url: string }> => {
+  if (!json) return [];
+  try {
+    const a = JSON.parse(json) as Array<{ id: string; url: string }>;
+    return Array.isArray(a) ? a.filter((p) => p && p.id) : [];
+  } catch {
+    return [];
+  }
+};
+
 export const barber = (r: BarberRow) => ({
   id: r.id,
   name: r.name,
@@ -156,6 +170,8 @@ export const barber = (r: BarberRow) => ({
       return [sid, Number(min)];
     }),
   ) as Record<string, number>,
+  // Albumul de lucrări (pozele cu tunsorile făcute), doar dacă selectul l-a cerut.
+  album: parseAlbum(r.album_json),
 });
 
 /** Subselecturile cu serviciile și prețurile proprii ale unui frizer `b`. */

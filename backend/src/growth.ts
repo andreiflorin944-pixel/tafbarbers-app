@@ -3,10 +3,10 @@
 import { autoTranslate, pick3, type Texts3 } from './translate';
 import { LANGS, langOf, localizeText } from './contentI18n';
 import { availability } from './availability';
-import { emailHtml } from './campaigns';
+import { EMAIL_WORDS, langKey, publicBase, sendBrandEmail } from './emailLayout';
 import { getBusiness, getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
-import { sendEmail, sendPush, sendSms } from './notify';
+import { sendPush, sendSms } from './notify';
 import { giveBonus, parseReward, type Reward } from './referrals';
 import { addDays, iso, localDay, localMinutes, localToUtc, QUIET_FROM, roLocal } from './time';
 
@@ -356,7 +356,7 @@ export async function sendWinback(env: Env, now = new Date()) {
       const tokens = await pushTokens(env, c.id);
       if (tokens.length) await sendPush(env, { kind: 'winback' }, tokens, title, body, { screen: s.bonus ? 'rewards' : 'book' });
     }
-    if (s.email && c.marketing_email && c.email) await sendEmail(env, { kind: 'winback', recipient: c.email }, title, emailHtml(shop, title, body, false, lang));
+    if (s.email && c.marketing_email && c.email) await sendBrandEmail(env, { kind: 'winback', recipient: c.email }, title, { lang, title, body, transactional: false, button: publicBase(env) ? { label: EMAIL_WORDS[langKey(lang)].book, url: publicBase(env) } : undefined });
     if (s.sms && c.marketing_sms) await sendSms(env, { kind: 'winback', recipient: c.phone }, `${title} ${body}`);
   }
   return n;
@@ -447,7 +447,7 @@ export async function sendLastMinute(env: Env, now = new Date()) {
     const title = fillText(pick3(s.title, lang), vars);
     const body = fillText(pick3(s.message, lang), vars);
     if (s.push && c.marketing_push) await sendPush(env, { kind: 'last_minute' }, await pushTokens(env, c.id), title, body, { screen: 'book' });
-    if (s.email && c.marketing_email && c.email) await sendEmail(env, { kind: 'last_minute', recipient: c.email }, title, emailHtml(shop, title, body, false, lang));
+    if (s.email && c.marketing_email && c.email) await sendBrandEmail(env, { kind: 'last_minute', recipient: c.email }, title, { lang, title, body, transactional: false, details: [[EMAIL_WORDS[langKey(lang)].times, ore]], button: publicBase(env) ? { label: EMAIL_WORDS[langKey(lang)].book, url: publicBase(env) } : undefined });
     if (s.sms && c.marketing_sms) await sendSms(env, { kind: 'last_minute', recipient: c.phone }, `${title}: ${body}`);
     n++;
   }
@@ -617,7 +617,18 @@ export async function activateGiftCard(env: Env, id: string, adminId: string | n
     }
     if (rc && ch?.email) {
       const em = await env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(rc.id).first<{ email: string | null }>();
-      if (em?.email) await sendEmail(env, { kind: 'gift_card', recipient: em.email }, title, emailHtml(shop, title, body, false, lang));
+      if (em?.email) {
+        // Codul și suma apar pe cardul desenat în e-mail; propoziția cu codul din text nu se mai repetă.
+        const text = body.replace(new RegExp(`[^.!?]*${g.code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^.!?]*[.!?]?\\s*`), '').trim() || body;
+        await sendBrandEmail(env, { kind: 'gift_card', recipient: em.email }, title, {
+          lang,
+          title,
+          body: text,
+          transactional: true,
+          gift: { amount: `${vars.suma} lei`, code: g.code },
+          button: publicBase(env) ? { label: EMAIL_WORDS[langKey(lang)].useGift, url: publicBase(env) } : undefined,
+        });
+      }
     }
     // Cardul cadou e o tranzacție, nu o reclamă: SMS-ul pleacă și fără acord pentru oferte.
     if (ch?.sms) await sendSms(env, { kind: 'gift_card', recipient: g.recipient_phone }, `${title}. ${body}`);

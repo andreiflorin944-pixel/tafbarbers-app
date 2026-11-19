@@ -1,12 +1,13 @@
 import { Redirect, router } from 'expo-router';
-import { Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Pressable, Text, View } from 'react-native';
 import { Avatar, Button, Card, Empty, Screen, Steps, styles } from '@/components/ui';
 import { useLoginGate } from '@/components/LoginGate';
 import { barbersAt, doesService } from '@/lib/bookFlow';
 import { barberDuration, barberPrice, lei, priceLabel } from '@/lib/price';
 import { useT } from '@/i18n';
 import { useApp } from '@/state/AppState';
-import { space } from '@/theme';
+import { colors, space } from '@/theme';
 
 // Pasul 2: frizerul, doar dintre cei care lucrează în locația aleasă (și fac serviciul, dacă e deja ales).
 export default function ChooseBarber() {
@@ -66,6 +67,18 @@ export default function ChooseBarber() {
                 {b.bio}
               </Text>
             ) : null}
+            {/* Profilul cu albumul de lucrări: clientul vede tunsorile frizerului înainte să-l aleagă. */}
+            <Pressable
+              onPress={() => router.push({ pathname: '/barber/[id]', params: { id: b.id, from: 'book' } })}
+              hitSlop={8}
+              style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, alignSelf: 'flex-start' }, pressed && { opacity: 0.6 }]}
+              accessibilityRole="link"
+            >
+              <Ionicons name="images-outline" size={15} color={colors.gold} />
+              <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>
+                {b.album?.length ? t('album.see') : t('album.profile')}
+              </Text>
+            </Pressable>
           </View>
           {service ? (
             // Prețul și durata aceluiași frizer, împreună (nu prețul unuia cu durata standard).

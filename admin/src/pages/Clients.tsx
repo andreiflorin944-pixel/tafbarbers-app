@@ -920,6 +920,7 @@ const SOURCE: Record<string, string> = {
   login: 'la intrarea în cont',
   profile: 'din profilul lui',
   sign: 'a semnat termenii și politica',
+  unsubscribe: 'dezabonare din linkul din e-mail',
 };
 const CHANNEL: Record<string, string> = { push: 'notificări', email: 'e-mail', sms: 'SMS' };
 // Versiunea documentului: data modelului implicit (2026-10-09) sau data și ora salvării din panou (cu oră, ca două corecturi în aceeași zi să se deosebească).

@@ -18,6 +18,7 @@ import { isSiteHost, sitePage, websitePublic } from './website';
 import { health, recordServerError } from './serverErrors';
 import { barberlyPublic } from './barberly';
 import { captchaPublic, captchaSiteKey } from './captcha';
+import { unsubscribePublic } from './unsubscribe';
 
 const app = new Hono<AppEnv>();
 
@@ -50,6 +51,8 @@ app.route('/v1', clientRoutes);
 app.route('/', qrPublic);
 app.route('/', waitlistPublic);
 app.route('/', websitePublic);
+// Dezabonarea de la ofertele pe e-mail (linkul din subsolul e-mailurilor promoționale).
+app.route('/', unsubscribePublic);
 
 // Rădăcina: la app.tafbarbers.ro (și la domeniul propriu al site-ului) e site-ul cu programare online; în rest (panou.…, workers.dev) e panoul.
 app.get('/', async (c) => {

@@ -8,7 +8,7 @@ import { iso } from './time';
 // politica de confidențialitate sau își dă / își retrage acordul pentru oferte, păstrăm un rând cu ce a acceptat,
 // versiunea documentelor în acel moment, data, adresa IP, dispozitivul (user agent), limba și de unde (aplicație / web).
 
-export type ConsentSource = 'register' | 'social' | 'first_login' | 'login' | 'profile' | 'sign';
+export type ConsentSource = 'register' | 'social' | 'first_login' | 'login' | 'profile' | 'sign' | 'unsubscribe';
 /** Semnătura de la derularea documentelor: numele scris și versiunile pe care le-a avut clientul pe ecran. */
 export type Signature = { signature: string; termsVersion: string; privacyVersion: string };
 type Marketing = { push: boolean; email: boolean; sms: boolean };

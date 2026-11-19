@@ -1,9 +1,9 @@
 import { autoTranslate, pick3, type Texts3 } from './translate';
 import { LANGS, langOf, localizeText } from './contentI18n';
-import { emailHtml } from './campaigns';
+import { EMAIL_WORDS, publicBase, sendBrandEmail } from './emailLayout';
 import { getBusiness, getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
-import { sendEmail, sendPush, sendSms } from './notify';
+import { sendPush, sendSms } from './notify';
 import { giveBonus, parseReward, type Reward } from './referrals';
 import { isLeap as leap, localDay, localMinutes, QUIET_FROM } from './time';
 
@@ -117,7 +117,7 @@ export async function greetBirthdays(env: Env, now = new Date()) {
       const t = await env.DB.prepare('SELECT token FROM push_tokens WHERE client_id = ?').bind(c.id).all<{ token: string }>();
       if (t.results.length) await sendPush(env, { kind: 'birthday' }, t.results.map((x) => x.token), title, body, { screen: s.bonus ? 'rewards' : 'home' });
     }
-    if (s.email && c.marketing_email && c.email) await sendEmail(env, { kind: 'birthday', recipient: c.email }, title, emailHtml(shop, title, body, false, lang));
+    if (s.email && c.marketing_email && c.email) await sendBrandEmail(env, { kind: 'birthday', recipient: c.email }, title, { lang, title, body, transactional: false, button: publicBase(env) ? { label: EMAIL_WORDS[lang].book, url: publicBase(env) } : undefined });
     if (s.sms && c.marketing_sms) await sendSms(env, { kind: 'birthday', recipient: c.phone }, `${title} ${body}`);
   }
   return n;
