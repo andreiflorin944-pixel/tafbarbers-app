@@ -5,6 +5,7 @@ import { excelDate, readTable } from '../sheet';
 import { date, lei, STATUS, time } from '../util';
 import { ClientBonuses } from './Referrals';
 import { ClientSubscriptions } from './Subscriptions';
+import { ClientGiftCards } from './ClientWallet';
 
 async function download(ext: 'csv' | 'xlsx') {
   const res = await fetch(`/v1/admin/clients.${ext}`, { headers: { Authorization: `Bearer ${getToken()}` } });
@@ -762,6 +763,8 @@ function ClientModal({ id, canDelete, canConsents, onClose, onChange }: { id: st
             {canDelete ? <span className={clubSaved ? 'success small' : 'muted small'}>{clubSaved ? 'Salvat.' : 'Se salvează singur, fără buton.'}</span> : null}
           </div>
           <ClientSubscriptions clientId={id} subs={c.data.subscriptions ?? []} owner={canDelete} onChange={c.reload} />
+          <h2 style={{ margin: '6px 0 0' }}>Carduri cadou</h2>
+          <ClientGiftCards cards={c.data.giftCards ?? []} />
           <h2 style={{ margin: '6px 0 0' }}>TAF Identity (de la client)</h2>
           {c.data.identity?.note ? <div className="card small" style={{ whiteSpace: 'pre-wrap' }}>{c.data.identity.note}</div> : null}
           <Photos list={c.data.identity?.photos ?? []} />

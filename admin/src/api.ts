@@ -501,6 +501,8 @@ export type Client = {
   beforeAfter?: Array<{ id: string; before: string; after: string; barberName: string | null; createdAt: string; serviceId?: string | null; showExample?: boolean; exampleConsentAt?: string | null; exampleConsentBy?: string | null; exampleWithdrawnAt?: string | null }>;
   bonuses?: Bonus[];
   subscriptions?: Subscription[];
+  /** Cardurile cadou cumpărate de client sau primite pe numărul lui (fără cele anulate). */
+  giftCards?: import('./pages/ClientWallet').ClientGiftCard[];
   referredBy?: { id: string; name: string } | null;
   referredCount?: number;
   /** Membru TAF Club acum (abonament activ sau bifat de mână) și bifa manuală. */

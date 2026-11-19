@@ -1717,6 +1717,44 @@ async function needClient(c: Context<AppEnv>, clientId: string) {
   if (!mine) throw new HttpError(403, 'no_permission');
 }
 
+/**
+ * Cardurile cadou ale clientului: cumpărate de el sau primite pe numărul lui de telefon (fără cele anulate).
+ * Codul îl vede doar cine poate încasa (dreptul „bookings_manage”), ca să-l poată folosi la plată.
+ */
+async function clientGiftCards(c: Context<AppEnv>, clientId: string, phone: string | null) {
+  const r = await c.env.DB.prepare(
+    `${GIFT_SELECT} WHERE (g.buyer_client_id = ?1 OR (?2 IS NOT NULL AND g.recipient_phone = ?2)) AND g.status != 'cancelled'
+     ORDER BY CASE g.status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, g.created_at DESC LIMIT 30`,
+  )
+    .bind(clientId, phone)
+    .all<GiftCardRow>();
+  const showCode = !!c.get('admin').perms.bookings_manage;
+  return r.results.map((g) => ({
+    ...giftCard(g, showCode),
+    recipientPhone: undefined,
+    // „received” = i l-a făcut cadou altcineva; „bought” = l-a cumpărat el (pentru el sau pentru altcineva).
+    role: (g.buyer_client_id === clientId ? 'bought' : 'received') as 'bought' | 'received',
+    forSelf: g.buyer_client_id === clientId && (!g.recipient_phone || g.recipient_phone === phone),
+  }));
+}
+
+/**
+ * Pe scurt, pentru panoul programării din calendar: abonamentele în vigoare (câte ședințe mai are, până când)
+ * și cardurile cadou cu bani pe ele, pe care le poate folosi clientul.
+ */
+adminRoutes.get('/clients/:id/wallet', async (c) => {
+  const id = c.req.param('id')!;
+  await needClient(c, id);
+  const r = await c.env.DB.prepare('SELECT phone FROM clients WHERE id = ?').bind(id).first<{ phone: string | null }>();
+  if (!r) throw new HttpError(404, 'not_found');
+  const subs = (await getSubscriptions(c.env, id, true)).filter((s) => s.state === 'active' || s.state === 'upcoming');
+  const now = new Date().toISOString();
+  const gifts = (await clientGiftCards(c, id, r.phone)).filter(
+    (g) => g.status === 'active' && g.balance > 0 && (g.role === 'received' || g.forSelf) && (!g.expiresAt || g.expiresAt > now),
+  );
+  return c.json({ subscriptions: subs, giftCards: gifts });
+});
+
 adminRoutes.get('/clients/:id', async (c) => {
   const id = c.req.param('id')!;
   await needClient(c, id);
@@ -1734,6 +1772,7 @@ adminRoutes.get('/clients/:id', async (c) => {
     identity: await getIdentity(c.env, id, true),
     bonuses: await getBonuses(c.env, id, true),
     subscriptions: await getSubscriptions(c.env, id, true),
+    giftCards: await clientGiftCards(c, id, r.phone),
     // TAF Club: membru prin abonament activ sau marcat de mână (bifa din fișă).
     clubMember: await isClubMember(c.env, id),
     clubManual: !!r.club_member,

@@ -3,6 +3,7 @@ import { api, errorText, type Barber, type Booking, type BookingActivity, type C
 import { Field, Loading, useAction, useLoad } from '../ui';
 import { bookingsChanged, RequestActions, sentText } from '../Requests';
 import { dayOf, lei, localToIso, longDate, STATUS, time } from '../util';
+import { WalletBox } from './ClientWallet';
 
 /** Iconițele mici din panoul programării (fișa clientului, programări, WhatsApp, notiță, telefon). */
 const ICONS: Record<string, string> = {
@@ -434,6 +435,7 @@ export function BookingPanel({
               {b.lateNote ? <div>„{b.lateNote}”</div> : null}
             </div>
           ) : null}
+          {b.clientId ? <WalletBox clientId={b.clientId} /> : null}
           {b.clientBirthday ? <div className="bday-note">🕯️ E ziua lui de naștere! Urează-i „La mulți ani” și, dacă vrei, fă-i o reducere.</div> : null}
 
           {b.status === 'requested' ? (
@@ -1011,10 +1013,10 @@ function CheckoutForm({ b, online, onCancel, onDone }: { b: Booking; online: boo
   const [giftErr, setGiftErr] = useState<string | null>(null);
   const { busy, error, run } = useAction();
   if (!data.data) return <Loading error={data.error} />;
-  const applyGift = async () => {
+  const applyGift = async (code = giftCode) => {
     setGiftErr(null);
     try {
-      const g = await api<{ code: string; balance: number; status: string }>('GET', `/admin/gift-cards/check?code=${encodeURIComponent(giftCode)}`);
+      const g = await api<{ code: string; balance: number; status: string }>('GET', `/admin/gift-cards/check?code=${encodeURIComponent(code)}`);
       if (g.status !== 'active') throw new Error(g.status === 'expired' ? 'Cardul cadou a expirat.' : 'Pe cardul cadou nu mai sunt bani.');
       const take = Math.min(g.balance, b.price);
       setGift({ code: g.code, take, balance: g.balance });
@@ -1077,12 +1079,22 @@ function CheckoutForm({ b, online, onCancel, onDone }: { b: Booking; online: boo
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <span>Card cadou</span>
           <input value={giftCode} onChange={(e) => { setGiftCode(e.target.value); setGift(null); }} placeholder="TAF-XXXX-XXXX" style={{ width: 160 }} aria-label="Cod card cadou" />
-          <button className="ghost sm" disabled={!giftCode.trim()} onClick={applyGift}>
+          <button className="ghost sm" disabled={!giftCode.trim()} onClick={() => applyGift()}>
             Folosește
           </button>
           {gift ? <span className="success small">Se scad {gift.take} lei de pe card (are {gift.balance} lei). Restul, {amount || 0} lei, se plătește acum.</span> : null}
           {giftErr ? <span className="err small">{giftErr}</span> : null}
         </div>
+      ) : null}
+      {m === 'paid' && !gift && b.clientId ? (
+        <WalletBox
+          clientId={b.clientId}
+          giftsOnly
+          onUseGift={(code) => {
+            setGiftCode(code);
+            applyGift(code);
+          }}
+        />
       ) : null}
       <label className="check">
         Bacșiș (opțional)

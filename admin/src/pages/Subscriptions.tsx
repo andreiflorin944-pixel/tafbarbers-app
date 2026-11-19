@@ -51,7 +51,8 @@ function RenewalToggle({ s, onChange }: { s: Subscription; onChange: () => void 
 }
 
 const cuts = (n: number | null) => (n === null ? 'nelimitat' : `${n} ${n === 1 ? 'tunsoare' : 'tunsori'}`);
-const usedBase = (s: Subscription) => (s.cutsTotal === null ? `${s.cutsUsed} folosite (nelimitat)` : `${s.cutsUsed} din ${s.cutsTotal} folosite`);
+const usedBase = (s: Subscription) =>
+  s.cutsTotal === null ? `${s.cutsUsed} folosite (nelimitat)` : `mai are ${Math.max(0, s.cutsTotal - s.cutsUsed)} din ${s.cutsTotal} ședințe (${s.cutsUsed} folosite)`;
 /** La abonamentul personalizat, și pe fiecare serviciu: „2 din 3 folosite (Barbă 1/1 · Tuns Clasic 1/2)”. */
 const used = (s: Subscription, services?: Service[] | null) => (s.items && services ? `${usedBase(s)} (${itemsUsedText(s, services)})` : usedBase(s));
 
@@ -72,7 +73,7 @@ export function ClientSubscriptions({ clientId, subs, owner, onChange }: { clien
             <b>{s.name}</b>
             <span className="muted">
               {' '}
-              · {date(s.startsAt)} – {date(s.endsAt)} · {used(s, services.data)} · {lei(s.price)}
+              · valabil {date(s.startsAt)} – {date(s.endsAt)} · {used(s, services.data)} · {lei(s.price)}
               {s.createdByName ? ` · activat de ${s.createdByName}` : ''}
               {s.renewal && (s.state === 'active' || s.state === 'upcoming') ? ` · ${renewalText(s)}` : ''}
             </span>
