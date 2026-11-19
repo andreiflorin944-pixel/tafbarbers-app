@@ -43,6 +43,10 @@ export default function Home() {
   const { t, lang } = useT();
   const { staff } = useStaff();
   const { products, count: cartCount } = useCart();
+  // Pe căsuța „Magazin”: poza primului produs din magazin (ordinea din panou), în locul iconiței de coș.
+  // Întâi unul aflat pe stoc; dacă niciun produs nu are poză, rămâne iconița.
+  const withPhoto = products.filter((p) => mediaUrl(p.imageUrl));
+  const shopPhoto = mediaUrl((withPhoto.find((p) => p.stock !== 0) ?? withPhoto[0])?.imageUrl);
   const look = business?.appearance;
   const logo = mediaUrl(look?.logoUrl);
   const welcome = look?.welcome?.[lang as 'ro' | 'en' | 'fr'];
@@ -258,7 +262,11 @@ export default function Home() {
         <View style={s.perks}>
           {PERKS.map(([icon, key, to]) => (
             <Pressable key={key} onPress={() => router.push(to)} style={({ pressed }) => [s.perk, pressed && { opacity: 0.8 }]} accessibilityRole="button">
-              <Ionicons name={icon} size={22} color={colors.gold} />
+              {to === '/shop' && shopPhoto ? (
+                <Image source={{ uri: shopPhoto }} style={s.perkPhoto} accessibilityIgnoresInvertColors />
+              ) : (
+                <Ionicons name={icon} size={22} color={colors.gold} />
+              )}
               <Text style={[s.perkText, narrow && { fontSize: 13 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                 {t(key)}
               </Text>
@@ -459,6 +467,7 @@ const s = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.border },
   perks: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   perk: { flexGrow: 1, flexBasis: '45%', flexDirection: 'row', alignItems: 'center', gap: 8, height: 56, paddingHorizontal: 12, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  perkPhoto: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg },
   perkText: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '600' },
   badge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: colors.onGold, fontSize: 12, fontWeight: '800' },
