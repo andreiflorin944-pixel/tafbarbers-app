@@ -43,7 +43,17 @@ export async function eligibleBarbers(env: Env, serviceId: string, barberId: str
  */
 export async function availability(
   env: Env,
-  opts: { serviceId: string; barberId: string | null; locationId?: string | null; day: string; excludeBookingId?: string; access?: Access; anyTime?: boolean },
+  opts: {
+    serviceId: string;
+    barberId: string | null;
+    locationId?: string | null;
+    day: string;
+    excludeBookingId?: string;
+    access?: Access;
+    anyTime?: boolean;
+    /** Servicii adăugate la aceeași programare: durata lor se adună, iar frizerul trebuie să le facă pe toate. */
+    extraServiceIds?: string[];
+  },
 ): Promise<Slot[]> {
   const access = opts.access ?? 'public';
   const biz = await getBusiness(env);
@@ -55,7 +65,26 @@ export async function availability(
   // Serviciu „doar membri”: fără TAF Club nu are ore (și nu se poate programa nici trimițând ora direct).
   if (service.members_only && access === 'public') return [];
 
-  const barbers = await eligibleBarbers(env, opts.serviceId, opts.barberId, opts.locationId ?? null);
+  let barbers = await eligibleBarbers(env, opts.serviceId, opts.barberId, opts.locationId ?? null);
+  // Serviciile adăugate: doar frizerii care le fac pe toate; fiecare cu durata lui (sau cea standard).
+  const extras = [...new Set(opts.extraServiceIds ?? [])].filter((x) => x && x !== opts.serviceId);
+  const extraMs = new Map<string, number>();
+  if (extras.length && barbers.length) {
+    const xph = extras.map(() => '?').join(',');
+    const svc = await env.DB.prepare(`SELECT id, duration_min FROM services WHERE active = 1 AND id IN (${xph})`)
+      .bind(...extras)
+      .all<{ id: string; duration_min: number }>();
+    if (svc.results.length !== extras.length) throw new HttpError(404, 'service_not_found');
+    const bph = barbers.map(() => '?').join(',');
+    const rows = await env.DB.prepare(`SELECT barber_id, service_id, duration_min FROM barber_services WHERE service_id IN (${xph}) AND barber_id IN (${bph})`)
+      .bind(...extras, ...barbers)
+      .all<{ barber_id: string; service_id: string; duration_min: number | null }>();
+    barbers = barbers.filter((b) => extras.every((x) => rows.results.some((r) => r.barber_id === b && r.service_id === x)));
+    for (const b of barbers) {
+      const min = extras.reduce((a, x) => a + (rows.results.find((r) => r.barber_id === b && r.service_id === x)?.duration_min ?? svc.results.find((s) => s.id === x)!.duration_min), 0);
+      extraMs.set(b, min * 60_000);
+    }
+  }
   if (!barbers.length) return [];
 
   const dayStart = localToUtc(tz, opts.day, 0);
@@ -107,7 +136,7 @@ export async function availability(
   const byStart = new Map<number, Slot>();
   for (const barber of barbers) {
     // Fiecare frizer cu durata lui pentru serviciu, dacă are una; altfel durata standard.
-    const durMs = (own.results.find((o) => o.barber_id === barber)?.duration_min ?? service.duration_min) * 60_000;
+    const durMs = (own.results.find((o) => o.barber_id === barber)?.duration_min ?? service.duration_min) * 60_000 + (extraMs.get(barber) ?? 0);
     for (const h of hours.results.filter((x) => x.barber_id === barber)) {
       const winS = localToUtc(tz, opts.day, h.start_min).getTime();
       const winE = localToUtc(tz, opts.day, h.end_min).getTime();

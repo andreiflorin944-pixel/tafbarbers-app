@@ -71,6 +71,14 @@ const MESSAGES: Record<string, string> = {
   client_deleted: 'Clientul cu acest număr și-a șters contul.',
   email_taken: 'Există deja un cont cu acest e-mail.',
   slot_unavailable: 'Ora nu mai e liberă la frizerul ales.',
+  criteria_required: 'Alege cel puțin un criteriu.',
+  invalid_criteria: 'Criteriu greșit (verifică numerele).',
+  confirm_required: 'Scrie STERGE ca să confirmi.',
+  no_time_for_extra: 'Nu mai e timp liber după programare pentru acest serviciu (urmează altă programare sau se termină programul).',
+  service_already_added: 'Serviciul e deja pe programare.',
+  too_many_extras: 'Se pot adăuga cel mult 3 servicii la o programare.',
+  barber_no_service: 'Frizerul nu face acest serviciu (Frizeri → servicii).',
+  booking_changed: 'Programarea s-a schimbat între timp. Redeschide-o și încearcă din nou.',
   booking_not_editable: 'Programarea nu se mai poate modifica: doar cele confirmate se mută sau se schimbă.',
   invalid_phone: 'Numărul de telefon nu e corect.',
   owner_only: 'Doar proprietarul poate face asta.',
@@ -361,6 +369,7 @@ export type Location = {
   /** Câte programări viitoare (confirmate sau cereri) are (pentru avertismentul la dezactivare). */
   futureBookings?: number;
 };
+export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number };
 export type Booking = {
   id: string;
   /** Clientul are poze sau descriere în TAF Identity (doar în lista din calendar). */
@@ -368,6 +377,8 @@ export type Booking = {
   clientId: string;
   barberId: string;
   serviceId: string;
+  /** Servicii adăugate la aceeași programare (ex. Vopsit barbă); durata și prețul lor sunt incluse în end și price. */
+  extras?: BookingExtra[];
   start: string;
   end: string;
   price: number;
@@ -495,6 +506,8 @@ export type Client = {
   /** Membru TAF Club acum (abonament activ sau bifat de mână) și bifa manuală. */
   clubMember?: boolean;
   clubManual?: boolean;
+  /** Blocat din panou: nu intră în cont și nu se programează din aplicație sau de pe site. */
+  blocked?: { at: string; reason: string } | boolean | null;
   visits?: number;
   lastVisit?: string | null;
   bookings?: Booking[];

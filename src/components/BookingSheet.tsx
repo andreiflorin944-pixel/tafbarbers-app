@@ -17,6 +17,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { staffApi, type PaySent, type StaffBooking, type StaffCheckout } from "@/api/staff";
 import { cutsText } from "@/components/SubscriptionRow";
 import { BookingEdit, BookingHistory } from "@/components/BookingEdit";
+import { addableServices, ExtraSheet } from "@/components/ExtraSheet";
+import { ApiError } from "@/api/client";
+import { useStaffServices } from "@/lib/useStaffServices";
+import { useApp } from "@/state/AppState";
 import { Candle } from "@/components/Birthday";
 import { Button, styles as ui } from "@/components/ui";
 import { tr, useT, type Key } from "@/i18n";
@@ -62,6 +66,9 @@ export function BookingSheet({
   // „Modifică programarea” și „Istoric” se deschid în aceeași fereastră, în locul butoanelor.
   const [mode, setMode] = useState<"view" | "edit" | "history">("view");
   const [saved, setSaved] = useState<string | null>(null);
+  const [extraOpen, setExtraOpen] = useState(false);
+  const services = useStaffServices();
+  const { barbers } = useApp();
   useEffect(() => {
     setCheckout(false);
     setMode("view");
@@ -81,6 +88,34 @@ export function BookingSheet({
     (b.status === "confirmed" || (b.status === "completed" && !b.payment));
 
   const tell = (m: string) => (Platform.OS === "web" ? window.alert(m) : Alert.alert("TAF", m));
+  const askYes = (m: string) =>
+    new Promise<boolean>((res) => {
+      if (Platform.OS === "web") return res(window.confirm(m));
+      Alert.alert("TAF", m, [
+        { text: t("common.no"), style: "cancel", onPress: () => res(false) },
+        { text: t("common.yes"), onPress: () => res(true) },
+      ]);
+    });
+  // Serviciu în plus: dacă nu mai e timp în program după programare, frizerul poate alege să-l pună oricum.
+  const addExtra = async (serviceId: string) => {
+    let nb: StaffBooking;
+    try {
+      nb = await staffApi.addExtra(staffToken, b.id, serviceId);
+    } catch (e) {
+      if (!(e instanceof ApiError && e.code === "no_time_for_extra") || !(await askYes(t("extra.forceAsk")))) throw e;
+      nb = await staffApi.addExtra(staffToken, b.id, serviceId, true);
+    }
+    onChange({ ...b, ...nb });
+    setSaved(t("extra.added"));
+  };
+  const removeExtra = async (extraId: string, name: string) => {
+    if (!(await askYes(t("extra.removeAsk", { name })))) return;
+    try {
+      onChange({ ...b, ...(await staffApi.removeExtra(staffToken, b.id, extraId)) });
+    } catch (e) {
+      tell(errorMessage(e));
+    }
+  };
   const setStatus = async (status: string) => {
     try {
       onChange({
@@ -152,7 +187,7 @@ export function BookingSheet({
           />
           <Line
             icon="cut-outline"
-            text={`${b.serviceName} · ${b.barberName}`}
+            text={`${[b.serviceName, ...(b.extras ?? []).map((e) => e.name)].join(" + ")} · ${b.barberName}`}
           />
           {p.stats ? (
             <Line icon="cash-outline" text={t("common.lei", { n: b.price })} />
@@ -299,6 +334,16 @@ export function BookingSheet({
             {staff.owner && b.payment && !checkout ? (
               <Button title={t("sheet.undoPay")} variant="ghost" onPress={undoPay} />
             ) : null}
+            {p.bookings_manage && (b.status === "confirmed" || b.status === "requested") && !b.onlinePaid && !checkout ? (
+              <>
+                {(b.extras ?? []).map((e) => (
+                  <Button key={e.id} title={t("extra.removeStaff", { name: e.name })} variant="ghost" onPress={() => removeExtra(e.id, e.name)} />
+                ))}
+                {addableServices(b as never, services, barbers.find((x) => x.id === b.barberId)).length ? (
+                  <Button title={t("extra.add")} variant="ghost" onPress={() => setExtraOpen(true)} />
+                ) : null}
+              </>
+            ) : null}
             {p.bookings_manage && b.status === "confirmed" && !checkout ? (
               <Button title={t("sedit.edit")} variant="ghost" onPress={() => { setSaved(null); setMode("edit"); }} />
             ) : null}
@@ -313,6 +358,15 @@ export function BookingSheet({
           </ScrollView>
         </View>
       </View>
+      {extraOpen ? (
+        <ExtraSheet
+          booking={b as never}
+          services={services}
+          barber={barbers.find((x) => x.id === b.barberId)}
+          onClose={() => setExtraOpen(false)}
+          onAdd={addExtra}
+        />
+      ) : null}
     </Modal>
   );
 }

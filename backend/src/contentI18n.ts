@@ -225,3 +225,16 @@ async function textFault(env: Env, lang: TrLang, ro: string, budget: Budget): Pr
   console.log('[translate] textul nu primește traducere', key, fails[key] ?? 'renunț');
   return { fail: fails[key] ? 'later' : 'text' };
 }
+
+/** Programări: numele serviciului și ale serviciilor adăugate, în limba aplicației. */
+export async function localizeBookings<T extends { serviceName?: string | null; extras?: Array<{ name: string }> }>(env: Env, lang: unknown, list: T[]): Promise<T[]> {
+  const l = langOf(lang);
+  if (l === 'ro' || !list.length) return list;
+  const texts = list.flatMap((b) => [b.serviceName ?? '', ...(b.extras ?? []).map((e) => e.name)]).filter(Boolean);
+  const m = await lookup(env, l, texts);
+  return list.map((b) => ({
+    ...b,
+    serviceName: (b.serviceName && m.get(b.serviceName)) || b.serviceName,
+    ...(b.extras && { extras: b.extras.map((e) => ({ ...e, name: m.get(e.name) ?? e.name })) }),
+  }));
+}

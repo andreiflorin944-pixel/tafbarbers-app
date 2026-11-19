@@ -267,6 +267,7 @@ export function CalendarPage({ me }: { me: Me }) {
         <span className="cal-ev-svc">
           {x.status === 'requested' ? 'Cerere · ' : ''}
           {x.serviceName}
+          {x.extras?.length ? ` + ${x.extras.map((e) => e.name).join(' + ')}` : ''}
           {withBarber ? ` · ${x.barberName}` : ''}
         </span>
         {x.identity ? (
@@ -597,7 +598,7 @@ export function CalendarPage({ me }: { me: Me }) {
           ) : null}
           <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
             <span className="dot" style={{ background: services.find((x) => x.id === hover.b.serviceId)?.color || colorOf(hover.b.barberId) }} />
-            <span style={{ flex: 1 }}>{hover.b.serviceName}</span>
+            <span style={{ flex: 1 }}>{[hover.b.serviceName, ...(hover.b.extras ?? []).map((e) => e.name)].join(' + ')}</span>
             <span className="muted">{Math.round((Date.parse(hover.b.end) - Date.parse(hover.b.start)) / 60000)} min</span>
           </div>
           {hover.b.note ? <div className="muted small">📝 {hover.b.note}</div> : null}
@@ -708,8 +709,17 @@ function NewBooking({
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
+  // Servicii în plus la aceeași programare (ex. Vopsit barbă): timpul și prețul se adună.
+  const [extraIds, setExtraIds] = useState<string[]>([]);
   const [barberId, setBarberId] = useState(initial.barberId ?? me.barberId ?? barbers[0]?.id ?? '');
   const barber = barbers.find((b) => b.id === barberId);
+  const doesIt = (id: string) => !barber?.serviceIds?.length || barber.serviceIds.includes(id);
+  useEffect(() => {
+    setExtraIds((x) => x.filter((id) => id !== serviceId && doesIt(id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceId, barberId]);
+  const totalMin = [serviceId, ...extraIds].reduce((a, id) => a + (barber?.durations?.[id] ?? services.find((s) => s.id === id)?.durationMin ?? 0), 0);
+  const totalLei = [serviceId, ...extraIds].reduce((a, id) => a + (barber?.prices?.[id] ?? services.find((s) => s.id === id)?.price ?? 0), 0);
   // Alt frizer, care nu face serviciul ales: trecem pe primul serviciu pe care îl face.
   useEffect(() => {
     if (barber?.serviceIds?.length && !barber.serviceIds.includes(serviceId)) {
@@ -750,7 +760,7 @@ function NewBooking({
     if (!serviceId || !barberId) return;
     setSlots(null);
     setStart(null);
-    api<Slot[]>('GET', `/availability?serviceId=${serviceId}&barberId=${barberId}&day=${day}`).then(
+    api<Slot[]>('GET', `/availability?serviceId=${serviceId}&barberId=${barberId}&day=${day}${extraIds.length ? `&extra=${extraIds.join(',')}` : ''}`).then(
       (s) => {
         setSlots(s);
         // Dacă s-a dat click pe calendar la o oră liberă, o preselectăm.
@@ -760,13 +770,14 @@ function NewBooking({
       },
       () => setSlots([]),
     );
-  }, [serviceId, barberId, day, initial.time]);
+  }, [serviceId, barberId, day, initial.time, extraIds]);
 
   const submit = () =>
     run(async () => {
       await api('POST', '/admin/bookings', {
         ...(picked ? { clientId: picked.id } : { phone, name }),
         serviceId,
+        extraServiceIds: extraIds,
         barberId,
         start: force ? localToIso(day, forceTime) : start,
         force,
@@ -851,6 +862,40 @@ function NewBooking({
                 </option>
               ))}
           </select>
+          {extraIds.map((id, i) => (
+            <div className="row" key={i} style={{ gap: 6, marginTop: 6 }}>
+              <select value={id} onChange={(e) => setExtraIds((x) => x.map((v, j) => (j === i ? e.target.value : v)))} aria-label="Serviciu în plus" style={{ flex: 1 }}>
+                {services
+                  .filter((s) => s.active && doesIt(s.id) && s.id !== serviceId && (s.id === id || !extraIds.includes(s.id)))
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      + {s.name} · {barber?.durations?.[s.id] ?? s.durationMin} min · {lei(barber?.prices?.[s.id] ?? s.price)}
+                    </option>
+                  ))}
+              </select>
+              <button type="button" className="ghost sm" aria-label="Scoate serviciul" onClick={() => setExtraIds((x) => x.filter((_, j) => j !== i))}>
+                ✕
+              </button>
+            </div>
+          ))}
+          {extraIds.length < 3 && services.some((s) => s.active && doesIt(s.id) && s.id !== serviceId && !extraIds.includes(s.id)) ? (
+            <button
+              type="button"
+              className="ghost sm"
+              style={{ marginTop: 6 }}
+              onClick={() => {
+                const next = services.find((s) => s.active && doesIt(s.id) && s.id !== serviceId && !extraIds.includes(s.id));
+                if (next) setExtraIds((x) => [...x, next.id]);
+              }}
+            >
+              + Adaugă serviciu
+            </button>
+          ) : null}
+          {extraIds.length ? (
+            <div className="muted small" style={{ marginTop: 4 }}>
+              Total: {totalMin} min · {lei(totalLei)}
+            </div>
+          ) : null}
         </Field>
         <div className="grid two">
           <Field label="Frizer">

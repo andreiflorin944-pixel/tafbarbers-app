@@ -13,6 +13,7 @@ import { colors, space } from '@/theme';
 
 export default function Confirm() {
   const { draft, serviceById, barberById, locationById, user, token, addBooking, business } = useApp();
+  const extras = (draft.extraServiceIds ?? []).map((id) => serviceById(id)).filter((x): x is NonNullable<typeof x> => !!x);
   const gate = useLoginGate();
   const { t } = useT();
   const service = serviceById(draft.serviceId);
@@ -38,7 +39,13 @@ export default function Confirm() {
     try {
       // Trimitem frizerul ales efectiv la ora respectivă, ca serverul să verifice exact acel loc.
       const who = forWho.trim();
-      const booking = await api.createBooking(tok, { serviceId: service.id, barberId: barber.id, start: draft.start!, note: who ? t('book.forWhoNote', { name: who }) : undefined });
+      const booking = await api.createBooking(tok, {
+        serviceId: service.id,
+        extraServiceIds: extras.map((x) => x.id),
+        barberId: barber.id,
+        start: draft.start!,
+        note: who ? t('book.forWhoNote', { name: who }) : undefined,
+      });
       addBooking(booking);
       router.replace({ pathname: '/book/success', params: { id: booking.id } });
       // Plata cu cardul: pagina Stripe se deschide peste ecranul de confirmare; dacă renunță, plătește la salon.
@@ -67,14 +74,14 @@ export default function Confirm() {
       <Steps current={5} />
       <Card style={{ gap: space.sm }}>
         {location ? <Line icon="location" text={[location.name, location.address].filter(Boolean).join(' · ')} /> : null}
-        <Line icon="cut" text={service.name} />
+        <Line icon="cut" text={[service.name, ...extras.map((x) => x.name)].join(' + ')} />
         <Line icon="person" text={barber.name} />
         <Line icon="calendar" text={formatDate(start)} />
-        <Line icon="time" text={`${formatTime(start)} · ${barberDuration(service, barber)} min`} />
+        <Line icon="time" text={`${formatTime(start)} · ${[service, ...extras].reduce((a, x) => a + barberDuration(x, barber), 0)} min`} />
         <View style={{ height: 1, backgroundColor: colors.border, marginVertical: space.xs }} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={styles.text}>{t('book.total')}</Text>
-          <Text style={styles.price}>{lei(barberPrice(service, barber))}</Text>
+          <Text style={styles.price}>{lei([service, ...extras].reduce((a, x) => a + barberPrice(x, barber), 0))}</Text>
         </View>
       </Card>
 

@@ -5,6 +5,7 @@ import { api } from '@/api';
 import { Button, Card, Empty, Screen, Segmented, Title, styles } from '@/components/ui';
 import { PayDueBanner, usePayBooking } from '@/components/PayDue';
 import { canMessage, LateSheet } from '@/components/LateSheet';
+import { addableServices, ExtraSheet } from '@/components/ExtraSheet';
 import type { Booking, WaitlistEntry } from '@/data/types';
 import { formatDate, formatTime, fromDayKey } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
@@ -14,8 +15,10 @@ import { useApp } from '@/state/AppState';
 import { colors, space } from '@/theme';
 
 export default function Bookings() {
-  const { user, token, bookings, cancelBooking, reportLate, serviceById, barberById, locationById, locations, resetDraft, setDraft, business, refreshBookings } = useApp();
+  const { user, token, bookings, cancelBooking, reportLate, serviceById, barberById, locationById, locations, resetDraft, setDraft, business, refreshBookings, services, addBooking } = useApp();
   const [tab, setTab] = useState(0);
+  // „+ Adaugă serviciu”: programarea la care clientul mai pune un serviciu (ex. Vopsit barbă).
+  const [extraFor, setExtraFor] = useState<Booking | null>(null);
   // „Întârzii”: programarea pentru care clientul anunță întârzierea.
   const [late, setLate] = useState<Booking | null>(null);
   // Lista de așteptare: se reîncarcă la fiecare intrare pe ecran (clientul s-a putut înscrie chiar acum, din alegerea orei).
@@ -80,6 +83,28 @@ export default function Bookings() {
   const cancelMs = (business?.cancelHours ?? 0) * 3_600_000;
   const STATUS: Record<string, string> = { requested: t('bookings.pending'), cancelled: t('status.cancelled'), completed: t('status.completed'), no_show: t('status.noShow') };
   const pending = (b: Booking) => b.status === 'requested';
+  // Serviciu în plus: la programările care încă n-au început și nu sunt plătite online.
+  const canExtra = (b: Booking) => (b.status === 'confirmed' || b.status === 'requested') && !b.onlinePaid && new Date(b.start).getTime() > Date.now();
+  const removeExtra = (b: Booking, extraId: string, name: string) => {
+    const go = async () => {
+      if (!token) return;
+      try {
+        addBooking(await api.removeBookingExtra(token, b.id, extraId));
+      } catch (e) {
+        notify(errorMessage(e));
+        refreshBookings();
+      }
+    };
+    const msg = t('extra.removeAsk', { name });
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) go();
+      return;
+    }
+    Alert.alert(t('extra.removeTitle'), msg, [
+      { text: t('common.no'), style: 'cancel' },
+      { text: t('extra.remove'), style: 'destructive', onPress: go },
+    ]);
+  };
 
   const renderItem = (b: Booking, canCancel: boolean) => {
     const start = new Date(b.start);
@@ -108,6 +133,21 @@ export default function Bookings() {
           <Text style={[styles.muted, { fontSize: 12 }]}>{t('bookings.expired')}</Text>
         ) : null}
         <Text style={styles.text}>{service?.name ?? b.serviceName}</Text>
+        {(b.extras ?? []).map((e) => (
+          <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+            <Text style={[styles.text, { flex: 1 }]}>+ {serviceById(e.serviceId)?.name ?? e.name}</Text>
+            {canCancel && canExtra(b) ? (
+              <Text
+                onPress={() => removeExtra(b, e.id, serviceById(e.serviceId)?.name ?? e.name)}
+                style={{ color: colors.muted, fontSize: 18, paddingHorizontal: space.sm }}
+                accessibilityRole="button"
+                accessibilityLabel={t('extra.removeTitle')}
+              >
+                ✕
+              </Text>
+            ) : null}
+          </View>
+        ))}
         {/* Locația, doar când salonul are mai multe. */}
         {locations.length > 1 && (b.locationName || locationById(b.locationId)) ? (
           <Text style={styles.muted}>{locationById(b.locationId)?.name ?? b.locationName}</Text>
@@ -121,6 +161,11 @@ export default function Bookings() {
           <Text style={{ color: colors.gold, fontWeight: '600' }}>
             {t('late.told')} {[b.lateMin ? t('late.min', { n: b.lateMin }) : '', b.lateNote ? `„${b.lateNote}”` : ''].filter(Boolean).join(' · ')}
           </Text>
+        ) : null}
+        {canCancel && canExtra(b) && addableServices(b, services, barberById(b.barberId), { hideMembersOnly: true }).length ? (
+          <View style={{ marginTop: space.sm }}>
+            <Button title={t('extra.add')} variant="ghost" onPress={() => setExtraFor(b)} />
+          </View>
         ) : null}
         {canCancel && canMessage(b) ? (
           <View style={{ marginTop: space.sm }}>
@@ -229,6 +274,18 @@ export default function Bookings() {
       ) : (
         list.map((b) => renderItem(b, tab === 0))
       )}
+      {extraFor ? (
+        <ExtraSheet
+          booking={extraFor}
+          services={services}
+          barber={barberById(extraFor.barberId)}
+          onClose={() => setExtraFor(null)}
+          onAdd={async (serviceId) => {
+            if (!token) return;
+            addBooking(await api.addBookingExtra(token, extraFor.id, serviceId));
+          }}
+        />
+      ) : null}
       {late ? <LateSheet booking={{ ...late, barberName: barberById(late.barberId)?.name ?? late.barberName }} onClose={() => setLate(null)} onSend={(m, n) => reportLate(late.id, m, n)} /> : null}
     </Screen>
   );

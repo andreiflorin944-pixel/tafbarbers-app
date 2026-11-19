@@ -3,6 +3,7 @@ import { api, getToken, setToken, setUnauthorizedHandler, type Me } from './api'
 import { Field, TopSlot, useAction } from './ui';
 import { CalendarPage } from './pages/Calendar';
 import { ClientsPage } from './pages/Clients';
+import { ClientCleanupPage } from './pages/ClientCleanup';
 import { ServicesPage } from './pages/Services';
 import { BarbersPage } from './pages/Barbers';
 import { TimeOffPage } from './pages/TimeOff';
@@ -39,6 +40,7 @@ const PAGES = [
   { key: 'waitlist', label: 'Listă de așteptare', show: () => true, el: WaitlistPage },
   { key: 'notes', label: 'Notițe echipă', show: () => true, el: NotesPage },
   { key: 'clients', label: 'Clienți', show: (m: Me) => m.permissions.clients, el: ClientsPage },
+  { key: 'clients-cleanup', label: 'Curățenie conturi', show: (m: Me) => m.owner, el: ClientCleanupPage },
   { key: 'services', label: 'Servicii', show: (m: Me) => m.owner, el: ServicesPage },
   { key: 'barbers', label: 'Frizeri și program', show: (m: Me) => m.owner, el: BarbersPage },
   { key: 'shop', label: 'Magazin', show: (m: Me) => m.owner || m.permissions.shop, el: ShopPage },
@@ -128,7 +130,7 @@ const NAV: NavSection[] = [
     label: 'Clienți',
     icon: 'clients',
     groups: [
-      { items: [{ label: 'Lista clienților (import / export)', to: 'clients' }] },
+      { items: [{ label: 'Lista clienților (import / export)', to: 'clients' }, { label: 'Curățenie conturi', to: 'clients-cleanup' }] },
       { title: 'Analize', items: [{ label: 'Clienți TOP-100', to: 'reports/top100' }, { label: 'Păstrarea clienților', to: 'reports/retention' }, { label: 'Clienți noi vs. care revin', to: 'reports/new-returning' }] },
     ],
   },

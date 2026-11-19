@@ -52,9 +52,13 @@ export type Slot = {
 // requested = cerere trimisă, în așteptarea confirmării salonului (când programările cer aprobare).
 export type BookingStatus = 'requested' | 'confirmed' | 'cancelled' | 'completed' | 'no_show';
 
+/** Serviciu adăugat la aceeași programare (ex. Vopsit barbă); timpul și prețul lui sunt incluse în end și price. */
+export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number };
+
 export type Booking = {
   id: string;
   serviceId: string;
+  extras?: BookingExtra[];
   barberId: string;
   start: string; // ISO datetime
   end?: string;

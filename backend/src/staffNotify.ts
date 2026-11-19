@@ -8,7 +8,7 @@ import { formatLocal, localDay } from './time';
 // Cine a făcut el însuși schimbarea nu primește anunțul. Mesajele scrise de client ajung și la cine a oprit anunțurile.
 
 type Booking = NonNullable<Awaited<ReturnType<typeof getBooking>>>;
-export type StaffEvent = 'new' | 'request' | 'cancelled' | 'moved' | 'late';
+export type StaffEvent = 'new' | 'request' | 'cancelled' | 'moved' | 'late' | 'extra';
 
 const TITLES: Record<StaffEvent, string> = {
   new: 'Programare nouă',
@@ -16,6 +16,7 @@ const TITLES: Record<StaffEvent, string> = {
   cancelled: 'Programare anulată',
   moved: 'Programare mutată',
   late: 'Mesaj de la client',
+  extra: 'Serviciu adăugat',
 };
 
 /** Nu aruncă niciodată: programarea s-a făcut deja, anunțul e doar în plus. */
@@ -24,7 +25,7 @@ export async function notifyStaff(
   b: Booking,
   ev: StaffEvent,
   actorAdminId: string | null,
-  opts: { fromStart?: string; fromBarberId?: string; lateMin?: number | null; lateNote?: string | null } = {},
+  opts: { fromStart?: string; fromBarberId?: string; lateMin?: number | null; lateNote?: string | null; extraName?: string } = {},
 ): Promise<void> {
   try {
     const barbers = [b.barberId, opts.fromBarberId ?? b.barberId];
@@ -39,7 +40,8 @@ export async function notifyStaff(
     if (!tokens.length) return;
     const tz = env.TIMEZONE || 'Europe/Bucharest';
     const when = formatLocal(tz, b.start, 'ro');
-    const parts = [b.clientName?.trim() || 'Client', b.serviceName ?? '', `cu ${b.barberName ?? ''}`.trim(), when];
+    const svc = [b.serviceName ?? '', ...(b.extras ?? []).map((e) => e.name)].filter(Boolean).join(' + ');
+    const parts = [b.clientName?.trim() || 'Client', ev === 'extra' && opts.extraName ? `+ ${opts.extraName} (${svc})` : svc, `cu ${b.barberName ?? ''}`.trim(), when];
     if (ev === 'moved' && opts.fromStart && opts.fromStart !== b.start) parts.push(`(era ${formatLocal(tz, opts.fromStart, 'ro')})`);
     let body = parts.filter((p) => p && p !== 'cu').join(' · ');
     let title = TITLES[ev];

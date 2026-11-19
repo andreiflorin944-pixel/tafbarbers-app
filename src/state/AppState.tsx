@@ -1,15 +1,17 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError } from '@/api';
 import type { Barber, Booking, Business, Location, Me, Promo, Service } from '@/data/types';
 import { useT } from '@/i18n';
 import { unregisterPush } from '@/lib/push';
 import { SESSION_KEY, storage } from '@/lib/storage';
 import { LOOK_KEY, normalizeLook, readSavedLook, type SavedLook } from '@/theme';
-import { Platform } from 'react-native';
+import { AppState as RNAppState, Platform } from 'react-native';
 
 type Draft = {
   locationId: string | null; // locația aleasă la primul pas
   serviceId: string | null;
+  /** Servicii în plus la aceeași programare (ex. Vopsit barbă), alese după serviciul principal. */
+  extraServiceIds: string[];
   /** Serviciul a venit ales dinainte (pagina serviciului, un banner, un link): pasul „Serviciul” se sare. */
   presetService: boolean;
   barberId: string | null; // null = oricine
@@ -51,7 +53,7 @@ type AppState = {
 };
 
 const TOKEN_KEY = SESSION_KEY;
-const emptyDraft: Draft = { locationId: null, serviceId: null, presetService: false, barberId: null, start: null, slotBarberId: null };
+const emptyDraft: Draft = { locationId: null, serviceId: null, extraServiceIds: [], presetService: false, barberId: null, start: null, slotBarberId: null };
 const Ctx = createContext<AppState | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
@@ -64,6 +66,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // La revenirea în aplicație se reîncarcă prețurile, serviciile și frizerii: ce schimbă salonul în panou se vede imediat.
+  const [fresh, setFresh] = useState(0);
+  const loaded = useRef(false);
+  useEffect(() => {
+    let last = Date.now();
+    const sub = RNAppState.addEventListener('change', (st) => {
+      if (st !== 'active' || Date.now() - last < 30_000) return;
+      last = Date.now();
+      setFresh((n) => n + 1);
+    });
+    return () => sub.remove();
+  }, []);
   const [draft, setDraftState] = useState<Draft>(emptyDraft);
   const [user, setUser] = useState<Me | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -79,15 +93,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setServices(s);
         setBarbers(br);
         setLocations(loc);
+        loaded.current = true;
       })
-      .catch(() => setLoadError(true))
+      // O reîncărcare la revenirea în aplicație fără internet păstrează ce era afișat (fără ecranul de eroare).
+      .catch(() => !loaded.current && setLoadError(true))
       .finally(() => setLoading(false));
     // Altă limbă: serviciile, frizerii și textele salonului se reîncarcă traduse. Alt cont: membrii TAF Club văd și serviciile lor.
-  }, [attempt, lang, token]);
+  }, [attempt, lang, token, fresh]);
 
   useEffect(() => {
     api.getPromos(lang).then(setPromos, () => setPromos([]));
-  }, [lang, attempt]);
+  }, [lang, attempt, fresh]);
 
   // Sesiunea salvată de data trecută (Keychain / Keystore, localStorage pe web): clientul rămâne în cont după repornire.
   // Doar un 401 de la server (sesiune expirată sau închisă) o șterge; fără internet sau cu serverul căzut reîncercăm.

@@ -216,9 +216,13 @@ export function BookingPanel({
   const service = services.find((x) => x.id === serviceId);
   const loc = locations.find((l) => l.id === (barberId !== b.barberId ? barber?.locationId : b.locationId)) ?? locations.find((l) => l.active);
   const sameAsSaved = barberId === b.barberId && serviceId === b.serviceId;
-  const durMin = sameAsSaved ? Math.round((Date.parse(b.end) - Date.parse(b.start)) / 60000) : (barber?.durations?.[serviceId] ?? service?.durationMin ?? 30);
+  // Serviciile adăugate rămân pe programare: la alt frizer se iau duratele lui; prețul lor rămâne cel de la adăugare.
+  const extras = b.extras ?? [];
+  const extrasMin = extras.reduce((a, e) => a + (barberId === b.barberId ? e.durationMin : (barber?.durations?.[e.serviceId] ?? services.find((s) => s.id === e.serviceId)?.durationMin ?? e.durationMin)), 0);
+  const extrasPrice = extras.reduce((a, e) => a + e.price, 0);
+  const durMin = sameAsSaved ? Math.round((Date.parse(b.end) - Date.parse(b.start)) / 60000) : (barber?.durations?.[serviceId] ?? service?.durationMin ?? 30) + extrasMin;
   // Prețul urmează serviciul (și prețul propriu al frizerului), cât timp nu l-ai schimbat de mână.
-  const listPrice = sameAsSaved ? b.price : (barber?.prices?.[serviceId] ?? service?.price ?? b.price);
+  const listPrice = sameAsSaved ? b.price : (barber?.prices?.[serviceId] ?? service?.price ?? b.price) + extrasPrice;
   useEffect(() => {
     if (!priceTouched) setPrice(listPrice);
   }, [listPrice, priceTouched]);
@@ -235,9 +239,44 @@ export function BookingPanel({
   useEffect(() => {
     if (!needSlots || force) return;
     setSlots(null);
-    api<Slot[]>('GET', `/availability?serviceId=${serviceId}&barberId=${barberId}&day=${day}&exclude=${b.id}`).then(setSlots, () => setSlots([]));
-  }, [needSlots, force, serviceId, barberId, day, b.id]);
+    const extra = (b.extras ?? []).map((e) => e.serviceId).join(',');
+    api<Slot[]>('GET', `/availability?serviceId=${serviceId}&barberId=${barberId}&day=${day}&exclude=${b.id}${extra ? `&extra=${extra}` : ''}`).then(setSlots, () => setSlots([]));
+  }, [needSlots, force, serviceId, barberId, day, b.id, b.extras]);
   const slotOk = !moved && serviceId === b.serviceId ? true : force || !!slots?.some((s) => s.start === effStart);
+
+  // „+ Adaugă serviciu”: se salvează pe loc (programarea se prelungește și prețul crește).
+  const canExtra = canManage && (b.status === 'confirmed' || b.status === 'requested') && !b.onlinePaid && !checkout;
+  const [addOpen, setAddOpen] = useState(false);
+  const [addId, setAddId] = useState('');
+  const [noTime, setNoTime] = useState(false);
+  const barberOfBooking = barbers.find((x) => x.id === b.barberId);
+  const addable = services.filter(
+    (s) => s.active && s.id !== b.serviceId && !extras.some((e) => e.serviceId === s.id) && (!barberOfBooking?.serviceIds || barberOfBooking.serviceIds.includes(s.id)),
+  );
+  const applyExtra = (nb: Booking, text: string) => {
+    const next = { ...b, ...nb };
+    setB(next);
+    reset(next);
+    setMsg(text);
+    onChange();
+    activity.reload();
+  };
+  const addExtra = (forceAdd: boolean) =>
+    run(async () => {
+      try {
+        const nb = await api<Booking>('POST', `/admin/bookings/${b.id}/extras`, { serviceId: addId, force: forceAdd });
+        setAddOpen(false);
+        setNoTime(false);
+        applyExtra(nb, 'Serviciul a fost adăugat. Programarea s-a prelungit și prețul s-a actualizat.');
+      } catch (e) {
+        if ((e as Error)?.message === 'no_time_for_extra' && !forceAdd) setNoTime(true);
+        throw e;
+      }
+    });
+  const removeExtra = (extraId: string, name: string) => {
+    if (!confirm(`Scoți „${name}” de pe programare? Timpul și prețul scad înapoi.`)) return;
+    run(async () => applyExtra(await api<Booking>('DELETE', `/admin/bookings/${b.id}/extras/${extraId}`), 'Serviciul a fost scos de pe programare.'));
+  };
 
   const set = (patch: Record<string, string>, close = true) =>
     run(async () => {
@@ -548,10 +587,70 @@ export function BookingPanel({
                 <div>
                   <b>{service?.name ?? b.serviceName}</b>
                   <div className="muted small">
-                    {durMin} min · {lei(listPrice)}
+                    {durMin - extrasMin} min · {lei(listPrice - extrasPrice)}
                   </div>
                 </div>
               </div>
+              {extras.map((e) => {
+                const sv = services.find((s) => s.id === e.serviceId);
+                return (
+                  <div className="bk-row" key={e.id}>
+                    <span className="bk-thumb ic" style={{ borderColor: sv?.color || color }}>
+                      <Icon name="plus" />
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <b>{e.name}</b>
+                      <div className="muted small">
+                        {e.durationMin} min · {lei(e.price)}
+                      </div>
+                    </div>
+                    {canExtra ? (
+                      <button type="button" className="ghost sm" disabled={busy} title="Scoate serviciul" aria-label={`Scoate ${e.name}`} onClick={() => removeExtra(e.id, e.name)}>
+                        ✕
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {canExtra && extras.length < 3 ? (
+                addOpen ? (
+                  <div className="bk-edit">
+                    <select value={addId} onChange={(e) => setAddId(e.target.value)} aria-label="Serviciul adăugat">
+                      <option value="">Alege serviciul…</option>
+                      {addable.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} · +{barberOfBooking?.durations?.[s.id] ?? s.durationMin} min · +{lei(barberOfBooking?.prices?.[s.id] ?? s.price)}
+                        </option>
+                      ))}
+                    </select>
+                    {dirty ? <div className="muted small">Salvează întâi celelalte modificări.</div> : null}
+                    <div className="row" style={{ gap: 6 }}>
+                      <button type="button" className="sm" disabled={!addId || busy || dirty} onClick={() => addExtra(false)}>
+                        Adaugă
+                      </button>
+                      {noTime ? (
+                        <button type="button" className="ghost sm" disabled={busy || dirty} onClick={() => addExtra(true)}>
+                          Adaugă oricum (peste program)
+                        </button>
+                      ) : null}
+                      <button type="button" className="ghost sm" onClick={() => setAddOpen(false)}>
+                        Renunță
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" className="bk-row" onClick={() => { setAddOpen(true); setAddId(''); setNoTime(false); }}>
+                    <span className="bk-thumb ic">
+                      <Icon name="plus" />
+                    </span>
+                    <div>
+                      <b>Adaugă serviciu</b>
+                      <div className="muted small">ex. Vopsit barbă după tuns; timpul și prețul se adună</div>
+                    </div>
+                    <span className="bk-chev">›</span>
+                  </button>
+                )
+              ) : null}
               {edit === 'service' ? (
                 <div className="bk-edit">
                   <select value={serviceId} onChange={(e) => setServiceId(e.target.value)} aria-label="Serviciul">

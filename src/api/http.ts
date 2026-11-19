@@ -47,10 +47,10 @@ export function httpApi(baseUrl: string): BookingApi {
     getBarbers: () => call('GET', '/barbers'),
     getLocations: () => call('GET', '/locations'),
     getPromos: (lang) => call('GET', `/promos?lang=${encodeURIComponent(lang)}`),
-    getAvailability: ({ serviceId, barberId, locationId, day, token }) =>
+    getAvailability: ({ serviceId, barberId, locationId, day, token, extraServiceIds }) =>
       call(
         'GET',
-        `/availability?serviceId=${encodeURIComponent(serviceId)}&barberId=${encodeURIComponent(barberId ?? '')}&locationId=${encodeURIComponent(locationId ?? '')}&day=${day}`,
+        `/availability?serviceId=${encodeURIComponent(serviceId)}&barberId=${encodeURIComponent(barberId ?? '')}&locationId=${encodeURIComponent(locationId ?? '')}&day=${day}${extraServiceIds?.length ? `&extra=${extraServiceIds.map(encodeURIComponent).join(',')}` : ''}`,
         { token: token ?? undefined },
       ),
 
@@ -112,6 +112,8 @@ export function httpApi(baseUrl: string): BookingApi {
     listBookings: (token) => call('GET', '/me/bookings', { token }),
     createBooking: (token, input) => call('POST', '/bookings', { token, body: input }),
     cancelBooking: (token, id) => call('POST', `/bookings/${encodeURIComponent(id)}/cancel`, { token }),
+    addBookingExtra: (token, id, serviceId) => call('POST', `/bookings/${encodeURIComponent(id)}/extras`, { token, body: { serviceId } }),
+    removeBookingExtra: (token, id, extraId) => call('DELETE', `/bookings/${encodeURIComponent(id)}/extras/${encodeURIComponent(extraId)}`, { token }),
     reportLate: (token, id, minutes, note) => call('POST', `/bookings/${encodeURIComponent(id)}/late`, { token, body: { minutes, note } }),
     getAppVersion: () => call('GET', '/app-version'),
     getWaitlist: (token) => call('GET', '/me/waitlist', { token }),

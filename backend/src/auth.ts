@@ -68,6 +68,10 @@ const DAY = 86_400_000;
 export const CLIENT_SESSION_DAYS = 180;
 
 export async function createSession(db: D1Database, kind: 'client' | 'admin', subjectId: string): Promise<string> {
+  // Clientul blocat din panou nu mai intră în cont, pe nicio cale (cod, parolă, Google/Apple).
+  if (kind === 'client' && (await db.prepare('SELECT 1 FROM clients WHERE id = ? AND blocked_at IS NOT NULL').bind(subjectId).first())) {
+    throw new HttpError(403, 'account_blocked');
+  }
   const token = randomToken();
   const ttl = kind === 'client' ? CLIENT_SESSION_DAYS * DAY : 14 * DAY;
   await db
@@ -101,7 +105,11 @@ async function lookup(c: Context<AppEnv>, kind: 'client' | 'admin') {
   const token = bearer(c);
   if (!token) return null;
   const hash = await sha256(token);
-  const s = await c.env.DB.prepare('SELECT subject_id, expires_at FROM sessions WHERE token_hash = ? AND kind = ? AND expires_at > ?')
+  // Un client blocat între timp iese din cont la următoarea cerere (sesiunile lui se șterg și la blocare).
+  const s = await c.env.DB.prepare(
+    `SELECT subject_id, expires_at FROM sessions WHERE token_hash = ? AND kind = ? AND expires_at > ?
+       AND (kind != 'client' OR NOT EXISTS (SELECT 1 FROM clients WHERE id = subject_id AND blocked_at IS NOT NULL))`,
+  )
     .bind(hash, kind, iso(new Date()))
     .first<{ subject_id: string; expires_at: string }>();
   if (s) await touch(c.env.DB, hash, kind, s.expires_at);
