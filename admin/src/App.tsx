@@ -443,21 +443,81 @@ function UserMenu({ me, onLogout }: { me: Me; onLogout: () => void }) {
   );
 }
 
+/** Bifa „nu sunt robot” (Cloudflare Turnstile), aceeași pagină ca în aplicație, pusă într-un iframe. Apare doar dacă proprietarul a pus cheile. */
+function useCaptcha(active: boolean) {
+  const [siteKey, setSiteKey] = useState<string | null>(null);
+  const [token, setTok] = useState<string | null>(null);
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    api<{ captchaSiteKey?: string | null }>('GET', '/business')
+      .then((b) => setSiteKey(b.captchaSiteKey ?? null))
+      .catch(() => setSiteKey(null));
+  }, [active]);
+  useEffect(() => {
+    const h = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      try {
+        const m = JSON.parse(String(e.data)) as { type?: string; token?: string };
+        if (m.type) setTok(m.type === 'token' && m.token ? m.token : null);
+      } catch {
+        // alt mesaj
+      }
+    };
+    window.addEventListener('message', h);
+    return () => window.removeEventListener('message', h);
+  }, []);
+  const reset = () => {
+    setTok(null);
+    setRound((n) => n + 1);
+  };
+  const element =
+    active && siteKey ? (
+      <iframe key={round} src="/v1/captcha?lang=ro&theme=dark" title="captcha" style={{ border: 0, width: '100%', height: 70, background: 'transparent' }} />
+    ) : null;
+  return { token, ready: !siteKey || !!token, required: !!siteKey, reset, element };
+}
+
 function Login({ onIn }: { onIn: (m: Me) => void }) {
-  const [mode, setMode] = useState<'login' | 'setup'>('login');
+  const [mode, setMode] = useState<'login' | 'setup' | 'forgot' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [setupKey, setSetupKey] = useState('');
-  const { busy, error, run } = useAction();
+  const [code, setCode] = useState('');
+  const [info, setInfo] = useState<string | null>(null);
+  const { busy, error, run, setError } = useAction();
+  const captcha = useCaptcha(mode === 'forgot');
+
+  const go = (m: typeof mode) => {
+    setError(null);
+    setInfo(null);
+    setMode(m);
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (mode === 'forgot') {
+      run(async () => {
+        try {
+          await api('POST', '/admin/password/forgot', { email, captcha: captcha.token ?? undefined });
+        } finally {
+          if (captcha.required) captcha.reset();
+        }
+        setCode('');
+        setPassword('');
+        setMode('reset');
+        setInfo(`Dacă există un cont cu ${email.trim()}, am trimis acolo un cod de 6 cifre. Uită-te și în Spam.`);
+      });
+      return;
+    }
     run(async () => {
       const r =
         mode === 'login'
           ? await api<{ token: string }>('POST', '/admin/login', { email, password })
-          : await api<{ token: string }>('POST', '/admin/setup', { email, password, name, setupKey });
+          : mode === 'reset'
+            ? await api<{ token: string }>('POST', '/admin/password/reset', { email, code: code.trim(), password })
+            : await api<{ token: string }>('POST', '/admin/setup', { email, password, name, setupKey });
       setToken(r.token);
       onIn(await api<Me>('GET', '/admin/me'));
     });
@@ -474,32 +534,62 @@ function Login({ onIn }: { onIn: (m: Me) => void }) {
             Prima configurare: creezi contul de proprietar. Cheia de configurare e cea pusă în Cloudflare (ADMIN_SETUP_KEY).
           </p>
         ) : null}
+        {mode === 'forgot' ? (
+          <p className="muted small" style={{ margin: 0 }}>
+            Scrie e-mailul contului tău din echipă. Îți trimitem pe el un cod cu care pui o parolă nouă.
+          </p>
+        ) : null}
+        {info ? (
+          <p className="muted small" style={{ margin: 0 }}>
+            {info}
+          </p>
+        ) : null}
         {mode === 'setup' ? (
           <Field label="Numele tău">
             <input value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
         ) : null}
         <Field label="E-mail">
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required readOnly={mode === 'reset'} />
         </Field>
-        <Field label={mode === 'setup' ? 'Parolă nouă (minim 10 caractere)' : 'Parolă'}>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
-            required
-          />
-        </Field>
+        {mode === 'reset' ? (
+          <Field label="Codul primit pe e-mail">
+            <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} required />
+          </Field>
+        ) : null}
+        {mode !== 'forgot' ? (
+          <Field label={mode === 'login' ? 'Parolă' : 'Parolă nouă (minim 10 caractere)'}>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              required
+            />
+          </Field>
+        ) : null}
         {mode === 'setup' ? (
           <Field label="Cheia de configurare">
             <input type="password" value={setupKey} onChange={(e) => setSetupKey(e.target.value)} required />
           </Field>
         ) : null}
+        {captcha.element}
         {error ? <div className="err">{error}</div> : null}
-        <button disabled={busy}>{mode === 'login' ? 'Intră' : 'Creează contul'}</button>
-        <button type="button" className="link" onClick={() => setMode(mode === 'login' ? 'setup' : 'login')}>
-          {mode === 'login' ? 'Prima dată aici? Configurează contul' : 'Am deja cont'}
+        <button disabled={busy || (mode === 'forgot' && !captcha.ready) || (mode === 'reset' && code.length !== 6)}>
+          {mode === 'login' ? 'Intră' : mode === 'setup' ? 'Creează contul' : mode === 'forgot' ? 'Trimite codul' : 'Salvează parola și intră'}
+        </button>
+        {mode === 'login' ? (
+          <button type="button" className="link" onClick={() => go('forgot')}>
+            Am uitat parola
+          </button>
+        ) : null}
+        {mode === 'reset' ? (
+          <button type="button" className="link" onClick={() => go('forgot')}>
+            Nu a venit codul? Cere altul
+          </button>
+        ) : null}
+        <button type="button" className="link" onClick={() => go(mode === 'login' ? 'setup' : 'login')}>
+          {mode === 'login' ? 'Prima dată aici? Configurează contul' : 'Înapoi la intrare'}
         </button>
       </form>
     </div>

@@ -11,6 +11,8 @@ type StaffState = {
   /** true după ce s-a verificat sesiunea salvată. */
   staffReady: boolean;
   staffSignIn: (email: string, password: string) => Promise<void>;
+  /** Intrare cu o sesiune primită deja (de ex. după „Am uitat parola”). */
+  staffSignInToken: (token: string) => Promise<void>;
   staffSignOut: () => Promise<void>;
   /** Actualizează local datele contului (de ex. poza nouă), fără o cerere în plus. */
   staffPatch: (patch: Partial<StaffMe>) => void;
@@ -38,6 +40,14 @@ export function StaffProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const signInWith = async (t: string) => {
+    const me = await staffApi.me(t);
+    await storage.set(KEY, t);
+    setToken(t);
+    setStaff(me);
+    void registerStaffPush(t);
+  };
+
   const value = useMemo<StaffState>(
     () => ({
       staff,
@@ -45,12 +55,9 @@ export function StaffProvider({ children }: { children: ReactNode }) {
       staffReady: ready,
       staffSignIn: async (email, password) => {
         const { token: t } = await staffApi.login(email.trim().toLowerCase(), password);
-        const me = await staffApi.me(t);
-        await storage.set(KEY, t);
-        setToken(t);
-        setStaff(me);
-        void registerStaffPush(t);
+        await signInWith(t);
       },
+      staffSignInToken: async (t) => signInWith(t),
       staffSignOut: async () => {
         if (token) {
           await unregisterStaffPush(token);

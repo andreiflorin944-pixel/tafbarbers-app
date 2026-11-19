@@ -111,6 +111,10 @@ export type StaffNote = {
 export const staffApi = {
   login: (email: string, password: string) => call<{ token: string }>('POST', '/admin/login', null, { email, password }),
   logout: (t: string) => call('POST', '/admin/logout', t).catch(() => undefined),
+  /** „Am uitat parola”: codul pleacă pe e-mailul contului din echipă (răspunsul e același și fără cont). */
+  forgotPassword: (email: string, captcha?: string) => call<{ ok: true; devCode?: string }>('POST', '/admin/password/forgot', null, { email, captcha }),
+  /** Codul + parola nouă: contul iese de pe celelalte dispozitive și intră direct aici. */
+  resetPassword: (email: string, code: string, password: string) => call<{ token: string }>('POST', '/admin/password/reset', null, { email, code, password }),
   me: (t: string) => call<StaffMe>('GET', '/admin/me', t),
   /** Telefonul ăsta primește anunțurile despre programări (nouă, anulată, mutată). */
   registerPush: (t: string, token: string, platform: string) => call('POST', '/admin/me/push', t, { token, platform }),

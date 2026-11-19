@@ -6,7 +6,8 @@ import { storesAdmin } from '../stores';
 import { websiteAdmin } from '../website';
 import { barberlyAdmin } from '../barberly';
 import { barberlyPushAdmin } from '../barberlyPush';
-import { captchaAdmin } from '../captcha';
+import { captchaAdmin, requireCaptcha } from '../captcha';
+import { checkCode, issueCode, useCode } from '../otp';
 import { clearFailures, lockedAny, loginKeys, recordFailure } from '../clientPassword';
 import { barberHours, bookingsBrief, hoursConflicts, overlapping } from '../scheduleConflicts';
 import {
@@ -135,6 +136,47 @@ adminRoutes.post('/login', async (c) => {
 });
 
 const DUMMY_HASH = 'pbkdf2$100000$00000000000000000000000000000000$' + '0'.repeat(64);
+
+// --- „Am uitat parola” pentru echipă (panou și aplicația echipei) ---
+// Codul pleacă pe e-mailul contului din panou. Codul stă în aceeași tabelă ca la clienți, sub cheia `staff:<id cont>`,
+// deci are aceleași limite (45 de secunde între coduri, 10 pe zi, 8 greșeli pe oră, pe IP). Bifa „nu sunt robot” se cere
+// ca la clienți, cât e pornită din panou.
+const staffCodeKey = (adminId: string) => `staff:${adminId}`;
+
+// Răspunsul e mereu același, fie că există contul, fie că nu.
+adminRoutes.post('/password/forgot', async (c) => {
+  const b = await c.req.json<{ email?: string; captcha?: string }>().catch(() => ({}) as { email?: string; captcha?: string });
+  const email = String(b.email ?? '').trim().toLowerCase().slice(0, 200);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(400, 'invalid_email');
+  await requireCaptcha(c, b.captcha);
+  const a = await c.env.DB.prepare('SELECT id, email FROM admins WHERE email = ?').bind(email).first<{ id: string; email: string }>();
+  let devCode: string | undefined;
+  if (a) {
+    try {
+      const r = await issueCode(c, { phone: staffCodeKey(a.id), email: a.email, channel: 'email', lang: c.req.query('lang') ?? 'ro', purpose: 'reset' });
+      devCode = r.code;
+    } catch (e) {
+      if (!(e instanceof HttpError)) throw e;
+    }
+  }
+  return c.json({ ok: true, ...(c.env.DEV_OTP === '1' && devCode && { devCode }) });
+});
+
+// Codul + parola nouă: parola se schimbă, contul iese de pe toate dispozitivele și intră direct aici.
+adminRoutes.post('/password/reset', async (c) => {
+  const b = await c.req.json<{ email?: string; code?: string; password?: string }>().catch(() => ({}) as { email?: string; code?: string; password?: string });
+  const email = String(b.email ?? '').trim().toLowerCase().slice(0, 200);
+  validPassword(b.password);
+  const a = email ? await c.env.DB.prepare('SELECT id FROM admins WHERE email = ?').bind(email).first<{ id: string }>() : null;
+  if (!a) throw new HttpError(400, 'code_expired');
+  const row = await checkCode(c.env, staffCodeKey(a.id), b.code);
+  await useCode(c.env, staffCodeKey(a.id), row);
+  await c.env.DB.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').bind(await hashPassword(b.password!), a.id).run();
+  await logoutAdmin(c.env.DB, a.id, null);
+  const keys = await loginKeys(c, { kind: 'email', value: `staff:${email}` }, [`staff:${a.id}`]);
+  await clearFailures(c.env, [keys.ident, ...keys.accounts].filter((x): x is string => !!x));
+  return c.json({ token: await createSession(c.env.DB, 'admin', a.id) });
+});
 
 adminRoutes.use('*', requireAdmin);
 
@@ -346,13 +388,24 @@ adminRoutes.post('/admins', ownerOnly, async (c) => {
 
 adminRoutes.patch('/admins/:id', ownerOnly, async (c) => {
   const id = c.req.param('id')!;
-  const b = await c.req.json<{ name?: string; barberId?: string | null; role?: string; permissions?: unknown; password?: string; locationId?: string | null }>();
+  const b = await c.req.json<{ name?: string; email?: string; barberId?: string | null; role?: string; permissions?: unknown; password?: string; locationId?: string | null }>();
   if (b.role !== undefined && !isRole(b.role)) throw new HttpError(400, 'invalid_role');
+  const cur = await c.env.DB.prepare('SELECT email FROM admins WHERE id = ?').bind(id).first<{ email: string }>();
+  if (!cur) throw new HttpError(404, 'not_found');
+  // E-mail nou: nu poate fi al altui cont al echipei. Parola și sesiunile rămân; doar codurile de recuperare
+  // trimise pe adresa veche nu mai merg.
+  const newEmail = b.email === undefined ? null : validEmail(b.email);
+  const emailChanged = newEmail !== null && newEmail !== cur.email;
+  if (emailChanged) {
+    const taken = await c.env.DB.prepare('SELECT 1 FROM admins WHERE email = ? AND id != ?').bind(newEmail, id).first();
+    if (taken) throw new HttpError(409, 'email_taken');
+  }
   if (id === c.get('admin').adminId && b.role !== undefined && b.role !== 'org_admin') throw new HttpError(400, 'cannot_demote_self');
   const sets: string[] = [];
   const vals: unknown[] = [];
   if (b.role !== undefined) sets.push('role = ?'), vals.push(b.role);
   if (b.name !== undefined) sets.push('name = ?'), vals.push(String(b.name).slice(0, 80));
+  if (emailChanged) sets.push('email = ?'), vals.push(newEmail);
   if (b.barberId !== undefined) sets.push('barber_id = ?'), vals.push(b.barberId || null);
   if (b.locationId !== undefined) sets.push('location_id = ?'), vals.push(b.locationId || null);
   if (b.permissions !== undefined) sets.push('permissions = ?'), vals.push(JSON.stringify(cleanPerms(b.permissions)));
@@ -360,7 +413,15 @@ adminRoutes.patch('/admins/:id', ownerOnly, async (c) => {
     validPassword(b.password);
     sets.push('password_hash = ?'), vals.push(await hashPassword(b.password));
   }
-  if (sets.length) await c.env.DB.prepare(`UPDATE admins SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
+  if (sets.length)
+    await c.env.DB.prepare(`UPDATE admins SET ${sets.join(', ')} WHERE id = ?`)
+      .bind(...vals, id)
+      .run()
+      .catch((e) => {
+        if (emailChanged && /UNIQUE/i.test(String(e))) throw new HttpError(409, 'email_taken');
+        throw e;
+      });
+  if (emailChanged) await c.env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(staffCodeKey(id)).run();
   // Parolă nouă pusă de proprietar: contul e scos de pe toate dispozitivele (în afară de sesiunea ta, dacă e contul tău).
   if (b.password) await logoutAdmin(c.env.DB, id, id === c.get('admin').adminId ? tokenFrom(c) : null);
   return c.json({ ok: true });
@@ -407,6 +468,9 @@ adminRoutes.delete('/admins/:id', ownerOnly, async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(`DELETE FROM sessions WHERE kind = 'admin' AND subject_id = ?`).bind(c.req.param('id')!),
     c.env.DB.prepare('DELETE FROM staff_push_tokens WHERE admin_id = ?').bind(c.req.param('id')!),
+    c.env.DB.prepare('DELETE FROM otp_codes WHERE phone = ?').bind(staffCodeKey(c.req.param('id')!)),
+    // Doar contul de acces se șterge: frizerul din calendar (programări, prețuri, album, program) rămâne neatins
+    // și poate primi oricând un cont nou, din „Frizer în calendar”.
     c.env.DB.prepare('DELETE FROM admins WHERE id = ?').bind(c.req.param('id')!),
   ]);
   return c.json({ ok: true });

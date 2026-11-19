@@ -748,6 +748,9 @@ function Team({ me }: { me: Me }) {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>('barber');
   const [barberId, setBarberId] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
   const { busy, error, run } = useAction();
   const [admins, barbers, locations] = data.data ?? [[], [], []];
   const patch = (id: string, body: object) => run(async () => (await api('PATCH', `/admin/admins/${id}`, body), data.reload()));
@@ -780,7 +783,7 @@ function Team({ me }: { me: Me }) {
                     Deconectează
                   </button>
                 ) : null}
-                <button className="danger sm" onClick={() => confirm(`Ștergi contul ${a.email}?`) && run(async () => (await api('DELETE', `/admin/admins/${a.id}`), data.reload()))}>
+                <button className="danger sm" onClick={() => confirm(`Ștergi contul de acces ${a.email}? Se șterge doar intrarea în panou și aplicație. Frizerul din calendar, cu programările, prețurile și albumul lui, rămâne; îi poți face oricând un cont nou.`) && run(async () => (await api('DELETE', `/admin/admins/${a.id}`), data.reload()))}>
                   Șterge
                 </button>
               </span>
@@ -788,6 +791,50 @@ function Team({ me }: { me: Me }) {
               <span className="muted small">tu</span>
             )}
           </div>
+          {editing === a.id ? (
+            <div className="grid two" style={{ marginTop: 8 }}>
+              <Field label="Nume">
+                <input value={editName} onChange={(e) => setEditName(e.target.value)} />
+              </Field>
+              <Field label="E-mail (cu el intră în panou și în aplicație)">
+                <input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+              </Field>
+              <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+                <button
+                  className="sm"
+                  disabled={busy || !editEmail.trim()}
+                  onClick={() =>
+                    run(async () => {
+                      await api('PATCH', `/admin/admins/${a.id}`, { name: editName, email: editEmail });
+                      setEditing(null);
+                      data.reload();
+                    })
+                  }
+                >
+                  Salvează
+                </button>
+                <button className="ghost sm" disabled={busy} onClick={() => setEditing(null)}>
+                  Renunță
+                </button>
+              </div>
+              <div className="muted small">
+                Parola rămâne aceeași. Dacă n-o mai știe, apasă „Am uitat parola” în panou sau în aplicație și primește un cod pe e-mailul nou.
+              </div>
+            </div>
+          ) : (
+            <button
+              className="link small"
+              style={{ marginTop: 4 }}
+              disabled={busy}
+              onClick={() => {
+                setEditing(a.id);
+                setEditName(a.name);
+                setEditEmail(a.email);
+              }}
+            >
+              Schimbă numele sau e-mailul
+            </button>
+          )}
           <div className="grid two" style={{ marginTop: 8 }}>
             <Field label="Rol">
               <select value={a.role} disabled={a.id === me.id || busy} onChange={(e) => patch(a.id, { role: e.target.value, permissions: {} })}>
