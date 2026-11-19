@@ -40,14 +40,17 @@ export default function GiftCardsScreen() {
   }, [token, lang]);
   useEffect(load, [load]);
   // În campania de sezon (ex. Crăciun) urarea e gata scrisă; clientul o poate schimba sau șterge.
+  // Și suma campaniei (ex. voucherul de Crăciun de 120 lei) e aleasă din oficiu.
   const seasonWish = data?.season?.wish ?? '';
+  const seasonAmount = data?.season?.amount ?? null;
   const [wishSet, setWishSet] = useState(false);
   useEffect(() => {
-    if (seasonWish && !wishSet) {
-      setMessage((m) => m || seasonWish);
+    if ((seasonWish || seasonAmount) && !wishSet) {
+      if (seasonWish) setMessage((m) => m || seasonWish);
+      if (seasonAmount) setAmount((a) => a ?? seasonAmount);
       setWishSet(true);
     }
-  }, [seasonWish, wishSet]);
+  }, [seasonWish, seasonAmount, wishSet]);
   // După plata online clientul revine din browser: reîncărcăm ca să apară codul.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => s === 'active' && load());
@@ -65,7 +68,7 @@ export default function GiftCardsScreen() {
     try {
       await api.buyGiftCard(token, { amount, recipientName: name.trim(), recipientPhone: phone.trim() || undefined, message: message.trim() || undefined });
       setDone(true);
-      setAmount(null);
+      setAmount(seasonAmount);
       setName('');
       setPhone('');
       setMessage(seasonWish);

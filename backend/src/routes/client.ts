@@ -205,7 +205,8 @@ clientRoutes.get('/me/gift-cards', async (c) => {
   const season = await activeSeason(c.env);
   return c.json({
     enabled: s.enabled,
-    amounts: s.amounts,
+    // Suma campaniei (ex. voucherul de Crăciun de 120 lei) apare printre sume, aleasă din oficiu în aplicație.
+    amounts: season?.target === 'gift_card' && season.amount && !s.amounts.includes(season.amount) ? [...s.amounts, season.amount].sort((a, b) => a - b) : s.amounts,
     validMonths: s.validMonths,
     // Campania de sezon care duce la cardul cadou (ex. Crăciun): titlul de sus și urarea pusă din oficiu. null = nu e.
     season: season?.target === 'gift_card' ? seasonTexts(season, c.req.query('lang') || me?.lang) : null,
