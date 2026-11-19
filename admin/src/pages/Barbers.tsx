@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, ApiError, RANKS, type Barber, type Booking, type Hours, type Location, type Me, type Service } from '../api';
+import { api, ApiError, errorText, RANKS, uploadImageTo, type Barber, type Booking, type Hours, type Location, type Me, type Service } from '../api';
 import { emptyTr, Field, ImagePicker, Loading, Modal, TranslationFields, useAction, useLoad } from '../ui';
 import { hm, parseHm, WEEKDAYS } from '../util';
 import { BARBER_PALETTE, barberColor } from './Calendar';
@@ -65,6 +65,7 @@ export function BarbersPage(_: { me: Me }) {
               <div className="muted small" style={{ marginTop: 8 }}>
                 {b.serviceIds.length} din {services.length} servicii
                 {locName(b.locationId) ? ` · ${locName(b.locationId)}` : ''}
+                {b.album?.length ? ` · ${b.album.length} poze în album` : ''}
               </div>
             </div>
           ))}
@@ -210,6 +211,8 @@ function BarberModal({
           </Field>
         </div>
 
+        {b.id ? <AlbumEditor barberId={b.id} initial={b.album ?? []} /> : null}
+
         <Field label="Locația în care lucrează">
           <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
             {locations.map((l) => (
@@ -337,5 +340,73 @@ function BarberModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** Albumul cu lucrări al frizerului: pozele se urcă și se șterg pe loc (fără „Salvează”). Clienții le văd la profilul lui. */
+function AlbumEditor({ barberId, initial }: { barberId: string; initial: Array<{ id: string; url: string }> }) {
+  const [list, setList] = useState(initial);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const add = async (files: File[]) => {
+    setError(null);
+    for (let i = 0; i < files.length; i++) {
+      setBusy(files.length > 1 ? `Se urcă ${i + 1} din ${files.length}…` : 'Se urcă…');
+      try {
+        const p = (await uploadImageTo(`/v1/admin/barbers/${encodeURIComponent(barberId)}/album`, files[i], { maxPx: 1280 })) as { id: string; url: string };
+        setList((l) => [p, ...l]);
+      } catch (e) {
+        setError(errorText(e));
+        break;
+      }
+    }
+    setBusy('');
+  };
+  const remove = async (id: string) => {
+    if (!window.confirm('Ștergi poza din album?')) return;
+    try {
+      await api('DELETE', `/admin/barbers/${encodeURIComponent(barberId)}/album/${encodeURIComponent(id)}`);
+      setList((l) => l.filter((x) => x.id !== id));
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+  return (
+    <Field label={`Album cu lucrări (${list.length} din 60) · îl văd clienții când apasă pe frizer, în aplicație și pe site`}>
+      <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+        {list.map((p) => (
+          <div key={p.id} className="thumb" style={{ position: 'relative', width: 88, height: 88 }}>
+            <a href={p.url} target="_blank" rel="noreferrer" style={{ display: 'block', width: '100%', height: '100%' }}>
+              <img src={p.url} alt="" />
+            </a>
+            <button
+              type="button"
+              className="danger sm"
+              onClick={() => void remove(p.id)}
+              title="Șterge poza"
+              style={{ position: 'absolute', top: 3, right: 3, padding: '0 7px', lineHeight: '20px', background: 'rgba(0,0,0,0.75)' }}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <label className={`btn ghost sm${busy || list.length >= 60 ? ' disabled' : ''}`} style={{ alignSelf: 'center' }}>
+          {busy || '+ Adaugă poze'}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            hidden
+            disabled={!!busy || list.length >= 60}
+            onChange={(e) => {
+              const fs = Array.from(e.target.files ?? []).slice(0, 60 - list.length);
+              e.target.value = '';
+              if (fs.length) void add(fs);
+            }}
+          />
+        </label>
+      </div>
+      {error ? <div className="err small" style={{ marginTop: 6 }}>{error}</div> : null}
+    </Field>
   );
 }

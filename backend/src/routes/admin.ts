@@ -88,6 +88,7 @@ import { allLocations, checkLocationId, createLocation, defaultLocationId, updat
 import { adminWaitlist, checkWaitlist, removeWaitlist } from '../waitlist';
 import { blockOccurrences, createBlock, deleteBlock, listBlocks, type BlockInput } from '../blocks';
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
+import { addAlbumPhoto, BARBER_ALBUM_COL, deleteAlbumPhoto, getAlbum } from '../barberAlbum';
 
 /** Iconițele pe care le poate avea un banner (nume din Ionicons; aplicația folosește varianta cu contur). */
 const PROMO_ICONS: string[] = ['pricetag', 'flame', 'school', 'bag-handle', 'cut', 'sparkles', 'star', 'diamond', 'gift', 'water', 'hourglass', 'trophy', 'people', 'ribbon', 'flash', 'heart'];
@@ -243,6 +244,24 @@ adminRoutes.patch('/me/profile', async (c) => {
   if (b.bio !== undefined) v.bio = String(b.bio ?? '').slice(0, 1000);
   if (b.nickname !== undefined) v.nickname = String(b.nickname ?? '').trim().slice(0, 40);
   if (Object.keys(v).length) await update(c.env.DB, 'barbers', barberId, v);
+  return c.json({ ok: true });
+});
+
+// Albumul de lucrări al frizerului legat de cont: pozele cu tunsorile făcute (le văd clienții la profilul lui).
+adminRoutes.get('/me/album', async (c) => {
+  const barberId = c.get('admin').barberId;
+  if (!barberId) throw new HttpError(403, 'no_barber');
+  return c.json(await getAlbum(c.env, barberId));
+});
+adminRoutes.post('/me/album', async (c) => {
+  const a = c.get('admin');
+  if (!a.barberId) throw new HttpError(403, 'no_barber');
+  return c.json(await addAlbumPhoto(c.env, a.barberId, await c.req.arrayBuffer(), a.adminId), 201);
+});
+adminRoutes.delete('/me/album/:photoId', async (c) => {
+  const barberId = c.get('admin').barberId;
+  if (!barberId) throw new HttpError(403, 'no_barber');
+  await deleteAlbumPhoto(c.env, c.req.param('photoId')!, barberId);
   return c.json({ ok: true });
 });
 
@@ -674,7 +693,7 @@ function serviceValues(b: ServiceInput, create: boolean) {
 
 // --- Frizeri, programul și serviciile lor ---
 
-const BARBER_SELECT = `SELECT b.*, ${BARBER_SERVICE_COLS} FROM barbers b`;
+const BARBER_SELECT = `SELECT b.*, ${BARBER_SERVICE_COLS}, ${BARBER_ALBUM_COL} FROM barbers b`;
 
 adminRoutes.get('/barbers', async (c) => {
   const [r, h] = await Promise.all([
@@ -783,6 +802,15 @@ adminRoutes.patch('/barbers/:id', ownerOnly, async (c) => {
   // Programul s-a schimbat: poate s-au eliberat ore pentru lista de așteptare.
   if (b.hours || b.serviceIds || b.durations || b.active || b.locationId) await waitlistNow(c.env);
   return c.json({ ok: true, movedBookings, affected: await bookingsBrief(c.env, moved) });
+});
+
+// Albumul oricărui frizer, din panou (Frizeri → fișa frizerului): doar patronul urcă și șterge.
+adminRoutes.post('/barbers/:id/album', ownerOnly, async (c) =>
+  c.json(await addAlbumPhoto(c.env, c.req.param('id')!, await c.req.arrayBuffer(), c.get('admin').adminId), 201),
+);
+adminRoutes.delete('/barbers/:id/album/:photoId', ownerOnly, async (c) => {
+  await deleteAlbumPhoto(c.env, c.req.param('photoId')!, c.req.param('id')!);
+  return c.json({ ok: true });
 });
 
 // --- Locații (Setări → Locații): doar proprietarul le schimbă; lista o vede toată echipa (filtrul din calendar) ---

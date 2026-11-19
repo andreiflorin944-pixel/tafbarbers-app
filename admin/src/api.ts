@@ -129,6 +129,7 @@ const MESSAGES: Record<string, string> = {
   invalid_service: 'Serviciul nu mai există.',
   unsupported_image: 'Poza trebuie să fie JPG, PNG sau WebP.',
   image_too_large: 'Poza e prea mare.',
+  album_full: 'Albumul e plin (maxim 60 de poze). Șterge din cele vechi.',
   invalid_url: 'Linkul nu e corect (trebuie să înceapă cu https://).',
   invalid_color: 'Culoarea nu e corectă.',
   invalid_stock: 'Stocul trebuie să fie un număr întreg (sau gol, fără limită).',
@@ -357,6 +358,8 @@ export type Barber = {
   hours: Hours[];
   /** Locația în care lucrează. */
   locationId: string | null;
+  /** Albumul cu lucrări (tunsorile făcute), cele mai noi întâi; îl văd clienții la profilul frizerului. */
+  album?: Array<{ id: string; url: string }>;
 };
 /** O locație a salonului (Setări → Locații). */
 export type Location = {

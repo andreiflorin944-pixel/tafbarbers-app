@@ -12,7 +12,7 @@ export default function Barbers() {
   return (
     <Screen edges={['bottom']}>
       {barbers.map((b) => (
-        <Card key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+        <Card key={b.id} onPress={() => router.push({ pathname: '/barber/[id]', params: { id: b.id } })} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
           <Avatar barber={b} size={72} />
           <View style={{ flex: 1 }}>
             <Text style={styles.cardTitle}>
