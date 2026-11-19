@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { dirIcon } from '@/lib/rtl';
 import { mediaUrl } from '@/api/staff';
 import type { Promo } from '@/data/types';
 import { colors, radius, space } from '@/theme';
@@ -72,7 +73,7 @@ export function PromoCarousel({ promos, onPress }: { promos: Promo[]; onPress: (
               <Text style={[s.text, { color: look.fg }]}>{p.text}</Text>
               <Pressable onPress={() => onPress(p)} style={({ pressed }) => [s.btn, { backgroundColor: look.btnBg }, pressed && { opacity: 0.85 }]}>
                 <Text style={[s.btnText, { color: look.btnFg }]}>{p.cta}</Text>
-                <Ionicons name="arrow-forward" size={16} color={look.btnFg} />
+                <Ionicons name={dirIcon('arrow-forward')} size={16} color={look.btnFg} />
               </Pressable>
             </>
           );

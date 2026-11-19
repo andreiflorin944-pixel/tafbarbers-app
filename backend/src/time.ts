@@ -60,7 +60,7 @@ export function addDays(day: string, n: number): string {
 }
 
 export function formatLocal(tz: string, iso: string, lang = 'ro'): string {
-  const locale = lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : 'ro-RO';
+  const locale = lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : lang === 'ar' ? 'ar' : 'ro-RO';
   return new Intl.DateTimeFormat(locale, {
     timeZone: tz,
     weekday: 'long',

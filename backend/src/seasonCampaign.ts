@@ -7,10 +7,10 @@ import { getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
 import { getAutomations } from './growth';
 import { localDay } from './time';
-import { autoTranslate } from './translate';
+import { LANGS, langOf } from './contentI18n';
+import { autoTranslate, pick3, type Texts3 } from './translate';
 
-type Lang = 'ro' | 'en' | 'fr';
-type Texts = Record<Lang, string>;
+type Texts = Texts3;
 export const SEASON_THEMES = ['christmas', 'easter', 'valentine', 'fathers', 'custom'] as const;
 export type SeasonTheme = (typeof SEASON_THEMES)[number];
 export const SEASON_TARGETS = ['gift_card', 'book', 'custom_sub', 'shop'] as const;
@@ -35,7 +35,7 @@ export type SeasonCampaign = {
   version: number; // crește la fiecare salvare cu alt conținut: pop-up-ul apare din nou pentru campania nouă
 };
 
-const t3 = (ro: string, en: string, fr: string): Texts => ({ ro, en, fr });
+const t3 = (ro: string, en: string, fr: string, ar: string): Texts => ({ ro, en, fr, ar });
 export const DEFAULT_SEASON: SeasonCampaign = {
   enabled: false,
   theme: 'christmas',
@@ -43,15 +43,16 @@ export const DEFAULT_SEASON: SeasonCampaign = {
   endsAt: '',
   target: 'gift_card',
   popup: true,
-  kicker: t3('VOUCHER CADOU · 120 LEI', 'GIFT VOUCHER · 120 LEI', 'BON CADEAU · 120 LEI'),
-  title: t3('De Crăciun, oferă-i un moment TAF unui prieten.', 'This Christmas, give a friend a TAF moment.', 'À Noël, offrez un moment TAF à un ami.'),
+  kicker: t3('VOUCHER CADOU · 120 LEI', 'GIFT VOUCHER · 120 LEI', 'BON CADEAU · 120 LEI', 'قسيمة هدية · 120 لي'),
+  title: t3('De Crăciun, oferă-i un moment TAF unui prieten.', 'This Christmas, give a friend a TAF moment.', 'À Noël, offrez un moment TAF à un ami.', 'في عيد الميلاد، أهدِ صديقاً لحظة من TAF.'),
   text: t3(
     'Dăruiește Experiența TAF: tuns, aranjat barba și spa cu prosop cald, însoțită de urarea ta. Ajunge pe loc prin SMS și în aplicație.',
     'Give the TAF Experience: haircut, beard trim and hot towel spa, with your wishes. Delivered instantly by SMS and in the app.',
     'Offrez l’Expérience TAF : coupe, taille de barbe et soin à la serviette chaude, avec vos vœux. Envoyée par SMS et dans l’application.',
+    'أهدِ تجربة TAF: قص الشعر وتهذيب اللحية وسبا بالمنشفة الساخنة، مع تمنياتك. تصل فوراً عبر SMS وفي التطبيق.',
   ),
-  cta: t3('Oferă Experiența TAF', 'Give the TAF Experience', 'Offrir l’Expérience TAF'),
-  wish: t3('Crăciun fericit! 🎄', 'Merry Christmas! 🎄', 'Joyeux Noël ! 🎄'),
+  cta: t3('Oferă Experiența TAF', 'Give the TAF Experience', 'Offrir l’Expérience TAF', 'أهدِ تجربة TAF'),
+  wish: t3('Crăciun fericit! 🎄', 'Merry Christmas! 🎄', 'Joyeux Noël ! 🎄', 'عيد ميلاد مجيد! 🎄'),
   imageUrl: '/campanii/craciun.jpg',
   amount: 120,
   version: 1,
@@ -95,10 +96,10 @@ export async function saveSeasonCampaign(env: Env, v: Partial<SeasonCampaign>): 
     amount: amountOf(v.amount, cur.amount),
     version: cur.version,
   } as SeasonCampaign;
-  // Textele: scrise în română, engleza și franceza se completează singure (ca la bannere).
+  // Textele: scrise în română, engleza, franceza și araba se completează singure (ca la bannere).
   for (const k of TEXT_KEYS) {
     const out = { ...cur[k] };
-    for (const l of ['ro', 'en', 'fr'] as const) if (typeof v[k]?.[l] === 'string') out[l] = v[k]![l]!.trim().slice(0, max[k]);
+    for (const l of LANGS) if (typeof v[k]?.[l] === 'string') out[l] = v[k]![l]!.trim().slice(0, max[k]);
     if ((k === 'title' || k === 'cta') && !out.ro) throw new HttpError(400, 'ro_required');
     next[k] = await autoTranslate(env, cur[k], out);
   }
@@ -127,12 +128,10 @@ export async function activeSeason(env: Env, now = new Date()): Promise<SeasonCa
   return s;
 }
 
-const langOf = (l: string | null | undefined): Lang => (l === 'en' || l === 'fr' ? l : 'ro');
-
 /** Textele în limba clientului (goale = româna). */
 export function seasonTexts(s: SeasonCampaign, lang: string | null | undefined) {
   const l = langOf(lang);
-  const p = (t: Texts) => t[l] || t.ro;
+  const p = (t: Texts) => pick3(t, l);
   return { kicker: p(s.kicker), title: p(s.title), text: p(s.text), cta: p(s.cta), wish: p(s.wish), imageUrl: s.imageUrl, amount: s.amount ?? null };
 }
 

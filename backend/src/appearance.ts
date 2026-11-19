@@ -1,4 +1,5 @@
-import { autoTranslate } from './translate';
+import { LANGS } from './contentI18n';
+import { autoTranslate, type Texts3 } from './translate';
 import { getSetting, setSetting } from './db';
 import { HttpError, type Env } from './env';
 
@@ -8,7 +9,7 @@ export type Appearance = {
   background: string; // fundalul aplicației, #RRGGBB (negru sau gri închis)
   logoUrl: string | null; // /v1/media/... sau https://...
   title: string; // numele de pe prima pagină, când nu e logo
-  welcome: { ro: string; en: string; fr: string }; // gol = textul standard
+  welcome: Texts3; // gol = textul standard
   buttonText: string | null; // textul de pe butoane; null = automat (negru/alb după culoarea butonului)
   text: string; // textul principal
   muted: string; // textul secundar (descrieri, durate)
@@ -22,7 +23,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   background: '#000000',
   logoUrl: null,
   title: 'TAF Barber’s',
-  welcome: { ro: '', en: '', fr: '' },
+  welcome: { ro: '', en: '', fr: '', ar: '' },
   buttonText: null,
   text: '#FFFFFF',
   muted: '#A3A09A',
@@ -57,7 +58,7 @@ export async function saveAppearance(env: Env, b: Partial<Appearance>): Promise<
   if (typeof b.title === 'string') next.title = b.title.trim().slice(0, 40) || DEFAULT_APPEARANCE.title;
   if (b.welcome && typeof b.welcome === 'object') {
     next.welcome = { ...next.welcome };
-    for (const l of ['ro', 'en', 'fr'] as const) {
+    for (const l of LANGS) {
       if (typeof b.welcome[l] === 'string') next.welcome[l] = b.welcome[l].trim().slice(0, 60);
     }
     next.welcome = await autoTranslate(env, prevWelcome, next.welcome);

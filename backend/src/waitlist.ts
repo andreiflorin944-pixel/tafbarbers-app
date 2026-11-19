@@ -1,3 +1,4 @@
+import { requestLang } from './contentI18n';
 // Lista de așteptare: clientul care nu găsește oră liberă într-o zi cere să fie anunțat dacă se eliberează un loc.
 // Când se eliberează o oră în ziua aceea (anulare, refuz, cerere expirată, program schimbat), primii înscriși primesc
 // un mesaj („waitlist_slot”) cu linkul de programare. Nu se face nicio programare automată.
@@ -411,5 +412,5 @@ waitlistPublic.get('/w/:id', async (c) => {
     .bind(c.req.param('id').slice(0, 40))
     .first<{ service_id: string; barber_id: string | null; location_id: string | null; day: string }>();
   // Un link necunoscut tot deschide aplicația, la programare.
-  return c.html(await openAppPage(c.env, w ? appBookUrl(w) : 'tafbarbers://book'));
+  return c.html(await openAppPage(c.env, w ? appBookUrl(w) : 'tafbarbers://book', requestLang(c)));
 });

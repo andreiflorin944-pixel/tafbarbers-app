@@ -65,7 +65,7 @@ export function PromosPage(_: { me: Me }) {
               <div className="small" style={{ marginTop: 6, opacity: 0.7 }}>
                 {!p.active ? 'Ascuns · ' : ''}
                 {p.startsAt || p.endsAt ? `Activ ${p.startsAt ? 'din ' + p.startsAt.slice(0, 10) : ''} ${p.endsAt ? 'până ' + p.endsAt.slice(0, 10) : ''}` : ''}
-                {['en', 'fr'].filter((l) => p.translations?.[l]?.title).length ? ` · traduceri: ${['en', 'fr'].filter((l) => p.translations?.[l]?.title).join(', ').toUpperCase()}` : ''}
+                {['en', 'fr', 'ar'].filter((l) => p.translations?.[l]?.title).length ? ` · traduceri: ${['en', 'fr', 'ar'].filter((l) => p.translations?.[l]?.title).join(', ').toUpperCase()}` : ''}
               </div>
             </div>
           ))}
@@ -93,6 +93,7 @@ function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Pro
     ro: { kicker: p.kicker ?? '', title: p.title ?? '', text: p.text ?? '', cta: p.cta ?? '' },
     en: { kicker: '', title: '', text: '', cta: '', ...p.translations?.en },
     fr: { kicker: '', title: '', text: '', cta: '', ...p.translations?.fr },
+    ar: { kicker: '', title: '', text: '', cta: '', ...p.translations?.ar },
   });
   const [icon, setIcon] = useState(p.icon ?? 'pricetag');
   const [imageUrl, setImageUrl] = useState<string | null>(p.imageUrl ?? null);
@@ -129,7 +130,7 @@ function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Pro
                 : actionType === 'custom_sub'
                   ? { type: 'custom_sub' }
                   : { type: 'book' },
-        translations: { en: clean(texts.en), fr: clean(texts.fr) },
+        translations: { en: clean(texts.en), fr: clean(texts.fr), ar: clean(texts.ar) },
         startsAt: startsAt ? new Date(startsAt + 'T00:00:00').toISOString() : null,
         endsAt: endsAt ? new Date(endsAt + 'T23:59:59').toISOString() : null,
         active,
@@ -166,8 +167,8 @@ function PromoModal({ p, services, products, onClose, onDone }: { p: Partial<Pro
           ]}
           ro={texts.ro}
           initialRo={{ kicker: p.kicker, title: p.title, text: p.text, cta: p.cta }}
-          value={{ en: texts.en, fr: texts.fr }}
-          onChange={(x) => setTexts((cur) => ({ ...cur, en: { ...cur.en, ...x.en }, fr: { ...cur.fr, ...x.fr } }))}
+          value={{ en: texts.en, fr: texts.fr, ar: texts.ar }}
+          onChange={(x) => setTexts((cur) => ({ ...cur, en: { ...cur.en, ...x.en }, fr: { ...cur.fr, ...x.fr }, ar: { ...cur.ar, ...x.ar } }))}
         />
         <Field label="Poză de fundal (opțional; textul apare alb peste poză)">
           <ImagePicker value={imageUrl} onChange={setImageUrl} maxPx={1200} />

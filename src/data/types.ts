@@ -207,7 +207,7 @@ export type Appearance = {
   background?: string;
   logoUrl: string | null;
   title: string;
-  welcome: { ro: string; en: string; fr: string };
+  welcome: { ro: string; en: string; fr: string; ar?: string };
   buttonText?: string | null;
   text?: string;
   muted?: string;

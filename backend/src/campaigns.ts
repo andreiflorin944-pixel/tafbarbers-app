@@ -2,7 +2,7 @@ import type { Env } from './env';
 import { getBusiness, tryLock, unlock } from './db';
 import { sendEmail, sendPush, sendSms } from './notify';
 import { iso } from './time';
-import { langOf, lookup, type Lang } from './contentI18n';
+import { LANGS, langOf, lookupAll, type Lang } from './contentI18n';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
@@ -11,11 +11,14 @@ const FOOTER: Record<Lang, { tx: (s: string) => string; mk: (s: string) => strin
   ro: { tx: (s) => `Primești acest e-mail pentru că ai cont la ${s}.`, mk: (s) => `Primești acest e-mail pentru că ai acceptat ofertele ${s} în aplicație. Te poți dezabona oricând din Cont.` },
   en: { tx: (s) => `You are receiving this e-mail because you have an account at ${s}.`, mk: (s) => `You are receiving this e-mail because you accepted offers from ${s} in the app. You can unsubscribe at any time from Account.` },
   fr: { tx: (s) => `Vous recevez cet e-mail parce que vous avez un compte chez ${s}.`, mk: (s) => `Vous recevez cet e-mail parce que vous avez accepté les offres de ${s} dans l’application. Désinscription possible à tout moment depuis Compte.` },
+  ar: { tx: (s) => `تصلك هذه الرسالة لأن لديك حساباً لدى ${s}.`, mk: (s) => `تصلك هذه الرسالة لأنك وافقت على عروض ${s} في التطبيق. يمكنك إلغاء الاشتراك في أي وقت من الحساب.` },
 };
 
 export function emailHtml(shop: string, title: string, body: string, transactional = false, lang: string = 'ro') {
   const f = FOOTER[langOf(lang)];
-  return `<!doctype html><html><body style="margin:0;background:#000;font-family:Helvetica,Arial,sans-serif">
+  // Araba se citește de la dreapta la stânga.
+  const dir = langOf(lang) === 'ar' ? 'rtl' : 'ltr';
+  return `<!doctype html><html dir="${dir}" lang="${langOf(lang)}"><body style="margin:0;background:#000;font-family:Helvetica,Arial,sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
 <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#0F0F10;border-radius:20px;overflow:hidden">
 <tr><td style="background:#F9A11B;padding:24px 28px;font-size:22px;font-weight:800;color:#000">${esc(shop)}</td></tr>
@@ -47,9 +50,10 @@ export async function runCampaign(env: Env, id: string) {
     if (!cmp || cmp.status !== 'sending') return;
     const biz = await getBusiness(env);
     // Fiecare client primește campania în limba aplicației lui (traducerea făcută la salvare; altfel româna).
-    const [en, fr] = await Promise.all([lookup(env, 'en', [cmp.title, cmp.body]), lookup(env, 'fr', [cmp.title, cmp.body])]);
+    const tr = await lookupAll(env, [cmp.title, cmp.body]);
     const text = (lang: string | null | undefined) => {
-      const m = langOf(lang) === 'en' ? en : langOf(lang) === 'fr' ? fr : null;
+      const l = langOf(lang);
+      const m = l === 'ro' ? null : tr[l];
       return { title: m?.get(cmp.title) ?? cmp.title, body: m?.get(cmp.body) ?? cmp.body };
     };
     const notYet = `NOT EXISTS (SELECT 1 FROM message_log m WHERE m.campaign_id = ?1 AND m.recipient = %s)`;
@@ -60,7 +64,7 @@ export async function runCampaign(env: Env, id: string) {
       )
         .bind(id)
         .all<{ token: string; lang: string }>();
-      for (const l of ['ro', 'en', 'fr'] as const) {
+      for (const l of LANGS) {
         const tokens = t.results.filter((x) => langOf(x.lang) === l).map((x) => x.token);
         if (tokens.length) await sendPush(env, { kind: 'campaign', campaignId: id }, tokens, text(l).title, text(l).body, { campaignId: id });
       }

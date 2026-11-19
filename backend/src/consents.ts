@@ -46,7 +46,7 @@ export async function recordConsent(
   x: { source: ConsentSource; terms: boolean; marketing: Marketing | null; lang?: string | null; sign?: Signature | null },
 ) {
   const v = await legalVersions(env);
-  const lang = ['ro', 'en', 'fr'].includes(x.lang ?? '') ? x.lang! : null;
+  const lang = ['ro', 'en', 'fr', 'ar'].includes(x.lang ?? '') ? x.lang! : null;
   const channels = x.marketing ? marketingChannels(x.marketing) : '';
   const sign = x.terms && x.sign ? x.sign : null;
   if (sign) assertCurrent(v, sign);

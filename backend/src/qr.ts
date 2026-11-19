@@ -1,3 +1,4 @@
+import { dirOf, requestLang, type Lang } from './contentI18n';
 import { Hono, type Context, type Next } from 'hono';
 import { newId, sha256 } from './auth';
 import { getBusiness } from './db';
@@ -61,19 +62,34 @@ export async function attributeQr(env: Env, clientId: string, isNew: boolean, co
 }
 
 /** Pagina care deschide aplicația (sau arată linkurile spre magazine dacă nu e instalată). */
-export async function openAppPage(env: Env, deep: string): Promise<string> {
+// Textele paginilor „Deschide aplicația” și „Descarcă aplicația”, în limba browserului.
+const OPEN_TEXT = {
+  ro: { title: (n: string) => `Programează-te la ${n}`, desc: 'Alege serviciul, frizerul și ora, direct din aplicație.', fast: 'Programează-te în câteva secunde', open: 'Deschide aplicația', noApp: 'Nu ai aplicația? Instaleaz-o:', call: 'Sau sună-ne:' },
+  en: { title: (n: string) => `Book at ${n}`, desc: 'Choose the service, the barber and the time, right in the app.', fast: 'Book in a few seconds', open: 'Open the app', noApp: 'No app yet? Install it:', call: 'Or call us:' },
+  fr: { title: (n: string) => `Réservez chez ${n}`, desc: 'Choisissez le service, le barbier et l’heure, directement dans l’app.', fast: 'Réservez en quelques secondes', open: 'Ouvrir l’app', noApp: 'Pas encore l’app ? Installez-la :', call: 'Ou appelez-nous :' },
+  ar: { title: (n: string) => `احجز في ${n}`, desc: 'اختر الخدمة والحلاق والوقت مباشرة من التطبيق.', fast: 'احجز في ثوانٍ', open: 'افتح التطبيق', noApp: 'ليس لديك التطبيق؟ ثبّته:', call: 'أو اتصل بنا:' },
+};
+const DL_TEXT = {
+  ro: { title: (n: string) => `Descarcă aplicația ${n}`, og: 'Programări în câteva secunde, pe iPhone și Android.', app: (n: string) => `Aplicația ${n}`, pick: 'Alege telefonul tău și instalează aplicația.', ios: 'Descarcă din App Store', android: 'Descarcă din Google Play', site: 'Sau programează-te direct pe <a href="/">site</a>.' },
+  en: { title: (n: string) => `Download the ${n} app`, og: 'Book in seconds, on iPhone and Android.', app: (n: string) => `The ${n} app`, pick: 'Choose your phone and install the app.', ios: 'Download on the App Store', android: 'Get it on Google Play', site: 'Or book directly on our <a href="/">website</a>.' },
+  fr: { title: (n: string) => `Télécharger l’app ${n}`, og: 'Réservez en quelques secondes, sur iPhone et Android.', app: (n: string) => `L’app ${n}`, pick: 'Choisissez votre téléphone et installez l’app.', ios: 'Télécharger dans l’App Store', android: 'Disponible sur Google Play', site: 'Ou réservez directement sur le <a href="/">site</a>.' },
+  ar: { title: (n: string) => `حمّل تطبيق ${n}`, og: 'احجز في ثوانٍ، على iPhone وAndroid.', app: (n: string) => `تطبيق ${n}`, pick: 'اختر هاتفك وثبّت التطبيق.', ios: 'حمّله من App Store', android: 'حمّله من Google Play', site: 'أو احجز مباشرة على <a href="/">الموقع</a>.' },
+};
+
+export async function openAppPage(env: Env, deep: string, lang: Lang = 'ro'): Promise<string> {
   const [biz, auto] = await Promise.all([getBusiness(env), getAutomations(env)]);
+  const T = OPEN_TEXT[lang];
   const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
   const store = [
     auto.links.appStoreUrl ? `<a class="s" href="${esc(auto.links.appStoreUrl)}">App Store (iPhone)</a>` : '',
     auto.links.playStoreUrl ? `<a class="s" href="${esc(auto.links.playStoreUrl)}">Google Play (Android)</a>` : '',
   ].join('');
-  const phone = biz.phone ? `<p class="m">Sau sună-ne: <a href="tel:${esc(biz.phone.replace(/\s+/g, ''))}">${esc(biz.phone)}</a></p>` : '';
-  return `<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Programează-te la ${esc(biz.name)}</title>
-<meta property="og:title" content="Programează-te la ${esc(biz.name)}"><meta property="og:description" content="Alege serviciul, frizerul și ora, direct din aplicație.">
+  const phone = biz.phone ? `<p class="m">${T.call} <a href="tel:${esc(biz.phone.replace(/\s+/g, ''))}">${esc(biz.phone)}</a></p>` : '';
+  return `<!doctype html><html lang="${lang}" dir="${dirOf(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(T.title(biz.name))}</title>
+<meta property="og:title" content="${esc(T.title(biz.name))}"><meta property="og:description" content="${esc(T.desc)}">
 <style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:480px;margin:0 auto;padding:56px 20px;text-align:center}h1{font-size:28px;margin:0 0 6px}a.b{display:block;background:#F9A11B;color:#000;font-weight:800;text-decoration:none;padding:16px;border-radius:999px;margin:26px 0 12px}a.s{display:block;border:1px solid #333;color:#eee;text-decoration:none;padding:13px;border-radius:999px;margin-top:10px}.m{color:#999;font-size:14px}a{color:#F9A11B}</style></head>
-<body><main><h1>${esc(biz.name)}</h1><p class="m">${esc(biz.address || 'Programează-te în câteva secunde')}</p>
-<a class="b" href="${esc(deep)}">Deschide aplicația</a>${store ? `<p class="m">Nu ai aplicația? Instaleaz-o:</p>${store}` : ''}${phone}</main>
+<body><main><h1>${esc(biz.name)}</h1><p class="m">${esc(biz.address || T.fast)}</p>
+<a class="b" href="${esc(deep)}">${T.open}</a>${store ? `<p class="m">${T.noApp}</p>${store}` : ''}${phone}</main>
 <script>setTimeout(function(){location.href=${JSON.stringify(deep)}},300)</script></body></html>`;
 }
 
@@ -85,7 +101,7 @@ qrPublic.get('/q/:code', async (c) => {
   const code = c.req.param('code').toLowerCase().slice(0, 20);
   const camp = await c.env.DB.prepare('SELECT * FROM qr_campaigns WHERE code = ?').bind(code).first<CampaignRow>();
   // Un cod necunoscut sau oprit tot deschide aplicația, doar că nu se numără.
-  if (!camp || camp.archived_at) return c.html(await openAppPage(c.env, 'tafbarbers://'));
+  if (!camp || camp.archived_at) return c.html(await openAppPage(c.env, 'tafbarbers://', requestLang(c)));
   const ip = await ipHash(c.env, c);
   c.executionCtx.waitUntil(
     // `first`: prima scanare de la această rețea pe campanie (amprenta se golește după 30 de zile, numărul de persoane rămâne).
@@ -97,7 +113,7 @@ qrPublic.get('/q/:code', async (c) => {
       .run(),
   );
   const deep = camp.target === 'book' ? `tafbarbers://book?qr=${code}` : `tafbarbers://?qr=${code}`;
-  return c.html(await openAppPage(c.env, deep));
+  return c.html(await openAppPage(c.env, deep, requestLang(c)));
 });
 
 // --- Linkul de descărcare (pentru codul QR tipărit: cărți de vizită, afișe, oglinzi) ---
@@ -118,15 +134,17 @@ async function downloadPage(c: Context<AppEnv>) {
   const dev = device(c.req.header('User-Agent') ?? '');
   const biz = await getBusiness(c.env).catch(() => ({ name: 'TAF Barbers' }));
   const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-  const ios = `<a class="s${dev === 'ios' ? ' p' : ''}" href="${esc(links.ios)}"><b>iPhone</b><span>Descarcă din App Store</span></a>`;
-  const android = `<a class="s${dev === 'android' ? ' p' : ''}" href="${esc(links.android)}"><b>Android</b><span>Descarcă din Google Play</span></a>`;
+  const lang = requestLang(c);
+  const T = DL_TEXT[lang];
+  const ios = `<a class="s${dev === 'ios' ? ' p' : ''}" href="${esc(links.ios)}"><b>iPhone</b><span>${T.ios}</span></a>`;
+  const android = `<a class="s${dev === 'android' ? ' p' : ''}" href="${esc(links.android)}"><b>Android</b><span>${T.android}</span></a>`;
   const buttons = dev === 'android' ? android + ios : ios + android;
-  return c.html(`<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Descarcă aplicația ${esc(biz.name)}</title>
-<meta property="og:title" content="Descarcă aplicația ${esc(biz.name)}"><meta property="og:description" content="Programări în câteva secunde, pe iPhone și Android.">
+  return c.html(`<!doctype html><html lang="${lang}" dir="${dirOf(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(T.title(biz.name))}</title>
+<meta property="og:title" content="${esc(T.title(biz.name))}"><meta property="og:description" content="${esc(T.og)}">
 <style>body{margin:0;background:#000;color:#eee;font:16px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:440px;margin:0 auto;padding:48px 20px;text-align:center}img{width:112px;height:112px;border-radius:24px;border:2px solid #F9A11B}h1{font-size:26px;margin:18px 0 4px}.m{color:#999;font-size:15px;margin:0 0 26px}a.s{display:block;border:2px solid #F9A11B;color:#F9A11B;text-decoration:none;padding:16px;border-radius:18px;margin-top:14px}a.s.p{background:#F9A11B;color:#000}a.s b{display:block;font-size:22px}a.s span{font-size:15px;font-weight:600}.f{margin-top:30px}.f a{color:#F9A11B}</style></head>
-<body><main><img src="/app-icon.png" alt=""><h1>Aplicația ${esc(biz.name)}</h1><p class="m">Alege telefonul tău și instalează aplicația.</p>
+<body><main><img src="/app-icon.png" alt=""><h1>${esc(T.app(biz.name))}</h1><p class="m">${T.pick}</p>
 ${buttons}
-<p class="m f">Sau programează-te direct pe <a href="/">site</a>.</p></main></body></html>`);
+<p class="m f">${T.site}</p></main></body></html>`);
 }
 
 qrPublic.get('/descarca', downloadPage);

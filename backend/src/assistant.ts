@@ -121,7 +121,7 @@ async function systemPrompt(env: Env, ctx: Ctx, lang: string, loggedIn: boolean)
       return `- ${s.name} (id ${s.id}): ${s.price_bani / 100} lei, ${s.duration_min} min${per.length ? ` (${per.join('; ')})` : ''}${s.description ? `. ${s.description.slice(0, 160)}` : ''}`;
     })
     .join('\n');
-  const language = lang === 'en' ? 'engleză' : lang === 'fr' ? 'franceză' : 'română';
+  const language = lang === 'en' ? 'engleză' : lang === 'fr' ? 'franceză' : lang === 'ar' ? 'arabă (araba standard modernă)' : 'română';
   // Cu mai multe locații, asistentul le cunoaște și întreabă la care vrea clientul să vină.
   const many = ctx.locations.length > 1;
   const locations = many
@@ -220,6 +220,7 @@ function freeReply(lang: string, weekday: string, day: string, svcName: string, 
   const d = `${weekday} ${day.slice(8)}.${day.slice(5, 7)}`;
   if (lang === 'en') return `${missed ? `${missed} is not free. ` : ''}${any ? `Free times on ${day} (${svcName}):\n${txt}\nTell me which time you want.` : `There are no free times on ${day}. Would you like another day?`}`;
   if (lang === 'fr') return `${missed ? `${missed} n’est pas libre. ` : ''}${any ? `Heures libres le ${day} (${svcName}) :\n${txt}\nDites-moi quelle heure vous voulez.` : `Pas d’heure libre le ${day}. Un autre jour ?`}`;
+  if (lang === 'ar') return `${missed ? `${missed} غير متاح. ` : ''}${any ? `الأوقات المتاحة يوم ${day} (${svcName}):\n${txt}\nأخبرني أي وقت تريد.` : `لا توجد أوقات متاحة يوم ${day}. هل تريد يوماً آخر؟`}`;
   return `${missed ? `Ora ${missed} nu e liberă. ` : ''}${any ? `Ore libere ${d} (${svcName}):\n${txt}\nSpune-mi ce oră vrei și te programez.` : `Nu mai sunt ore libere ${d}. Vrei altă zi?`}`;
 }
 
@@ -228,12 +229,13 @@ function alreadyLine(lang: string, items: string[]) {
   const list = items.join('; ');
   if (lang === 'en') return `You already have a booking that day: ${list}. If you want to move it, you can do it from Bookings.`;
   if (lang === 'fr') return `Vous avez déjà un rendez-vous ce jour-là : ${list}. Pour le déplacer, allez dans Rendez-vous.`;
+  if (lang === 'ar') return `لديك موعد بالفعل في ذلك اليوم: ${list}. إذا أردت نقله، يمكنك ذلك من المواعيد.`;
   return `Ai deja o programare în ziua asta: ${list}. Dacă vrei s-o muți, o poți face din „Programări”.`;
 }
 
 const fmtTime = (env: Env, iso: string) => new Intl.DateTimeFormat('ro-RO', { timeZone: env.TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 const fmtWhen = (env: Env, iso: string, lang: string) =>
-  new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : 'ro-RO', { timeZone: env.TIMEZONE, weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
+  new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : lang === 'fr' ? 'fr-FR' : lang === 'ar' ? 'ar' : 'ro-RO', { timeZone: env.TIMEZONE, weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 
 /** O conversație: istoricul vine de la aplicație; întoarce răspunsul și, dacă e cazul, programarea propusă. */
 export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boolean, access: Access = 'public', clientId: string | null = null): Promise<{ reply: string; proposal?: Proposal }> {
@@ -379,7 +381,9 @@ export async function chat(env: Env, history: Msg[], lang: string, loggedIn: boo
         ? 'Sorry, I could not find an answer. Please call the salon.'
         : lang === 'fr'
           ? 'Désolé, je n’ai pas trouvé de réponse. Veuillez appeler le salon.'
-          : 'Nu am reușit să găsesc răspunsul. Te rog sună la salon.',
+          : lang === 'ar'
+            ? 'عذراً، لم أجد إجابة. من فضلك اتصل بالصالون.'
+            : 'Nu am reușit să găsesc răspunsul. Te rog sună la salon.',
   };
 }
 
@@ -408,7 +412,7 @@ export const assistantRoutes = new Hono<AppEnv>();
 
 assistantRoutes.post('/assistant', async (c) => {
   const b = await c.req.json<{ messages?: unknown; lang?: unknown }>().catch(() => ({}) as { messages?: unknown; lang?: unknown });
-  const lang = b.lang === 'en' || b.lang === 'fr' ? b.lang : 'ro';
+  const lang = b.lang === 'en' || b.lang === 'fr' || b.lang === 'ar' ? b.lang : 'ro';
   const history = (Array.isArray(b.messages) ? b.messages : [])
     .filter((m): m is Msg => !!m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim() !== '')
     .slice(-12)
@@ -435,7 +439,7 @@ assistantRoutes.post('/assistant/voice', async (c) => {
   const u = new Uint8Array(buf);
   for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode(...u.subarray(i, i + 0x8000));
   try {
-    const r = (await ai.run(STT, { audio: btoa(bin), task: 'transcribe', ...(lang === 'ro' || lang === 'en' || lang === 'fr' ? { language: lang } : {}), vad_filter: true })) as { text?: string };
+    const r = (await ai.run(STT, { audio: btoa(bin), task: 'transcribe', ...(lang === 'ro' || lang === 'en' || lang === 'fr' || lang === 'ar' ? { language: lang } : {}), vad_filter: true })) as { text?: string };
     return c.json({ text: (r?.text ?? '').trim() });
   } catch (e) {
     console.error('assistant voice', e);

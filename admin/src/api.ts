@@ -272,8 +272,8 @@ export async function uploadImageTo(path: string, file: File, opts: { maxPx?: nu
   return json;
 }
 
-/** Engleza și franceza textelor (traduse automat la salvare; corectabile de mână): { en: { câmp: text }, fr: {…} }. */
-export type Translations = { en: Record<string, string>; fr: Record<string, string> };
+/** Engleza, franceza și araba textelor (traduse automat la salvare; corectabile de mână): { en: { câmp: text }, fr: {…}, ar: {…} }. */
+export type Translations = { en: Record<string, string>; fr: Record<string, string>; ar?: Record<string, string> };
 
 export type Product = {
   translations?: Translations;
@@ -310,7 +310,7 @@ export type Appearance = {
   background: string;
   logoUrl: string | null;
   title: string;
-  welcome: { ro: string; en: string; fr: string };
+  welcome: { ro: string; en: string; fr: string; ar?: string };
   buttonText: string | null;
   text: string;
   muted: string;
