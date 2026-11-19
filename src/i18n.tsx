@@ -3695,6 +3695,11 @@ export const isRtlLang = (l: Lang) => l === 'ar';
 const LANG_KEY = 'taf.lang';
 export const isLang = (l: unknown): l is Lang => l === 'ro' || l === 'en' || l === 'fr' || l === 'ar';
 const RTL_RELOAD_KEY = 'taf.rtlReload';
+/** Limba aleasă pe telefon (null = încă nealeasă). Are prioritate față de limba salvată în cont. */
+export const savedLang = async (): Promise<Lang | null> => {
+  const l = await storage.get(LANG_KEY);
+  return isLang(l) ? l : null;
+};
 
 /**
  * Araba se afișează de la dreapta la stânga (meniuri, săgeți, rânduri). Telefonul schimbă direcția doar la repornirea
