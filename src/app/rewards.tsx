@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Platform, Share, Text, View } from 'react-native';
 import { api, apiUrl } from '@/api';
 import { BonusRow } from '@/components/BonusRow';
@@ -20,9 +21,12 @@ export default function Rewards() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (token) api.getReferrals(token).then(setData, (e) => setError(errorMessage(e)));
-  }, [token]);
+  // Se reîncarcă de fiecare dată când ecranul revine în față, ca un prieten nou adus să apară fără repornirea aplicației.
+  useFocusEffect(
+    useCallback(() => {
+      if (token) api.getReferrals(token).then(setData, (e) => setError(errorMessage(e)));
+    }, [token]),
+  );
 
   if (gate) return gate;
   if (!data) return <Screen edges={[]}>{error ? <Text style={{ color: colors.danger }}>{error}</Text> : <ActivityIndicator color={colors.gold} />}</Screen>;
