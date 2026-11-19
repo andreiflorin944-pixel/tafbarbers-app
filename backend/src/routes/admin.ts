@@ -80,7 +80,7 @@ import { blockClient, cleanupDelete, cleanupMatches, unblockClient } from '../cl
 import { ensureTranslated, langOf, localize, localizeBookings, lookup, saveTranslations, withTranslations, type ManualTr } from '../contentI18n';
 import { translateAll } from '../translateAll';
 import { listConsents } from '../consents';
-import { advisorStats, getAdvisor, getStylePhotos, setAdvisor, setStylePhotos } from '../advisor';
+import { advisorStats, BUNDLED_STYLES, getAdvisor, getStylePhotos, setAdvisor, setStylePhotos, styleVersion } from '../advisor';
 import { HAIRSTYLES, HOME_STYLES, hairstyle } from '../hairstyles';
 import { aiOf } from '../translate';
 import { allLocations, checkLocationId, createLocation, defaultLocationId, updateLocation } from '../locations';
@@ -1867,8 +1867,8 @@ adminRoutes.put('/advisor', ownerOnly, async (c) => {
 const stylesList = async (env: Env) => {
   const sp = await getStylePhotos(env);
   return {
-    v: sp.v,
-    styles: HAIRSTYLES.map((h) => ({ key: h.key, name: h.name.ro, photo: sp.photos[h.key] ?? null, onHome: HOME_STYLES.includes(h.key) })),
+    v: styleVersion(sp),
+    styles: HAIRSTYLES.map((h) => ({ key: h.key, name: h.name.ro, photo: sp.photos[h.key] ?? null, onHome: HOME_STYLES.includes(h.key), bundled: BUNDLED_STYLES.includes(h.key) })),
   };
 };
 /** Ultimele erori din aplicația de pe telefon (pentru depanare). */
