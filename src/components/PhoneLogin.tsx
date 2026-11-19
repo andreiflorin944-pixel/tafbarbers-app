@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { api, usingMock } from "@/api";
 import { ApiError, type LegalSignature } from "@/api/client";
 import { LegalSign } from "@/components/LegalSign";
@@ -164,6 +164,15 @@ export function PhoneLogin({
     }
   };
 
+  // Codul de recomandare nu s-a aplicat: îi spunem clientului de ce (ex. „Nu se aplică pentru că sunteți deja client”).
+  const referralNotice = (r?: string) => {
+    const key = r === "existing_client" ? "login.refExisting" : r === "invalid" ? "login.refInvalid" : null;
+    if (!key) return;
+    const m = t(key);
+    if (Platform.OS === "web") window.alert(m);
+    else Alert.alert(t("login.ref"), m);
+  };
+
   const finish = async (token: string) => {
     // Tastatura și salvarea parolei se închid înainte să dispară ecranul de intrare.
     Keyboard.dismiss();
@@ -199,7 +208,7 @@ export function PhoneLogin({
     setBusy(true);
     setError(null);
     try {
-      const { token } = await api.socialComplete({
+      const { token, referral } = await api.socialComplete({
         ticket: social.ticket,
         phone: cleanPhone,
         name: name.trim(),
@@ -211,6 +220,7 @@ export function PhoneLogin({
         ref: ref.trim() || undefined,
         qr: await pendingQr(),
       });
+      referralNotice(referral);
       await finish(token);
     } catch (e) {
       // Numărul are deja cont (sau e-mailul nu e confirmat): îl confirmăm o dată cu codul, iar contul extern se leagă.
@@ -231,7 +241,7 @@ export function PhoneLogin({
     setBusy(true);
     setError(null);
     try {
-      const { token } = await api.verifyCode({
+      const { token, referral } = await api.verifyCode({
         phone: phoneSent!,
         code,
         name: name.trim(),
@@ -249,6 +259,7 @@ export function PhoneLogin({
         socialTicket: social?.ticket,
         password: register && !social ? password : undefined,
       });
+      referralNotice(referral);
       await finish(token);
     } catch (e) {
       setError(errorMessage(e));

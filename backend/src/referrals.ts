@@ -73,21 +73,44 @@ export async function referralCode(env: Env, clientId: string): Promise<string> 
   throw new HttpError(500, 'server_error');
 }
 
-/** La crearea unui cont cu cod: leagă contul nou de cel care l-a recomandat și, dacă e automat, dă beneficiul. */
-export async function applyReferral(env: Env, newClientId: string, rawCode: unknown) {
+/** Rezultatul codului de recomandare, ca aplicația să-i spună clientului de ce nu s-a aplicat. */
+export type ReferralResult = 'applied' | 'invalid' | 'existing_client' | 'off';
+
+/**
+ * Clientul a mai fost la salon: are vizite aduse din istoric (Barberly) sau programări trecute neanulate.
+ * Recomandarea e doar pentru clienți noi, care n-au mai fost la noi.
+ */
+export async function wasAlreadyClient(env: Env, clientId: string): Promise<boolean> {
+  const r = await env.DB.prepare(
+    `SELECT (coalesce(hist_visits, 0) > 0
+       OR EXISTS (SELECT 1 FROM bookings b WHERE b.client_id = clients.id AND b.status != 'cancelled' AND b.starts_at <= ?)) AS was
+     FROM clients WHERE id = ?`,
+  )
+    .bind(iso(new Date()), clientId)
+    .first<{ was: number }>();
+  return !!r?.was;
+}
+
+/**
+ * La crearea unui cont cu cod (sau la prima intrare în aplicație a unui client din panou / Barberly care n-a mai fost la salon):
+ * leagă contul de cel care l-a recomandat și, dacă e automat, dă beneficiul. Cine a mai fost la salon nu e legat.
+ */
+export async function applyReferral(env: Env, newClientId: string, rawCode: unknown): Promise<ReferralResult | null> {
   const code = typeof rawCode === 'string' ? rawCode.trim().toUpperCase() : '';
-  if (!code) return;
+  if (!code) return null;
   const s = await getReferralSettings(env);
-  if (!s.enabled) return;
+  if (!s.enabled) return 'off';
   const ref = await env.DB.prepare('SELECT id FROM clients WHERE referral_code = ? AND deleted_at IS NULL').bind(code).first<{ id: string }>();
-  if (!ref || ref.id === newClientId) return;
+  if (!ref || ref.id === newClientId) return 'invalid';
+  if (await wasAlreadyClient(env, newClientId)) return 'existing_client';
   // Un client poate fi recomandat o singură dată (primul cod rămâne); fără legătură nouă nu se dă nici beneficiu.
   const linked = await env.DB.prepare('UPDATE clients SET referred_by = ? WHERE id = ? AND referred_by IS NULL').bind(ref.id, newClientId).run();
-  if (!linked.meta.changes) return;
-  if (!s.auto) return;
+  if (!linked.meta.changes) return 'existing_client';
+  if (!s.auto) return 'applied';
   if (s.toReferrer) await giveBonus(env, ref.id, s.standard, 'referral', newClientId);
   // Bonusul clientului nou e legat de cel care l-a adus (referral_of = cel care a recomandat).
   if (s.toNew) await giveBonus(env, newClientId, s.welcome, 'referral', ref.id);
+  return 'applied';
 }
 
 /**

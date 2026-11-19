@@ -3,6 +3,9 @@ import type { AppVersionInfo, BeforeAfter, DayPart, WaitlistEntry, GiftCards, Ba
 // Singura legătură dintre interfață și server. `http.ts` vorbește cu serverul nostru
 // (Cloudflare Worker); `mock.ts` e varianta de test, folosită cât timp aplicația nu are
 // adresa serverului configurată.
+/** Ce s-a întâmplat cu codul de recomandare la intrare (lipsește dacă nu s-a scris niciun cod). */
+export type ReferralResult = 'applied' | 'invalid' | 'existing_client' | 'off';
+
 export type NearbyConfig = { enabled: boolean; radius: number; locations: Array<{ id: string; lat: number; lng: number }> };
 
 export interface BookingApi {
@@ -33,10 +36,10 @@ export interface BookingApi {
     lang: string,
   ): Promise<{ phone: string; channel: 'email' | 'sms'; sentTo: string; newAccount?: boolean; devCode?: string }>;
   /** `signature` + versiunile: semnătura de la derularea termenilor și a politicii (contul nou). */
-  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; email?: string; ref?: string; qr?: string; socialTicket?: string; password?: string } & Partial<LegalSignature>): Promise<{ token: string }>;
+  verifyCode(input: { phone: string; code: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; email?: string; ref?: string; qr?: string; socialTicket?: string; password?: string } & Partial<LegalSignature>): Promise<{ token: string; referral?: ReferralResult }>;
   /** Logare cu Apple / Google: intră direct dacă contul e legat, altfel cere telefonul (tichet pentru completare). */
   socialSignIn(input: { provider: 'apple' | 'google'; idToken: string; nonce?: string; name?: string }): Promise<{ token?: string; needsPhone?: boolean; ticket?: string; email?: string | null; name?: string }>;
-  socialComplete(input: { ticket: string; phone: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; ref?: string; qr?: string } & Partial<LegalSignature>): Promise<{ token: string }>;
+  socialComplete(input: { ticket: string; phone: string; name: string; lang: string; acceptTerms: boolean; marketing?: boolean; birthDate?: string; ref?: string; qr?: string } & Partial<LegalSignature>): Promise<{ token: string; referral?: ReferralResult }>;
   /** Intrarea cu e-mail (sau telefon) și parolă. Date greșite: mereu `wrong_credentials`; prea multe greșeli: `login_locked`. */
   passwordLogin(input: { identifier: string; password: string }): Promise<{ token: string }>;
   /** „Am uitat parola”: codul pleacă pe e-mailul contului, dacă există contul (răspunsul e mereu la fel). */
