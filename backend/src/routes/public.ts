@@ -23,7 +23,7 @@ import { parseBirthDate } from '../identity';
 import { applyReferral } from '../referrals';
 import { noteWebhook, onlinePaymentsOn, publicBase, verifyStripeSignature } from '../payments';
 import { handleAnyStripeEvent } from '../recurring';
-import { advisorAvailable, getStylePhotos } from '../advisor';
+import { advisorAvailable, getStylePhotos, styleVersion } from '../advisor';
 import { linkTicket, readTicket, socialConfig, socialSignIn, verifyIdToken, type Provider } from '../socialLogin';
 
 export const publicRoutes = new Hono<AppEnv>();
@@ -82,7 +82,7 @@ publicRoutes.get('/business', async (c) => {
   });
   // Textele despre salon în limba aplicației (`?lang=en`), unde au fost traduse.
   const [texts] = await localize(c.env, c.req.query('lang'), [biz], ['tagline', 'description', 'cancellationPolicy']);
-  return c.json({ ...texts, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env), advisor, styleV: stylePhotos.v });
+  return c.json({ ...texts, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env), advisor, styleV: styleVersion(stylePhotos) });
 });
 
 // Stripe ne anunță aici plățile. Semnătura se verifică pe corpul exact, cu secretul webhook-ului.

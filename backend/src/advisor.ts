@@ -27,6 +27,17 @@ export type AdvisorSettings = { on: boolean };
 export type StylePhotos = { photos: Record<string, string>; v: number };
 export const getStylePhotos = (env: Env) => getSetting<StylePhotos>(env, 'advisorPhotos', { photos: {}, v: 0 });
 export const setStylePhotos = (env: Env, v: StylePhotos) => setSetting(env, 'advisorPhotos', v);
+/**
+ * Pozele TAF Identity (stil Gen Z, duotone auriu, din poze de la salon) care vin cu panoul: admin/public/stiluri/<cheie>.jpg.
+ * Înlocuiesc pozele făcute cu AI pentru aceste tunsori (pe Acasă, pe site și la consilier); o poză proprie din panou are tot întâietate.
+ */
+export const BUNDLED_STYLES = ['textured_crop', 'skin_fade', 'quiff'];
+/**
+ * Versiunea pozelor trimisă aplicației și site-ului (`?v=`): cea din panou plus un pas fix, mărit când se schimbă pozele
+ * care vin cu panoul, ca telefoanele să nu mai arate pozele vechi din cache.
+ */
+const BUNDLED_STYLES_V = 1000;
+export const styleVersion = (sp: StylePhotos) => sp.v + BUNDLED_STYLES_V;
 export const getAdvisor = (env: Env) => getSetting<AdvisorSettings>(env, 'advisor', { on: true });
 export const setAdvisor = (env: Env, v: AdvisorSettings) => setSetting(env, 'advisor', { on: !!v.on });
 
@@ -337,7 +348,7 @@ advisorRoutes.post('/advisor', requireClient, async (c) => {
     examples.set(id, ex.results.map((p) => ({ before: mediaUrl(p.before_media), after: mediaUrl(p.after_media) })));
   }
   const name = (key: string) => hairstyle(key)!.name[lang === 'en' ? 'en' : lang === 'fr' ? 'fr' : 'ro'];
-  const styleV = (await getStylePhotos(env)).v;
+  const styleV = styleVersion(await getStylePhotos(env));
   const styles = picked!.chosen.map((x) => {
     const s = x.serviceId ? shown.find((y) => y.id === x.serviceId) : undefined;
     return {
@@ -360,6 +371,7 @@ const STYLE_FAILS_PER_DAY = 40;
  * GET /advisor/style/:key — poza de exemplu a unei tunsori din listă. Se generează cu AI la prima cerere și se păstrează
  * în media (id fix „style-<cheie>”), deci fiecare tunsoare costă un singur apel. Publică (aplicația o încarcă direct).
  * Cu `?bw=1`: varianta alb-negru din profil („style-bw-<cheie>”), pentru cardul TAF Identity de pe Acasă.
+ * Tunsorile din BUNDLED_STYLES au poza lor fixă (aceeași cu și fără `bw`), din fișierele panoului.
  */
 advisorRoutes.get('/advisor/style/:key', async (c) => {
   const env = c.env;
@@ -374,6 +386,11 @@ advisorRoutes.get('/advisor/style/:key', async (c) => {
   const maxAge = c.req.query('v') ? 604800 : 3600;
   const send = (body: ArrayBuffer | Uint8Array, mime: string) =>
     c.body(body as ArrayBuffer, 200, { 'Content-Type': mime, 'Cache-Control': `public, max-age=${maxAge}`, 'X-Content-Type-Options': 'nosniff' });
+  // Pozele Gen Z care vin cu panoul (fără poză proprie pusă din panou).
+  if (!own && BUNDLED_STYLES.includes(h.key) && env.ASSETS) {
+    const a = await env.ASSETS.fetch(new Request(new URL(`/stiluri/${h.key}.jpg`, c.req.url)));
+    if (a.ok && (a.headers.get('Content-Type') ?? '').startsWith('image/')) return send(await a.arrayBuffer(), 'image/jpeg');
+  }
   const r = await env.DB.prepare('SELECT mime, data FROM media WHERE id = ?').bind(id).first<{ mime: string; data: ArrayBuffer | number[] }>();
   if (r) return send(r.data instanceof ArrayBuffer ? r.data : new Uint8Array(r.data), r.mime);
   if (own) throw new HttpError(404, 'not_found');

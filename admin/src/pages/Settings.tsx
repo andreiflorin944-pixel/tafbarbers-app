@@ -610,7 +610,7 @@ function HairAdvisor() {
   );
 }
 
-type StyleRow = { key: string; name: string; photo: string | null; onHome: boolean };
+type StyleRow = { key: string; name: string; photo: string | null; onHome: boolean; bundled?: boolean };
 
 /**
  * Pozele tunsorilor: cele 3 din cardul TAF Identity de pe Acasă (alb-negru) și cele din recomandările consilierului.
@@ -626,7 +626,7 @@ function StylePhotos() {
     <div className="grid" style={{ marginTop: 8 }}>
       <h3 style={{ margin: 0 }}>Pozele tunsorilor</h3>
       <div className="muted small">
-        Primele 3 apar alb-negru pe prima pagină a aplicației, în cardul TAF Identity; toate apar la recomandările consilierului. „Refă cu AI” face o poză nouă. O poză
+        Primele 3 apar pe prima pagină a aplicației, în cardul TAF Identity, cu pozele TAF în stil Gen Z (din salon); toate apar la recomandările consilierului. „Refă cu AI” face o poză nouă. O poză
         proprie (de la salon) apare în locul celei făcute cu AI, la fel și pe prima pagină. Pe telefoane se vede după ce clientul redeschide aplicația.
       </div>
       {!d ? (
@@ -643,9 +643,13 @@ function StylePhotos() {
                 <div className="thumb">
                   <img src={`/v1/advisor/style/${x.key}${x.onHome ? '?bw=1&' : '?'}v=${d.v}`} alt="" />
                 </div>
-                <button className="ghost sm" disabled={busy} onClick={() => run(async () => list.setData(await api('POST', `/admin/advisor/styles/${x.key}/regenerate`)))}>
-                  Refă cu AI
-                </button>
+                {x.bundled ? (
+                  <span className="muted small">poză TAF (stil Gen Z)</span>
+                ) : (
+                  <button className="ghost sm" disabled={busy} onClick={() => run(async () => list.setData(await api('POST', `/admin/advisor/styles/${x.key}/regenerate`)))}>
+                    Refă cu AI
+                  </button>
+                )}
               </>
             ) : null}
             <ImagePicker value={x.photo} maxPx={1200} onChange={(photo) => run(async () => list.setData(await api('PUT', `/admin/advisor/styles/${x.key}`, { photo })))} />
