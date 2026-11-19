@@ -189,7 +189,7 @@ export const mockApi: BookingApi = {
       ],
       subscriptions: [],
     }),
-  getGiftCards: () => delay({ enabled: true, amounts: [50, 100, 150, 200], validMonths: 12, bought: [], received: [] }),
+  getGiftCards: () => delay({ enabled: true, amounts: [50, 100, 150, 200], validMonths: 12, season: null, bought: [], received: [] }),
   buyGiftCard: () => delay({ id: `gc-${Date.now()}` }),
   cancelGiftCard: () => delay(undefined),
   payGiftCard: () => Promise.reject(new ApiError('payments_off', 409)),

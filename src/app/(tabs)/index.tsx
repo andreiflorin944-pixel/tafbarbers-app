@@ -9,6 +9,7 @@ import { mediaUrl } from '@/api/staff';
 import { Backdrop } from '@/components/Backdrop';
 import { LangButton } from '@/components/LangButton';
 import { PayDueBanner } from '@/components/PayDue';
+import { SeasonPopup } from '@/components/SeasonPopup';
 import { LoyalPitch } from '@/components/CustomSubPitch';
 import { useCart } from '@/state/Cart';
 import { Button, styles as ui } from '@/components/ui';
@@ -98,13 +99,18 @@ export default function Home() {
     if (p.action.type === 'url') return Linking.openURL(p.action.url);
     // Abonamentul personalizat: „Creează-ți abonamentul”.
     if (p.action.type === 'custom_sub') return router.push('/custom-sub');
+    // Campania cardului cadou (ex. „Cadou de Crăciun”): ecranul cardurilor cadou.
+    if (p.action.type === 'gift_card') return router.push('/gift-cards');
     // Ofertă de produs: magazinul, cu produsul ales primul.
     if (p.action.type === 'shop') return router.push(p.action.productId ? { pathname: '/shop', params: { product: p.action.productId } } : '/shop');
     startBooking();
   };
 
   // „Recomandarea TAF”: toate bannerele active din panou, întâi cele cu produs din magazin, apoi celelalte în ordinea lor.
-  const picks = [...promos.filter((p) => p.action.type === 'shop'), ...promos.filter((p) => p.action.type !== 'shop')];
+  // Campania de sezon (Crăciun, Paște...) rămâne prima.
+  const season = promos.find((p) => p.id.startsWith('season-'));
+  const rest = promos.filter((p) => p !== season);
+  const picks = [...(season ? [season] : []), ...rest.filter((p) => p.action.type === 'shop'), ...rest.filter((p) => p.action.type !== 'shop')];
 
   if (loading) {
     return (
@@ -316,6 +322,9 @@ export default function Home() {
           </>
         ) : null}
       </ScrollView>
+
+      {/* Campania de sezon ca pop-up la intrare, o dată pe campanie (bifat în panou). */}
+      <SeasonPopup promo={season} onOpen={openPromo} />
 
       {/* Asistentul la îndemână, deasupra barei de taburi (ecranul se termină deasupra ei), oricât derulezi. */}
       <View style={s.fab} pointerEvents="box-none">

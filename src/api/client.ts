@@ -73,7 +73,7 @@ export interface BookingApi {
   saveStyleToIdentity(token: string, key: string): Promise<IdentityPhoto>;
 
   // Carduri cadou (plata la salon) și pozele înainte/după puse de frizer.
-  getGiftCards(token: string): Promise<GiftCards>;
+  getGiftCards(token: string, lang?: string): Promise<GiftCards>;
   buyGiftCard(token: string, input: { amount: number; recipientName: string; recipientPhone?: string; message?: string }): Promise<{ id: string }>;
   cancelGiftCard(token: string, id: string): Promise<void>;
   /** Adresa paginii de plată online (Stripe). */

@@ -223,8 +223,10 @@ export type Promo = {
   icon: 'pricetag' | 'flame' | 'school' | 'bag-handle' | 'cut' | 'sparkles' | 'star' | 'diamond' | 'gift' | 'water' | 'hourglass' | 'trophy' | 'people' | 'ribbon' | 'flash' | 'heart';
   imageUrl?: string | null; // poză de fundal a bannerului
   color?: string | null; // culoarea bannerului; null = alternativ culoarea principală / închis
+  popup?: boolean; // campania de sezon: apare și ca pop-up la intrarea în aplicație (o dată pe campanie)
+  theme?: string; // campania de sezon: christmas, easter, valentine, fathers, custom
   // ce face butonul
-  action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'shop'; productId: string | null } | { type: 'book' } | { type: 'custom_sub' };
+  action: { type: 'service'; serviceId: string } | { type: 'url'; url: string } | { type: 'shop'; productId: string | null } | { type: 'book' } | { type: 'custom_sub' } | { type: 'gift_card' };
 };
 
 export type Product = {
@@ -265,5 +267,7 @@ export type GiftCard = {
   createdAt: string;
   buyerName?: string | null;
 };
-export type GiftCards = { enabled: boolean; amounts: number[]; validMonths: number; bought: GiftCard[]; received: GiftCard[] };
+/** Campania de sezon a cardului cadou (ex. Crăciun), setată din panou; null = nu e în desfășurare. */
+export type GiftSeason = { kicker: string; title: string; text: string; cta: string; wish: string; imageUrl: string | null };
+export type GiftCards = { enabled: boolean; amounts: number[]; validMonths: number; season?: GiftSeason | null; bought: GiftCard[]; received: GiftCard[] };
 export type BeforeAfter = { id: string; before: string; after: string; barberName: string | null; createdAt: string; showExample?: boolean };
