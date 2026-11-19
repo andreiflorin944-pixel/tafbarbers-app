@@ -6,6 +6,7 @@ import { storesAdmin } from '../stores';
 import { websiteAdmin } from '../website';
 import { barberlyAdmin } from '../barberly';
 import { barberlyPushAdmin } from '../barberlyPush';
+import { captchaAdmin } from '../captcha';
 import { clearFailures, lockedAny, loginKeys, recordFailure } from '../clientPassword';
 import { barberHours, bookingsBrief, hoursConflicts, overlapping } from '../scheduleConflicts';
 import {
@@ -164,6 +165,8 @@ adminRoutes.route('/', websiteAdmin);
 // Copierea programărilor din Barberly (scriptul din Gmail, jurnalul).
 adminRoutes.route('/', barberlyAdmin);
 adminRoutes.route('/', barberlyPushAdmin);
+// Protecția anti-robot la cererea codurilor (cheile Turnstile).
+adminRoutes.route('/', captchaAdmin);
 
 adminRoutes.post('/logout', async (c) => {
   const t = tokenFrom(c);

@@ -29,7 +29,7 @@ export interface BookingApi {
 
   /** Trimite codul pe e-mail (principal) sau SMS (alternativă). `devCode` vine doar de la serverul de test. */
   requestCode(
-    input: { phone: string; email?: string; channel: 'email' | 'sms' },
+    input: { phone: string; email?: string; channel: 'email' | 'sms'; captcha?: string },
     lang: string,
   ): Promise<{ phone: string; channel: 'email' | 'sms'; sentTo: string; newAccount?: boolean; devCode?: string }>;
   /** `signature` + versiunile: semnătura de la derularea termenilor și a politicii (contul nou). */
@@ -40,7 +40,7 @@ export interface BookingApi {
   /** Intrarea cu e-mail (sau telefon) și parolă. Date greșite: mereu `wrong_credentials`; prea multe greșeli: `login_locked`. */
   passwordLogin(input: { identifier: string; password: string }): Promise<{ token: string }>;
   /** „Am uitat parola”: codul pleacă pe e-mailul contului, dacă există contul (răspunsul e mereu la fel). */
-  forgotPassword(input: { identifier: string }, lang: string): Promise<{ ok: true; devCode?: string }>;
+  forgotPassword(input: { identifier: string; captcha?: string }, lang: string): Promise<{ ok: true; devCode?: string }>;
   /** Codul primit + parola nouă: celelalte dispozitive ies din cont, iar clientul intră. */
   resetPassword(input: { identifier: string; code: string; password: string; acceptTerms?: boolean; lang?: string }): Promise<{ token: string }>;
   /** Pune prima parolă sau o schimbă (cu parola de acum sau cu un cod proaspăt de pe e-mail). */

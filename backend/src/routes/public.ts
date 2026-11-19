@@ -7,6 +7,7 @@ import { accessFor, availability } from '../availability';
 import { createSession, deleteSession, hashPassword, normalizePhone, optionalSession, newId, tokenFrom, verifyPassword } from '../auth';
 import { clearFailures, DUMMY_HASH, findAccounts, lockedAny, loginKeys, parseIdentifier, recordFailure, validClientPassword } from '../clientPassword';
 import { checkCode, issueCode, useCode } from '../otp';
+import { captchaSiteKey, requireCaptcha } from '../captcha';
 import { getPlans } from '../subscriptions';
 import { getCustomSubSettings, quoteCustom } from '../customSubs';
 import { serviceOffers } from '../offers';
@@ -69,7 +70,7 @@ publicRoutes.post('/app-errors', async (c) => {
 publicRoutes.get('/nearby', async (c) => c.json(await nearbyConfig(c.env)));
 
 publicRoutes.get('/business', async (c) => {
-  const [biz, appearance, auto, advisor, stylePhotos] = await Promise.all([getBusiness(c.env), getAppearance(c.env), getAutomations(c.env), advisorAvailable(c.env), getStylePhotos(c.env)]);
+  const [biz, appearance, auto, advisor, stylePhotos, captchaKey] = await Promise.all([getBusiness(c.env), getAppearance(c.env), getAutomations(c.env), advisorAvailable(c.env), getStylePhotos(c.env), captchaSiteKey(c.env)]);
   // Programul salonului = reuniunea programului frizerilor, pe zile (0 = duminică).
   const rows = await c.env.DB.prepare(
     `SELECT h.weekday, MIN(h.start_min) AS s, MAX(h.end_min) AS e
@@ -82,7 +83,7 @@ publicRoutes.get('/business', async (c) => {
   });
   // Textele despre salon în limba aplicației (`?lang=en`), unde au fost traduse.
   const [texts] = await localize(c.env, c.req.query('lang'), [biz], ['tagline', 'description', 'cancellationPolicy']);
-  return c.json({ ...texts, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env), advisor, styleV: styleVersion(stylePhotos) });
+  return c.json({ ...texts, hours, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env), advisor, styleV: styleVersion(stylePhotos), captchaSiteKey: captchaKey });
 });
 
 // Stripe ne anunță aici plățile. Semnătura se verifică pe corpul exact, cu secretul webhook-ului.
@@ -248,8 +249,10 @@ publicRoutes.get('/legal/:doc', async (c) => {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 publicRoutes.post('/auth/otp', async (c) => {
-  type Body = { phone?: string; email?: string; channel?: string };
+  type Body = { phone?: string; email?: string; channel?: string; captcha?: string };
   const body = await c.req.json<Body>().catch(() => ({}) as Body);
+  // Întâi verificarea „nu sunt robot” (cât e pornită din panou), înainte de orice căutare a contului sau trimitere.
+  await requireCaptcha(c, body.captcha);
   const phone = normalizePhone(body.phone);
   const rawEmail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const channel = body.channel === 'sms' || (!body.channel && !rawEmail) ? 'sms' : 'email';
@@ -498,9 +501,10 @@ publicRoutes.post('/auth/password/login', async (c) => {
 // Codul de recuperare pleacă pe e-mailul contului (prin SMS doar dacă contul nu are e-mail).
 // Răspunsul e mereu același, fie că există contul, fie că nu (și când o limită oprește trimiterea).
 publicRoutes.post('/auth/password/forgot', async (c) => {
-  const body = await c.req.json<{ identifier?: string }>().catch(() => ({}) as { identifier?: string });
+  const body = await c.req.json<{ identifier?: string; captcha?: string }>().catch(() => ({}) as { identifier?: string; captcha?: string });
   const id = parseIdentifier(body.identifier);
   if (!id) throw new HttpError(400, 'invalid_identifier');
+  await requireCaptcha(c, body.captcha);
   const [acct] = await findAccounts(c.env, id);
   let devCode: string | undefined;
   if (acct) {

@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { api, usingMock } from '@/api';
 import { ApiError } from '@/api/client';
 import { Button, styles } from '@/components/ui';
+import { useCaptcha } from '@/components/Captcha';
 import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
 import { colors, radius, space } from '@/theme';
@@ -69,6 +70,8 @@ export function PasswordLogin({ onDone, initialIdentifier }: { onDone: (token: s
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Verificarea „nu sunt robot” înainte de trimiterea codului de recuperare (doar cât e pornită din panou).
+  const captcha = useCaptcha();
 
   const id = identifier.trim();
   const idOk = id.includes('@') ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id) : /^\+?\d{9,15}$/.test(id.replace(/[\s\-().]/g, ''));
@@ -94,7 +97,12 @@ export function PasswordLogin({ onDone, initialIdentifier }: { onDone: (token: s
 
   const sendReset = () =>
     run(async () => {
-      const r = await api.forgotPassword({ identifier: id }, lang);
+      let r: Awaited<ReturnType<typeof api.forgotPassword>>;
+      try {
+        r = await api.forgotPassword({ identifier: id, captcha: captcha.token }, lang);
+      } finally {
+        if (captcha.required) captcha.reset();
+      }
       setDevCode(r.devCode);
       setCode('');
       setStep('reset');
@@ -195,13 +203,15 @@ export function PasswordLogin({ onDone, initialIdentifier }: { onDone: (token: s
         </>
       ) : null}
 
+      {step === 'forgot' ? captcha.element : null}
+
       {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
 
       <View style={{ marginTop: space.lg }}>
         {step === 'login' ? (
           <Button title={t('login.submitLogin')} disabled={!idOk || !password} loading={busy} onPress={login} />
         ) : step === 'forgot' ? (
-          <Button title={t('pw.sendCode')} disabled={!idOk} loading={busy} onPress={sendReset} />
+          <Button title={t('pw.sendCode')} disabled={!idOk || !captcha.ready} loading={busy} onPress={sendReset} />
         ) : (
           <Button title={t('pw.resetSubmit')} disabled={code.length !== 6 || newPassword.length < PASSWORD_MIN} loading={busy} onPress={reset} />
         )}

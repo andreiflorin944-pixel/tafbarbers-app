@@ -16,6 +16,7 @@ import { formatLocal } from './time';
 import { isSiteHost, sitePage, websitePublic } from './website';
 import { health, recordServerError } from './serverErrors';
 import { barberlyPublic } from './barberly';
+import { captchaPublic, captchaSiteKey } from './captcha';
 
 const app = new Hono<AppEnv>();
 
@@ -36,6 +37,8 @@ app.get('/v1/health', async (c) => {
   return c.json(h, h.ok ? 200 : 503);
 });
 app.route('/v1', publicRoutes);
+// Verificarea „nu sunt robot” (pagina deschisă de aplicație înainte de cererea unui cod).
+app.route('/v1', captchaPublic);
 app.route('/v1', socialPublic);
 app.route('/v1', assistantRoutes);
 app.route('/v1', advisorRoutes);
@@ -84,7 +87,7 @@ app.get('/r/:code', async (c) => {
 // Ștergerea contului de pe web, fără aplicație (cerută de Google Play): codul vine pe SMS sau pe e-mailul din cont,
 // apoi contul se șterge la fel ca din aplicație (Cont → Șterge contul).
 app.get('/sterge-cont', async (c) => {
-  const biz = await getBusiness(c.env);
+  const [biz, captcha] = await Promise.all([getBusiness(c.env), captchaSiteKey(c.env)]);
   const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
   return c.html(`<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Șterge contul · ${esc(biz.name)}</title>
 <meta name="robots" content="noindex">
@@ -96,16 +99,17 @@ button{width:100%;background:#F9A11B;color:#000;font-weight:800;border:0;border-
 <p class="m">Se șterg definitiv numele, telefonul, e-mailul, data nașterii, pozele și preferințele tale, iar programările viitoare se anulează. Păstrăm doar evidența plăților făcute, fără date care să te identifice, cât cere legea contabilității. Poți face același lucru din aplicație: Cont → Șterge contul.</p>
 <form id="f1"><label>Numărul de telefon din cont<input id="phone" type="tel" placeholder="07xx xxx xxx" required autocomplete="tel"></label>
 <label>E-mailul din cont (opțional; dacă îl scrii, codul vine pe e-mail, altfel prin SMS)<input id="email" type="email" placeholder="nume@exemplu.ro" autocomplete="email"></label>
-<button>Trimite codul</button></form>
+${captcha ? '<div id="cf" style="margin:6px 0 14px;min-height:65px"></div>' : ''}<button>Trimite codul</button></form>
 <form id="f2" hidden><label>Codul primit<input id="code" inputmode="numeric" maxlength="6" placeholder="123456" required></label>
 <p id="dev" class="m"></p><button class="d">Șterge definitiv contul</button></form>
 <p id="msg"></p></main>
+${captcha ? `<script>let cfTok=null;window.cfGo=()=>turnstile.render('#cf',{sitekey:${JSON.stringify(captcha)},language:'ro',theme:'dark',callback:(x)=>{cfTok=x},'expired-callback':()=>{cfTok=null},'error-callback':()=>{cfTok=null}});</script><script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=cfGo&render=explicit" async defer></script>` : '<script>const cfTok=null;</script>'}
 <script>
 const $=(i)=>document.getElementById(i),msg=(t,ok)=>{$('msg').textContent=t;$('msg').className=ok?'ok':'e'};
-const E={invalid_phone:'Numărul de telefon nu pare corect.',email_mismatch:'E-mailul nu e cel din cont.',email_not_on_account:'Contul nu are e-mail; lasă câmpul gol și primești codul prin SMS.',too_many_requests:'Ai cerut un cod de curând. Mai încearcă peste un minut.',wrong_code:'Codul nu e corect.',too_many_attempts:'Prea multe încercări greșite. Încearcă din nou peste o oră.',code_expired:'Codul a expirat. Cere altul.',terms_required:'Nu există niciun cont cu acest număr.',birth_date_required:'Nu există niciun cont cu acest număr.',email_required:'Nu există niciun cont cu acest număr.',account_blocked:'Contul nu mai poate fi folosit. Sună la salon.'};
+const E={invalid_phone:'Numărul de telefon nu pare corect.',email_mismatch:'E-mailul nu e cel din cont.',email_not_on_account:'Contul nu are e-mail; lasă câmpul gol și primești codul prin SMS.',too_many_requests:'Ai cerut un cod de curând. Mai încearcă peste un minut.',wrong_code:'Codul nu e corect.',too_many_attempts:'Prea multe încercări greșite. Încearcă din nou peste o oră.',code_expired:'Codul a expirat. Cere altul.',terms_required:'Nu există niciun cont cu acest număr.',birth_date_required:'Nu există niciun cont cu acest număr.',email_required:'Nu există niciun cont cu acest număr.',account_blocked:'Contul nu mai poate fi folosit. Sună la salon.',captcha_required:'Așteaptă bifa verde de la „nu sunt robot”, apoi apasă din nou.',captcha_failed:'Verificarea „nu sunt robot” a expirat. Încearcă din nou.'};
 const call=async(m,p,b,t)=>{const r=await fetch('/v1'+p,{method:m,headers:{'content-type':'application/json',...(t?{authorization:'Bearer '+t}:{})},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.error)||'server_error');return j};
 let phone='';
-$('f1').onsubmit=async(e)=>{e.preventDefault();msg('');try{const email=$('email').value.trim();const r=await call('POST','/auth/otp',{phone:$('phone').value,...(email?{email,channel:'email'}:{channel:'sms'})});
+$('f1').onsubmit=async(e)=>{e.preventDefault();msg('');try{const email=$('email').value.trim();const r=await call('POST','/auth/otp',{phone:$('phone').value,captcha:cfTok||undefined,...(email?{email,channel:'email'}:{channel:'sms'})}).finally(()=>{if(window.turnstile&&$('cf')){try{turnstile.reset('#cf')}catch(_){}}${captcha ? ';cfTok=null' : ''}});
 if(r.newAccount){msg('Nu există niciun cont cu acest număr.');return}phone=r.phone;$('f1').hidden=true;$('f2').hidden=false;msg('Ți-am trimis codul la '+r.sentTo+'.',true);if(r.devCode)$('dev').textContent='Server de test, codul este '+r.devCode;}catch(x){msg(E[x.message]||'A apărut o problemă. Încearcă din nou.')}};
 $('f2').onsubmit=async(e)=>{e.preventDefault();msg('');if(!confirm('Sigur ștergi contul? Nu se mai poate recupera.'))return;try{const v=await call('POST','/auth/verify',{phone,code:$('code').value.trim()});await call('DELETE','/me',null,v.token);
 $('f2').hidden=true;msg('Contul a fost șters. Îți mulțumim că ai fost clientul nostru.',true)}catch(x){msg(E[x.message]||'A apărut o problemă. Încearcă din nou.')}};
