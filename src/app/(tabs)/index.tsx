@@ -372,8 +372,15 @@ function PromoPager({ promos, products, onPress }: { promos: Promo[]; products: 
       <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} onScroll={onScroll} scrollEventThrottle={32} style={{ width }}>
         {promos.map((p) => {
           // Poza bannerului; la un produs din magazin fără poză de banner, poza produsului.
+          // Bannerul spre magazin fără un produs ales: produsul cu același nume ca titlul, altfel primul cu poză (ca la „Magazin”).
           const productId = p.action.type === 'shop' ? p.action.productId : null;
-          const product = productId ? products.find((x) => x.id === productId) : undefined;
+          const sameName = (x: Product) => x.name.trim().toLowerCase() === p.title.trim().toLowerCase();
+          const withPhoto = products.filter((x) => mediaUrl(x.imageUrl));
+          const product = productId
+            ? products.find((x) => x.id === productId)
+            : p.action.type === 'shop'
+              ? (products.find(sameName) ?? withPhoto.find((x) => x.stock !== 0) ?? withPhoto[0])
+              : undefined;
           const image = mediaUrl(p.imageUrl) ?? mediaUrl(product?.imageUrl);
           return (
             <Pressable key={p.id} onPress={() => onPress(p)} style={({ pressed }) => [s.card, s.pick, { width }, pressed && { opacity: 0.85 }]} accessibilityRole="button">
