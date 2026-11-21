@@ -39,6 +39,7 @@ const D: Record<string, T2> = {
   Anulări: ['Cancellations', 'Annulations'],
   'Au revenit în 60 de zile': ['Came back within 60 days', 'Revenus sous 60 jours'],
   'Bacșiș (lei)': ['Tip (lei)', 'Pourboire (lei)'],
+  'Neînchisă · de încasat (lei)': ['Not closed · to collect (lei)', 'Non clôturé · à encaisser (lei)'],
   'Bacșiș mediu (lei)': ['Average tip (lei)', 'Pourboire moyen (lei)'],
   'Bacșiș total (lei)': ['Total tips (lei)', 'Total des pourboires (lei)'],
   'Card POS (lei)': ['Card POS (lei)', 'Carte TPE (lei)'],
