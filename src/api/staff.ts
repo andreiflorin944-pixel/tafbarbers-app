@@ -24,6 +24,8 @@ export type StaffRole = 'org_admin' | 'location_admin' | 'barber';
 export const ROLE_LABELS: Record<StaffRole, Key> = { org_admin: 'role.orgAdmin', location_admin: 'role.locationAdmin', barber: 'role.barber' };
 // `onlinePayments`: plata cu cardul din aplicație e pornită pe server (altfel „Cere plata în aplicație” nu se poate folosi).
 export type StaffMe = { id: string; email: string; name: string; barberId: string | null; barberPhotoUrl?: string | null; role?: StaffRole; owner: boolean; permissions: Record<Perm, boolean>; onlinePayments?: boolean; notifyBookings?: boolean; notifyTasks?: boolean };
+export type StaffRepeatItem = { start: string; end: string; ok: boolean; reason?: 'past' | 'busy' | 'time_off' | 'block' | 'closed'; detail?: string; id?: string };
+export type StaffRepeat = { dryRun: boolean; weeks: number; items: StaffRepeatItem[]; created: number; skipped: number };
 export type StaffBooking = {
   id: string;
   clientId: string;
@@ -35,6 +37,8 @@ export type StaffBooking = {
   end: string;
   price: number;
   status: 'requested' | 'confirmed' | 'cancelled' | 'completed' | 'no_show'; // requested = cerere care așteaptă răspuns
+  /** Face parte dintr-o serie de programări repetate (în fiecare săptămână / la 2 săptămâni). */
+  seriesId?: string | null;
   source: string;
   note: string;
   clientName: string;
@@ -148,6 +152,10 @@ export const staffApi = {
   addExtra: (t: string, id: string, serviceId: string, force = false) =>
     call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/extras`, t, { serviceId, force }),
   removeExtra: (t: string, id: string, extraId: string) => call<StaffBooking>('DELETE', `/admin/bookings/${encodeURIComponent(id)}/extras/${encodeURIComponent(extraId)}`, t),
+  /** Repetă programarea (aceeași zi și oră) în fiecare săptămână sau la 2; `dryRun` = doar arată datele libere și pe cele sărite. */
+  repeat: (t: string, id: string, body: { everyWeeks: number; count: number; dryRun?: boolean }) =>
+    call<StaffRepeat>('POST', `/admin/bookings/${encodeURIComponent(id)}/repeat`, t, body),
+  cancelSeries: (t: string, id: string) => call<{ cancelled: number; booking: StaffBooking }>('POST', `/admin/bookings/${encodeURIComponent(id)}/cancel-series`, t, {}),
   activity: (t: string, id: string) => call<StaffActivity>('GET', `/admin/bookings/${encodeURIComponent(id)}/activity`, t),
   /** Anulează confirmarea plății (doar proprietarul): programarea revine la confirmată. */
   undoComplete: (t: string, id: string) => call<StaffBooking>('DELETE', `/admin/bookings/${encodeURIComponent(id)}/complete`, t),

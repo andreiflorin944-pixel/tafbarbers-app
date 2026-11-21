@@ -30,6 +30,7 @@ const ICONS: Record<string, string> = {
   lock: 'M7 11V8a5 5 0 0 1 10 0v3M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z',
   chevL: 'M15 6l-6 6 6 6',
   chevR: 'M9 6l6 6-6 6',
+  repeat: 'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-1v2a3 3 0 0 1-3 3H3',
 };
 export function Icon({ name, size = 18 }: { name: keyof typeof ICONS | string; size?: number }) {
   return (
@@ -98,6 +99,8 @@ function logText(e: BookingActivity['log'][number]) {
       return `Mutată în Barberly: ${when(s('from'))} → ${when(s('to'))}`;
     case 'barberly_cancel':
       return 'Anulată în Barberly';
+    case 'repeated':
+      return `Repetată: ${s('created')} programări noi, ${Number(d.weeks) === 1 ? 'în fiecare săptămână' : `la ${s('weeks')} săptămâni`}`;
     default:
       return e.kind;
   }
@@ -138,12 +141,15 @@ export function BookingPanel({
   services,
   locations,
   startCheckout,
+  canCreate,
   onClose,
   onChange,
 }: {
   b: Booking;
   color: string;
   canManage: boolean;
+  /** Poate face programări noi (dreptul „bookings_create”): atunci poate și repeta programarea. */
+  canCreate?: boolean;
   /** Poate da programarea altui frizer (vede toate programările). */
   allBarbers: boolean;
   owner: boolean;
@@ -165,6 +171,7 @@ export function BookingPanel({
   const [edit, setEdit] = useState<Edit>(null);
   const [checkout, setCheckout] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [repeatOpen, setRepeatOpen] = useState(false);
   const activity = useLoad(() => api<BookingActivity>('GET', `/admin/bookings/${b.id}/activity`), [b.id]);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const payRef = useRef<HTMLDivElement>(null);
@@ -337,6 +344,23 @@ export function BookingPanel({
       setMsg(`Cererea de recenzie a plecat${r.sms && r.push ? ' prin SMS și notificare' : r.push ? ' prin notificare' : ' prin SMS'}.`);
       activity.reload();
     });
+  // Repetarea se poate porni de la o programare confirmată sau deja încheiată (ex. „vine în fiecare marți la 10”).
+  const canRepeat = !!canCreate && (b.status === 'confirmed' || b.status === 'completed') && !checkout;
+  const openRepeat = () => {
+    setMenu(false);
+    setRepeatOpen(true);
+  };
+  const cancelSeries = () => {
+    setMenu(false);
+    if (!confirm('Anulezi această programare și toate repetările de după ea? Clientul nu primește mesaj.')) return;
+    run(async () => {
+      const r = await api<{ cancelled: number; booking: Booking }>('POST', `/admin/bookings/${b.id}/cancel-series`);
+      setB({ ...b, ...r.booking });
+      setMsg(r.cancelled === 1 ? 'Am anulat o programare din serie.' : `Am anulat ${r.cancelled} programări din serie.`);
+      onChange();
+      activity.reload();
+    });
+  };
   const cancel = () => {
     setMenu(false);
     if (confirm('Anulezi programarea? Ora se eliberează și clientul primește mesaj.')) set({ status: 'cancelled' });
@@ -555,6 +579,16 @@ export function BookingPanel({
                 </div>
                 {editable ? <span className="bk-chev">›</span> : null}
               </button>
+              {canRepeat || b.seriesId ? (
+                <button type="button" className="bk-row" disabled={!canRepeat} onClick={openRepeat}>
+                  <span className="bk-thumb ic"><Icon name="repeat" /></span>
+                  <div>
+                    <b>Repetă programarea</b>
+                    <div className="muted small">{b.seriesId ? 'Face parte dintr-o serie de programări repetate' : 'În fiecare săptămână sau la 2 săptămâni, aceeași zi și oră'}</div>
+                  </div>
+                  {canRepeat ? <span className="bk-chev">›</span> : null}
+                </button>
+              ) : null}
               {editable && (edit === 'time' || edit === 'barber' || (moved && !slotOk) || (serviceId !== b.serviceId && !slotOk)) ? (
                 <div className="bk-edit">
                   <input type="date" value={day} onChange={(e) => { if (e.target.value) { setDay(e.target.value); setStart(''); } }} style={{ width: 170 }} aria-label="Ziua" />
@@ -896,6 +930,17 @@ export function BookingPanel({
                 {b.status === 'requested' ? <div className="muted small" style={{ padding: 10 }}>Cererea se acceptă sau se refuză din panou, mai sus.</div> : null}
                 {b.status === 'cancelled' || b.status === 'completed' ? <div className="muted small" style={{ padding: 10 }}>Programarea e {STATUS[b.status].toLowerCase()}.</div> : null}
               </div>
+              {canRepeat || (b.seriesId && b.status === 'confirmed' && canManage) ? (
+                <>
+                  <h3>Repetare</h3>
+                  <div className="bk-list">
+                    {canRepeat ? <MenuItem icon="repeat" title="Repetă programarea" sub="În fiecare săptămână sau la 2 săptămâni, aceeași zi și oră" onClick={openRepeat} /> : null}
+                    {b.seriesId && b.status === 'confirmed' ? (
+                      <MenuItem icon="trash" title="Anulează aceasta și următoarele" sub="Toate repetările de după ea, fără mesaj la client" danger disabled={busy} onClick={cancelSeries} />
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
               <h3>Plăți</h3>
               <div className="bk-list">
                 {b.status === 'confirmed' && !b.onlinePaid ? (
@@ -920,8 +965,156 @@ export function BookingPanel({
             </div>
           </div>
         ) : null}
+        {repeatOpen ? (
+          <RepeatBox
+            b={b}
+            onClose={() => setRepeatOpen(false)}
+            onDone={(text, seriesId) => {
+              setRepeatOpen(false);
+              setB({ ...b, seriesId });
+              setMsg(text);
+              onChange();
+              activity.reload();
+            }}
+          />
+        ) : null}
       </aside>
     </>
+  );
+}
+
+type RepeatItem = { start: string; end: string; ok: boolean; reason?: 'past' | 'busy' | 'time_off' | 'block' | 'closed'; detail?: string; id?: string };
+type RepeatResult = { dryRun: boolean; weeks: number; items: RepeatItem[]; created: number; skipped: number };
+const WEEKDAY = ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'];
+const shortDate = (iso: string) => dayOf(iso).split('-').reverse().join('.');
+function whySkipped(x: RepeatItem) {
+  switch (x.reason) {
+    case 'past':
+      return 'a trecut deja';
+    case 'busy':
+      return x.detail ? `ocupat (${x.detail})` : 'ocupat';
+    case 'time_off':
+      return x.detail ? `concediu / zi liberă (${x.detail})` : 'concediu / zi liberă';
+    case 'block':
+      return x.detail ? `${x.detail.toLowerCase()} în program` : 'blocat în program';
+    case 'closed':
+      return 'în afara programului';
+    default:
+      return 'nu se poate';
+  }
+}
+
+/**
+ * „Repetă programarea”: aceeași zi a săptămânii, aceeași oră, același frizer și aceleași servicii, în fiecare săptămână (sau la 2, 3, 4).
+ * Întâi arată lista datelor (libere / sărite și de ce), apoi le programează pe cele libere. Clientul nu primește mesaje.
+ */
+function RepeatBox({ b, onClose, onDone }: { b: Booking; onClose: () => void; onDone: (text: string, seriesId: string) => void }) {
+  const [weeks, setWeeks] = useState(1);
+  const [mode, setMode] = useState<'count' | 'until'>('count');
+  const [count, setCount] = useState(8);
+  const [until, setUntil] = useState('');
+  const [preview, setPreview] = useState<RepeatResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const { busy, error, run, setError } = useAction();
+  const body = { everyWeeks: weeks, ...(mode === 'count' ? { count } : { until }) };
+  const ready = mode === 'count' ? count >= 1 && count <= 52 : !!until && until > dayOf(b.start);
+  const key = JSON.stringify(body);
+  useEffect(() => {
+    if (!ready) {
+      setPreview(null);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    setError(null);
+    const t = setTimeout(() => {
+      api<RepeatResult>('POST', `/admin/bookings/${b.id}/repeat`, { ...body, dryRun: true })
+        .then((r) => live && setPreview(r), (e) => live && (setPreview(null), setError(errorText(e))))
+        .finally(() => live && setLoading(false));
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, ready, b.id]);
+  const free = preview?.items.filter((x) => x.ok).length ?? 0;
+  const go = () =>
+    run(async () => {
+      const r = await api<RepeatResult>('POST', `/admin/bookings/${b.id}/repeat`, body);
+      const skipped = r.items.filter((x) => !x.ok);
+      const text =
+        (r.created === 1 ? 'Am făcut o programare nouă.' : `Am făcut ${r.created} programări noi.`) +
+        (skipped.length ? ` Sărite: ${skipped.map((x) => `${shortDate(x.start)} (${whySkipped(x)})`).join(', ')}.` : '');
+      onDone(text, b.seriesId ?? b.id);
+    });
+  const wd = WEEKDAY[new Date(b.start).getDay()];
+  return (
+    <div className="bk-menu-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="bk-menu" role="dialog" aria-label="Repetă programarea">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Repetă programarea</h2>
+            <div className="muted small">
+              {b.clientName || 'Client'} · în fiecare {wd} la {time(b.start)} · {b.barberName}
+            </div>
+          </div>
+          <button className="ghost sm" onClick={onClose} aria-label="Închide">
+            ✕
+          </button>
+        </div>
+        <Field label="Cât de des">
+          <select value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
+            <option value={1}>În fiecare săptămână</option>
+            <option value={2}>La 2 săptămâni</option>
+            <option value={3}>La 3 săptămâni</option>
+            <option value={4}>La 4 săptămâni</option>
+          </select>
+        </Field>
+        <div className="f">
+          Până când
+          <div className="row" style={{ gap: 8 }}>
+            <label className="check small">
+              <input type="radio" checked={mode === 'count'} onChange={() => setMode('count')} /> De
+            </label>
+            <input type="number" min={1} max={52} value={count} disabled={mode !== 'count'} onChange={(e) => setCount(Math.max(1, Math.min(52, Number(e.target.value) || 1)))} style={{ width: 70 }} aria-label="De câte ori" />
+            <span className="small">ori</span>
+            <label className="check small" style={{ marginLeft: 12 }}>
+              <input type="radio" checked={mode === 'until'} onChange={() => setMode('until')} /> Până la
+            </label>
+            <input type="date" value={until} min={dayOf(b.start)} disabled={mode !== 'until'} onChange={(e) => setUntil(e.target.value)} style={{ width: 160 }} aria-label="Până la data" />
+          </div>
+        </div>
+        <div className="muted small">Același frizer, aceleași servicii, prețul și durata frizerului. Clientul nu primește mesaje pentru ele.</div>
+        {loading ? <div className="muted small">Verific datele…</div> : null}
+        {preview && !loading ? (
+          <div className="bk-list" style={{ maxHeight: 260, overflowY: 'auto' }}>
+            {preview.items.map((x) => (
+              <div key={x.start} className="bk-row" style={{ cursor: 'default' }}>
+                <span className="bk-thumb ic" style={{ color: x.ok ? 'var(--ok, #4CAF7A)' : 'var(--danger, #d9534f)' }}>
+                  <Icon name={x.ok ? 'check' : 'x'} />
+                </span>
+                <div>
+                  <b>
+                    {shortDate(x.start)} · {time(x.start)}
+                  </b>
+                  <div className="muted small">{x.ok ? 'liber' : `se sare: ${whySkipped(x)}`}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {error ? <p className="err">{error}</p> : null}
+        <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button className="ghost" onClick={onClose}>
+            Renunță
+          </button>
+          <button disabled={!preview || !free || busy || loading} onClick={go}>
+            {free === 1 ? 'Programează 1 dată' : `Programează ${free} date`}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

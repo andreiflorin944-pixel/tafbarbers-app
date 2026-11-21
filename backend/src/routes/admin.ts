@@ -70,6 +70,7 @@ import { getSeasonCampaign, saveSeasonCampaign, type SeasonCampaign } from '../s
 import { cancelDraw, drawWinner, raffleRules, raffleWeek, saveRaffleSettings, type RaffleSettings } from '../raffle';
 import { customRefundBani, usedByService, ensureCustomPlan, getCustomSubSettings, quoteCustom, saveCustomSubSettings, type CustomSubSettings } from '../customSubs';
 import { setRenewal, stopPlanRenewals, stopRecurringFor } from '../recurring';
+import { cancelSeriesFrom, repeatBooking } from '../bookingSeries';
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
 import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } from '../reports';
 import { localizeReport, reportText } from '../reportsI18n';
@@ -1167,6 +1168,24 @@ adminRoutes.delete('/bookings/:id/extras/:extraId', async (c) => {
   const cur = await getBooking(c.env, c.req.param('id')!);
   if (!cur || !inScope(c, cur)) throw new HttpError(404, 'not_found');
   return c.json(await removeExtra(c.env, cur.id, c.req.param('extraId')!, { adminId: c.get('admin').adminId }));
+});
+
+// Repetă programarea în fiecare săptămână (sau la 2, 3, 4 săptămâni), în aceeași zi, la aceeași oră. `dryRun` = doar arată datele libere și pe cele sărite.
+adminRoutes.post('/bookings/:id/repeat', async (c) => {
+  need(c, 'bookings_create');
+  const cur = await getBooking(c.env, c.req.param('id')!);
+  if (!cur || !inScope(c, cur)) throw new HttpError(404, 'not_found');
+  const body = await c.req.json<{ everyWeeks?: unknown; count?: unknown; until?: unknown; dryRun?: boolean }>().catch(() => ({}) as Record<string, never>);
+  return c.json(await repeatBooking(c.env, cur.id, { ...body, dryRun: !!body.dryRun }, c.get('admin').adminId));
+});
+
+// „Anulează și repetările următoare”: aceasta și cele de după ea din aceeași serie (fără mesaje la client).
+adminRoutes.post('/bookings/:id/cancel-series', async (c) => {
+  need(c, 'bookings_manage');
+  const cur = await getBooking(c.env, c.req.param('id')!);
+  if (!cur || !inScope(c, cur)) throw new HttpError(404, 'not_found');
+  const r = await cancelSeriesFrom(c.env, cur.id, c.get('admin').adminId, { barberId: ownBarber(c), locationId: ownLocation(c) });
+  return c.json({ ...r, booking: await getBooking(c.env, cur.id) });
 });
 
 adminRoutes.patch('/bookings/:id', async (c) => {

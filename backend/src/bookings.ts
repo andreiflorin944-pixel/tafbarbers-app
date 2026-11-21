@@ -65,6 +65,10 @@ export async function createBooking(
     adminId?: string | null; // cine a făcut-o din panou (nu primește el anunțul pentru echipă)
     /** Anunțurile (e-mail, SMS, push) pleacă după răspuns, ca butonul „Confirmă” să nu aștepte după ele. */
     defer?: (p: Promise<unknown>) => void;
+    /** Repetările unei programări (în fiecare săptămână / la 2 săptămâni): toate au același id de serie. */
+    seriesId?: string | null;
+    /** Fără niciun anunț (nici clientului, nici echipei): repetările se fac multe odată, din panou. */
+    quiet?: boolean;
   },
 ) {
   const start = new Date(input.start);
@@ -118,8 +122,8 @@ export async function createBooking(
   // Limita de programări viitoare se verifică în aceeași instrucțiune, ca două rezervări trimise odată să n-o depășească.
   const limit = input.maxActive ? `AND (SELECT count(*) FROM bookings WHERE client_id = ? AND status IN ${HOLDS_SLOT} AND starts_at > ?) < ?` : '';
   const res = await env.DB.prepare(
-    `INSERT INTO bookings (id, client_id, barber_id, service_id, starts_at, ends_at, price_bani, source, note, status, location_id)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT location_id FROM barbers WHERE id = ?)
+    `INSERT INTO bookings (id, client_id, barber_id, service_id, starts_at, ends_at, price_bani, source, note, status, location_id, series_id)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT location_id FROM barbers WHERE id = ?), ?
      WHERE NOT EXISTS (
        SELECT 1 FROM bookings WHERE barber_id = ? AND status IN ${HOLDS_SLOT} AND starts_at < ? AND ends_at > ?
      ) ${limit}`,
@@ -136,6 +140,7 @@ export async function createBooking(
       (input.note ?? '').slice(0, 500),
       requested ? 'requested' : 'confirmed',
       barberId,
+      input.seriesId ?? null,
       barberId,
       iso(end),
       iso(start),
@@ -157,6 +162,7 @@ export async function createBooking(
   // Clientul are acum programare confirmată în ziua aceea: iese de pe lista de așteptare pentru serviciul ăsta.
   // O cerere încă neconfirmată nu-l scoate: dacă e refuzată, expiră sau o retrage, rămâne pe listă (se închide la acceptare).
   if (!requested) await closeOnBooking(env, input.clientId, service.id, iso(start));
+  if (input.quiet) return created;
   const notify = async () => {
     if (input.notify !== false) await notifyBooking(env, created, requested ? 'booking_request' : 'confirm');
     await notifyStaff(env, created, requested ? 'request' : 'new', input.adminId ?? null);

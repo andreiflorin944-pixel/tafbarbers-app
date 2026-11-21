@@ -437,6 +437,8 @@ export type Booking = {
   /** Locația programării (a frizerului când s-a făcut). */
   locationId?: string | null;
   locationName?: string;
+  /** Face parte dintr-o serie de programări repetate (id-ul primei programări). */
+  seriesId?: string | null;
 };
 /** Istoricul unei programări: jurnalul, plățile și mesajele trimise clientului (panoul programării). */
 export type BookingActivity = {

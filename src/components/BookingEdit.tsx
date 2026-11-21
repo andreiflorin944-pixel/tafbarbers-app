@@ -234,6 +234,8 @@ export function BookingHistory({ booking: b }: { booking: StaffBooking }) {
         return t(d.payment === "subscription" ? "hlog.completedSub" : "hlog.completed");
       case "cancelled":
         return t(d.by === "client" ? "hlog.cancelledClient" : "hlog.cancelledSalon");
+      case "repeated":
+        return t("hlog.repeated", { n: Number(d.created ?? 0) });
       case "accepted":
       case "refused":
       case "expired":
