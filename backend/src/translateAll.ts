@@ -1,3 +1,4 @@
+import { getRaffleSettings, prizeTitle } from './raffle';
 import { getBusiness, getSetting, setSetting, type PromoRow } from './db';
 import type { Env } from './env';
 import { emptyStats, ensureTranslated, lookupAll, TR_LANGS, type TrLang, type TrStats } from './contentI18n';
@@ -21,7 +22,7 @@ const TEXTS3_SETTINGS = ['appearance', 'templates', 'automations', 'birthday', '
 /** Toate textele românești din conținutul salonului, care se arată clienților. */
 async function contentTexts(env: Env): Promise<string[]> {
   const q = <T>(sql: string) => env.DB.prepare(sql).all<T>().then((r) => r.results);
-  const [services, barbers, products, plans, subs, items, bonuses, campaigns, biz, referral, birthday, legal, tplDefaults] = await Promise.all([
+  const [services, barbers, products, plans, subs, items, bonuses, campaigns, biz, referral, birthday, legal, tplDefaults, raffle] = await Promise.all([
     q<{ name: string; description: string }>('SELECT name, description FROM services WHERE active = 1'),
     q<{ role: string; bio: string }>('SELECT role, bio FROM barbers WHERE active = 1'),
     q<{ name: string; description: string }>('SELECT name, description FROM products WHERE active = 1'),
@@ -37,6 +38,8 @@ async function contentTexts(env: Env): Promise<string[]> {
     Promise.all(DOCS.map((d) => legalBase(env, d))),
     // Textele de pornire ale mesajelor automate (engleza și franceza lor sunt scrise de mână; araba se traduce).
     defaultTemplateTexts(env),
+    // Premiile tombolei săptămânale (și titlul beneficiului câștigătorului).
+    getRaffleSettings(env),
   ]);
   return [
     ...services.flatMap((s) => [s.name, s.description]),
@@ -54,6 +57,7 @@ async function contentTexts(env: Env): Promise<string[]> {
     birthday.reward.title,
     ...legal.flatMap((l) => [l.title, l.body]),
     ...tplDefaults.filter((t) => t !== ''),
+    ...(raffle.enabled ? raffle.prizes.flatMap((p) => [p, prizeTitle(p)]) : []),
   ];
 }
 

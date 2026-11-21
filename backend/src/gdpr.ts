@@ -58,6 +58,8 @@ export async function exportClient(env: Env, id: string) {
     ).results,
     // Dovada acordurilor (termeni, confidențialitate, oferte), cu adresa IP și dispozitivul din acel moment.
     consents: await listConsents(env, id),
+    // Tombola săptămânală: premiile câștigate (fără lista celorlalți participanți).
+    raffleWins: (await env.DB.prepare('SELECT week, prize, status, drawn_at FROM raffle_draws WHERE client_id = ? ORDER BY drawn_at').bind(id).all()).results,
     waitlist: (await env.DB.prepare('SELECT service_id, barber_id, day, part, status, notify_count, created_at FROM waitlist WHERE client_id = ? ORDER BY created_at').bind(id).all()).results,
   };
 }

@@ -244,6 +244,14 @@ const MESSAGES: Record<string, string> = {
   invalid_verification: 'Codul de verificare nu pare corect. Lipiți doar codul sau tot rândul <meta …>.',
   invalid_link: 'Fiecare link are nevoie de un nume și de o adresă corectă.',
   no_language: 'Alege cel puțin o limbă.',
+  raffle_off: 'Pornește întâi tombola (bifează „Tombola pornită” și salvează).',
+  raffle_no_prizes: 'Scrie cel puțin un premiu.',
+  raffle_bad_prize: 'Premiul ales nu mai e în listă. Reîncarcă pagina.',
+  raffle_future_week: 'Nu poți extrage pentru o săptămână care n-a început.',
+  raffle_week_done: 'Săptămâna asta are deja toți câștigătorii. Poți anula o extragere ca să tragi din nou.',
+  raffle_no_entries: 'Nu e niciun participant: nicio tunsoare încheiată a unui client cu cont în săptămâna aleasă.',
+  raffle_busy: 'Se face deja o extragere. Așteaptă câteva secunde.',
+  raffle_prize_used: 'Premiul a fost deja dat la salon, extragerea nu se mai poate anula.',
 };
 export const errorText = (e: unknown) =>
   e instanceof ApiError ? (e.detail ?? MESSAGES[e.code] ?? `Eroare: ${e.code}`) : 'A apărut o problemă.';

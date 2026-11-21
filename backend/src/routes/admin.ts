@@ -67,6 +67,7 @@ import {
   RENEWAL_JOIN,
 } from '../subscriptions';
 import { getSeasonCampaign, saveSeasonCampaign, type SeasonCampaign } from '../seasonCampaign';
+import { cancelDraw, drawWinner, raffleRules, raffleWeek, saveRaffleSettings, type RaffleSettings } from '../raffle';
 import { customRefundBani, usedByService, ensureCustomPlan, getCustomSubSettings, quoteCustom, saveCustomSubSettings, type CustomSubSettings } from '../customSubs';
 import { setRenewal, stopPlanRenewals, stopRecurringFor } from '../recurring';
 import { getBirthdaySettings, saveBirthdaySettings } from '../birthday';
@@ -1507,6 +1508,18 @@ adminRoutes.get('/custom-sub', async (c) => c.json(await getCustomSubSettings(c.
 // Campania de sezon (Crăciun, Paște...): banner + pop-up în aplicație și pe site, între două zile.
 adminRoutes.get('/season-campaign', async (c) => c.json(await getSeasonCampaign(c.env)));
 adminRoutes.put('/season-campaign', ownerOnly, async (c) => c.json(await saveSeasonCampaign(c.env, await c.req.json<Partial<SeasonCampaign>>())));
+
+// Tombola săptămânală (Marketing → Tombola săptămânii): doar proprietarul extrage și schimbă setările.
+adminRoutes.get('/raffle', ownerOnly, async (c) => c.json({ ...(await raffleWeek(c.env, c.req.query('week'))), rules: await raffleRules(c.env) }));
+adminRoutes.put('/raffle', ownerOnly, async (c) => {
+  const s = await saveRaffleSettings(c.env, await c.req.json<Partial<RaffleSettings>>());
+  return c.json({ settings: s, rules: await raffleRules(c.env, s) });
+});
+adminRoutes.post('/raffle/draw', ownerOnly, async (c) => c.json(await drawWinner(c.env, c.get('admin').adminId, await c.req.json<{ week?: unknown; prize?: unknown }>()), 201));
+adminRoutes.delete('/raffle/draws/:id', ownerOnly, async (c) => {
+  await cancelDraw(c.env, c.req.param('id')!);
+  return c.json({ ok: true });
+});
 adminRoutes.put('/custom-sub', ownerOnly, async (c) => c.json(await saveCustomSubSettings(c.env, await c.req.json<Partial<CustomSubSettings>>())));
 /** Prețul unei combinații, pentru panou (merge și cu abonamentul personalizat oprit în aplicație). */
 adminRoutes.post('/custom-sub/quote', async (c) => {
