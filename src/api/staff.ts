@@ -384,4 +384,5 @@ export type StaffDashboard = {
 };
 export type ReportMeta = { kind: string; title: string; range: 'day' | 'period' | 'future' | 'months' };
 export type ReportCol = { key: string; label: string; type: 'text' | 'int' | 'money' | 'pct' | 'date' | 'datetime' };
-export type Report = { kind: string; title: string; from: string; to: string; columns: ReportCol[]; rows: Record<string, string | number | null>[]; totals: Record<string, string | number | null> | null };
+export type ReportBalance = { cash: number; card: number; other: number; closed: number; openCount: number; openAmount: number; all: number };
+export type Report = { kind: string; title: string; from: string; to: string; columns: ReportCol[]; rows: Record<string, string | number | null>[]; totals: Record<string, string | number | null> | null; balance?: ReportBalance };

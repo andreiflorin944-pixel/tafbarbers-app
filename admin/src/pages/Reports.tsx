@@ -6,7 +6,8 @@ import { addDays, lei, today } from '../util';
 type ReportMeta = { kind: string; title: string; range: 'day' | 'period' | 'future' | 'months' };
 type Col = { key: string; label: string; type: 'text' | 'int' | 'money' | 'pct' | 'date' | 'datetime' };
 type Row = Record<string, string | number | null>;
-type Report = { kind: string; title: string; from: string; to: string; columns: Col[]; rows: Row[]; totals: Row | null };
+type Balance = { cash: number; card: number; other: number; closed: number; openCount: number; openAmount: number; all: number };
+type Report = { kind: string; title: string; from: string; to: string; columns: Col[]; rows: Row[]; totals: Row | null; balance?: Balance };
 
 const HELP: Record<string, string> = {
   day: 'Tot ce s-a întâmplat într-o zi: programări, anulări, clienți noi, încasări și bacșiș.',
@@ -227,6 +228,7 @@ export function ReportsPage({ me }: { me: Me }) {
 
           {error ? <div className="err">{error}</div> : null}
           {loading && !data ? <Loading /> : null}
+          {data && data.kind === kind && data.balance ? <Balances b={data.balance} /> : null}
           {data && data.kind === kind ? (
             <div className="card" style={{ opacity: loading ? 0.6 : 1 }}>
               {rows.length === 0 ? (
@@ -286,5 +288,29 @@ export function ReportsPage({ me }: { me: Me }) {
         </div>
       </div>
     </>
+  );
+}
+
+/** Cele două solduri din registru: doar tunsorile închise, și cu tot cu cele uitate neînchise. */
+function Balances({ b }: { b: Balance }) {
+  return (
+    <div className="grid stats">
+      <div className="card stat">
+        <div className="l">Sold tunsori închise</div>
+        <div className="v">{lei(b.closed)}</div>
+        <div className="l">
+          Numerar {lei(b.cash)} · Card {lei(b.card)} · Transfer/online {lei(b.other)}. Fără bacșiș și card cadou.
+        </div>
+      </div>
+      <div className="card stat" style={b.openCount ? { borderColor: 'var(--gold)' } : undefined}>
+        <div className="l">Sold cu tot cu neînchise</div>
+        <div className="v">{lei(b.all)}</div>
+        <div className="l">
+          {b.openCount
+            ? `Include ${b.openCount} ${b.openCount === 1 ? 'programare neînchisă' : 'programări neînchise'} (${lei(b.openAmount)}, după prețul din programare). Închide-le ca soldurile să fie egale.`
+            : 'Toate programările sunt închise: soldurile sunt egale.'}
+        </div>
+      </div>
+    </div>
   );
 }
