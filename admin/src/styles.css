@@ -205,7 +205,7 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold-dark); outline-offset: 0; }
 input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--gold); }
 textarea { min-height: 90px; resize: vertical; }
-label.f { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+label.f, div.f { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
 label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .err { color: var(--danger); font-size: 14px; }
 .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--card-alt); color: var(--muted); }

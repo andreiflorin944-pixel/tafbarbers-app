@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { staffApi, type PaySent, type StaffBooking, type StaffCheckout } from "@/api/staff";
+import { staffApi, type PaySent, type StaffBooking, type StaffCheckout, type StaffRepeat, type StaffRepeatItem } from "@/api/staff";
 import { cutsText } from "@/components/SubscriptionRow";
 import { BookingEdit, BookingHistory } from "@/components/BookingEdit";
 import { addableServices, ExtraSheet } from "@/components/ExtraSheet";
@@ -64,7 +64,7 @@ export function BookingSheet({
   const insets = useSafeAreaInsets();
   const [checkout, setCheckout] = useState(false);
   // „Modifică programarea” și „Istoric” se deschid în aceeași fereastră, în locul butoanelor.
-  const [mode, setMode] = useState<"view" | "edit" | "history">("view");
+  const [mode, setMode] = useState<"view" | "edit" | "history" | "repeat">("view");
   const [saved, setSaved] = useState<string | null>(null);
   const [extraOpen, setExtraOpen] = useState(false);
   const services = useStaffServices();
@@ -133,6 +133,18 @@ export function BookingSheet({
       try {
         onChange({ ...b, ...(await staffApi.undoComplete(staffToken, b.id)) });
         onClose();
+      } catch (e) {
+        tell(errorMessage(e));
+      }
+    });
+  // Repetarea: de la o programare confirmată sau încheiată, cu dreptul de a face programări (ca în panou).
+  const canRepeat = !!p.bookings_create && (b.status === "confirmed" || b.status === "completed");
+  const cancelSeries = () =>
+    ask(t("rep.cancelSeriesAsk"), async () => {
+      try {
+        const r = await staffApi.cancelSeries(staffToken, b.id);
+        onChange({ ...b, ...r.booking });
+        setSaved(t("rep.cancelled", { n: r.cancelled }));
       } catch (e) {
         tell(errorMessage(e));
       }
@@ -228,6 +240,19 @@ export function BookingSheet({
                 onCancel={() => setMode("view")}
                 onDone={(nb, msg) => {
                   onChange({ ...b, ...nb });
+                  setSaved(msg);
+                  setMode("view");
+                }}
+              />
+            </View>
+          ) : mode === "repeat" ? (
+            <View style={{ marginTop: space.md }}>
+              <RepeatEdit
+                booking={b}
+                token={staffToken}
+                onCancel={() => setMode("view")}
+                onDone={(msg) => {
+                  onChange({ ...b, seriesId: b.seriesId ?? b.id });
                   setSaved(msg);
                   setMode("view");
                 }}
@@ -346,6 +371,12 @@ export function BookingSheet({
             ) : null}
             {p.bookings_manage && b.status === "confirmed" && !checkout ? (
               <Button title={t("sedit.edit")} variant="ghost" onPress={() => { setSaved(null); setMode("edit"); }} />
+            ) : null}
+            {canRepeat && !checkout ? (
+              <Button title={t("rep.title")} variant="ghost" onPress={() => { setSaved(null); setMode("repeat"); }} />
+            ) : null}
+            {p.bookings_manage && b.seriesId && b.status === "confirmed" && !checkout ? (
+              <Button title={t("rep.cancelSeries")} variant="ghost" onPress={cancelSeries} />
             ) : null}
             {p.bookings_manage && !checkout ? (
               <Button title={t("sedit.history")} variant="ghost" onPress={() => setMode("history")} />
@@ -596,6 +627,107 @@ function Checkout({
           />
         </View>
       </View>
+    </View>
+  );
+}
+
+const WHY: Record<NonNullable<StaffRepeatItem["reason"]>, Key> = {
+  past: "rep.past",
+  busy: "rep.busy",
+  time_off: "rep.timeOff",
+  block: "rep.block",
+  closed: "rep.closed",
+};
+const whyText = (x: StaffRepeatItem) => tr(x.reason ? WHY[x.reason] : "rep.busy");
+
+/**
+ * „Repetă programarea”: în fiecare săptămână sau la 2 săptămâni, aceeași zi și oră, același frizer și servicii.
+ * Întâi arată datele (libere / sărite și de ce), apoi le programează pe cele libere. Clientul nu primește mesaje.
+ */
+function RepeatEdit({
+  booking: b,
+  token,
+  onCancel,
+  onDone,
+}: {
+  booking: StaffBooking;
+  token: string;
+  onCancel: () => void;
+  onDone: (msg: string) => void;
+}) {
+  const { t } = useT();
+  const [weeks, setWeeks] = useState(1);
+  const [count, setCount] = useState(8);
+  const [preview, setPreview] = useState<StaffRepeat | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setPreview(null);
+    setError(null);
+    const tm = setTimeout(() => {
+      staffApi.repeat(token, b.id, { everyWeeks: weeks, count, dryRun: true }).then(
+        (r) => live && setPreview(r),
+        (e) => live && setError(errorMessage(e)),
+      );
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(tm);
+    };
+  }, [token, b.id, weeks, count]);
+  const free = preview?.items.filter((x) => x.ok).length ?? 0;
+  const go = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await staffApi.repeat(token, b.id, { everyWeeks: weeks, count });
+      const skipped = r.items.filter((x) => !x.ok);
+      onDone(
+        [
+          t("rep.done", { n: r.created }),
+          skipped.length ? t("rep.doneSkipped", { list: skipped.map((x) => `${formatDate(new Date(x.start))} (${whyText(x)})`).join(", ") }) : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={{ gap: space.sm }}>
+      <Text style={ui.cardTitle}>{t("rep.title")}</Text>
+      <Text style={[ui.muted, { fontSize: 13 }]}>{t("rep.sub")}</Text>
+      <Choice selected={weeks === 1} onPress={() => setWeeks(1)} title={t("rep.w1")} />
+      <Choice selected={weeks === 2} onPress={() => setWeeks(2)} title={t("rep.w2")} />
+      <View style={[ui.row, { justifyContent: "space-between" }]}>
+        <Text style={ui.text}>{t("rep.count", { n: count })}</Text>
+        <View style={{ flexDirection: "row", gap: space.sm }}>
+          <Pressable onPress={() => setCount((n) => Math.max(1, n - 1))} accessibilityRole="button" accessibilityLabel="-" style={s.stepBtn}>
+            <Ionicons name="remove" size={20} color={colors.text} />
+          </Pressable>
+          <Pressable onPress={() => setCount((n) => Math.min(52, n + 1))} accessibilityRole="button" accessibilityLabel="+" style={s.stepBtn}>
+            <Ionicons name="add" size={20} color={colors.text} />
+          </Pressable>
+        </View>
+      </View>
+      {!preview && !error ? <Text style={ui.muted}>{t("rep.checking")}</Text> : null}
+      {preview
+        ? preview.items.map((x) => (
+            <View key={x.start} style={[ui.row, { gap: space.sm }]}>
+              <Ionicons name={x.ok ? "checkmark-circle" : "close-circle"} size={18} color={x.ok ? colors.success : colors.danger} />
+              <Text style={[ui.text, { flex: 1 }]}>
+                {formatDate(new Date(x.start))}, {formatTime(new Date(x.start))} · {x.ok ? t("rep.free") : t("rep.skip", { why: x.detail && x.reason === "busy" ? `${whyText(x)} (${x.detail})` : whyText(x) })}
+              </Text>
+            </View>
+          ))
+        : null}
+      {error ? <Text style={[ui.text, { color: colors.danger }]}>{error}</Text> : null}
+      <Button title={t("rep.go", { n: free })} onPress={go} disabled={!free || busy} />
+      <Button title={t("common.back")} variant="ghost" onPress={onCancel} />
     </View>
   );
 }
@@ -862,6 +994,15 @@ function Line({
 }
 
 const s = StyleSheet.create({
+  stepBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   backdrop: { backgroundColor: "rgba(0,0,0,0.55)" },
   sheet: {
     backgroundColor: colors.card,

@@ -223,6 +223,7 @@ export type BookingRow = {
   barber_name?: string;
   location_id?: string | null;
   location_name?: string | null;
+  series_id?: string | null;
 };
 /** `addon`: „extra fără timp” (ex. Spălat): are preț, dar nu prelungește programarea. */
 export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number; addon?: boolean };
@@ -299,6 +300,8 @@ export const booking = (r: BookingRow) => ({
   ...(r.service_name !== undefined && { serviceName: r.service_name, barberName: r.barber_name }),
   // Locația programării (a frizerului când s-a făcut programarea).
   locationId: r.location_id ?? null,
+  // Face parte dintr-o serie de programări repetate (în fiecare săptămână / la 2 săptămâni).
+  seriesId: r.series_id ?? null,
   ...(r.location_name !== undefined && { locationName: r.location_name }),
 });
 

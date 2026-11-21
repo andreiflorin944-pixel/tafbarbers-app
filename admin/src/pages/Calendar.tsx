@@ -614,6 +614,7 @@ export function CalendarPage({ me }: { me: Me }) {
           b={open}
           color={colorOf(open.barberId)}
           canManage={me.permissions.bookings_manage}
+          canCreate={me.permissions.bookings_create}
           allBarbers={!!me.permissions.bookings_all}
           owner={me.owner}
           online={!!me.onlinePayments}
