@@ -8,7 +8,9 @@ import { listMoves, MOVE_LABELS } from './stock';
 export type ColType = 'text' | 'int' | 'money' | 'pct' | 'date' | 'datetime';
 export type Col = { key: string; label: string; type: ColType };
 export type Row = Record<string, string | number | null>;
-export type Report = { kind: string; title: string; from: string; to: string; columns: Col[]; rows: Row[]; totals: Row | null };
+/** Cele două solduri din registrul de încasări (în lei): doar ce s-a închis, și cu tot cu programările trecute încă neînchise. */
+export type RegisterBalance = { cash: number; card: number; other: number; closed: number; openCount: number; openAmount: number; all: number };
+export type Report = { kind: string; title: string; from: string; to: string; columns: Col[]; rows: Row[]; totals: Row | null; balance?: RegisterBalance };
 
 /** Ce rapoarte există, în ordinea din meniu. `clients` = conține liste de clienți (cere dreptul „Clienți”). */
 export const REPORTS = [
@@ -298,6 +300,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
   let columns: Col[] = [];
   let rows: Row[] = [];
   let totals: Row | null = null;
+  let balance: RegisterBalance | undefined;
 
   const bookingCols = (extra: Col[] = []): Col[] => [
     { key: 'start', label: 'Data și ora', type: 'datetime' },
@@ -897,6 +900,7 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         { key: 'other', label: 'Transfer / online (lei)', type: 'money' },
         { key: 'gift', label: 'Din card cadou (lei)', type: 'money' },
         { key: 'tip', label: 'Bacșiș (lei)', type: 'money' },
+        { key: 'open', label: 'Neînchisă · de încasat (lei)', type: 'money' },
       ];
       const split = (method: string | null, bani: number) => ({
         cash: method === 'cash' || (!method && bani) ? lei(bani) : null,
@@ -933,6 +937,8 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
             ...split(b.pay_method, collected(b)),
             gift: b.gift_bani ? lei(b.gift_bani) : null,
             tip: b.tip_bani ? lei(b.tip_bani) : null,
+            // Prețul din programare (cu prețul frizerului și serviciile extra), cât timp nu e închisă.
+            open: stateOf(b) === 'NEÎNCHISĂ' ? lei(b.price_bani) : null,
           } as Row,
         })),
         ...subs.map((x) => ({
@@ -966,6 +972,15 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
       rows = items.map((i) => i.row);
       const open = rows.filter((r) => r.state === 'NEÎNCHISĂ').length;
       totals = sumRows(rows, columns, open ? `Total · ${open} neînchise` : `Total: ${rows.length}`);
+      // Soldul 1: banii din programările închise (plus abonamente vândute și resturi încasate), fără bacșiș și card cadou.
+      // Soldul 2: același sold plus prețul programărilor trecute rămase neînchise (uitate din grabă).
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+      const cash = Number(totals.cash) || 0;
+      const card = Number(totals.card) || 0;
+      const other = Number(totals.other) || 0;
+      const openAmount = Number(totals.open) || 0;
+      const closed = r2(cash + card + other);
+      balance = { cash, card, other, closed, openCount: open, openAmount, all: r2(closed + openAmount) };
       break;
     }
 
@@ -1039,8 +1054,9 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
     const strip = (r: Row) => Object.fromEntries(Object.entries(r).filter(([k]) => keep.has(k)));
     rows = rows.map(strip);
     if (totals) totals = strip(totals);
+    balance = undefined;
   }
-  return { ...base, columns, rows, totals };
+  return { ...base, columns, rows, totals, ...(balance ? { balance } : {}) };
 }
 
 function nextMonth(day: string) {
@@ -1053,6 +1069,12 @@ export function reportCells(r: Report): Cell[][] {
   const val = (c: Col, v: unknown): Cell => (v === null || v === undefined ? null : c.type === 'int' || c.type === 'money' || c.type === 'pct' ? Number(v) : String(v));
   for (const row of r.rows) out.push(r.columns.map((c) => val(c, row[c.key])));
   if (r.totals) out.push(r.columns.map((c) => val(c, r.totals![c.key])));
+  if (r.balance) {
+    const b = r.balance;
+    out.push([]);
+    out.push(['Sold tunsori închise (lei)', b.closed, `Numerar ${b.cash} · Card ${b.card} · Transfer/online ${b.other} · fără bacșiș și card cadou`]);
+    out.push(['Sold cu tot cu neînchise (lei)', b.all, b.openCount ? `+ ${b.openCount} neînchise, ${b.openAmount} lei după prețul programării` : 'Toate programările sunt închise']);
+  }
   return out;
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from 'react-native';
-import { panelUrl, staffApi, type Report, type ReportCol, type ReportMeta } from '@/api/staff';
+import { panelUrl, staffApi, type Report, type ReportBalance, type ReportCol, type ReportMeta } from '@/api/staff';
 import { Button, Card, Screen, styles as ui } from '@/components/ui';
 import { locale, tr, useT } from '@/i18n';
 import { addDays, dayKey } from '@/lib/dates';
@@ -100,6 +100,7 @@ export function ReportsScreen({ initialKind }: { initialKind: string }) {
       ) : null}
       {error ? <Text style={{ color: colors.danger }}>{error}</Text> : null}
       {!data && !error ? <ActivityIndicator color={colors.gold} style={{ marginTop: space.lg }} /> : null}
+      {data?.balance ? <Balances b={data.balance} /> : null}
       {data ? (
         data.rows.length === 0 ? (
           <Text style={[ui.muted, { marginTop: space.md }]}>{t('rep.noData')}</Text>
@@ -163,5 +164,24 @@ function Chip({ label, on, onPress, small }: { label: string; on: boolean; onPre
     >
       <Text style={{ color: on ? colors.onGold : colors.text, fontWeight: '600', fontSize: small ? 12 : 14 }}>{label}</Text>
     </Pressable>
+  );
+}
+
+// Cele două solduri din registru: doar ce s-a închis, și cu tot cu programările uitate neînchise.
+function Balances({ b }: { b: ReportBalance }) {
+  const { t } = useT();
+  return (
+    <View style={{ gap: space.xs, marginTop: space.xs }}>
+      <Card>
+        <Text style={[ui.muted, { fontSize: 12 }]}>{t('rep.balClosed')}</Text>
+        <Text style={{ color: colors.text, fontSize: 22, fontWeight: '800' }}>{lei(b.closed)}</Text>
+        <Text style={[ui.muted, { fontSize: 12 }]}>{t('rep.balClosedNote', { cash: lei(b.cash), card: lei(b.card), other: lei(b.other) })}</Text>
+      </Card>
+      <Card style={b.openCount ? { borderColor: colors.gold, borderWidth: 1 } : undefined}>
+        <Text style={[ui.muted, { fontSize: 12 }]}>{t('rep.balAll')}</Text>
+        <Text style={{ color: b.openCount ? colors.gold : colors.text, fontSize: 22, fontWeight: '800' }}>{lei(b.all)}</Text>
+        <Text style={[ui.muted, { fontSize: 12 }]}>{b.openCount ? t('rep.balAllNote', { n: b.openCount, amount: lei(b.openAmount) }) : t('rep.balEqual')}</Text>
+      </Card>
+    </View>
   );
 }
