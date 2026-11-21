@@ -11,10 +11,11 @@ import { Backdrop } from '@/components/Backdrop';
 import { LangButton } from '@/components/LangButton';
 import { PayDueBanner } from '@/components/PayDue';
 import { SeasonPopup } from '@/components/SeasonPopup';
+import { RafflePopup } from '@/components/RafflePopup';
 import { LoyalPitch } from '@/components/CustomSubPitch';
 import { useCart } from '@/state/Cart';
 import { Button, styles as ui } from '@/components/ui';
-import type { Product, Promo, Service } from '@/data/types';
+import type { Product, Promo, Raffle, Service } from '@/data/types';
 import { whatsappUrl } from '@/lib/contact';
 import { useT } from '@/i18n';
 import { formatDayLong, formatTime } from '@/lib/dates';
@@ -77,6 +78,17 @@ export default function Home() {
         on = false;
       };
     }, [token, bookingsKey]),
+  );
+  // Tombola săptămânii (pornită din panou): cardul de pe Acasă și pop-up-ul „Ai câștigat”.
+  const [raffle, setRaffle] = useState<Raffle | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let on = true;
+      api.getRaffle(token, lang).then((r) => on && setRaffle(r), () => on && setRaffle(null));
+      return () => {
+        on = false;
+      };
+    }, [token, lang]),
   );
   const freeBarber = free ? barberById(free.barberId) : undefined;
   const freeService = free ? serviceById(free.serviceId) : undefined;
@@ -281,6 +293,18 @@ export default function Home() {
           ))}
         </View>
 
+        {/* Tombola săptămânii: cine se tunde săptămâna asta intră automat la tragere. */}
+        {raffle?.enabled ? (
+          <Pressable onPress={() => router.push('/raffle')} style={({ pressed }) => [s.card, s.rowCard, { borderColor: colors.gold }, pressed && { opacity: 0.85 }]} accessibilityRole="button">
+            <Ionicons name="gift-outline" size={32} color={colors.gold} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={s.cardTitle}>{t('raffle.title')}</Text>
+              <Text style={s.small}>{raffle.entered ? t('raffle.entered') : t('raffle.homeSub', { prizes: raffle.prizes.join(', ') })}</Text>
+            </View>
+            <Ionicons name={dirIcon('chevron-forward')} size={20} color={colors.muted} />
+          </Pressable>
+        ) : null}
+
         {/* Fără cont, „Adu un prieten” duce întâi la intrare / cont nou, apoi la recomandări. */}
         <Pressable
           onPress={() => (user ? router.push('/rewards') : router.push({ pathname: '/login', params: { next: '/rewards' } }))}
@@ -334,6 +358,7 @@ export default function Home() {
 
       {/* Campania de sezon ca pop-up la intrare, o dată pe campanie (bifat în panou). */}
       <SeasonPopup promo={season} onOpen={openPromo} />
+      {user ? <RafflePopup wins={raffle?.wins} /> : null}
 
       {/* Asistentul la îndemână, deasupra barei de taburi (ecranul se termină deasupra ei), oricât derulezi. */}
       <View style={s.fab} pointerEvents="box-none">

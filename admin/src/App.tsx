@@ -9,6 +9,7 @@ import { BarbersPage } from './pages/Barbers';
 import { TimeOffPage } from './pages/TimeOff';
 import { PromosPage } from './pages/Promos';
 import { SeasonCampaignPage } from './pages/SeasonCampaign';
+import { RafflePage } from './pages/Raffle';
 import { CampaignsPage } from './pages/Campaigns';
 import { AccountPage, SettingsPage } from './pages/Settings';
 import { LegalPage } from './pages/Legal';
@@ -58,6 +59,7 @@ const PAGES = [
   { key: 'appearance', label: 'Aspect aplicație', show: (m: Me) => m.owner, el: AppearancePage },
   { key: 'promos', label: 'Bannere aplicație', show: (m: Me) => m.owner, el: PromosPage },
   { key: 'season', label: 'Campanie de sezon', show: (m: Me) => m.owner, el: SeasonCampaignPage },
+  { key: 'raffle', label: 'Tombola săptămânii', show: (m: Me) => m.owner, el: RafflePage },
   { key: 'campaigns', label: 'Campanii', show: (m: Me) => m.owner, el: CampaignsPage },
   { key: 'social', label: 'Postări pe rețele', show: (m: Me) => m.owner, el: SocialPage },
   { key: 'qr', label: 'Coduri QR', show: (m: Me) => m.owner, el: QrCodesPage },
@@ -161,7 +163,7 @@ const NAV: NavSection[] = [
     groups: [
       { items: [{ label: 'Campanii (SMS, e-mail, push)', to: 'campaigns' }, { label: 'Postări Facebook, Instagram, TikTok', to: 'social' }, { label: 'Campanie de sezon (Crăciun, Paște…)', to: 'season' }, { label: 'Bannere în aplicație', to: 'promos' }, { label: 'Coduri QR pentru campanii', to: 'qr' }] },
       { title: 'Automatizări', items: [{ label: 'Ne e dor de tine', to: 'notifications/dor' }, { label: 'Ore libere azi', to: 'notifications/ore-libere' }, { label: 'Lângă salon', to: 'notifications/langa-salon' }, { label: 'Card cadou', to: 'notifications/card-cadou' }, { label: 'Zile de naștere', to: 'birthdays' }] },
-      { title: 'Fidelizare', items: [{ label: 'Recomandări și bonusuri', to: 'referrals' }] },
+      { title: 'Fidelizare', items: [{ label: 'Recomandări și bonusuri', to: 'referrals' }, { label: 'Tombola săptămânii', to: 'raffle' }] },
     ],
   },
   {

@@ -177,6 +177,23 @@ export type CustomSubItem = { serviceId: string; qty: number };
 export type CustomSubHint = { visits: number; items: CustomSubItem[]; fullPrice: number; price: number; save: number; discount: number };
 export type CustomSubQuote = { items: Array<CustomSubItem & { name: string; price: number }>; visits: number; discount: number; fullPrice: number; price: number; periodDays: number };
 export type Referrals = { enabled: boolean; code: string; referred: number; reward: string | null; welcome?: string | null; bonuses: Bonus[] };
+/** Tombola săptămânii: premiile, ultimii câștigători și (cu cont) dacă ești înscris și ce ai câștigat. */
+export type RaffleWin = { id: string; week: string; prize: string; drawnAt: string; status: 'active' | 'used' | 'expired'; expiresAt: string | null };
+export type Raffle =
+  | { enabled: false; wins?: RaffleWin[] }
+  | {
+      enabled: true;
+      prizes: string[];
+      winnersPerWeek: number;
+      week: string;
+      weekEnd: string;
+      validDays: number;
+      winners: Array<{ week: string; prize: string; name: string }>;
+      rulesUrl: string;
+      entered?: boolean;
+      visits?: number;
+      wins?: RaffleWin[];
+    };
 export type Identity = { note: string; photos: IdentityPhoto[]; staffPhotos?: IdentityPhoto[] };
 
 export type Business = {

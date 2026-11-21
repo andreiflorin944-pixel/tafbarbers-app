@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getAutomations, nearbyConfig } from '../growth';
 import { activeSeason, seasonPromo } from '../seasonCampaign';
+import { publicRaffle, raffleRules } from '../raffle';
 import { publicAppVersions } from '../stores';
 import { attributeQr, ipHash } from '../qr';
 import { accessFor, availability } from '../availability';
@@ -204,6 +205,13 @@ publicRoutes.post('/custom-sub/quote', async (c) => {
   if (!s.enabled) throw new HttpError(409, 'custom_sub_off');
   const q = await quoteCustom(c.env, b.items, s, b.barberId);
   return c.json({ items: q.lines, visits: q.visits, discount: q.pct, fullPrice: q.fullBani / 100, price: q.priceBani / 100, periodDays: q.periodDays, barberId: q.barberId });
+});
+
+// Tombola săptămânii (fără cont): premiile, ultimii câștigători și regulamentul.
+publicRoutes.get('/raffle', async (c) => c.json(await publicRaffle(c.env, c.req.query('lang'))));
+publicRoutes.get('/raffle/rules', async (c) => {
+  const r = await raffleRules(c.env);
+  return c.json({ title: r.title, body: r.body });
 });
 
 publicRoutes.get('/promos', async (c) => {

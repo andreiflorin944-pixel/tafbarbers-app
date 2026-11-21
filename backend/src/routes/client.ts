@@ -4,6 +4,7 @@ import { clearFailures, lockedAny, loginKeys, recordFailure, validClientPassword
 import { checkCode, issueCode, useCode } from '../otp';
 import { createGiftCard, getAutomations, giftCard, sendNearby, type GiftCardRow } from '../growth';
 import { activeSeason, seasonTexts } from '../seasonCampaign';
+import { myRaffle } from '../raffle';
 import { BOOKING_SELECT, cancelBooking, createBooking, reportLate } from '../bookings';
 import { booking, client, emailTaken, getBusiness, type BookingRow, type ClientRow } from '../db';
 import { createCheckout, publicBase } from '../payments';
@@ -171,6 +172,9 @@ clientRoutes.post('/me/nearby', async (c) => {
   const b = await c.req.json<{ locationId?: unknown }>().catch(() => ({}) as { locationId?: unknown });
   return c.json({ sent: await sendNearby(c.env, c.get('client').clientId, b.locationId) });
 });
+
+// Tombola săptămânii: dacă clientul e deja înscris săptămâna aceasta și premiile câștigate.
+clientRoutes.get('/me/raffle', async (c) => c.json(await myRaffle(c.env, c.get('client').clientId, c.req.query('lang'))));
 
 clientRoutes.get('/me/referrals', async (c) => {
   const lang = c.req.query('lang');

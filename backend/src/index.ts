@@ -11,6 +11,7 @@ import { advisorRoutes } from './advisor';
 import { openAppPage, qrPublic } from './qr';
 import { waitlistPublic } from './waitlist';
 import { DOCS, legalDoc, type Doc } from './legal';
+import { publicRaffle, raffleRules } from './raffle';
 import { getBusiness } from './db';
 import { formatLocal } from './time';
 import { dirOf, isLang, langOf, localeOf, localizeText, requestLang, type Lang } from './contentI18n';
@@ -75,6 +76,21 @@ app.get('/legal/:doc', async (c) => {
   return c.html(`<!doctype html><html lang="${d.lang}" dir="${d.lang === 'ar' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(d.title)}</title>
 <style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:720px;margin:0 auto;padding:32px 20px}h1{color:#F9A11B;font-size:26px}.m{color:#999;font-size:14px}p{white-space:pre-wrap}</style></head>
 <body><main><h1>${esc(d.title)}</h1>${updated}${note}<p>${esc(d.body)}</p></main></body></html>`);
+});
+
+// Regulamentul tombolei săptămânale (public, gratuit, cum cere OG 99/2000), cu premiile și ultimii câștigători.
+app.get('/tombola', async (c) => {
+  const [r, p] = await Promise.all([raffleRules(c.env), publicRaffle(c.env, 'ro')]);
+  const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+  const day = (d: string) => d.split('-').reverse().join('.');
+  const winners =
+    p.enabled && p.winners.length
+      ? `<h2>Ultimii câștigători</h2><ul>${p.winners.map((w) => `<li>${esc(w.name)}: ${esc(w.prize)} <span class="m">(săptămâna ${day(w.week)})</span></li>`).join('')}</ul>`
+      : '';
+  const status = p.enabled ? '' : '<p class="m">Tombola nu este activă în acest moment.</p>';
+  return c.html(`<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(r.title)}</title>
+<style>body{margin:0;background:#000;color:#eee;font:16px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif}main{max-width:720px;margin:0 auto;padding:32px 20px}h1{color:#F9A11B;font-size:26px}h2{color:#F9A11B;font-size:19px;margin-top:32px}.m{color:#999;font-size:14px}p.b{white-space:pre-wrap}</style></head>
+<body><main><h1>${esc(r.title)}</h1>${status}<p class="b">${esc(r.body)}</p>${winners}</main></body></html>`);
 });
 
 // Linkul de recomandare: pagină simplă care deschide aplicația cu codul completat (în limba browserului).

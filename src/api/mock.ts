@@ -168,6 +168,7 @@ export const mockApi: BookingApi = {
     return delay(undefined);
   },
   getIdentity: (token) => delay(identityOf(token)),
+  getRaffle: () => delay({ enabled: false as const }),
   getReferrals: () =>
     delay({
       enabled: true,
