@@ -351,6 +351,11 @@ export default function Home() {
                   <Text style={[s.pillText, narrow && { fontSize: 13 }]}>{t('home.whatsapp')}</Text>
                 </Pressable>
               ) : null}
+              {/* Programul, rețelele sociale și reducerea „Ne urmărești?” stau în „Despre salon”. */}
+              <Pressable onPress={() => router.push('/about')} style={({ pressed }) => [s.pill, pressed && { opacity: 0.8 }]} accessibilityRole="button">
+                <Ionicons name="storefront" size={16} color={colors.text} />
+                <Text style={[s.pillText, narrow && { fontSize: 13 }]}>{t('account.about')}</Text>
+              </Pressable>
             </View>
           </>
         ) : null}
