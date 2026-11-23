@@ -24,7 +24,7 @@ export default function StaffMenu() {
   const owner = staff.owner;
 
   const items: Item[] = [
-    { icon: 'images-outline', label: t('myAlbum.title'), sub: t('myAlbum.sub'), to: '/staff/album', show: !!staff.barberId },
+    { icon: 'images-outline', label: t('myAlbum.title'), sub: t('myAlbum.sub'), to: '/staff/album', show: !!staff.barberId || owner || staff.role === 'barber' },
     { icon: 'clipboard-outline', label: staff.role === 'barber' ? t('menu.myNotes') : t('menu.teamNotes'), sub: t('menu.notesSub'), to: '/staff/notes', show: true },
     { icon: 'stats-chart-outline', label: t('menu.dashboard'), sub: t('menu.dashboardSub'), to: '/staff/stats', show: p.reports },
     { icon: 'document-text-outline', label: t('stats.reports'), sub: t('menu.reportsSub'), to: '/staff/reports', show: p.reports },
