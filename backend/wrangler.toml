@@ -10,6 +10,9 @@ routes = [
   { pattern = "app.tafbarbers.ro", custom_domain = true },
   { pattern = "panou.tafbarbers.ro", custom_domain = true },
   { pattern = "api.tafbarbers.ro", custom_domain = true },
+  # Site-ul public pe domeniul principal (înainte: redirect DataHost → Barberly). www.… trimite la tafbarbers.ro.
+  { pattern = "tafbarbers.ro", custom_domain = true },
+  { pattern = "www.tafbarbers.ro", custom_domain = true },
 ]
 
 # Panoul de administrare (admin/dist) e servit de același Worker; doar /v1/* ajunge la API.
@@ -48,9 +51,10 @@ TIMEZONE = "Europe/Bucharest"
 # Site-urile care au voie să citească răspunsurile serverului dintr-un browser (separate prin virgulă).
 # Panoul, site-ul și paginile publice cheamă serverul de pe aceeași adresă, iar aplicația de pe telefon nu e browser,
 # deci nu au nevoie de „*”. Un site străin nu poate citi răspunsurile serverului din browserul cuiva.
-CORS_ORIGINS = "https://app.tafbarbers.ro,https://panou.tafbarbers.ro,https://api.tafbarbers.ro,https://tafbarbers-api.andreiflorin944.workers.dev"
+CORS_ORIGINS = "https://tafbarbers.ro,https://app.tafbarbers.ro,https://panou.tafbarbers.ro,https://api.tafbarbers.ro,https://tafbarbers-api.andreiflorin944.workers.dev"
 # Adresa din linkurile trimise clienților (QR, plată, programare, pagini legale).
 PUBLIC_URL = "https://app.tafbarbers.ro"
+SITE_DOMAIN = "tafbarbers.ro"
 
 # Secrete (se pun cu `npx wrangler secret put NUME`, niciodată în cod):
 #   SMSADVERT_TOKEN   cheia API de la smsadvert.ro
