@@ -178,9 +178,12 @@ export async function saveWebsite(env: Env, b: Partial<Website>): Promise<Websit
 export async function isSiteHost(env: Env, host: string) {
   const h = host.toLowerCase().split(':')[0];
   if (h.startsWith('app.')) return true;
-  const w = await getWebsite(env);
-  return !!w.customDomain && (h === w.customDomain || h === `www.${w.customDomain}`);
+  const d = siteDomain(env, await getWebsite(env));
+  return !!d && (h === d || h === `www.${d}`);
 }
+
+/** Domeniul principal al site-ului: cel scris în panou (Site web → Domeniu propriu), altfel SITE_DOMAIN din wrangler.toml (tafbarbers.ro). */
+export const siteDomain = (env: Env, w: Website) => w.customDomain || (env.SITE_DOMAIN ?? '').trim().toLowerCase();
 
 // --- Pagina publică ---
 
@@ -218,7 +221,7 @@ export function siteLang(w: Website, q: string | undefined): Lang {
 }
 
 /** Adresa principală a site-ului (pentru Google): domeniul propriu, dacă e legat, altfel app.tafbarbers.ro. */
-export const siteOrigin = (env: Env, w: Website) => (w.customDomain ? `https://${w.customDomain}` : (env.PUBLIC_URL ?? 'https://app.tafbarbers.ro').replace(/\/$/, ''));
+export const siteOrigin = (env: Env, w: Website) => (siteDomain(env, w) ? `https://${siteDomain(env, w)}` : (env.PUBLIC_URL ?? 'https://app.tafbarbers.ro').replace(/\/$/, ''));
 
 const langUrl = (origin: string, w: Website, l: Lang) => `${origin}/${l === w.defaultLang ? '' : `?lang=${l}`}`;
 

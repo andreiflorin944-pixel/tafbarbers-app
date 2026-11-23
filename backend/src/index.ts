@@ -15,13 +15,24 @@ import { publicRaffle, raffleRules } from './raffle';
 import { getBusiness } from './db';
 import { formatLocal } from './time';
 import { dirOf, isLang, langOf, localeOf, localizeText, requestLang, type Lang } from './contentI18n';
-import { isSiteHost, sitePage, websitePublic } from './website';
+import { getWebsite, isSiteHost, siteDomain, sitePage, websitePublic } from './website';
 import { health, recordServerError } from './serverErrors';
 import { barberlyPublic } from './barberly';
 import { captchaPublic, captchaSiteKey } from './captcha';
 import { unsubscribePublic } from './unsubscribe';
 
 const app = new Hono<AppEnv>();
+
+// www.tafbarbers.ro → tafbarbers.ro (o singură adresă pentru Google; linkurile vechi cu www merg în continuare).
+app.use('*', async (c, next) => {
+  const u = new URL(c.req.url);
+  const h = u.hostname.toLowerCase();
+  if (h.startsWith('www.')) {
+    const d = siteDomain(c.env, await getWebsite(c.env));
+    if (d && h === `www.${d}`) return c.redirect(`https://${d}${u.pathname}${u.search}`, 301);
+  }
+  return next();
+});
 
 app.use('*', async (c, next) => {
   const origins = c.env.CORS_ORIGINS.split(',').map((s) => s.trim());

@@ -28,6 +28,8 @@ export type Env = {
   // Adresa publică a serverului (ex. https://app.tafbarbers.ro), pentru linkuri și întoarcerea de la plată.
   // Opțională: fără ea se folosește adresa la care a venit cererea (ex. https://tafbarbers-api….workers.dev).
   PUBLIC_URL?: string;
+  /** Domeniul principal al site-ului public (ex. tafbarbers.ro); www.… trimite aici. Panou → Site web → Domeniu propriu are prioritate. */
+  SITE_DOMAIN?: string;
   // Contul demo pentru verificarea din magazine, „telefon:cod” (ex. 0700000000:4826).
   REVIEW_LOGIN?: string;
   // Workers AI (legătura „AI” din wrangler.toml): traducerea automată a textelor în engleză și franceză.
