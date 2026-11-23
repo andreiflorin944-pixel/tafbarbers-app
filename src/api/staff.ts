@@ -233,6 +233,22 @@ export const staffApi = {
     if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
     return json as AlbumPhoto;
   },
+  /** Patronul: adaugă o poză în albumul oricărui frizer. */
+  addBarberAlbumPhoto: async (t: string, barberId: string, uri: string): Promise<AlbumPhoto> => {
+    if (!apiUrl) throw new ApiError('no_server', 0);
+    let res: Response;
+    try {
+      const blob = await (await fetch(uri)).blob();
+      res = await fetch(`${apiUrl}/v1/admin/barbers/${encodeURIComponent(barberId)}/album`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${t}` }, body: blob });
+    } catch {
+      throw new ApiError('network', 0);
+    }
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new ApiError(json?.error ?? 'server_error', res.status);
+    return json as AlbumPhoto;
+  },
+  deleteBarberAlbumPhoto: (t: string, barberId: string, id: string) =>
+    call<{ ok: true }>('DELETE', `/admin/barbers/${encodeURIComponent(barberId)}/album/${encodeURIComponent(id)}`, t),
   deleteAlbumPhoto: (t: string, id: string) => call<{ ok: true }>('DELETE', `/admin/me/album/${encodeURIComponent(id)}`, t),
   uploadBeforeAfter: async (t: string, id: string, uri: string): Promise<{ mediaId: string }> => {
     if (!apiUrl) throw new ApiError('no_server', 0);
@@ -305,6 +321,8 @@ export type StaffBarber = {
   /** Culoarea frizerului în calendar (aleasă în panou → Frizeri), ex. „#F28C28”. */
   color?: string | null;
   hours: Array<{ weekday: number; start: number; end: number }>; // minute de la miezul nopții
+  /** Albumul cu lucrări (cele mai noi întâi). */
+  album?: AlbumPhoto[];
 };
 export type BlockKind = 'lunch' | 'off' | 'education' | 'other' | 'members';
 export const BLOCK_KINDS: Array<{ kind: BlockKind; label: Key; color: string }> = [

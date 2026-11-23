@@ -65,6 +65,20 @@ export default function StaffHome() {
           {orders !== null ? <Tile label={t('sh.orders')} value={String(orders)} sub={t('sh.toPrepare')} onPress={() => router.push('/staff/orders')} /> : null}
         </View>
 
+        {/* Albumul cu tunsori: la îndemână pe Acasă, ca frizerul să-și pună pozele imediat după o tunsoare. */}
+        {staff.barberId || staff.owner || staff.role === 'barber' ? (
+          <Pressable onPress={() => router.push('/staff/album')} style={{ marginTop: space.md }} accessibilityRole="button">
+            <Card style={s.row}>
+              <Ionicons name="images-outline" size={22} color={colors.gold} />
+              <View style={{ flex: 1 }}>
+                <Text style={ui.cardTitle}>{t('sh.album')}</Text>
+                <Text style={[ui.muted, { fontSize: 13 }]}>{t('sh.albumSub')}</Text>
+              </View>
+              <Ionicons name="add-circle" size={26} color={colors.gold} />
+            </Card>
+          </Pressable>
+        ) : null}
+
         {todo ? (
           <Pressable onPress={() => router.push('/staff/notes')} style={{ marginTop: space.md }}>
             <Card style={[s.row, { borderLeftWidth: 5, borderLeftColor: colors.gold }]}>
