@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { api } from '@/api';
 import { staffApi, type StaffClient } from '@/api/staff';
+import { ApiError } from '@/api/client';
 import { Button, Card, Screen, styles as ui } from '@/components/ui';
 import type { Slot } from '@/data/types';
 import { addDays, dayKey, dayOfMonth, fromDayKey, formatTime, shortDay, shortMonth, startOfDay } from '@/lib/dates';
@@ -22,8 +23,6 @@ export default function StaffNewBooking() {
   const { barbers } = useApp();
   const services = useStaffServices();
   const canPickBarber = !!staff && (staff.permissions.bookings_all || !staff.barberId);
-  const [phone, setPhone] = useState('');
-  const [name, setName] = useState('');
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   const [barberId, setBarberId] = useState((canPickBarber && params.barberId) || staff?.barberId || barbers[0]?.id || '');
   const firstDay = params.day && params.day >= dayKey(new Date()) ? params.day : dayKey(new Date());
@@ -32,10 +31,15 @@ export default function StaffNewBooking() {
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [start, setStart] = useState<string | null>(null);
   const [notify, setNotify] = useState(true);
-  // Clientul ales din bază (căutat după nume sau numărul complet), ca în panou; fără el se face client nou din telefon + nume.
+  // O singură rubrică de căutare (nume sau număr), ca în panou, plus „+” pentru client nou.
   const [picked, setPicked] = useState<Pick<StaffClient, 'id' | 'name' | 'phone' | 'visits'> | null>(params.clientId ? { id: params.clientId, name: params.clientName ?? '' } : null);
-  const [hits, setHits] = useState<StaffClient[]>([]);
+  // Client nou care se creează odată cu programarea (fără dreptul de a vedea datele de contact).
+  const [staged, setStaged] = useState<{ name: string; phone: string } | null>(null);
+  const [hits, setHits] = useState<StaffClient[] | null>(null);
   const [term, setTerm] = useState('');
+  const [adding, setAdding] = useState<{ name: string; phone: string } | null>(null);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,8 +59,8 @@ export default function StaffNewBooking() {
 
   useEffect(() => {
     const q = term.trim();
-    if (!staffToken || !staff?.permissions.clients || picked || q.replace(/\s/g, '').length < 3) {
-      setHits([]);
+    if (!staffToken || !staff?.permissions.clients || picked || staged || adding || q.replace(/\s/g, '').length < 3) {
+      setHits(null);
       return;
     }
     const timer = setTimeout(() => {
@@ -66,16 +70,56 @@ export default function StaffNewBooking() {
       );
     }, 300);
     return () => clearTimeout(timer);
-  }, [term, picked, staffToken, staff]);
+  }, [term, picked, staged, adding, staffToken, staff]);
 
   if (!staff || !staffToken) return null;
-  const ok = (!!picked || phone.replace(/\D/g, '').length >= 9) && !!start;
+  const ok = (!!picked || !!staged) && !!start;
+
+  // „+”: ce ai scris deja în căutare trece în rubrica potrivită (cifre → telefon, litere → nume).
+  const openAdd = () => {
+    const q = term.trim();
+    const isPhone = /^[\d+\s().-]+$/.test(q) && q.replace(/\D/g, '').length >= 3;
+    setAddError(null);
+    setAdding({ name: isPhone ? '' : q, phone: isPhone ? q : '' });
+    setHits(null);
+  };
+  const saveNew = async () => {
+    if (!adding) return;
+    const nm = adding.name.trim();
+    const ph = adding.phone.trim();
+    setAddBusy(true);
+    setAddError(null);
+    try {
+      if (staff.permissions.clients && staff.permissions.contacts) {
+        try {
+          const r = await staffApi.addClient(staffToken, { name: nm, phone: ph });
+          setPicked({ id: r.id, name: nm, phone: ph, visits: 0 });
+        } catch (e) {
+          if (!(e instanceof ApiError) || e.code !== 'client_exists') throw e;
+          // Numărul e deja în bază: alegem direct clientul existent.
+          const found = await staffApi.clients(staffToken, ph);
+          if (!found[0]) throw e;
+          setPicked(found[0]);
+        }
+      } else {
+        // Fără dreptul de date de contact, contul se face odată cu programarea.
+        if (ph.replace(/\D/g, '').length < 9) throw new ApiError('invalid_phone', 400);
+        setStaged({ name: nm, phone: ph });
+      }
+      setAdding(null);
+      setTerm('');
+    } catch (e) {
+      setAddError(errorMessage(e, t('snew.saveFailed')));
+    } finally {
+      setAddBusy(false);
+    }
+  };
 
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
-      await staffApi.create(staffToken, { ...(picked ? { clientId: picked.id } : { phone, name: name.trim() }), serviceId, barberId, start: start!, notify });
+      await staffApi.create(staffToken, { ...(picked ? { clientId: picked.id } : { phone: staged?.phone ?? '', name: staged?.name ?? '' }), serviceId, barberId, start: start!, notify });
       router.back();
     } catch (e) {
       setError(errorMessage(e, t('snew.saveFailed')));
@@ -86,46 +130,73 @@ export default function StaffNewBooking() {
 
   return (
     <Screen edges={['bottom']}>
-      {picked ? (
+      {picked || staged ? (
         <Card style={[ui.row, { justifyContent: 'space-between', marginTop: space.sm }]}>
           <View style={{ flex: 1 }}>
-            <Text style={ui.cardTitle}>{picked.name || t('scl.noName')}</Text>
+            <Text style={ui.cardTitle}>{(picked ?? staged)?.name || t('scl.noName')}</Text>
             <Text style={ui.muted}>
-              {[picked.phone, picked.visits ? (picked.visits === 1 ? t('scl.visitOne') : t('scl.visitMany', { n: picked.visits })) : params.clientId === picked.id ? '' : t('snew.noVisits')].filter(Boolean).join(' · ')}
+              {picked
+                ? [picked.phone, picked.visits ? (picked.visits === 1 ? t('scl.visitOne') : t('scl.visitMany', { n: picked.visits })) : params.clientId === picked.id ? '' : t('snew.noVisits')].filter(Boolean).join(' · ')
+                : `${staged?.phone} · ${t('snew.staged')}`}
             </Text>
           </View>
-          <Pressable onPress={() => setPicked(null)} hitSlop={8}>
+          <Pressable
+            onPress={() => {
+              setPicked(null);
+              setStaged(null);
+            }}
+            hitSlop={8}
+          >
             <Text style={{ color: colors.gold, fontWeight: '700' }}>{t('snew.otherClient')}</Text>
           </Pressable>
         </Card>
-      ) : (
-        <>
-          <Text style={ui.label}>{t('snew.phone')}</Text>
+      ) : adding ? (
+        <Card style={{ marginTop: space.sm }}>
+          <Text style={ui.cardTitle}>{t('snew.newClient')}</Text>
+          <Text style={ui.label}>{t('snew.nameOnly')}</Text>
+          <TextInput value={adding.name} onChangeText={(v) => setAdding({ ...adding, name: v })} style={ui.input} autoFocus={!adding.name} placeholderTextColor={colors.muted} />
+          <Text style={ui.label}>{t('snew.phoneOnly')}</Text>
           <TextInput
-            value={phone}
-            onChangeText={(v) => {
-              setPhone(v);
-              setTerm(v);
-            }}
+            value={adding.phone}
+            onChangeText={(v) => setAdding({ ...adding, phone: v })}
             style={ui.input}
             keyboardType="phone-pad"
             placeholder="07xx xxx xxx"
             placeholderTextColor={colors.muted}
+            autoFocus={!!adding.name}
           />
-          <Text style={ui.label}>{staff.permissions.clients ? t('snew.nameSearch') : t('snew.name')}</Text>
-          <TextInput
-            value={name}
-            onChangeText={(v) => {
-              setName(v);
-              setTerm(v);
-            }}
-            style={ui.input}
-            placeholder={t('snew.optional')}
-            placeholderTextColor={colors.muted}
-          />
-          {hits.length ? (
+          <Text style={[ui.muted, { fontSize: 12, marginTop: space.xs }]}>{t('snew.noMsg')}</Text>
+          {addError ? <Text style={{ color: colors.danger, marginTop: space.xs }}>{addError}</Text> : null}
+          <View style={[ui.row, { justifyContent: 'flex-end', gap: space.md, marginTop: space.sm }]}>
+            <Pressable onPress={() => setAdding(null)} hitSlop={8}>
+              <Text style={{ color: colors.muted, fontWeight: '700' }}>{t('snew.cancel')}</Text>
+            </Pressable>
+            <Button title={t('snew.addClient')} onPress={saveNew} loading={addBusy} disabled={!adding.name.trim() || adding.phone.replace(/\D/g, '').length < 9} />
+          </View>
+        </Card>
+      ) : (
+        <>
+          <Text style={ui.label}>{t('snew.client')}</Text>
+          <View style={[ui.row, { gap: space.sm }]}>
+            {staff.permissions.clients ? (
+              <TextInput
+                value={term}
+                onChangeText={setTerm}
+                style={[ui.input, { flex: 1 }]}
+                placeholder={t('snew.search')}
+                placeholderTextColor={colors.muted}
+                autoCorrect={false}
+              />
+            ) : (
+              <Text style={[ui.muted, { flex: 1 }]}>{t('snew.addHint')}</Text>
+            )}
+            <Pressable onPress={openAdd} style={s.add} accessibilityLabel={t('snew.newClient')} hitSlop={6}>
+              <Text style={s.addText}>+</Text>
+            </Pressable>
+          </View>
+          {hits ? (
             <View style={{ marginTop: space.sm, gap: space.xs }}>
-              <Text style={[ui.muted, { fontSize: 12 }]}>{t('snew.found')}</Text>
+              <Text style={[ui.muted, { fontSize: 12 }]}>{hits.length ? t('snew.found') : t('snew.notFound')}</Text>
               {hits.map((h) => (
                 <Card key={h.id} onPress={() => setPicked(h)}>
                   <Text style={ui.cardTitle}>{h.name || t('scl.noName')}</Text>
@@ -134,6 +205,9 @@ export default function StaffNewBooking() {
                   </Text>
                 </Card>
               ))}
+              <Card onPress={openAdd}>
+                <Text style={[ui.cardTitle, { color: colors.gold }]}>+ {t('snew.newClient')} „{term.trim()}”</Text>
+              </Card>
             </View>
           ) : null}
         </>
@@ -209,6 +283,8 @@ const s = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
   chipOn: { backgroundColor: colors.gold, borderColor: colors.gold },
+  add: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#3fae5a', alignItems: 'center', justifyContent: 'center' },
+  addText: { color: '#fff', fontSize: 26, fontWeight: '700', lineHeight: 28 },
   chipText: { color: colors.text, fontWeight: '600', fontSize: 13 },
   day: { width: 56, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
   dayOn: { backgroundColor: colors.gold, borderColor: colors.gold },
