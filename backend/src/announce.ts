@@ -17,11 +17,13 @@ import { iso, localDay, localMinutes } from './time';
 export const CAMPAIGN = 'announce-platform';
 const PER_RUN = 25; // cât trimite o rulare a cron-ului (la 5 minute); restul la rulările următoare
 
-type WaveId = 'announce-dec1' | 'announce-dec9' | 'announce-jan7';
+type WaveId = 'announce-dec1' | 'announce-dec9' | 'announce-dec24' | 'announce-dec31' | 'announce-jan7';
 /** Mementourile programate: pleacă singure din ziua lor (ora salonului), dacă sunt bifate în panou. */
 export const WAVES: Array<{ id: WaveId; day: string; label: string }> = [
   { id: 'announce-dec1', day: '2026-12-01', label: '1 decembrie: La mulți ani, România! + memento aplicație' },
   { id: 'announce-dec9', day: '2026-12-09', label: '9 decembrie: încă o lună cu Barberly' },
+  { id: 'announce-dec24', day: '2026-12-24', label: '24 decembrie: Crăciun fericit! (cu animație) + memento aplicație' },
+  { id: 'announce-dec31', day: '2026-12-31', label: '31 decembrie: La mulți ani 2027! (cu animație) + memento aplicație' },
   { id: 'announce-jan7', day: '2027-01-07', label: '7 ianuarie: ultimul memento (de luni, doar în aplicație)' },
 ];
 type AnyWave = typeof CAMPAIGN | WaveId;
@@ -45,7 +47,7 @@ const DEFAULTS: AnnounceSettings = {
   reserve: 15,
   hour: 10,
   skipActive: true,
-  waves: { 'announce-dec1': true, 'announce-dec9': true, 'announce-jan7': true },
+  waves: { 'announce-dec1': true, 'announce-dec9': true, 'announce-dec24': true, 'announce-dec31': true, 'announce-jan7': true },
   wavesDone: {},
 };
 
@@ -89,7 +91,7 @@ ${p('<b>No access to your e-mail, or no code?</b> On the same screen tap <b>“S
 }
 
 /** Cadrul comun: antet, partea în română, butoanele de descărcare, partea în engleză, subsol. */
-function frame(env: Env, o: { preheader: string; ro: string; en: string; salonPhone: string; footer: string }) {
+function frame(env: Env, o: { preheader: string; ro: string; en: string; salonPhone: string; footer: string; banner?: { file: string; alt: string } }) {
   const b = base(env);
   const host = esc(b.replace(/^https?:\/\//, ''));
   return `<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TAF Barbers</title></head>
@@ -98,6 +100,7 @@ function frame(env: Env, o: { preheader: string; ro: string; en: string; salonPh
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0e0e10"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#17171a;border:1px solid #c9a24b;border-radius:14px">
 <tr><td align="center" style="padding:28px 24px 8px"><div style="font-size:26px;letter-spacing:6px;font-weight:bold;color:#c9a24b">TAF BARBERS</div><div style="font-size:12px;letter-spacing:3px;color:#9a968c;margin-top:4px">IAȘI</div></td></tr>
+${o.banner ? `<tr><td style="padding:12px 0 0"><img src="${b}/${o.banner.file}" width="560" alt="${esc(o.banner.alt)}" style="display:block;width:100%;max-width:560px;height:auto;border:0"></td></tr>` : ''}
 <tr><td style="padding:16px 28px 4px;font-size:16px;line-height:1.55">
 ${o.ro}
 ${search(true)}
@@ -118,6 +121,8 @@ const SUBJECTS: Record<AnyWave, string> = {
   [CAMPAIGN]: 'TAF Barbers are aplicație nouă / TAF Barbers has a new app',
   'announce-dec1': 'La mulți ani, România! 🇷🇴 / Happy National Day, Romania!',
   'announce-dec9': 'Încă o lună până trecem în aplicația TAF / One more month until we move to the TAF app',
+  'announce-dec24': 'Crăciun fericit de la TAF Barbers! 🎄 / Merry Christmas!',
+  'announce-dec31': 'La mulți ani 2027! 🥂 / Happy New Year from TAF Barbers',
   'announce-jan7': 'De luni, 11 ianuarie, te programezi doar în aplicația TAF / From Monday 11 January, book only in the TAF app',
 };
 export const SUBJECT = SUBJECTS[CAMPAIGN];
@@ -164,6 +169,46 @@ ${loginRo(w, true)}`,
 ${p(`${hiEn} a reminder that from <b>11 January 2027</b> bookings at TAF Barbers are made only in our app or on our website. Until then you can still book in Barberly.`)}
 ${readyEn}
 ${loginEn(w, true)}`,
+    });
+  if (wave === 'announce-dec24')
+    return frame(env, {
+      preheader: 'Crăciun fericit! Echipa TAF Barbers îți mulțumește pentru anul acesta.',
+      banner: { file: 'email-craciun.gif', alt: 'Crăciun fericit! / Merry Christmas!' },
+      salonPhone: w.salonPhone,
+      footer,
+      ro: `${title('Crăciun fericit! 🎄')}
+${p(hi)}
+${p('Îți mulțumim că ai fost alături de noi anul acesta. Îți dorim un Crăciun liniștit, cu cei dragi, sănătate și multă bucurie.')}
+${p('Un mic memento: din <b>11 ianuarie 2027</b> programările la TAF Barbers se fac doar în aplicația noastră sau pe site.')}
+${ready}
+${loginRo(w, true)}
+${p('Cu drag, Florin și Andrei')}`,
+      en: `${title('Merry Christmas!', true)}
+${p(`${hiEn} thank you for being with us this year. We wish you a peaceful Christmas with your loved ones, good health and lots of joy.`)}
+${p('A small reminder: from <b>11 January 2027</b> bookings at TAF Barbers are made only in our app or on our website.')}
+${readyEn}
+${loginEn(w, true)}
+${p('Warm wishes, Florin and Andrei')}`,
+    });
+  if (wave === 'announce-dec31')
+    return frame(env, {
+      preheader: 'La mulți ani 2027! Din 11 ianuarie te programezi doar în aplicația TAF Barbers.',
+      banner: { file: 'email-revelion.gif', alt: 'La mulți ani 2027! / Happy New Year!' },
+      salonPhone: w.salonPhone,
+      footer,
+      ro: `${title('La mulți ani 2027! 🥂')}
+${p(hi)}
+${p('Echipa TAF Barbers îți urează un an nou cu sănătate, împliniri și mereu o tunsoare pe gustul tău. Mulțumim că ne-ai fost alături în 2026!')}
+${p('În 2027 ne vedem în aplicația TAF Barbers: din <b>11 ianuarie</b> programările se fac doar acolo sau pe site.')}
+${ready}
+${loginRo(w, true)}
+${p('La mulți ani! Florin și Andrei')}`,
+      en: `${title('Happy New Year 2027!', true)}
+${p(`${hiEn} the TAF Barbers team wishes you a new year full of health, success and always a haircut you love. Thank you for being with us in 2026!`)}
+${p('In 2027 we will see you in the TAF Barbers app: from <b>11 January</b> bookings are made only there or on our website.')}
+${readyEn}
+${loginEn(w, true)}
+${p('Happy New Year! Florin and Andrei')}`,
     });
   if (wave === 'announce-jan7')
     return frame(env, {
