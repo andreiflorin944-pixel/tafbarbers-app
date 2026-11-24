@@ -1,16 +1,18 @@
 import { Hono, type Context, type Next } from 'hono';
 import { newId, normalizePhone, randomToken, sha256 } from './auth';
-import { HOLDS_SLOT, logBookingEvent } from './bookings';
+import { getBooking, HOLDS_SLOT, logBookingEvent } from './bookings';
 import { getSetting, setSetting } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
 import { iso, localToUtc } from './time';
 import { pushedPhone } from './barberlyPush';
+import { notifyStaff } from './staffNotify';
 
 // Copierea programărilor din Barberly, cât timp clienții se mută în aplicația nouă.
 // Barberly nu are export și nici API cu lista programărilor, dar trimite proprietarului un e-mail la fiecare programare
 // nouă sau anulare („Numire nouă: <client>”, cu Client + telefon, Când, Unde, Servicii + Total, Cu <frizer>).
 // Un script din Gmail (generat în panou, cu o cheie proprie) trimite aceste e-mailuri la /v1/barberly/inbound;
 // același text se poate lipi și de mână în panou. Programările intră fără SMS sau reminder de la noi (le trimite Barberly).
+// Echipa primește totuși anunțul pe telefon (aplicația echipei), la fel ca la programările făcute la noi: nouă, mutată, anulată.
 
 export type ParsedMail = {
   kind: 'new' | 'cancel' | 'change' | 'unknown';
@@ -198,6 +200,7 @@ export async function applyMail(env: Env, p: ParsedMail, now = new Date()): Prom
     if (!b) return out('ignored', 'Nu există la noi o programare activă la ora asta pentru acest client.');
     await env.DB.prepare(`UPDATE bookings SET status = 'cancelled', cancelled_at = ?, cancelled_by = 'client' WHERE id = ?`).bind(iso(now), b.id).run();
     await logBookingEvent(env, b.id, 'barberly_cancel', {}, null);
+    await tellStaff(env, b.id, 'cancelled');
     return out('cancelled', '', b.id);
   }
 
@@ -234,11 +237,11 @@ export async function applyMail(env: Env, p: ParsedMail, now = new Date()): Prom
   if (p.kind === 'change') {
     // E-mailul de modificare are doar ora nouă: dacă clientul are o singură programare viitoare venită din Barberly, aceea se mută.
     const prev = await env.DB.prepare(
-      `SELECT b.id, b.starts_at FROM bookings b JOIN clients c ON c.id = b.client_id
+      `SELECT b.id, b.starts_at, b.barber_id FROM bookings b JOIN clients c ON c.id = b.client_id
        WHERE c.phone = ? AND b.barberly_ref IS NOT NULL AND b.status IN ${HOLDS_SLOT} AND b.starts_at > ?`,
     )
       .bind(p.phone, iso(now))
-      .all<{ id: string; starts_at: string }>();
+      .all<{ id: string; starts_at: string; barber_id: string }>();
     if (prev.results.length === 1 && prev.results[0].starts_at !== iso(start)) {
       const id = prev.results[0].id;
       await env.DB.prepare(
@@ -248,6 +251,7 @@ export async function applyMail(env: Env, p: ParsedMail, now = new Date()): Prom
         .bind(iso(start), iso(end), barber.id, found[0].id, price, note, refOf(p.phone, start, barber.id), barber.id, id)
         .run();
       await logBookingEvent(env, id, 'barberly_change', { from: prev.results[0].starts_at, to: iso(start) }, null);
+      await tellStaff(env, id, 'moved', { fromStart: prev.results[0].starts_at, fromBarberId: prev.results[0].barber_id });
       return out('updated', '', id);
     }
   }
@@ -274,7 +278,14 @@ export async function applyMail(env: Env, p: ParsedMail, now = new Date()): Prom
     .run();
   if (!res.meta.changes) return out('duplicate', 'Programarea există deja.');
   await logBookingEvent(env, id, 'barberly_import', {}, null);
+  await tellStaff(env, id, 'new');
   return out('created', overlap ? 'Atenție: se suprapune cu o altă programare a frizerului.' : '', id);
+}
+
+/** Anunțul pe telefon pentru frizer, patron și administrator (doar echipa; clientului nu i se trimite nimic). */
+async function tellStaff(env: Env, id: string, ev: 'new' | 'moved' | 'cancelled', opts: { fromStart?: string; fromBarberId?: string } = {}) {
+  const b = await getBooking(env, id);
+  if (b) await notifyStaff(env, b, ev, null, opts);
 }
 
 const refOf = (phone: string, start: Date, barberId: string) => `${phone}|${iso(start)}|${barberId}`;
