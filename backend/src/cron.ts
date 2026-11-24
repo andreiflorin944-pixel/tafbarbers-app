@@ -2,6 +2,7 @@ import { notifyBooking, BOOKING_SELECT, expireRequests } from './bookings';
 import { booking, type BookingRow } from './db';
 import type { Env } from './env';
 import { runCampaign } from './campaigns';
+import { runAnnounce } from './announce';
 import { greetBirthdays } from './birthday';
 import { channelsFor, sendLastMinute, sendWinback } from './growth';
 import { formatLocal, iso } from './time';
@@ -53,6 +54,13 @@ export async function scheduled(env: Env) {
     for (const c of sending.results) await runCampaign(env, c.id);
   } catch (e) {
     await recordServerError(env, 'cron: campaigns failed', e);
+  }
+
+  // Anunțul despre trecerea din Barberly: tranșa zilei pe e-mail (oprit până îl pornește proprietarul).
+  try {
+    await runAnnounce(env, new Date(now));
+  } catch (e) {
+    await recordServerError(env, 'cron: announce failed', e);
   }
 
   // Calendarul invers: programările noastre noi, mutate sau anulate ajung și în Barberly (cât timp se lucrează pe ambele).

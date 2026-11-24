@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../api';
+import { api, getToken } from '../api';
 import { Loading, useAction, useLoad } from '../ui';
 import { date, time } from '../util';
 
@@ -152,6 +152,8 @@ export function BarberlyPage() {
               </div>
             ) : null}
           </div>
+
+          <AnnounceCard />
 
           <BarberlyPushCard />
 
@@ -518,6 +520,149 @@ function BarberlyAccount({ v, onDone }: { v: PushView; onDone: () => void }) {
               </button>
             </div>
           )}
+        </>
+      )}
+    </div>
+  );
+}
+
+type AnnounceView = {
+  settings: { enabled: boolean; dailyLimit: number; providerDaily: number; providerMonthly: number; reserve: number; hour: number; skipActive: boolean };
+  sent: number;
+  failed: number;
+  pending: number;
+  today: { announce: number; allEmails: number; monthEmails: number; room: number };
+  daysLeft: number;
+  emailConfigured: boolean;
+};
+
+/** Anunțul „trecem din Barberly în aplicația TAF”, trimis pe e-mail din platforma noastră, câte puțin pe zi (gratuit la Resend). */
+export function AnnounceCard() {
+  const data = useLoad(() => api<AnnounceView>('GET', '/admin/announce'));
+  const { busy, error, run } = useAction();
+  const [testTo, setTestTo] = useState('');
+  const [note, setNote] = useState('');
+  const [preview, setPreview] = useState<string | null>(null);
+  const v = data.data;
+  const save = (body: Record<string, unknown>) =>
+    run(async () => {
+      await api('PUT', '/admin/announce', body);
+      data.reload();
+    });
+  const showPreview = () =>
+    run(async () => {
+      const r = await fetch('/v1/admin/announce/preview', { headers: { Authorization: `Bearer ${getToken() ?? ''}` } });
+      setPreview(await r.text());
+    });
+  return (
+    <div className="card" style={{ marginBottom: 16, maxWidth: 760 }}>
+      <h3 style={{ marginTop: 0 }}>Anunț pe e-mail: ne mutăm în aplicația TAF</h3>
+      <p className="muted small">
+        Trimite tuturor clienților cu e-mail (importați din Barberly) anunțul în română și engleză: contul e deja la noi, cum intră cu codul, linkurile de
+        descărcare. Fiecare client îl primește o singură dată. Pleacă câte puțin în fiecare zi, ca să rămână în planul gratuit de e-mail (Resend: 100 pe zi
+        și 3.000 pe lună, cu tot cu codurile de intrare și confirmări). Nu se trimite SMS.
+      </p>
+      {error ? <div className="err">{error}</div> : null}
+      {!v ? (
+        <Loading error={data.error} />
+      ) : (
+        <>
+          {!v.emailConfigured ? <div className="err">Trimiterea de e-mailuri nu e configurată pe server (lipsește cheia Resend): nu pleacă nimic de fapt.</div> : null}
+          <p>
+            {v.settings.enabled ? <span className="pill completed">Pornit</span> : <span className="pill off">Oprit</span>}{' '}
+            <span className="muted small">
+              trimise: {v.sent} · rămase: {v.pending}
+              {v.pending ? ` (cam ${v.daysLeft} zile)` : ''} · azi: {v.today.announce} anunțuri, {v.today.allEmails} e-mailuri în total · luna asta: {v.today.monthEmails}
+              {v.failed ? ` · nereușite: ${v.failed}` : ''}
+            </span>
+          </p>
+          <div className="row" style={{ gap: 12, flexWrap: 'wrap' }}>
+            <label className="small">
+              Anunțuri pe zi
+              <input type="number" min={1} defaultValue={v.settings.dailyLimit} onBlur={(e) => +e.target.value !== v.settings.dailyLimit && save({ dailyLimit: +e.target.value })} style={{ width: 90 }} />
+            </label>
+            <label className="small">
+              De la ora
+              <select value={v.settings.hour} onChange={(e) => save({ hour: +e.target.value })} disabled={busy}>
+                {Array.from({ length: 14 }, (_, i) => i + 6).map((h) => (
+                  <option key={h} value={h}>
+                    {h}:00
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="small">
+              Limita furnizorului pe zi / lună
+              <span className="row" style={{ gap: 4 }}>
+                <input type="number" defaultValue={v.settings.providerDaily} onBlur={(e) => +e.target.value !== v.settings.providerDaily && save({ providerDaily: +e.target.value })} style={{ width: 80 }} />
+                <input type="number" defaultValue={v.settings.providerMonthly} onBlur={(e) => +e.target.value !== v.settings.providerMonthly && save({ providerMonthly: +e.target.value })} style={{ width: 90 }} />
+              </span>
+            </label>
+          </div>
+          <label className="small" style={{ display: 'block', marginTop: 8 }}>
+            <input type="checkbox" checked={v.settings.skipActive} onChange={(e) => save({ skipActive: e.target.checked })} disabled={busy} /> Sari peste clienții care au intrat
+            deja în aplicație
+          </label>
+          <p className="muted small">
+            Pe zi pleacă cel mult {v.settings.dailyLimit} anunțuri și se lasă mereu {v.settings.reserve} e-mailuri libere pentru coduri și confirmări. Dacă treci pe un plan
+            plătit la Resend, mărește limitele de mai sus.
+          </p>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            <button className="ghost" disabled={busy} onClick={showPreview}>
+              Vezi e-mailul
+            </button>
+            <input type="email" placeholder="e-mailul tău, pentru probă" value={testTo} onChange={(e) => setTestTo(e.target.value)} style={{ flex: '1 1 200px' }} />
+            <button
+              className="ghost"
+              disabled={busy || !testTo.includes('@')}
+              onClick={() =>
+                run(async () => {
+                  const r = await api<{ ok: boolean }>('POST', '/admin/announce/test', { email: testTo });
+                  setNote(r.ok ? `Proba a plecat la ${testTo}.` : 'Proba n-a plecat (vezi cheia de e-mail).');
+                })
+              }
+            >
+              Trimite-mi o probă
+            </button>
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+            {v.settings.enabled ? (
+              <button className="danger" disabled={busy} onClick={() => save({ enabled: false })}>
+                Oprește trimiterea
+              </button>
+            ) : (
+              <button
+                disabled={busy || !v.pending}
+                onClick={() => confirm(`Pornești anunțul? Pleacă singur, câte ${v.settings.dailyLimit} pe zi, la ${v.pending} clienți.`) && save({ enabled: true })}
+              >
+                Pornește trimiterea zilnică
+              </button>
+            )}
+            {v.settings.enabled ? (
+              <button
+                className="ghost"
+                disabled={busy || !v.today.room}
+                onClick={() =>
+                  run(async () => {
+                    const r = await api<{ justSent: number }>('POST', '/admin/announce/run', {});
+                    setNote(`Trimise acum: ${r.justSent}.`);
+                    data.reload();
+                  })
+                }
+              >
+                Trimite acum din tranșa de azi ({v.today.room})
+              </button>
+            ) : null}
+          </div>
+          {note ? <p className="small">{note}</p> : null}
+          {preview ? (
+            <div style={{ marginTop: 12 }}>
+              <button className="ghost small" onClick={() => setPreview(null)}>
+                Închide previzualizarea
+              </button>
+              <iframe title="Previzualizare" srcDoc={preview} style={{ width: '100%', height: 640, border: '1px solid #333', borderRadius: 8, marginTop: 8, background: '#0e0e10' }} />
+            </div>
+          ) : null}
         </>
       )}
     </div>
