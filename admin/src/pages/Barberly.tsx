@@ -533,6 +533,8 @@ type AnnounceView = {
   pending: number;
   today: { announce: number; allEmails: number; monthEmails: number; room: number };
   daysLeft: number;
+  waves: Array<{ id: string; day: string; label: string; enabled: boolean; doneAt: string | null; sent: number; failed: number; pending: number }>;
+  localDay: string;
   emailConfigured: boolean;
 };
 
@@ -543,6 +545,7 @@ export function AnnounceCard() {
   const [testTo, setTestTo] = useState('');
   const [note, setNote] = useState('');
   const [preview, setPreview] = useState<string | null>(null);
+  const [wave, setWave] = useState('announce-platform');
   const v = data.data;
   const save = (body: Record<string, unknown>) =>
     run(async () => {
@@ -551,7 +554,7 @@ export function AnnounceCard() {
     });
   const showPreview = () =>
     run(async () => {
-      const r = await fetch('/v1/admin/announce/preview', { headers: { Authorization: `Bearer ${getToken() ?? ''}` } });
+      const r = await fetch(`/v1/admin/announce/preview?wave=${encodeURIComponent(wave)}`, { headers: { Authorization: `Bearer ${getToken() ?? ''}` } });
       setPreview(await r.text());
     });
   return (
@@ -559,8 +562,8 @@ export function AnnounceCard() {
       <h3 style={{ marginTop: 0 }}>Anunț pe e-mail: ne mutăm în aplicația TAF</h3>
       <p className="muted small">
         Trimite tuturor clienților cu e-mail (importați din Barberly) anunțul în română și engleză: contul e deja la noi, cum intră cu codul, linkurile de
-        descărcare. Fiecare client îl primește o singură dată. Pleacă câte puțin în fiecare zi, ca să rămână în planul gratuit de e-mail (Resend: 100 pe zi
-        și 3.000 pe lună, cu tot cu codurile de intrare și confirmări). Nu se trimite SMS.
+        descărcare. Fiecare client îl primește o singură dată. Pleacă câte puțin în fiecare zi, în limitele planului de e-mail de mai jos (cu tot cu codurile de
+        intrare și confirmări). Mai jos sunt și mementourile din 1 decembrie, 9 decembrie și 7 ianuarie, care pleacă singure în ziua lor. Nu se trimite SMS.
       </p>
       {error ? <div className="err">{error}</div> : null}
       {!v ? (
@@ -608,6 +611,14 @@ export function AnnounceCard() {
             plătit la Resend, mărește limitele de mai sus.
           </p>
           <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            <select value={wave} onChange={(e) => setWave(e.target.value)} disabled={busy}>
+              <option value="announce-platform">Anunțul mare (acum)</option>
+              {(v.waves ?? []).map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.label}
+                </option>
+              ))}
+            </select>
             <button className="ghost" disabled={busy} onClick={showPreview}>
               Vezi e-mailul
             </button>
@@ -617,7 +628,7 @@ export function AnnounceCard() {
               disabled={busy || !testTo.includes('@')}
               onClick={() =>
                 run(async () => {
-                  const r = await api<{ ok: boolean }>('POST', '/admin/announce/test', { email: testTo });
+                  const r = await api<{ ok: boolean }>('POST', '/admin/announce/test', { email: testTo, wave });
                   setNote(r.ok ? `Proba a plecat la ${testTo}.` : 'Proba n-a plecat (vezi cheia de e-mail).');
                 })
               }
@@ -655,6 +666,27 @@ export function AnnounceCard() {
             ) : null}
           </div>
           {note ? <p className="small">{note}</p> : null}
+          <h4 style={{ marginBottom: 4 }}>Mementouri programate</h4>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            Pleacă singure în ziua lor, de la ora aleasă mai sus, la toți clienții cu e-mail (fără cei care au intrat deja în aplicație, dacă e bifat mai sus). Debifează ca să nu
+            plece.
+          </p>
+          {(v.waves ?? []).map((w) => (
+            <div key={w.id} className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+              <label className="small" style={{ flex: '1 1 300px' }}>
+                <input type="checkbox" checked={w.enabled} disabled={busy || !!w.doneAt} onChange={(e) => save({ waves: { [w.id]: e.target.checked } })} /> {w.label}
+              </label>
+              <span className="muted small">
+                {w.doneAt
+                  ? `trimis: ${w.sent}${w.failed ? ` · nereușite: ${w.failed}` : ''}`
+                  : !w.enabled
+                    ? 'oprit, nu pleacă'
+                    : w.day > v.localDay
+                      ? `programat · ${w.pending} clienți`
+                      : `se trimite · trimise ${w.sent}, rămase ${w.pending}`}
+              </span>
+            </div>
+          ))}
           {preview ? (
             <div style={{ marginTop: 12 }}>
               <button className="ghost small" onClick={() => setPreview(null)}>
