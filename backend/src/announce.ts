@@ -37,7 +37,7 @@ const base = (env: Env) => (env.PUBLIC_URL || 'https://app.tafbarbers.ro').repla
 export const SUBJECT = 'TAF Barbers are aplicație nouă / TAF Barbers has a new app';
 
 /** E-mailul, în română și engleză. `name` = prenumele clientului (poate lipsi). */
-export function announceHtml(env: Env, name: string, phone: string, salonPhone = '') {
+export function announceHtml(env: Env, name: string, phone: string, salonPhone = '', email = '') {
   const b = base(env);
   const hi = name ? `Salut, ${esc(name)},` : 'Salut,';
   const hiEn = name ? `Hi ${esc(name)},` : 'Hi,';
@@ -50,7 +50,9 @@ export function announceHtml(env: Env, name: string, phone: string, salonPhone =
     `<div style="margin:0 0 16px;padding:12px 14px;border:1px dashed #c9a24b;border-radius:10px;text-align:center">${
       ro ? 'Caută în <b>App Store</b> sau <b>Google Play</b>:' : 'Search in the <b>App Store</b> or <b>Google Play</b>:'
     }<br><span style="font-size:20px;font-weight:bold;color:#c9a24b">TAF Barbers</span></div>`;
-  const phoneNote = phone ? ` (${esc(phone)})` : '';
+  const box = (s: string) => `<b style="color:#fff">${esc(s)}</b>`;
+  const em = email ? box(email) : '';
+  const ph = phone ? box(phone) : '';
   return `<!doctype html><html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TAF Barbers</title></head>
 <body style="margin:0;padding:0;background:#0e0e10;font-family:Helvetica,Arial,sans-serif;color:#f2efe8">
 <div data-preheader style="display:none;max-height:0;overflow:hidden">Contul tău e deja în aplicația TAF Barbers. Your account is already in the TAF Barbers app.</div>
@@ -64,9 +66,10 @@ ${p('Îți mulțumim că vii la noi. De acum te poți programa direct în aplica
 ${p(gold('Cum facem trecerea:'), ';margin-bottom:6px')}
 ${ul(['Până pe <b>10 ianuarie 2027</b> te poți programa și în Barberly, și în aplicația nouă.', 'Din <b>11 ianuarie 2027</b> programările se fac doar în aplicația TAF Barbers sau pe site.', 'Programările pe care le ai deja rămân valabile.'])}
 ${p(gold('Contul tău e deja pregătit'), ';margin-bottom:6px')}
-${p(`Am mutat lista de clienți din Barberly la noi: numărul tău de telefon${phoneNote}, numele și vizitele tale sunt deja în aplicație. <b>Nu trebuie să faci cont nou.</b> Parola din Barberly nu merge la noi, dar nici nu ai nevoie de ea.`)}
+${p(`Am mutat lista de clienți din Barberly la noi: e-mailul tău${em ? ` (${em})` : ''}, numărul de telefon${ph ? ` (${ph})` : ''}, numele și vizitele tale sunt deja în aplicație. <b>Nu trebuie să faci cont nou.</b> Parola din Barberly nu merge la noi, dar nici nu ai nevoie de ea.`)}
 ${p(gold('Cum intri în cont (prima dată):'), ';margin-bottom:6px')}
-${ul(['Deschide aplicația și apasă <b>„Intră în cont”</b>.', 'Apasă <b>„Nu ai parolă? Intră cu un cod pe e-mail sau prin SMS”</b>.', 'Scrie numărul de telefon pe care îl foloseai în Barberly și apasă <b>„Trimite codul”</b>.', 'Scrie codul primit. Gata, ești în cont.'], 'ol')}
+${ul(['Deschide aplicația și apasă <b>„Intră în cont”</b>.', 'Apasă <b>„Nu ai parolă? Intră cu un cod pe e-mail sau prin SMS”</b>.', `Scrie e-mailul${em ? ` ${em}` : ''} și numărul de telefon${ph ? ` ${ph}` : ''}, apoi apasă <b>„Trimite codul”</b>. Codul vine pe e-mail.`, 'Scrie codul primit. Gata, ești în cont.'], 'ol')}
+${p('<b>Nu ai acces la e-mail sau nu-ți vine codul?</b> Pe același ecran apasă <b>„Trimite codul prin SMS”</b> și îl primești pe telefon.', ';font-size:15px')}
 ${p('Vrei să intri cu parolă? După ce intri, mergi la <b>Cont → Parola</b> și îți alegi una. Ai uitat-o? Apasă <b>„Am uitat parola”</b> și primești un cod cu care îți pui o parolă nouă.', ';font-size:14px;color:#bdb8ad')}
 ${search(true)}
 </td></tr>
@@ -77,9 +80,10 @@ ${search(true)}
 <p style="margin:0 0 12px;font-size:18px;font-weight:bold;color:#fff">We have our own TAF Barbers app</p>
 ${p(`${hiEn} thank you for coming to us. You can now book directly in the TAF Barbers app, made just for our salon: see free times instantly, book with Florin or Andrei, move or cancel your booking yourself, and get a reminder before your visit.`)}
 ${p('Until <b>10 January 2027</b> you can book both in Barberly and in the new app. From <b>11 January 2027</b> bookings are made only in the TAF Barbers app or on our website. Bookings you already have stay valid.')}
-${p(`${gold('Your account is already set up.')} We moved our client list from Barberly: your phone number${phoneNote}, name and visits are already in the app, so you don't need a new account. Your Barberly password doesn't work here, and you don't need it.`)}
+${p(`${gold('Your account is already set up.')} We moved our client list from Barberly: your e-mail${em ? ` (${em})` : ''}, phone number${ph ? ` (${ph})` : ''}, name and visits are already in the app, so you don't need a new account. Your Barberly password doesn't work here, and you don't need it.`)}
 ${p(gold('How to sign in (first time):'), ';margin-bottom:6px')}
-${ul(['Open the app and tap <b>“Sign in”</b>.', 'Tap <b>“No password? Sign in with a code by email or SMS”</b>.', 'Enter the phone number you used in Barberly and tap <b>“Send code”</b>.', 'Enter the code you receive. Done.'], 'ol')}
+${ul(['Open the app and tap <b>“Sign in”</b>.', 'Tap <b>“No password? Sign in with a code by email or SMS”</b>.', `Enter your e-mail${em ? ` ${em}` : ''} and phone number${ph ? ` ${ph}` : ''}, then tap <b>“Send code”</b>. The code comes by e-mail.`, 'Enter the code you receive. Done.'], 'ol')}
+${p('<b>No access to your e-mail, or no code?</b> On the same screen tap <b>“Send code by SMS”</b> and you get it on your phone.', ';font-size:14px')}
 ${search(false)}
 </td></tr>
 <tr><td align="center" style="padding:0 24px 22px">${btn(STORE_LINKS.appStore, 'App Store', false)}${btn(STORE_LINKS.play, 'Google Play', false)}${btn(`${b}/descarca`, 'Any phone', false)}</td></tr>
@@ -138,7 +142,7 @@ export async function runAnnounce(env: Env, now = new Date(), opts: { force?: bo
     let sent = 0;
     const sp = await salonPhone(env);
     for (const r of rows.results) {
-      if (await sendEmail(env, { kind: 'announce', recipient: r.email, campaignId: CAMPAIGN }, SUBJECT, announceHtml(env, firstName(r.name), r.phone, sp))) sent++;
+      if (await sendEmail(env, { kind: 'announce', recipient: r.email, campaignId: CAMPAIGN }, SUBJECT, announceHtml(env, firstName(r.name), r.phone, sp, r.email))) sent++;
       else break; // furnizorul refuză (de ex. limita lui): reîncearcă la rularea următoare, nu arde lista
     }
     // Lista s-a terminat: se oprește singur.
@@ -203,14 +207,16 @@ announceAdmin.put('/announce', async (c) => {
 });
 
 /** Previzualizare în panou (HTML-ul exact, cu un nume de exemplu). */
-announceAdmin.get('/announce/preview', async (c) => c.html(announceHtml(c.env, 'Andrei', '+40712345678', await salonPhone(c.env))));
+announceAdmin.get('/announce/preview', async (c) => c.html(announceHtml(c.env, 'Andrei', '+40712345678', await salonPhone(c.env), 'andrei@exemplu.ro')));
 
 /** Un e-mail de probă la adresa dată; nu intră în socoteala anunțului. */
 announceAdmin.post('/announce/test', async (c) => {
   const { email } = await c.req.json<{ email?: unknown }>();
   const to = String(email ?? '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new HttpError(400, 'invalid_email');
-  const ok = await sendEmail(c.env, { kind: 'announce_test', recipient: to, campaignId: 'announce-test' }, SUBJECT, announceHtml(c.env, 'Florin', '+40712345678', await salonPhone(c.env)));
+  // Proba arată datele reale ale clientului cu acest e-mail, dacă există (altfel fără telefon).
+  const me = await c.env.DB.prepare('SELECT name, phone FROM clients WHERE lower(email) = ? AND deleted_at IS NULL LIMIT 1').bind(to).first<{ name: string; phone: string }>();
+  const ok = await sendEmail(c.env, { kind: 'announce_test', recipient: to, campaignId: 'announce-test' }, SUBJECT, announceHtml(c.env, firstName(me?.name) || 'Florin', me?.phone ?? '', await salonPhone(c.env), to));
   return c.json({ ok });
 });
 
