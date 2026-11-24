@@ -61,6 +61,22 @@ ok(r.body.settings.enabled === false, 'switched itself off when the list was don
 r = await req('PUT', '/admin/announce', { enabled: true }, at);
 r = await req('POST', '/admin/announce/run', {}, at);
 ok(r.body.justSent === 0 && r.body.sent === pending0, 'running again sends nothing');
+// Mementourile programate (1 dec, 9 dec, 7 ian): pornite implicit, nu pleacă înainte de ziua lor.
+r = await req('GET', '/admin/announce', null, at);
+ok(r.body.waves?.length === 3 && r.body.waves.every((w) => w.enabled && !w.doneAt && w.sent === 0), 'three scheduled reminders, on, nothing sent');
+const early = r.body.waves.filter((w) => w.day > r.body.localDay);
+r = await req('POST', '/admin/announce/run', {}, at);
+r = await req('GET', '/admin/announce', null, at);
+ok(early.every((e) => r.body.waves.find((w) => w.id === e.id).sent === 0), 'reminders wait for their day');
+r = await req('GET', '/admin/announce/preview?wave=announce-dec1', null, at);
+ok(r.status === 200 && r.text.includes('La mulți ani') && r.text.includes('Trimite codul prin SMS') && r.text.includes('apps.apple.com'), 'preview 1 Dec: greeting, e-mail then SMS, store links');
+r = await req('GET', '/admin/announce/preview?wave=announce-jan7', null, at);
+ok(r.status === 200 && r.text.includes('11 ianuarie') && r.text.includes('11 January'), 'preview 7 Jan RO + EN');
+r = await req('POST', '/admin/announce/test', { email: 'florin@exemplu.ro', wave: 'announce-dec9' }, at);
+ok(r.status === 200 && r.body.ok, 'test e-mail for a reminder');
+r = await req('PUT', '/admin/announce', { waves: { 'announce-dec9': false } }, at);
+ok(r.body.settings.waves['announce-dec9'] === false && r.body.settings.waves['announce-dec1'] === true, 'one reminder switched off, others stay on');
+await req('PUT', '/admin/announce', { waves: { 'announce-dec9': true } }, at);
 await req('PUT', '/admin/announce', { enabled: false, dailyLimit: 80, providerDaily: 100, providerMonthly: 3000, reserve: 15 }, at);
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');
