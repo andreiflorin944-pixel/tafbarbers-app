@@ -20,6 +20,7 @@ import { health, recordServerError } from './serverErrors';
 import { barberlyPublic } from './barberly';
 import { captchaPublic, captchaSiteKey } from './captcha';
 import { unsubscribePublic } from './unsubscribe';
+import { giftWebPublic } from './giftWeb';
 
 const app = new Hono<AppEnv>();
 
@@ -50,6 +51,8 @@ app.get('/v1/health', async (c) => {
   const h = await health(c.env);
   return c.json(h, h.ok ? 200 : 503);
 });
+// Cardul cadou cumpărat direct de pe site (/cadou, /cadou/gata, POST /v1/gift-web).
+app.route('/', giftWebPublic);
 app.route('/v1', publicRoutes);
 // Verificarea „nu sunt robot” (pagina deschisă de aplicație înainte de cererea unui cod).
 app.route('/v1', captchaPublic);

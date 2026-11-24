@@ -2197,7 +2197,7 @@ adminRoutes.get('/link-stats', ownerOnly, async (c) => {
 
 // --- Carduri cadou ---
 
-const GIFT_SELECT = `SELECT g.*, b.name AS buyer_name, coalesce(nullif(a.name, ''), a.email) AS paid_by_name FROM gift_cards g
+const GIFT_SELECT = `SELECT g.*, coalesce(b.name, g.web_buyer_name || ' (site, ' || coalesce(g.web_buyer_phone, '') || ')') AS buyer_name, coalesce(nullif(a.name, ''), a.email) AS paid_by_name FROM gift_cards g
   LEFT JOIN clients b ON b.id = g.buyer_client_id LEFT JOIN admins a ON a.id = g.paid_by`;
 
 adminRoutes.get('/gift-cards', async (c) => {
