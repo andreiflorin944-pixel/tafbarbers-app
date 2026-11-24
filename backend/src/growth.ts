@@ -5,6 +5,7 @@ import { LANGS, langOf, localizeText } from './contentI18n';
 import { availability } from './availability';
 import { EMAIL_WORDS, langKey, publicBase, sendBrandEmail } from './emailLayout';
 import { getBusiness, getSetting, setSetting } from './db';
+import { sha256 } from './auth';
 import { HttpError, type Env } from './env';
 import { sendPush, sendSms } from './notify';
 import { giveBonus, parseReward, type Reward } from './referrals';
@@ -524,6 +525,8 @@ export type GiftCardRow = {
   created_at: string;
   pay_method?: string | null;
   buyer_name?: string | null;
+  web_buyer_phone?: string | null;
+  web_buyer_email?: string | null;
   paid_by_name?: string | null;
 };
 export const giftCard = (r: GiftCardRow, showCode: boolean) => {
@@ -591,7 +594,7 @@ export async function activateGiftCard(env: Env, id: string, adminId: string | n
     .run();
   if (!r.meta.changes) throw new HttpError(409, 'not_pending');
   const g = (await env.DB.prepare(
-    `SELECT g.*, b.name AS buyer_name FROM gift_cards g LEFT JOIN clients b ON b.id = g.buyer_client_id WHERE g.id = ?`,
+    `SELECT g.*, coalesce(b.name, g.web_buyer_name) AS buyer_name FROM gift_cards g LEFT JOIN clients b ON b.id = g.buyer_client_id WHERE g.id = ?`,
   )
     .bind(id)
     .first<GiftCardRow>())!;
@@ -633,8 +636,25 @@ export async function activateGiftCard(env: Env, id: string, adminId: string | n
     // Cardul cadou e o tranzacție, nu o reclamă: SMS-ul pleacă și fără acord pentru oferte.
     if (ch?.sms) await sendSms(env, { kind: 'gift_card', recipient: g.recipient_phone }, `${title}. ${body}`);
   }
+  // Cumpărat de pe site (fără cont): cumpărătorul primește voucherul pe e-mail, cu linkul de printat. E chitanța lui, deci pleacă mereu.
+  if (g.web_buyer_email && publicBase(env)) {
+    const shop = (await getBusiness(env)).name;
+    const subject = `Voucherul tău cadou ${shop} · ${g.amount_bani / 100} lei`;
+    await sendBrandEmail(env, { kind: 'gift_card', recipient: g.web_buyer_email }, subject, {
+      lang: 'ro',
+      title: 'Mulțumim! Voucherul e gata',
+      body: `Cardul cadou${g.recipient_name ? ` pentru ${g.recipient_name}` : ''} e plătit și activ. Îl poți printa sau trimite de la linkul de mai jos.${g.recipient_phone ? ' Cel care îl primește are codul și prin SMS.' : ''}`,
+      transactional: true,
+      gift: { amount: `${g.amount_bani / 100} lei`, code: g.code },
+      button: { label: 'Deschide voucherul', url: await voucherUrl(env, publicBase(env), g.id) },
+    }).catch((e) => console.error('gift web email', e));
+  }
   return g;
 }
+
+/** Cheia din linkul voucherului cumpărat de pe site: fără ea, nimeni nu vede codul unui card doar ghicind id-ul. */
+export const voucherKey = async (env: Env, id: string) => (await sha256(`gift-web:${env.SOCIAL_KEY ?? env.ADMIN_SETUP_KEY ?? ''}:${id}`)).slice(0, 24);
+export const voucherUrl = async (env: Env, base: string, id: string) => `${base}/cadou/gata?id=${encodeURIComponent(id)}&k=${await voucherKey(env, id)}`;
 
 /** Folosește (o parte din) card la plata unei tunsori. Întoarce suma scăzută, în bani. */
 export async function redeemGiftCard(env: Env, code: string, wantBani: number) {

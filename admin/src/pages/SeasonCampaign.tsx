@@ -286,6 +286,7 @@ export function SeasonCampaignPage({ me }: { me: Me }) {
           <Field label="Poza (lată, cam 2:1; fiecare temă are una gata făcută)">
             <ImagePicker value={v.imageUrl} onChange={(imageUrl) => set({ imageUrl })} />
           </Field>
+          {v.target === 'gift_card' ? <BuyLink /> : null}
           {v.target === 'gift_card' ? (
             <div className="muted small">
               Sumele cardurilor și textul SMS-ului către cel care îl primește se schimbă din <a href="#/notifications/card-cadou">Automatizări → Card cadou</a>.
@@ -324,6 +325,36 @@ function Preview({ v }: { v: Season }) {
       <p className="muted small" style={{ marginBottom: 0 }}>
         Același conținut apare ca primul banner la „Recomandarea TAF” pe Acasă și pe site{v.target === 'gift_card' ? ', iar sus pe ecranul cardului cadou' : ''}.
       </p>
+    </div>
+  );
+}
+
+/** Linkul de cumpărare directă (fără aplicație): pentru Instagram, Facebook, SMS sau un cod QR la salon. */
+function BuyLink() {
+  const url = `${location.protocol}//${location.host.replace(/^panou\./, 'app.')}/cadou`;
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="card" style={{ background: 'var(--bg)', margin: 0 }}>
+      <b>Link de cumpărare directă, fără aplicație</b>
+      <div className="muted small" style={{ margin: '4px 0 8px' }}>
+        Cine îl deschide vede pachetul, plătește cu cardul și primește pe loc voucherul de printat. Pune-l în bio pe Instagram, în story, pe Facebook, într-un SMS
+        sau fă-i un cod QR din <a href="#/qr">Coduri QR</a>.
+      </div>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <input readOnly value={url} style={{ flex: '1 1 220px' }} onFocus={(e) => e.target.select()} />
+        <button
+          type="button"
+          onClick={() => {
+            navigator.clipboard?.writeText(url);
+            setCopied(true);
+          }}
+        >
+          {copied ? 'Copiat' : 'Copiază linkul'}
+        </button>
+        <a className="btn ghost" href={url} target="_blank" rel="noreferrer">
+          Deschide
+        </a>
+      </div>
     </div>
   );
 }

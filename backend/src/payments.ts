@@ -42,7 +42,7 @@ const stripePost = (env: Env, path: string, form: URLSearchParams, idempotencyKe
 /** Deschide o sesiune de plată și întoarce adresa paginii Stripe. `base` = adresa publică a serverului (pentru întoarcere). */
 export async function createCheckout(
   env: Env,
-  p: { kind: Kind; ref: string; amountBani: number; title: string; base: string; clientId: string; email?: string | null; lang?: string | null; meta?: Record<string, string> },
+  p: { kind: Kind; ref: string; amountBani: number; title: string; base: string; clientId: string; email?: string | null; lang?: string | null; meta?: Record<string, string>; successUrl?: string; cancelUrl?: string },
 ) {
   if (!onlinePaymentsOn(env)) throw new HttpError(409, 'payments_off');
   if (!Number.isInteger(p.amountBani) || p.amountBani < MIN_BANI) throw new HttpError(409, 'amount_too_small');
@@ -58,8 +58,9 @@ export async function createCheckout(
     'line_items[0][price_data][unit_amount]': String(p.amountBani),
     'line_items[0][price_data][product_data][name]': p.title.slice(0, 250),
     client_reference_id: p.ref,
-    success_url: back('gata'),
-    cancel_url: back('anulata'),
+    // Cardul cadou cumpărat de pe site se întoarce la voucher (fără aplicație); restul, la pagina care deschide aplicația.
+    success_url: p.successUrl ?? back('gata'),
+    cancel_url: p.cancelUrl ?? back('anulata'),
     // Stripe cere cel puțin 30 de minute până la expirare (socotite la el): lăsăm 35, ca întârzierea rețelei să nu strice cererea.
     // Un card neplătit rămâne „de plătit” și se poate încerca din nou.
     expires_at: String(Math.floor(Date.now() / 1000) + 35 * 60),
