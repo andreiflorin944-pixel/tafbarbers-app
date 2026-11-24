@@ -414,6 +414,71 @@ announceAdmin.put('/announce', async (c) => {
   return c.json(await view(c.env));
 });
 
+/**
+ * Urmărirea trecerii: câți clienți și-au activat contul în aplicație (prima intrare = terms_accepted_at),
+ * câți dintre cei care au primit e-mailurile s-au activat după, activările pe zile și de unde vin programările noi.
+ */
+export async function activation(env: Env, now = new Date()) {
+  const tz = env.TIMEZONE || 'Europe/Bucharest';
+  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const off = ((((localMinutes(tz, now) - utcMin) % 1440) + 2160) % 1440) - 720; // minute față de UTC (+120 iarna)
+  const mod = `${off >= 0 ? '+' : ''}${off} minutes`;
+  const since14 = iso(new Date(now.getTime() - 14 * 86400_000));
+  const since7 = iso(new Date(now.getTime() - 7 * 86400_000));
+  const sentWhere = `m.channel = 'email' AND m.status = 'sent' AND m.campaign_id LIKE 'announce-%' AND m.campaign_id != 'announce-test'`;
+  const tot = await env.DB.prepare(
+    `SELECT count(*) AS clients,
+       sum(CASE WHEN terms_accepted_at IS NOT NULL THEN 1 ELSE 0 END) AS active,
+       sum(CASE WHEN terms_accepted_at >= ?1 THEN 1 ELSE 0 END) AS week
+     FROM clients WHERE deleted_at IS NULL`,
+  )
+    .bind(since7)
+    .first<{ clients: number; active: number | null; week: number | null }>();
+  const mail = await env.DB.prepare(
+    `SELECT (SELECT count(DISTINCT m.recipient) FROM message_log m WHERE ${sentWhere}) AS reached,
+       (SELECT count(*) FROM clients c WHERE c.deleted_at IS NULL AND c.terms_accepted_at IS NOT NULL AND c.email IS NOT NULL
+          AND EXISTS (SELECT 1 FROM message_log m WHERE ${sentWhere} AND m.recipient = lower(c.email) AND m.created_at <= c.terms_accepted_at)) AS after`,
+  ).first<{ reached: number; after: number }>();
+  const days = await env.DB.prepare(
+    `SELECT date(terms_accepted_at, ?1) AS day, count(*) AS n FROM clients WHERE deleted_at IS NULL AND terms_accepted_at >= ?2 GROUP BY day ORDER BY day`,
+  )
+    .bind(mod, since14)
+    .all<{ day: string; n: number }>();
+  const byDay = Object.fromEntries(days.results.map((r) => [r.day, r.n]));
+  const today = localDay(tz, now);
+  const perDay = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(`${today}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 13 + i);
+    const day = d.toISOString().slice(0, 10);
+    return { day, n: byDay[day] ?? 0 };
+  });
+  const bk = async (since: string) => {
+    const r = await env.DB.prepare(
+      `SELECT sum(CASE WHEN barberly_ref IS NULL AND source IN ('app','web') THEN 1 ELSE 0 END) AS ours,
+         sum(CASE WHEN barberly_ref IS NOT NULL THEN 1 ELSE 0 END) AS barberly,
+         sum(CASE WHEN barberly_ref IS NULL AND source = 'admin' THEN 1 ELSE 0 END) AS panel
+       FROM bookings WHERE created_at >= ?`,
+    )
+      .bind(since)
+      .first<{ ours: number | null; barberly: number | null; panel: number | null }>();
+    const ours = r?.ours ?? 0;
+    const barberly = r?.barberly ?? 0;
+    return { ours, barberly, panel: r?.panel ?? 0, oursPct: ours + barberly ? Math.round((100 * ours) / (ours + barberly)) : 0 };
+  };
+  return {
+    clients: tot?.clients ?? 0,
+    active: tot?.active ?? 0,
+    activeWeek: tot?.week ?? 0,
+    reached: mail?.reached ?? 0,
+    activatedAfterEmail: mail?.after ?? 0,
+    perDay,
+    bookings7: await bk(since7),
+    bookings14: await bk(since14),
+  };
+}
+
+announceAdmin.get('/announce/activation', async (c) => c.json(await activation(c.env)));
+
 /** Previzualizare în panou (HTML-ul exact, cu date de exemplu). `?wave=` alege valul. */
 announceAdmin.get('/announce/preview', async (c) =>
   c.html(waveHtml(c.env, waveOf(c.req.query('wave')), { name: 'Andrei', phone: '+40712345678', salonPhone: await salonPhone(c.env), email: 'andrei@exemplu.ro' })),

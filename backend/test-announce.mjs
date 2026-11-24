@@ -83,5 +83,8 @@ ok(r.body.settings.waves['announce-dec9'] === false && r.body.settings.waves['an
 await req('PUT', '/admin/announce', { waves: { 'announce-dec9': true } }, at);
 await req('PUT', '/admin/announce', { enabled: false, dailyLimit: 80, providerDaily: 100, providerMonthly: 3000, reserve: 15 }, at);
 
+// Urmărirea trecerii: conturi activate și de unde vin programările.
+r = await req('GET', '/admin/announce/activation', null, at);
+ok(r.status === 200 && r.body.perDay.length === 14 && r.body.reached >= pending0 && r.body.clients >= r.body.active && typeof r.body.bookings7.oursPct === 'number', `activation stats ${JSON.stringify({ ...r.body, perDay: undefined })}`);
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');
 process.exit(fails ? 1 : 0);

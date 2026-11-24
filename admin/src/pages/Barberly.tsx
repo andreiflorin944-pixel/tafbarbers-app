@@ -154,6 +154,7 @@ export function BarberlyPage() {
           </div>
 
           <AnnounceCard />
+          <ActivationCard />
 
           <BarberlyPushCard />
 
@@ -695,6 +696,89 @@ export function AnnounceCard() {
               <iframe title="Previzualizare" srcDoc={preview} style={{ width: '100%', height: 640, border: '1px solid #333', borderRadius: 8, marginTop: 8, background: '#0e0e10' }} />
             </div>
           ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+type Activation = {
+  clients: number;
+  active: number;
+  activeWeek: number;
+  reached: number;
+  activatedAfterEmail: number;
+  perDay: Array<{ day: string; n: number }>;
+  bookings7: { ours: number; barberly: number; panel: number; oursPct: number };
+  bookings14: { ours: number; barberly: number; panel: number; oursPct: number };
+};
+
+/** Cum merge trecerea: conturi activate în aplicație și de unde vin programările noi. */
+export function ActivationCard() {
+  const data = useLoad(() => api<Activation>('GET', '/admin/announce/activation'));
+  const v = data.data;
+  const pct = (a: number, b: number) => (b ? Math.round((100 * a) / b) : 0);
+  const max = v ? Math.max(1, ...v.perDay.map((d) => d.n)) : 1;
+  const dayLabel = (d: string) => `${+d.slice(8, 10)}.${d.slice(5, 7)}`;
+  const stat = (big: string | number, small: string) => (
+    <div style={{ flex: '1 1 150px', padding: 12, border: '1px solid var(--border, #ddd)', borderRadius: 10 }}>
+      <div style={{ fontSize: 26, fontWeight: 700 }}>{big}</div>
+      <div className="muted small">{small}</div>
+    </div>
+  );
+  return (
+    <div className="card" style={{ marginBottom: 16, maxWidth: 760 }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ margin: 0 }}>Câți clienți au trecut în aplicație</h3>
+        <button className="ghost small" onClick={() => data.reload()}>
+          Actualizează
+        </button>
+      </div>
+      <p className="muted small">Un cont e „activat” când clientul intră prima dată în aplicație (sau pe site) cu contul lui.</p>
+      {!v ? (
+        <Loading error={data.error} />
+      ) : (
+        <>
+          <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+            {stat(v.active, `conturi activate din ${v.clients} clienți (${pct(v.active, v.clients)}%)`)}
+            {stat(v.activeWeek, 'activate în ultimele 7 zile')}
+            {stat(v.activatedAfterEmail, `s-au activat după e-mail, din ${v.reached} care l-au primit (${pct(v.activatedAfterEmail, v.reached)}%)`)}
+          </div>
+          <h4 style={{ marginBottom: 6 }}>Conturi activate pe zile (ultimele 14 zile)</h4>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 120 }}>
+            {v.perDay.map((d) => (
+              <div key={d.day} style={{ flex: 1, textAlign: 'center' }} title={`${dayLabel(d.day)}: ${d.n}`}>
+                <div className="small">{d.n || ''}</div>
+                <div style={{ height: Math.round((90 * d.n) / max), minHeight: d.n ? 3 : 1, background: '#c9a24b', borderRadius: 3 }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {v.perDay.map((d) => (
+              <div key={d.day} className="muted" style={{ flex: 1, textAlign: 'center', fontSize: 10 }}>
+                {dayLabel(d.day)}
+              </div>
+            ))}
+          </div>
+          <h4 style={{ marginBottom: 6 }}>Programări noi: aplicație și site față de Barberly</h4>
+          {[
+            ['Ultimele 7 zile', v.bookings7],
+            ['Ultimele 14 zile', v.bookings14],
+          ].map(([label, b]) => {
+            const x = b as Activation['bookings7'];
+            return (
+              <div key={label as string} style={{ marginBottom: 8 }}>
+                <div className="small">
+                  <b>{label as string}:</b> {x.ours} din aplicație și site · {x.barberly} din Barberly · <b>{x.oursPct}% la noi</b>
+                  {x.panel ? <span className="muted"> (plus {x.panel} făcute de voi în panou)</span> : null}
+                </div>
+                <div style={{ height: 10, background: '#e5e2da', borderRadius: 5, overflow: 'hidden', marginTop: 4 }}>
+                  <div style={{ width: `${x.oursPct}%`, height: '100%', background: '#c9a24b' }} />
+                </div>
+              </div>
+            );
+          })}
+          <p className="muted small">Ținta pentru oprirea Barberly pe 11 ianuarie: cel puțin 70% din programările noi la noi, două săptămâni la rând.</p>
         </>
       )}
     </div>
