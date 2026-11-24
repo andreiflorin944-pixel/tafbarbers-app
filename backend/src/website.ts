@@ -338,10 +338,133 @@ ${head}
 <script>window.SITE=${json};</script><script>${SITE_JS}</script>${captcha ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>' : ''}</body></html>`;
 }
 
-/** robots.txt: pe site (app.… / domeniul propriu) Google poate citi pagina; panoul și API-ul nu se indexează. */
+/** Roboții care citesc site-uri pentru asistenții AI (ChatGPT, Claude, Perplexity, Gemini, Copilot etc.): îi primim cu numele, ca să știe sigur că au voie. */
+const AI_BOTS = [
+  'GPTBot', 'OAI-SearchBot', 'ChatGPT-User', 'ClaudeBot', 'Claude-SearchBot', 'Claude-User', 'anthropic-ai', 'PerplexityBot', 'Perplexity-User',
+  'Google-Extended', 'Googlebot', 'Bingbot', 'Applebot', 'Applebot-Extended', 'Amazonbot', 'meta-externalagent', 'FacebookBot', 'DuckAssistBot',
+  'MistralAI-User', 'cohere-ai', 'YouBot', 'CCBot',
+];
+// Paginile private (panou, plăți, linkuri personale) rămân închise pentru toți roboții.
+const PRIVATE_PATHS = ['/v1/admin/', '/b/', '/plata/', '/r/', '/q/', '/w/', '/sterge-cont', '/site', '/dezabonare'];
+
+/** robots.txt: pe site (tafbarbers.ro / app.…) Google și roboții AI pot citi pagina și llms.txt; panoul și API-ul nu se indexează. */
 export async function robotsTxt(env: Env, site: boolean) {
   if (!site) return 'User-agent: *\nDisallow: /\n';
-  return `User-agent: *\nAllow: /\nDisallow: /v1/admin/\nDisallow: /b/\nDisallow: /plata/\nDisallow: /r/\nDisallow: /q/\nDisallow: /w/\nDisallow: /sterge-cont\nDisallow: /site\n\nSitemap: ${siteOrigin(env, await getWebsite(env))}/sitemap.xml\n`;
+  const origin = siteOrigin(env, await getWebsite(env));
+  const rules = ['Allow: /', ...PRIVATE_PATHS.map((x) => `Disallow: ${x}`)].join('\n');
+  // Un robot numit mai jos citește doar grupul lui, de aceea fiecare grup repetă aceleași reguli.
+  return [
+    `# Rezumat pentru asistenții AI: ${origin}/llms.txt`,
+    `User-agent: *\n${rules}`,
+    `${AI_BOTS.map((b) => `User-agent: ${b}`).join('\n')}\n${rules}`,
+    `Sitemap: ${origin}/sitemap.xml`,
+  ].join('\n\n') + '\n';
+}
+
+const lei = (bani: number) => `${Number.isInteger(bani / 100) ? bani / 100 : (bani / 100).toFixed(2)} lei`;
+const md = (s: string) => s.replace(/\s+/g, ' ').trim();
+const RO_DAYS = ['Duminică', 'Luni', 'Marți', 'Miercuri', 'Joi', 'Vineri', 'Sâmbătă'];
+
+/**
+ * llms.txt (llmstxt.org): pagina în Markdown pe care o citesc asistenții AI (ChatGPT, Claude, Perplexity, Gemini).
+ * Totul vine din panou la fiecare cerere: datele salonului, programul, serviciile cu prețuri și durate, frizerii
+ * (cu prețurile lor proprii), linkurile. Ce schimbi în panou apare singur aici.
+ */
+export async function llmsTxt(env: Env) {
+  const w = await getWebsite(env);
+  const origin = siteOrigin(env, w);
+  const [biz, svc, barbers, own, hours] = await Promise.all([
+    getBusiness(env),
+    env.DB.prepare('SELECT id, name, description, duration_min, price_bani, addon FROM services WHERE active = 1 AND members_only = 0 ORDER BY addon, sort, name LIMIT 60').all<{
+      id: string;
+      name: string;
+      description: string;
+      duration_min: number;
+      price_bani: number;
+      addon: number;
+    }>(),
+    env.DB.prepare('SELECT id, name, nickname, role, bio FROM barbers WHERE active = 1 ORDER BY sort, name').all<{ id: string; name: string; nickname: string; role: string; bio: string }>(),
+    env.DB.prepare('SELECT bs.barber_id, bs.service_id, bs.price_bani, bs.duration_min FROM barber_services bs JOIN barbers b ON b.id = bs.barber_id WHERE b.active = 1').all<{
+      barber_id: string;
+      service_id: string;
+      price_bani: number | null;
+      duration_min: number | null;
+    }>(),
+    env.DB.prepare(
+      `SELECT h.weekday, MIN(h.start_min) AS s, MAX(h.end_min) AS e FROM working_hours h JOIN barbers b ON b.id = h.barber_id WHERE b.active = 1 GROUP BY h.weekday`,
+    ).all<{ weekday: number; s: number; e: number }>(),
+  ]);
+  const name = md(biz.name) || 'Frizerie';
+  const about = md(biz.description || biz.tagline || '') || SEO_TEXT.ro.desc(name, biz.address.split(',').slice(-1)[0]?.trim() ?? '');
+  const L: string[] = [`# ${name}`, '', `> ${about}`, ''];
+  L.push(
+    `${name} este o frizerie (barbershop) pentru bărbați${biz.address ? ` în ${md(biz.address)}` : ''}. Programarea se face online, pe site sau în aplicația pentru iPhone și Android: clientul alege serviciul, frizerul și ora.`,
+    '',
+    `English: ${name} is a men's barbershop${biz.address ? ` in ${md(biz.address)}, Romania` : ' in Romania'}. Book online at ${origin}/ or in the iOS / Android app. Prices are in Romanian lei (RON).`,
+    '',
+    '## Date de contact',
+    '',
+  );
+  if (biz.address) L.push(`- Adresă: ${md(biz.address)}`);
+  if (biz.phone) L.push(`- Telefon: ${md(biz.phone)}`);
+  L.push(`- Programare online: ${origin}/`);
+  const social: Array<[string, string | undefined, (h: string) => string]> = [
+    ['Instagram', biz.instagram, (h) => `https://www.instagram.com/${h.replace(/^@/, '')}`],
+    ['Facebook', biz.facebook, (h) => `https://www.facebook.com/${h}`],
+    ['TikTok', biz.tiktok, (h) => `https://www.tiktok.com/@${h.replace(/^@/, '')}`],
+  ];
+  for (const [label, v, url] of social) if (v) L.push(`- ${label}: ${/^https?:/.test(v) ? v : url(v)}`);
+  const open = hours.results.sort((x, y) => ((x.weekday + 6) % 7) - ((y.weekday + 6) % 7));
+  if (open.length) {
+    L.push('', '## Program', '');
+    for (let i = 1; i <= 7; i++) {
+      const d = i % 7;
+      const h = open.find((x) => x.weekday === d);
+      L.push(`- ${RO_DAYS[d]}: ${h ? `${hm(h.s)}–${hm(h.e)}` : 'închis'}`);
+    }
+    L.push('', 'Orele libere exacte se văd la programarea online.');
+  }
+  const main = svc.results.filter((x) => !x.addon);
+  const extras = svc.results.filter((x) => x.addon);
+  const names = new Map(barbers.results.map((b) => [b.id, b.name]));
+  const service = (x: (typeof svc.results)[number]) => {
+    const parts = [lei(x.price_bani)];
+    if (x.duration_min > 0) parts.push(`${x.duration_min} min`);
+    let line = `- **${md(x.name)}**: ${parts.join(', ')}`;
+    if (x.description) line += `. ${md(x.description)}`;
+    // Frizerii cu preț sau durată proprie pentru serviciul acesta.
+    const diff = own.results
+      .filter((o) => o.service_id === x.id && names.has(o.barber_id) && ((o.price_bani != null && o.price_bani !== x.price_bani) || (!x.addon && o.duration_min != null && o.duration_min !== x.duration_min)))
+      .map((o) => `${names.get(o.barber_id)}: ${[lei(o.price_bani ?? x.price_bani), ...(x.addon ? [] : [`${o.duration_min ?? x.duration_min} min`])].join(', ')}`);
+    if (diff.length) line += ` (la ${diff.join('; ')})`;
+    return line;
+  };
+  if (main.length) L.push('', '## Servicii și prețuri', '', ...main.map(service));
+  if (extras.length) L.push('', '## Extra (se adaugă la un serviciu)', '', ...extras.map(service));
+  if (barbers.results.length) {
+    L.push('', '## Frizeri', '');
+    for (const b of barbers.results) L.push(`- **${md(b.name)}**${b.nickname ? ` („${md(b.nickname)}”)` : ''}${b.role ? `, ${md(b.role)}` : ''}${b.bio ? `: ${md(b.bio)}` : ''}`);
+  }
+  L.push(
+    '',
+    '## Cum se face o programare',
+    '',
+    `1. Deschide ${origin}/ sau aplicația ${name}.`,
+    '2. Alege serviciul, apoi frizerul (sau „oricine e liber”).',
+    '3. Alege ziua și ora liberă.',
+    '4. Confirmă cu numărul de telefon (primești un cod).',
+    '',
+    '## Linkuri',
+    '',
+    `- [Programare online](${origin}/): site-ul cu programare, servicii, frizeri și contact`,
+    `- [Aplicația pentru iPhone (App Store)](${STORE_LINKS.appStore})`,
+    `- [Aplicația pentru Android (Google Play)](${STORE_LINKS.play})`,
+    `- [Politica de confidențialitate](${origin}/legal/privacy)`,
+    `- [Termeni și condiții](${origin}/legal/terms)`,
+    ...w.links.filter((l) => /^https:/.test(l.url)).map((l) => `- [${md(l.label)}](${l.url})`),
+    '',
+  );
+  return L.join('\n');
 }
 
 /** sitemap.xml: pagina principală în fiecare limbă și regulamentele. */
@@ -637,6 +760,11 @@ websitePublic.get('/site', async (c) =>
 websitePublic.get('/robots.txt', async (c) => {
   const u = new URL(c.req.url);
   return c.text(await robotsTxt(c.env, await isSiteHost(c.env, u.host)), 200, { 'cache-control': 'public, max-age=3600' });
+});
+websitePublic.get('/llms.txt', async (c) => {
+  const u = new URL(c.req.url);
+  if (!(await isSiteHost(c.env, u.host))) return c.text('Not found', 404);
+  return c.body(await llmsTxt(c.env), 200, { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'public, max-age=3600' });
 });
 websitePublic.get('/sitemap.xml', async (c) => {
   const u = new URL(c.req.url);
