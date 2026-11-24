@@ -185,6 +185,8 @@ export const staffApi = {
   deleteBlock: (t: string, id: string) => call('DELETE', `/admin/blocks/${encodeURIComponent(id)}`, t),
   barbers: (t: string) => call<StaffBarber[]>('GET', '/admin/barbers', t),
   clients: (t: string, q: string) => call<StaffClient[]>('GET', `/admin/clients?q=${encodeURIComponent(q)}`, t),
+  /** Client nou din „Programare nouă” (butonul „+”). Nu i se trimite niciun mesaj. */
+  addClient: (t: string, body: { name: string; phone: string }) => call<{ id: string }>('POST', '/admin/clients', t, body),
   client: (t: string, id: string) => call<StaffClient>('GET', `/admin/clients/${encodeURIComponent(id)}`, t),
   saveClient: (t: string, id: string, body: { name?: string; notes?: string }) => call<StaffClient>('PATCH', `/admin/clients/${encodeURIComponent(id)}`, t, body),
   /** Poză despre client, vizibilă doar echipei. `uri` = poza locală deja micșorată. */

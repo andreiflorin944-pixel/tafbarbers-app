@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, BLOCK_KINDS, blockKind, errorText, type Barber, type BlockKind, type BlockOccurrence, type Booking, type Client, type Location, type Me, type Service, type Slot, type TimeOff } from '../api';
+import { api, ApiError, BLOCK_KINDS, blockKind, errorText, type Barber, type BlockKind, type BlockOccurrence, type Booking, type Client, type Location, type Me, type Service, type Slot, type TimeOff } from '../api';
 import { Field, Loading, Modal, TopBar, useAction, useLoad } from '../ui';
 import { BOOKINGS_CHANGED } from '../Requests';
 import { addDays, date, dayOf, hm, lei, localToIso, longDate, minutesOf, STATUS, time, today } from '../util';
@@ -707,8 +707,6 @@ function NewBooking({
   onClose: () => void;
   onDone: (day: string) => void;
 }) {
-  const [phone, setPhone] = useState('');
-  const [name, setName] = useState('');
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   // Servicii în plus la aceeași programare (ex. Vopsit barbă): timpul și prețul se adună.
   const [extraIds, setExtraIds] = useState<string[]>([]);
@@ -740,27 +738,64 @@ function NewBooking({
   const [force, setForce] = useState(!!initial.outside);
   const [forceTime, setForceTime] = useState(initial.time ?? '10:00');
   const [notify, setNotify] = useState(true);
-  // Clientul ales din bază (căutat după telefon sau nume); fără el se face client nou din telefon + nume.
+  // O singură rubrică de căutare (nume sau număr). Clientul ales din bază, sau unul nou adăugat cu „+”.
+  const [q, setQ] = useState('');
   const [picked, setPicked] = useState<(Client & { visits?: number }) | null>(null);
-  const [hits, setHits] = useState<(Client & { visits?: number })[]>([]);
-  const [searchIn, setSearchIn] = useState<'phone' | 'name' | null>(null);
+  // Client nou care se creează odată cu programarea (când contul nu se poate face separat, fără dreptul de date de contact).
+  const [staged, setStaged] = useState<{ name: string; phone: string } | null>(null);
+  const [hits, setHits] = useState<(Client & { visits?: number })[] | null>(null);
+  const [adding, setAdding] = useState<{ name: string; phone: string } | null>(null);
+  const addAct = useAction();
   const { busy, error, run } = useAction();
+  const canSearch = me.permissions.clients;
 
-  const term = searchIn === 'phone' ? phone : searchIn === 'name' ? name : '';
   useEffect(() => {
-    const q = term.trim();
-    if (!me.permissions.clients || picked || q.replace(/\s/g, '').length < 3) {
-      setHits([]);
+    const t0 = q.trim();
+    if (!canSearch || picked || staged || adding || t0.replace(/\s/g, '').length < 3) {
+      setHits(null);
       return;
     }
     const t = setTimeout(() => {
-      api<(Client & { visits?: number })[]>('GET', `/admin/clients?q=${encodeURIComponent(q)}`).then(
+      api<(Client & { visits?: number })[]>('GET', `/admin/clients?q=${encodeURIComponent(t0)}`).then(
         (r) => setHits(r.slice(0, 8)),
         () => setHits([]),
       );
     }, 250);
     return () => clearTimeout(t);
-  }, [term, picked, me.permissions.clients]);
+  }, [q, picked, staged, adding, canSearch]);
+
+  // „+”: ce ai scris deja în căutare trece în rubrica potrivită (cifre → telefon, litere → nume).
+  const openAdd = () => {
+    const t0 = q.trim();
+    const isPhone = /^[\d+\s().-]+$/.test(t0) && t0.replace(/\D/g, '').length >= 3;
+    addAct.setError(null);
+    setAdding({ name: isPhone ? '' : t0, phone: isPhone ? t0 : '' });
+    setHits(null);
+  };
+  const saveNew = () =>
+    addAct.run(async () => {
+      if (!adding) return;
+      const nm = adding.name.trim();
+      const ph = adding.phone.trim();
+      if (me.permissions.clients && me.permissions.contacts) {
+        try {
+          const r = await api<{ id: string }>('POST', '/admin/clients', { name: nm, phone: ph });
+          setPicked({ id: r.id, name: nm, phone: ph, visits: 0 } as Client & { visits?: number });
+        } catch (e) {
+          if (!(e instanceof ApiError) || e.code !== 'client_exists') throw e;
+          // Numărul e deja în bază: alegem direct clientul existent.
+          const found = await api<(Client & { visits?: number })[]>('GET', `/admin/clients?q=${encodeURIComponent(ph)}`);
+          if (!found[0]) throw e;
+          setPicked(found[0]);
+        }
+      } else {
+        // Fără dreptul de date de contact, contul se face odată cu programarea (același lucru, la „Salvează”).
+        if (ph.replace(/\D/g, '').length < 9) throw new ApiError('invalid_phone', 400);
+        setStaged({ name: nm, phone: ph });
+      }
+      setAdding(null);
+      setQ('');
+    });
 
   useEffect(() => {
     if (!serviceId || !barberId) return;
@@ -781,7 +816,7 @@ function NewBooking({
   const submit = () =>
     run(async () => {
       await api('POST', '/admin/bookings', {
-        ...(picked ? { clientId: picked.id } : { phone, name }),
+        ...(picked ? { clientId: picked.id } : { phone: staged?.phone ?? '', name: staged?.name ?? '' }),
         serviceId,
         extraServiceIds: [...extraIds, ...addonIds],
         barberId,
@@ -792,59 +827,96 @@ function NewBooking({
       onDone(day);
     });
 
-  const ok = (picked || phone.trim().length >= 9) && serviceId && barberId && (force ? !!forceTime : !!start);
+  const ok = (picked || staged) && serviceId && barberId && (force ? !!forceTime : !!start);
 
   return (
     <Modal title="Programare nouă" onClose={onClose}>
       <div className="grid">
-        {picked ? (
+        {picked || staged ? (
           <div className="card row" style={{ background: 'var(--card-alt)', justifyContent: 'space-between', padding: '10px 14px' }}>
             <div>
-              <strong>{picked.name || 'Fără nume'}</strong>
+              <strong>{(picked ?? staged)?.name || 'Fără nume'}</strong>
               <div className="muted small">
-                {[picked.phone, picked.visits ? `${picked.visits} ${picked.visits === 1 ? 'vizită' : 'vizite'}` : 'nicio vizită încă'].filter(Boolean).join(' · ')}
+                {picked
+                  ? [picked.phone, picked.visits ? `${picked.visits} ${picked.visits === 1 ? 'vizită' : 'vizite'}` : 'client nou, nicio vizită încă'].filter(Boolean).join(' · ')
+                  : `${staged?.phone} · client nou (contul se face când salvezi programarea)`}
               </div>
             </div>
-            <button type="button" className="ghost sm" onClick={() => setPicked(null)}>
+            <button
+              type="button"
+              className="ghost sm"
+              onClick={() => {
+                setPicked(null);
+                setStaged(null);
+              }}
+            >
               Alt client
             </button>
           </div>
-        ) : (
-          <div style={{ position: 'relative' }}>
+        ) : adding ? (
+          <div className="card grid" style={{ background: 'var(--card-alt)', padding: '12px 14px' }}>
+            <strong>Client nou</strong>
             <div className="grid two">
-              <Field label="Telefon client">
-                <input
-                  value={phone}
-                  onChange={(e) => {
-                    setPhone(e.target.value);
-                    setSearchIn('phone');
-                  }}
-                  placeholder="07xx xxx xxx"
-                  autoFocus
-                />
+              <Field label="Nume">
+                <input value={adding.name} onChange={(e) => setAdding({ ...adding, name: e.target.value })} autoFocus={!adding.name} />
               </Field>
-              <Field label={me.permissions.clients ? 'Nume (caută sau client nou)' : 'Nume (pentru client nou)'}>
-                <input
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    setSearchIn('name');
-                  }}
-                />
+              <Field label="Telefon">
+                <input value={adding.phone} onChange={(e) => setAdding({ ...adding, phone: e.target.value })} placeholder="07xx xxx xxx" autoFocus={!!adding.name} />
               </Field>
             </div>
-            {hits.length ? (
+            <p className="muted small" style={{ margin: 0 }}>
+              Clientul nu primește niciun mesaj când îi faci contul.
+            </p>
+            {addAct.error ? <div className="err">{addAct.error}</div> : null}
+            <div className="row" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="ghost sm" onClick={() => setAdding(null)}>
+                Renunță
+              </button>
+              <button type="button" className="sm" disabled={addAct.busy || !adding.name.trim() || adding.phone.replace(/\D/g, '').length < 9} onClick={saveNew}>
+                Adaugă clientul
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ position: 'relative' }}>
+            <Field label="Client">
+              <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
+                {canSearch ? (
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Caută după nume sau număr de telefon"
+                    autoFocus
+                    style={{ flex: 1 }}
+                  />
+                ) : (
+                  <span className="muted small" style={{ flex: 1 }}>
+                    Apasă „+” ca să adaugi clientul.
+                  </span>
+                )}
+                <button type="button" className="cl-add" onClick={openAdd} title="Client nou" aria-label="Client nou">
+                  +
+                </button>
+              </div>
+            </Field>
+            {hits ? (
               <div className="suggest">
-                <div className="muted small" style={{ padding: '6px 12px' }}>
-                  Clienți găsiți în bază:
-                </div>
+                {hits.length ? (
+                  <div className="muted small" style={{ padding: '6px 12px' }}>
+                    Clienți găsiți în bază:
+                  </div>
+                ) : (
+                  <div className="muted small" style={{ padding: '6px 12px' }}>
+                    Niciun client găsit.
+                  </div>
+                )}
                 {hits.map((h) => (
                   <button
                     key={h.id}
                     type="button"
                     onClick={() => {
                       setPicked(h);
-                      setHits([]);
+                      setHits(null);
                     }}
                   >
                     <strong>{h.name || 'Fără nume'}</strong>
@@ -853,6 +925,10 @@ function NewBooking({
                     </span>
                   </button>
                 ))}
+                <button type="button" onClick={openAdd}>
+                  <strong>+ Client nou „{q.trim()}”</strong>
+                  <span className="muted small">îi faci cont acum</span>
+                </button>
               </div>
             ) : null}
           </div>
