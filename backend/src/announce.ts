@@ -1,5 +1,5 @@
 import { Hono, type Context, type Next } from 'hono';
-import { getSetting, setSetting, tryLock, unlock } from './db';
+import { getBusiness, getSetting, setSetting, tryLock, unlock } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
 import { sendEmail } from './notify';
 import { STORE_LINKS } from './stores';
@@ -37,7 +37,7 @@ const base = (env: Env) => (env.PUBLIC_URL || 'https://app.tafbarbers.ro').repla
 export const SUBJECT = 'TAF Barbers are aplicație nouă / TAF Barbers has a new app';
 
 /** E-mailul, în română și engleză. `name` = prenumele clientului (poate lipsi). */
-export function announceHtml(env: Env, name: string, phone: string) {
+export function announceHtml(env: Env, name: string, phone: string, salonPhone = '') {
   const b = base(env);
   const hi = name ? `Salut, ${esc(name)},` : 'Salut,';
   const hiEn = name ? `Hi ${esc(name)},` : 'Hi,';
@@ -83,9 +83,12 @@ ${ul(['Open the app and tap <b>“Sign in”</b>.', 'Tap <b>“No password? Sign
 ${search(false)}
 </td></tr>
 <tr><td align="center" style="padding:0 24px 22px">${btn(STORE_LINKS.appStore, 'App Store', false)}${btn(STORE_LINKS.play, 'Google Play', false)}${btn(`${b}/descarca`, 'Any phone', false)}</td></tr>
-<tr><td align="center" style="padding:16px 24px 24px;font-size:12px;line-height:1.6;color:#8a867d;border-top:1px solid #33322f">TAF Barbers · Iași · 0752 705 776<br>Primești acest mesaj o singură dată, pentru că ești client TAF Barbers. / You get this message once, because you are a TAF Barbers client.</td></tr>
+<tr><td align="center" style="padding:16px 24px 24px;font-size:12px;line-height:1.6;color:#8a867d;border-top:1px solid #33322f">TAF Barbers · Iași${salonPhone ? ` · ${esc(salonPhone)}` : ''}<br>Primești acest mesaj o singură dată, pentru că ești client TAF Barbers. / You get this message once, because you are a TAF Barbers client.</td></tr>
 </table></td></tr></table></body></html>`;
 }
+
+/** Telefonul salonului din panou (Setări → Salonul), ca în celelalte e-mailuri. */
+const salonPhone = async (env: Env) => ((await getBusiness(env).catch(() => null)) as { phone?: string } | null)?.phone?.trim() ?? '';
 
 const firstName = (n: string | null | undefined) => (n ?? '').trim().split(/\s+/)[0]?.slice(0, 40) ?? '';
 
@@ -133,8 +136,9 @@ export async function runAnnounce(env: Env, now = new Date(), opts: { force?: bo
       .bind(n)
       .all<{ email: string; name: string; phone: string }>();
     let sent = 0;
+    const sp = await salonPhone(env);
     for (const r of rows.results) {
-      if (await sendEmail(env, { kind: 'announce', recipient: r.email, campaignId: CAMPAIGN }, SUBJECT, announceHtml(env, firstName(r.name), r.phone))) sent++;
+      if (await sendEmail(env, { kind: 'announce', recipient: r.email, campaignId: CAMPAIGN }, SUBJECT, announceHtml(env, firstName(r.name), r.phone, sp))) sent++;
       else break; // furnizorul refuză (de ex. limita lui): reîncearcă la rularea următoare, nu arde lista
     }
     // Lista s-a terminat: se oprește singur.
@@ -199,14 +203,14 @@ announceAdmin.put('/announce', async (c) => {
 });
 
 /** Previzualizare în panou (HTML-ul exact, cu un nume de exemplu). */
-announceAdmin.get('/announce/preview', (c) => c.html(announceHtml(c.env, 'Andrei', '+40712345678')));
+announceAdmin.get('/announce/preview', async (c) => c.html(announceHtml(c.env, 'Andrei', '+40712345678', await salonPhone(c.env))));
 
 /** Un e-mail de probă la adresa dată; nu intră în socoteala anunțului. */
 announceAdmin.post('/announce/test', async (c) => {
   const { email } = await c.req.json<{ email?: unknown }>();
   const to = String(email ?? '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new HttpError(400, 'invalid_email');
-  const ok = await sendEmail(c.env, { kind: 'announce_test', recipient: to, campaignId: 'announce-test' }, SUBJECT, announceHtml(c.env, 'Florin', '+40752705776'));
+  const ok = await sendEmail(c.env, { kind: 'announce_test', recipient: to, campaignId: 'announce-test' }, SUBJECT, announceHtml(c.env, 'Florin', '+40712345678', await salonPhone(c.env)));
   return c.json({ ok });
 });
 
