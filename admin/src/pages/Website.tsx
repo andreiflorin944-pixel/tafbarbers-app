@@ -24,6 +24,8 @@ type Website = {
   tracking: { gaId: string; metaPixelId: string; googleAdsId: string; googleAdsLabel: string; tiktokPixelId: string };
   seo: { title: Record<Lang, string>; description: Record<Lang, string>; shareImage: string | null; googleVerification: string; metaVerification: string };
   links: Array<{ label: string; url: string }>;
+  faq: Array<{ q: string; a: string }>;
+  profiles: string[];
 };
 
 const SITE_URL = 'https://app.tafbarbers.ro';
@@ -49,6 +51,7 @@ const TABS = [
   { key: 'layout', label: 'Aspectul meniului' },
   { key: 'domeniu', label: 'Domeniu personalizat' },
   { key: 'seo', label: 'Google și distribuire (SEO)' },
+  { key: 'ai', label: 'Asistenți AI și întrebări' },
   { key: 'tracking', label: 'Statistici și reclame' },
   { key: 'linkuri', label: 'Linkurile mele' },
 ] as const;
@@ -362,6 +365,63 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
           </p>
         </>
       );
+    case 'ai': {
+      const faq = v.faq ?? [];
+      const profiles = v.profiles ?? [];
+      return (
+        <>
+          <h2 style={{ margin: 0 }}>Asistenți AI (ChatGPT, Gemini, Claude) și întrebări frecvente</h2>
+          <p className="muted small" style={{ margin: 0 }}>
+            Site-ul are pagini pe care Google și asistenții AI le citesc ușor, făcute singure din panou (servicii, prețuri, frizeri, program, adresă, telefon):{' '}
+            <a href={`${SITE_URL}/servicii`} target="_blank" rel="noreferrer">Servicii și prețuri</a>, <a href={`${SITE_URL}/frizeri`} target="_blank" rel="noreferrer">Frizeri</a>,{' '}
+            <a href={`${SITE_URL}/intrebari-frecvente`} target="_blank" rel="noreferrer">Întrebări frecvente</a>, <a href={`${SITE_URL}/llms.txt`} target="_blank" rel="noreferrer">llms.txt</a>.
+          </p>
+          <h3 style={{ margin: '8px 0 0' }}>Profilurile salonului pe alte site-uri</h3>
+          <p className="muted small" style={{ margin: 0 }}>
+            Lipiți aici linkul salonului din Google Maps, Mero, Facebook, Instagram, TikTok etc. Nu apar ca butoane pe site; spun Google și asistenților AI că toate
+            sunt același salon, iar informațiile oficiale sunt pe site-ul vostru.
+          </p>
+          {profiles.map((u, i) => (
+            <div key={i} className="row" style={{ gap: 8 }}>
+              <input value={u} placeholder="https://mero.ro/p/..." style={{ flex: 1 }} onChange={(e) => set({ profiles: profiles.map((x, j) => (j === i ? e.target.value : x)) })} />
+              <button className="ghost sm" onClick={() => set({ profiles: profiles.filter((_, j) => j !== i) })}>
+                Scoate
+              </button>
+            </div>
+          ))}
+          {profiles.length < 15 ? (
+            <div>
+              <button className="ghost" onClick={() => set({ profiles: [...profiles, ''] })}>
+                + Adaugă un profil
+              </button>
+            </div>
+          ) : null}
+          <h3 style={{ margin: '8px 0 0' }}>Întrebări frecvente (în plus)</h3>
+          <p className="muted small" style={{ margin: 0 }}>
+            Întrebările despre adresă, program, prețuri, frizeri, programare, anulare și aplicație se scriu singure. Adăugați aici ce mai întreabă clienții, cu
+            răspunsul adevărat (ex.: „Se poate plăti cu cardul la salon?”, „Unde parchez?”, „Tundeți și copii?”).
+          </p>
+          {faq.map((x, i) => (
+            <div key={i} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10 }}>
+              <input value={x.q} placeholder="Întrebarea" maxLength={200} onChange={(e) => set({ faq: faq.map((y, j) => (j === i ? { ...y, q: e.target.value } : y)) })} />
+              <textarea value={x.a} placeholder="Răspunsul" rows={3} maxLength={1500} onChange={(e) => set({ faq: faq.map((y, j) => (j === i ? { ...y, a: e.target.value } : y)) })} />
+              <div>
+                <button className="ghost sm" onClick={() => set({ faq: faq.filter((_, j) => j !== i) })}>
+                  Scoate întrebarea
+                </button>
+              </div>
+            </div>
+          ))}
+          {faq.length < 30 ? (
+            <div>
+              <button className="ghost" onClick={() => set({ faq: [...faq, { q: '', a: '' }] })}>
+                + Adaugă o întrebare
+              </button>
+            </div>
+          ) : null}
+        </>
+      );
+    }
     case 'tracking':
       return (
         <>

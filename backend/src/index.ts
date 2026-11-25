@@ -16,6 +16,7 @@ import { getBusiness } from './db';
 import { formatLocal } from './time';
 import { dirOf, isLang, langOf, localeOf, localizeText, requestLang, type Lang } from './contentI18n';
 import { getWebsite, isSiteHost, siteDomain, sitePage, websitePublic } from './website';
+import { seoPublic } from './seoPages';
 import { health, recordServerError } from './serverErrors';
 import { barberlyPublic } from './barberly';
 import { captchaPublic, captchaSiteKey } from './captcha';
@@ -69,6 +70,8 @@ app.route('/v1', clientRoutes);
 app.route('/', qrPublic);
 app.route('/', waitlistPublic);
 app.route('/', websitePublic);
+// Paginile de citit pentru Google și AI: /servicii, /servicii/<serviciu>, /frizeri, /intrebari-frecvente.
+app.route('/', seoPublic);
 // Dezabonarea de la ofertele pe e-mail (linkul din subsolul e-mailurilor promoționale).
 app.route('/', unsubscribePublic);
 
