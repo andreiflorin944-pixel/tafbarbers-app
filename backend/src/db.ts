@@ -17,6 +17,8 @@ export type Business = {
   /** Nota și numărul de recenzii de pe Google, scrise în panou (Setări → Salonul); apar în aplicație, pe site și pentru AI. */
   googleRating?: number | null;
   googleReviews?: number | null;
+  /** Pagina salonului în Google Maps (completată singură de citirea notei din Google). */
+  googleMapsUrl?: string;
   timezone: string;
   slotStepMin: number;
   cancelHours: number;

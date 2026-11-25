@@ -463,6 +463,7 @@ function BusinessForm() {
           <input inputMode="numeric" value={v.googleReviews ?? ''} placeholder="145" onChange={(e) => set({ googleReviews: e.target.value })} />
         </Field>
       </div>
+      <GoogleRatingBox onSynced={(googleRating, googleReviews) => set({ googleRating, googleReviews })} />
       <Field label="Descriere (pagina Despre din aplicație)">
         <textarea value={v.description ?? ''} onChange={(e) => set({ description: e.target.value })} />
       </Field>
@@ -1194,6 +1195,69 @@ function AppErrors() {
             {open === i ? <pre className="small" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{e.stack}</pre> : null}
           </div>
         ))
+      )}
+    </div>
+  );
+}
+
+type GooglePlace = { placeId: string; name: string; mapsUrl: string; rating: number | null; count: number | null; updatedAt: string | null; error: string | null; hasKey: boolean };
+
+/** Nota de pe Google citită automat (de două ori pe zi), cu buton de actualizare acum și, la nevoie, salonul ales după Place ID. */
+function GoogleRatingBox({ onSynced }: { onSynced: (rating: number | null, count: number | null) => void }) {
+  const st = useLoad(() => api<GooglePlace>('GET', '/admin/google-rating'));
+  const [g, setG] = useState<GooglePlace | null>(null);
+  const [placeId, setPlaceId] = useState('');
+  const { busy, error, run } = useAction();
+  useEffect(() => {
+    setG(st.data);
+    setPlaceId(st.data?.placeId ?? '');
+  }, [st.data]);
+  if (!g) return null;
+  return (
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12 }}>
+      <b>Nota din Google, actualizată automat</b>
+      {!g.hasKey ? (
+        <p className="muted small" style={{ margin: 0 }}>
+          Oprită: lipsește cheia Google Places pe server (GOOGLE_PLACES_KEY). Până atunci se folosesc cifrele scrise mai sus.
+        </p>
+      ) : (
+        <>
+          <p className="small" style={{ margin: 0 }}>
+            {g.rating ? `★ ${String(g.rating).replace('.', ',')} · ${g.count ?? 0} recenzii` : 'Încă necitită'}
+            {g.name ? ` · ${g.name}` : ''}
+            {g.updatedAt ? ` · verificată ${new Date(g.updatedAt).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' })}` : ''}
+            {g.mapsUrl ? (
+              <>
+                {' · '}
+                <a href={g.mapsUrl} target="_blank" rel="noreferrer">
+                  vezi pe Google
+                </a>
+              </>
+            ) : null}
+          </p>
+          {g.error ? <div className="err small">Google a răspuns: {g.error}</div> : null}
+          <p className="muted small" style={{ margin: 0 }}>
+            Se actualizează singură de două ori pe zi și înlocuiește cifrele de mai sus. Dacă a găsit alt salon, lipiți aici Place ID-ul vostru (îl găsiți
+            căutând „Place ID Finder” Google) și apăsați Actualizează.
+          </p>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <input value={placeId} placeholder="Place ID (opțional)" style={{ flex: '1 1 220px' }} onChange={(e) => setPlaceId(e.target.value)} />
+            <button
+              className="ghost"
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  const r = await api<GooglePlace>('POST', '/admin/google-rating/refresh', { placeId });
+                  setG(r);
+                  if (r.rating) onSynced(r.rating, r.count);
+                })
+              }
+            >
+              Actualizează acum
+            </button>
+          </div>
+          {error ? <div className="err small">{error}</div> : null}
+        </>
       )}
     </div>
   );

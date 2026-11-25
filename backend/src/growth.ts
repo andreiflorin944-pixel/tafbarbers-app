@@ -55,6 +55,8 @@ export type GiftCardSettings = {
   title: Texts;
   message: Texts; // {nume}, {de_la}, {suma}, {cod}, {mesaj}, {salon}
 };
+/** Cererea automată de recenzie Google după o tunsoare încheiată. */
+export type ReviewAutoSettings = { enabled: boolean; delayHours: number; everyDays: number };
 export type LinkSettings = { appStoreUrl: string; playStoreUrl: string; googleReviewUrl: string };
 /** Notificările despre programări, comenzi și carduri cadou: adminul alege dacă pleacă și pe ce canale. */
 export type ChannelEvent = 'confirm' | 'cancel' | 'client_cancel' | 'booking_moved' | 'booking_request' | 'booking_request_refused' | 'booking_request_expired' | 'waitlist_slot' | 'reminder_24h' | 'reminder_2h' | 'review' | 'order_created' | 'order_ready' | 'order_cancelled' | 'gift_card' | 'sub_started' | 'sub_renewed' | 'sub_payment_failed' | 'pay_request';
@@ -66,6 +68,7 @@ export type Automations = {
   nearby: NearbySettings;
   giftCard: GiftCardSettings;
   links: LinkSettings;
+  reviewAuto: ReviewAutoSettings;
   channels: Record<ChannelEvent, Channel>;
   /** Codul de intrare poate fi cerut și prin SMS (varianta de rezervă când nu vine e-mailul). */
   otpSms: boolean;
@@ -127,6 +130,8 @@ export const DEFAULT_AUTOMATIONS: Automations = {
     },
   },
   links: { appStoreUrl: '', playStoreUrl: '', googleReviewUrl: '' },
+  // Oprită până o pornește proprietarul (mesajele către clienți sunt pe pauză până la plecarea din Barberly).
+  reviewAuto: { enabled: false, delayHours: 2, everyDays: 60 },
   // Cum funcționa până acum: SMS la toate, plus push la reminder-e, comenzi și carduri cadou.
   channels: {
     confirm: { enabled: true, push: false, sms: true, email: false },
@@ -172,6 +177,7 @@ export async function getAutomations(env: Env): Promise<Automations> {
     nearby: merge(d.nearby, s.nearby),
     giftCard: merge(d.giftCard, s.giftCard),
     links: { ...d.links, ...s.links },
+    reviewAuto: { ...d.reviewAuto, ...s.reviewAuto },
     channels: Object.fromEntries(CHANNEL_EVENTS.map((k) => [k, { ...d.channels[k], ...s.channels?.[k] }])) as Automations['channels'],
     otpSms: typeof s.otpSms === 'boolean' ? s.otpSms : d.otpSms,
   };
@@ -277,6 +283,11 @@ export async function saveAutomations(env: Env, b: Partial<Automations>) {
       appStoreUrl: url(b.links?.appStoreUrl, cur.links.appStoreUrl),
       playStoreUrl: url(b.links?.playStoreUrl, cur.links.playStoreUrl),
       googleReviewUrl: url(b.links?.googleReviewUrl, cur.links.googleReviewUrl),
+    },
+    reviewAuto: {
+      enabled: bool(b.reviewAuto?.enabled, cur.reviewAuto.enabled),
+      delayHours: int(b.reviewAuto?.delayHours, cur.reviewAuto.delayHours, 1, 48, 'invalid_hours'),
+      everyDays: int(b.reviewAuto?.everyDays, cur.reviewAuto.everyDays, 1, 365, 'invalid_days'),
     },
     channels: Object.fromEntries(
       CHANNEL_EVENTS.map((k) => {

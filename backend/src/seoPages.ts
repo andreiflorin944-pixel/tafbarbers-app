@@ -126,6 +126,7 @@ export function profileLinks(d: SiteData) {
         handle(biz.instagram, 'https://www.instagram.com/'),
         handle(biz.facebook, 'https://www.facebook.com/'),
         biz.tiktok ? (/^https?:/.test(biz.tiktok) ? biz.tiktok : `https://www.tiktok.com/@${biz.tiktok.replace(/^@/, '')}`) : null,
+        biz.googleMapsUrl || null,
         ...[biz.youtube, biz.snapchat, biz.x].map((v) => (v ? (/^https?:/.test(v) ? v : `https://${v}`) : null)),
         ...(w.profiles ?? []),
         ...w.links.map((l) => l.url).filter((u) => /^https:\/\/([a-z0-9-]+\.)*(instagram|facebook|tiktok|youtube|google|goo|mero|maps\.app\.goo)\.[a-z.]+\//i.test(u)),

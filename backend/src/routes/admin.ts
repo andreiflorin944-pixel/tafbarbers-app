@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from 'hono';
+import { getGooglePlace, syncGoogleRating } from '../googleReviews';
 import { notesRoutes } from '../notes';
 import { socialAdmin } from '../social';
 import { qrAdmin } from '../qr';
@@ -522,6 +523,14 @@ adminRoutes.put('/settings', ownerOnly, async (c) => {
   const cb = cur as Record<string, unknown>;
   await saveTranslations(c.env, Object.fromEntries(BIZ_TEXTS.map((k) => [k, { ro: next[k] as string, prev: cb[k] as string }])), b.translations as ManualTr);
   return c.json((await withTranslations(c.env, [next], [...BIZ_TEXTS]))[0]);
+});
+
+// --- Nota Google, citită automat (Setări → Salonul) ---
+
+adminRoutes.get('/google-rating', ownerOnly, async (c) => c.json({ ...(await getGooglePlace(c.env)), hasKey: !!c.env.GOOGLE_PLACES_KEY }));
+adminRoutes.post('/google-rating/refresh', ownerOnly, async (c) => {
+  const b = await c.req.json<{ placeId?: string }>().catch(() => ({}) as { placeId?: string });
+  return c.json({ ...(await syncGoogleRating(c.env, { force: true, placeId: typeof b.placeId === 'string' ? b.placeId : undefined })), hasKey: !!c.env.GOOGLE_PLACES_KEY });
 });
 
 // --- Traducerea conținutului în engleză și franceză ---
