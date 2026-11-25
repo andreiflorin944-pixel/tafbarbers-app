@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AnalyticsGate } from '@/components/AnalyticsGate';
 import { HeaderBack } from '@/components/HeaderBack';
 import { Intro } from '@/components/Intro';
 import { LegalGate } from '@/components/LegalGate';
@@ -40,6 +41,7 @@ export default function RootLayout() {
           <QrLink />
           <PushLink />
           <RootStack />
+          <AnalyticsGate />
           <LegalGate />
           <Intro />
           <UpdateGate />

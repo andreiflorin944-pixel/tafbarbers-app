@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { appAnalyticsOn } from '../tracking';
 import { getAutomations, nearbyConfig } from '../growth';
 import { activeSeason, seasonPromo } from '../seasonCampaign';
 import { publicRaffle, raffleRules } from '../raffle';
@@ -75,7 +76,7 @@ publicRoutes.post('/app-errors', async (c) => {
 publicRoutes.get('/nearby', async (c) => c.json(await nearbyConfig(c.env)));
 
 publicRoutes.get('/business', async (c) => {
-  const [biz, appearance, auto, advisor, stylePhotos, captchaKey] = await Promise.all([getBusiness(c.env), getAppearance(c.env), getAutomations(c.env), advisorAvailable(c.env), getStylePhotos(c.env), captchaSiteKey(c.env)]);
+  const [biz, appearance, auto, advisor, stylePhotos, captchaKey, analytics] = await Promise.all([getBusiness(c.env), getAppearance(c.env), getAutomations(c.env), advisorAvailable(c.env), getStylePhotos(c.env), captchaSiteKey(c.env), appAnalyticsOn(c.env)]);
   // Programul salonului = reuniunea programului frizerilor, pe zile (0 = duminică).
   const rows = await c.env.DB.prepare(
     `SELECT h.weekday, MIN(h.start_min) AS s, MAX(h.end_min) AS e
@@ -89,7 +90,7 @@ publicRoutes.get('/business', async (c) => {
   // Textele despre salon în limba aplicației (`?lang=en`), unde au fost traduse.
   const [texts] = await localize(c.env, c.req.query('lang'), [biz], ['tagline', 'description', 'cancellationPolicy']);
   const socialPromo = await publicSocialPromo(c.env, biz);
-  return c.json({ ...texts, hours, socialPromo, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env), advisor, styleV: styleVersion(stylePhotos), captchaSiteKey: captchaKey, googleReviewUrl: auto.links?.googleReviewUrl || null });
+  return c.json({ ...texts, hours, socialPromo, appearance, onlinePayments: onlinePaymentsOn(c.env), otpSms: auto.otpSms, social: socialConfig(c.env), advisor, styleV: styleVersion(stylePhotos), captchaSiteKey: captchaKey, googleReviewUrl: auto.links?.googleReviewUrl || null, analytics });
 });
 
 // Stripe ne anunță aici plățile. Semnătura se verifică pe corpul exact, cu secretul webhook-ului.

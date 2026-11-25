@@ -169,40 +169,50 @@ export async function saveLegal(env: Env, store: LegalStore) {
   await setSetting(env, 'legal', store);
 }
 
+// Statisticile din aplicație (doar cu „Da” de la client, fără cookie-uri și fără date de cont): propoziția de la început.
+const APP_STATS = {
+  ro: 'În aplicație nu folosim cookie-uri. Doar dacă spui „Da” la întrebarea despre statistici, aplicația trimite prin serverul nostru la Google Analytics (Google Ireland Ltd.) ce ecrane deschizi, cât stai pe ele și pe ce butoane importante apeși, împreună cu un număr la întâmplare al telefonului (fără nume, telefon sau e-mail). Poți opri oricând din Cont → Statistici. ',
+  en: 'The app does not use cookies. Only if you say “Yes” to the statistics question, the app sends through our server to Google Analytics (Google Ireland Ltd.) which screens you open, how long you stay and which main buttons you tap, with a random phone number ID (no name, phone or e-mail). You can turn it off anytime in Account → Statistics. ',
+  fr: 'L’application n’utilise pas de cookies. Seulement si vous répondez « Oui » à la question sur les statistiques, l’application envoie via notre serveur à Google Analytics (Google Ireland Ltd.) les écrans ouverts, le temps passé et les principaux boutons touchés, avec un identifiant aléatoire du téléphone (sans nom, téléphone ni e-mail). Vous pouvez l’arrêter à tout moment dans Compte → Statistiques. ',
+  ar: 'لا يستخدم التطبيق ملفات تعريف الارتباط. فقط إذا أجبت «نعم» على سؤال الإحصاءات، يرسل التطبيق عبر خادمنا إلى Google Analytics (Google Ireland Ltd.) الشاشات التي تفتحها والوقت الذي تقضيه والأزرار الرئيسية التي تضغطها، مع رقم عشوائي للهاتف (بدون اسم أو هاتف أو بريد إلكتروني). يمكنك إيقافها في أي وقت من الحساب ← الإحصاءات. ',
+} as const;
+const NO_APP = { ro: 'Aplicația nu folosește cookie-uri de urmărire. ', en: 'The app does not use tracking cookies. ', fr: 'L’application n’utilise pas de cookies de suivi. ', ar: 'لا يستخدم التطبيق ملفات تعريف ارتباط للتتبع. ' } as const;
+const app = (t: Website['tracking'], l: keyof typeof APP_STATS) => (t.appGaId ? APP_STATS[l] : NO_APP[l]);
+
 // Bucățile scrise de server în text, în limba cititorului.
 const FILL: Record<'ro' | 'en' | 'fr' | 'ar', { todo: string; policy: (h: number) => string; what: Record<string, string>; cookies: (t: Website['tracking']) => string }> = {
   ro: {
     cookies: (t) =>
-      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId
-        ? `Aplicația nu folosește cookie-uri de urmărire. Pe site, doar dacă apeși „Accept” în bannerul de cookie-uri, pornim ${[t.gaId && 'Google Analytics (Google Ireland Ltd., statistici de vizitare)', t.googleAdsId && 'Google Ads (Google Ireland Ltd., măsurarea reclamelor)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd., măsurarea reclamelor)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd., măsurarea reclamelor)'].filter(Boolean).join(' și ')}, care pun cookie-uri în browser și pot transfera date în SUA. Temei: acordul tău (Legea 506/2004 art. 4 și art. 6 alin. 1 lit. a GDPR). Îți retragi acordul oricând din linkul „Cookie-uri” din josul site-ului.`
-        : 'Nu folosim cookie-uri de urmărire sau publicitate și nu folosim instrumente de analiză care te urmăresc între aplicații.',
+      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId || t.clarityId
+        ? `${app(t, 'ro')}Pe site, doar dacă apeși „Accept” în bannerul de cookie-uri, pornim ${[t.gaId && 'Google Analytics (Google Ireland Ltd., statistici de vizitare)', t.clarityId && 'Microsoft Clarity (Microsoft Ireland Operations Ltd., hărți ale clicurilor și înregistrări ale vizitei, cu textul scris în câmpuri ascuns)', t.googleAdsId && 'Google Ads (Google Ireland Ltd., măsurarea reclamelor)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd., măsurarea reclamelor)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd., măsurarea reclamelor)'].filter(Boolean).join(' și ')}, care pun cookie-uri în browser și pot transfera date în SUA. Temei: acordul tău (Legea 506/2004 art. 4 și art. 6 alin. 1 lit. a GDPR). Îți retragi acordul oricând din linkul „Cookie-uri” din josul site-ului.`
+        : (t.appGaId ? APP_STATS.ro : '') + 'Nu folosim cookie-uri de urmărire sau publicitate și nu folosim instrumente de analiză care te urmăresc între aplicații.',
     todo: 'de completat',
     policy: (h) => `Poți anula din aplicație cu cel puțin ${h} ore înainte.`,
     what: { company: 'denumirea firmei', cui: 'CUI', regcom: 'nr. Registrul Comerțului', seat: 'sediul social', email: 'e-mail de contact', phone: 'telefon', address: 'adresa salonului' },
   },
   en: {
     cookies: (t) =>
-      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId
-        ? `The app does not use tracking cookies. On the website, only if you tap “Accept” in the cookie banner, we start ${[t.gaId && 'Google Analytics (Google Ireland Ltd., visit statistics)', t.googleAdsId && 'Google Ads (Google Ireland Ltd., ad measurement)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd., ad measurement)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd., ad measurement)'].filter(Boolean).join(' and ')}, which set cookies in your browser and may transfer data to the USA. Legal basis: your consent. You can withdraw it at any time from the “Cookies” link at the bottom of the website.`
-        : 'We do not use tracking or advertising cookies, nor analytics tools that track you across apps.',
+      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId || t.clarityId
+        ? `${app(t, 'en')}On the website, only if you tap “Accept” in the cookie banner, we start ${[t.gaId && 'Google Analytics (Google Ireland Ltd., visit statistics)', t.clarityId && 'Microsoft Clarity (Microsoft Ireland Operations Ltd., click maps and visit recordings, with text typed in fields hidden)', t.googleAdsId && 'Google Ads (Google Ireland Ltd., ad measurement)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd., ad measurement)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd., ad measurement)'].filter(Boolean).join(' and ')}, which set cookies in your browser and may transfer data to the USA. Legal basis: your consent. You can withdraw it at any time from the “Cookies” link at the bottom of the website.`
+        : (t.appGaId ? APP_STATS.en : '') + 'We do not use tracking or advertising cookies, nor analytics tools that track you across apps.',
     todo: 'to be completed',
     policy: (h) => `You can cancel in the app at least ${h} hours in advance.`,
     what: { company: 'company name', cui: 'tax ID', regcom: 'trade register no.', seat: 'registered office', email: 'contact e-mail', phone: 'phone', address: 'salon address' },
   },
   fr: {
     cookies: (t) =>
-      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId
-        ? `L’application n’utilise pas de cookies de suivi. Sur le site, seulement si vous appuyez sur « Accepter » dans le bandeau cookies, nous activons ${[t.gaId && 'Google Analytics (Google Ireland Ltd., statistiques de visite)', t.googleAdsId && 'Google Ads (Google Ireland Ltd., mesure des publicités)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd., mesure des publicités)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd., mesure des publicités)'].filter(Boolean).join(' et ')}, qui déposent des cookies et peuvent transférer des données aux États-Unis. Base légale : votre consentement. Vous pouvez le retirer à tout moment via le lien « Cookies » en bas du site.`
-        : 'Nous n’utilisons pas de cookies de suivi ou de publicité, ni d’outils d’analyse qui vous suivent entre applications.',
+      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId || t.clarityId
+        ? `${app(t, 'fr')}Sur le site, seulement si vous appuyez sur « Accepter » dans le bandeau cookies, nous activons ${[t.gaId && 'Google Analytics (Google Ireland Ltd., statistiques de visite)', t.clarityId && 'Microsoft Clarity (Microsoft Ireland Operations Ltd., cartes des clics et enregistrements de visite, texte saisi masqué)', t.googleAdsId && 'Google Ads (Google Ireland Ltd., mesure des publicités)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd., mesure des publicités)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd., mesure des publicités)'].filter(Boolean).join(' et ')}, qui déposent des cookies et peuvent transférer des données aux États-Unis. Base légale : votre consentement. Vous pouvez le retirer à tout moment via le lien « Cookies » en bas du site.`
+        : (t.appGaId ? APP_STATS.fr : '') + 'Nous n’utilisons pas de cookies de suivi ou de publicité, ni d’outils d’analyse qui vous suivent entre applications.',
     todo: 'à compléter',
     policy: (h) => `Vous pouvez annuler dans l’application au moins ${h} heures à l’avance.`,
     what: { company: 'nom de la société', cui: 'code fiscal', regcom: 'n° registre du commerce', seat: 'siège social', email: 'e-mail de contact', phone: 'téléphone', address: 'adresse du salon' },
   },
   ar: {
     cookies: (t) =>
-      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId
-        ? `لا يستخدم التطبيق ملفات تعريف ارتباط للتتبع. على الموقع، فقط إذا ضغطت «موافق» في شريط ملفات تعريف الارتباط، نشغّل ${[t.gaId && 'Google Analytics (Google Ireland Ltd.، إحصاءات الزيارات)', t.googleAdsId && 'Google Ads (Google Ireland Ltd.، قياس الإعلانات)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd.، قياس الإعلانات)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd.، قياس الإعلانات)'].filter(Boolean).join(' و')}، التي تضع ملفات تعريف ارتباط في متصفحك وقد تنقل بيانات إلى الولايات المتحدة. الأساس القانوني: موافقتك. يمكنك سحبها في أي وقت من رابط «ملفات تعريف الارتباط» أسفل الموقع.`
-        : 'لا نستخدم ملفات تعريف ارتباط للتتبع أو الإعلانات، ولا أدوات تحليل تتبعك بين التطبيقات.',
+      t.gaId || t.googleAdsId || t.metaPixelId || t.tiktokPixelId || t.clarityId
+        ? `${app(t, 'ar')}على الموقع، فقط إذا ضغطت «موافق» في شريط ملفات تعريف الارتباط، نشغّل ${[t.gaId && 'Google Analytics (Google Ireland Ltd.، إحصاءات الزيارات)', t.clarityId && 'Microsoft Clarity (Microsoft Ireland Operations Ltd.، خرائط النقرات وتسجيلات الزيارة مع إخفاء النص المكتوب)', t.googleAdsId && 'Google Ads (Google Ireland Ltd.، قياس الإعلانات)', t.metaPixelId && 'Meta Pixel (Meta Platforms Ireland Ltd.، قياس الإعلانات)', t.tiktokPixelId && 'TikTok Pixel (TikTok Technology Ltd.، قياس الإعلانات)'].filter(Boolean).join(' و')}، التي تضع ملفات تعريف ارتباط في متصفحك وقد تنقل بيانات إلى الولايات المتحدة. الأساس القانوني: موافقتك. يمكنك سحبها في أي وقت من رابط «ملفات تعريف الارتباط» أسفل الموقع.`
+        : (t.appGaId ? APP_STATS.ar : '') + 'لا نستخدم ملفات تعريف ارتباط للتتبع أو الإعلانات، ولا أدوات تحليل تتبعك بين التطبيقات.',
     todo: 'يُستكمل لاحقاً',
     policy: (h) => `يمكنك الإلغاء من التطبيق قبل ${h} ساعات على الأقل.`,
     what: { company: 'اسم الشركة', cui: 'الرقم الضريبي', regcom: 'رقم السجل التجاري', seat: 'المقر الرئيسي', email: 'البريد الإلكتروني للتواصل', phone: 'الهاتف', address: 'عنوان الصالون' },

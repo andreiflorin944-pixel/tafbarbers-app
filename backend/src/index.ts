@@ -17,6 +17,7 @@ import { formatLocal } from './time';
 import { dirOf, isLang, langOf, localeOf, localizeText, requestLang, type Lang } from './contentI18n';
 import { getWebsite, isSiteHost, siteDomain, sitePage, websitePublic } from './website';
 import { seoPublic } from './seoPages';
+import { analyticsPublic, withTracking } from './tracking';
 import { health, recordServerError } from './serverErrors';
 import { barberlyPublic } from './barberly';
 import { captchaPublic, captchaSiteKey } from './captcha';
@@ -53,6 +54,19 @@ app.get('/v1/health', async (c) => {
   const h = await health(c.env);
   return c.json(h, h.ok ? 200 : 503);
 });
+// Statistici pe paginile simple ale site-ului (aceleași coduri și același acord ca pe prima pagină): vezi tracking.ts.
+for (const path of ['/cont', '/cadou', '/servicii', '/servicii/*', '/frizeri', '/intrebari-frecvente', '/descarca']) {
+  app.use(path, async (c, next) => {
+    await next();
+    if (c.req.method !== 'GET' || c.res.status !== 200 || !(c.res.headers.get('content-type') ?? '').includes('text/html')) return;
+    const html = await c.res.text();
+    const headers = new Headers(c.res.headers);
+    headers.delete('content-length');
+    c.res = new Response(await withTracking(c.env, html), { status: 200, headers });
+  });
+}
+// Aplicația trimite aici ecranele văzute (doar cu acordul clientului), mai departe la Google Analytics.
+app.route('/v1', analyticsPublic);
 // Cardul cadou cumpărat direct de pe site (/cadou, /cadou/gata, POST /v1/gift-web).
 app.route('/', giftWebPublic);
 // „Contul meu” pe site: abonamente, abonament personalizat, produse, cumpărate cu cardul fără aplicație (/cont, /cont/gata).

@@ -235,6 +235,8 @@ export type Business = {
   socialPromo?: SocialPromo | null;
   /** Linkul de recenzii Google (Panou → Marketing → Automatizări → Linkuri); null = nepus. */
   googleReviewUrl?: string | null;
+  /** Statisticile anonime din aplicație sunt pornite în panou (aplicația îl întreabă pe client dacă e de acord). */
+  analytics?: boolean;
 };
 
 export type SocialLinks = { facebook: string | null; instagram: string | null; tiktok: string | null };
