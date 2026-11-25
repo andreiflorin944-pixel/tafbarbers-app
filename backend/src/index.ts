@@ -21,6 +21,7 @@ import { barberlyPublic } from './barberly';
 import { captchaPublic, captchaSiteKey } from './captcha';
 import { unsubscribePublic } from './unsubscribe';
 import { giftWebPublic } from './giftWeb';
+import { webShopPublic } from './webShop';
 
 const app = new Hono<AppEnv>();
 
@@ -53,6 +54,8 @@ app.get('/v1/health', async (c) => {
 });
 // Cardul cadou cumpărat direct de pe site (/cadou, /cadou/gata, POST /v1/gift-web).
 app.route('/', giftWebPublic);
+// „Contul meu” pe site: abonamente, abonament personalizat, produse, cumpărate cu cardul fără aplicație (/cont, /cont/gata).
+app.route('/', webShopPublic);
 app.route('/v1', publicRoutes);
 // Verificarea „nu sunt robot” (pagina deschisă de aplicație înainte de cererea unui cod).
 app.route('/v1', captchaPublic);

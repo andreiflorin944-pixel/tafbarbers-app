@@ -200,6 +200,17 @@ clientRoutes.get('/me/subscriptions', async (c) => {
   return c.json({ plans: await localize(c.env, lang, r.plans, ['name', 'description']), subscriptions: await localize(c.env, lang, r.subscriptions, ['name']) });
 });
 
+/**
+ * Cumpărat de pe site (`?web=1`, pagina „Contul meu” de la /cont): după plată clientul se întoarce pe site, nu în aplicație.
+ * Întoarcerea e la adresa pe care a fost deschisă pagina (tafbarbers.ro sau app.tafbarbers.ro), ca clientul să rămână intrat în cont.
+ * Adresele sunt fixe (doar pe serverul nostru), deci nu se poate trimite clientul altundeva.
+ */
+const webBack = (web: string | undefined, reqUrl: string, tip: string) => {
+  if (web !== '1') return {};
+  const o = new URL(reqUrl).origin;
+  return { successUrl: `${o}/cont/gata?tip=${tip}`, cancelUrl: `${o}/cont?anulat=1` };
+};
+
 // Carduri cadou: cele cumpărate de client și cele primite pe numărul lui de telefon.
 clientRoutes.get('/me/gift-cards', async (c) => {
   const id = c.get('client').clientId;
@@ -299,6 +310,7 @@ clientRoutes.post('/orders/:id/pay', async (c) => {
     base: publicBase(c.env, c.req.url),
     clientId: o.clientId,
     lang: c.req.query('lang'),
+    ...webBack(c.req.query('web'), c.req.url, 'order'),
   });
   return c.json({ url });
 });
@@ -316,7 +328,8 @@ clientRoutes.post('/me/subscriptions/:planId/pay', async (c) => {
   const shop = (await getBusiness(c.env)).name;
   const base = publicBase(c.env, c.req.url);
   const title = `Abonament ${p.name} · ${shop}`;
-  const recurring = await createRecurringCheckout(c.env, { clientId, plan: p, title, base, lang: c.req.query('lang') });
+  const back = webBack(c.req.query('web'), c.req.url, 'sub');
+  const recurring = await createRecurringCheckout(c.env, { clientId, plan: p, title, base, lang: c.req.query('lang'), ...back });
   if (recurring) return c.json({ url: recurring, recurring: true });
   // Perioadă de peste un an: Stripe n-o poate reînnoi singur, deci o plată o singură dată.
   const me = await c.env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(clientId).first<{ email: string | null }>();
@@ -331,6 +344,7 @@ clientRoutes.post('/me/subscriptions/:planId/pay', async (c) => {
     clientId,
     lang: c.req.query('lang'),
     meta: { plan: p.id },
+    ...back,
   });
   return c.json({ url, recurring: false });
 });
@@ -355,8 +369,9 @@ clientRoutes.post('/me/custom-sub/pay', async (c) => {
   const base = publicBase(c.env, c.req.url);
   const title = `${q.name} · ${shop}`;
   const plan = { id: planId, name: q.name, price_bani: q.priceBani, period_days: q.periodDays };
+  const back = webBack(c.req.query('web'), c.req.url, 'sub');
   if (b.autoRenew) {
-    const url = await createRecurringCheckout(c.env, { clientId, plan, title, base, lang: c.req.query('lang') });
+    const url = await createRecurringCheckout(c.env, { clientId, plan, title, base, lang: c.req.query('lang'), ...back });
     if (url) return c.json({ url, recurring: true });
   }
   const me = await c.env.DB.prepare('SELECT email FROM clients WHERE id = ?').bind(clientId).first<{ email: string | null }>();
@@ -370,6 +385,7 @@ clientRoutes.post('/me/custom-sub/pay', async (c) => {
     clientId,
     lang: c.req.query('lang'),
     meta: { plan: planId },
+    ...back,
   });
   return c.json({ url, recurring: false });
 });
