@@ -7,6 +7,7 @@ import type { LegalSignature } from '@/api/client';
 import { Button, styles } from '@/components/ui';
 import { useT } from '@/i18n';
 import { errorMessage } from '@/lib/errors';
+import { holdReload } from '@/lib/reloadHold';
 import { colors, radius, space } from '@/theme';
 
 type Doc = { title: string; body: string; version?: string; translated?: boolean };
@@ -44,6 +45,9 @@ export function LegalSign({
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
+  // Cât e deschisă fereastra, actualizarea rapidă nu repornește aplicația (cititul nu se întrerupe niciodată).
+  useEffect(() => (visible ? holdReload() : undefined), [visible]);
+
   useEffect(() => {
     if (!visible) return;
     setDocs(null);
@@ -74,7 +78,14 @@ export function LegalSign({
 
   const ready = read && agree && signatureOk(signature);
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
+    <Modal
+      visible={visible}
+      animationType="slide"
+      // Butonul/gestul „înapoi” de pe Android nu mai închide fereastra (și nu mai scoate clientul din cont) din greșeală,
+      // în timp ce citește: se iese doar cu butonul de jos.
+      onRequestClose={() => undefined}
+      presentationStyle="fullScreen"
+    >
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={local.head}>
