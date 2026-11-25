@@ -5,6 +5,7 @@ import { AppState, Linking, Modal, Platform, StyleSheet, Text, View } from 'reac
 import { api } from '@/api';
 import { Button, Logo, styles as ui } from '@/components/ui';
 import { useT } from '@/i18n';
+import { reloadHeld } from '@/lib/reloadHold';
 import { storage } from '@/lib/storage';
 import { colors, radius, space } from '@/theme';
 
@@ -93,7 +94,7 @@ export function UpdateGate() {
       if (st !== 'active') return;
       const away = bgSince.current ? Date.now() - bgSince.current : 0;
       bgSince.current = null;
-      if (otaReady.current && away >= RELOAD_AFTER_BG) {
+      if (otaReady.current && away >= RELOAD_AFTER_BG && !reloadHeld()) {
         void Updates.reloadAsync().catch(() => undefined);
         return;
       }
