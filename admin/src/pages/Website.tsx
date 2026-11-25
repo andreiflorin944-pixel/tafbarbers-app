@@ -24,12 +24,21 @@ type Website = {
   tracking: { gaId: string; metaPixelId: string; googleAdsId: string; googleAdsLabel: string; tiktokPixelId: string };
   seo: { title: Record<Lang, string>; description: Record<Lang, string>; shareImage: string | null; googleVerification: string; metaVerification: string };
   links: Array<{ label: string; url: string }>;
+  faq: Array<{ q: string; a: string }>;
+  profiles: string[];
 };
 
 const SITE_URL = 'https://app.tafbarbers.ro';
 const LANG_NAMES: Record<Lang, string> = { ro: 'Română', en: 'English', fr: 'Français', ar: 'العربية (arabă)' };
 const WELCOME_DEFAULT: Record<Lang, string> = { ro: '„Bine ați venit”', en: '“Welcome”', fr: '« Bienvenue »', ar: '„أهلاً وسهلاً”' };
-const SEO_PH: Record<Lang, string> = { ro: 'TAFBarbers · Frizerie, programare online', en: 'TAFBarbers · Barbershop, book online', fr: 'TAFBarbers · Barbier, réservation en ligne', ar: 'TAFBarbers · صالون حلاقة، احجز عبر الإنترنت' };
+const SEO_PH: Record<Lang, string> = { ro: 'TAFBarbers · Frizerie & Barber Iași · Programare online', en: 'TAFBarbers · Barber shop in Iași · Book online', fr: 'TAFBarbers · Barbier à Iași · Réservation en ligne', ar: 'TAFBarbers · صالون حلاقة رجالي في Iași · احجز عبر الإنترنت' };
+// Ce scrie site-ul singur când descrierea e goală (orașul vine din adresa salonului).
+const SEO_DESC_PH: Record<Lang, string> = {
+  ro: 'TAFBarbers, frizerie și barber shop în Iași: tuns bărbați, fade, aranjat barbă și styling. Programare online: alegi serviciul, frizerul și ora.',
+  en: "TAFBarbers, barber shop in Iași: men's haircuts, skin fades, beard trims and styling. Book online in seconds: service, barber and time.",
+  fr: 'TAFBarbers, barbier à Iași : coupe homme, dégradé, taille de barbe et coiffage. Réservez en ligne en quelques secondes : service, barbier et heure.',
+  ar: 'TAFBarbers، صالون حلاقة رجالي في Iași: قص شعر الرجال والتدريج وتهذيب اللحية والتصفيف. احجز عبر الإنترنت في ثوانٍ.',
+};
 const ACCENTS = ['#F9A11B', '#E8C547', '#D64545', '#2E86DE', '#1ABC9C', '#27AE60', '#9B59B6', '#FFFFFF'];
 const BACKGROUNDS = ['#000000', '#1E1F22', '#2B2D31', '#FFFFFF'];
 
@@ -42,6 +51,7 @@ const TABS = [
   { key: 'layout', label: 'Aspectul meniului' },
   { key: 'domeniu', label: 'Domeniu personalizat' },
   { key: 'seo', label: 'Google și distribuire (SEO)' },
+  { key: 'ai', label: 'Asistenți AI și întrebări' },
   { key: 'tracking', label: 'Statistici și reclame' },
   { key: 'linkuri', label: 'Linkurile mele' },
 ] as const;
@@ -328,8 +338,8 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
         <>
           <h2 style={{ margin: 0 }}>Google și distribuire (SEO)</h2>
           <p className="muted small" style={{ margin: 0 }}>
-            Cum apare site-ul în căutările Google și când cineva trimite linkul pe WhatsApp, Facebook sau Instagram. Lăsați gol și se folosește un
-            text automat cu numele și adresa salonului. Google mai primește automat programul, prețurile, serviciile, adresa și telefonul.
+            Cum apare site-ul în căutările Google și când cineva trimite linkul pe WhatsApp, Facebook sau Instagram. Lăsați gol și se folosește textul automat
+            (cel gri din câmp), scris cu cuvintele căutate în Google: frizerie, barber, tuns bărbați, fade, barbă și orașul din adresa salonului. Google mai primește automat programul, prețurile, serviciile, adresa și telefonul.
           </p>
           {v.languages.map((l) => (
             <div key={l} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -337,7 +347,7 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
                 <input dir={l === 'ar' ? 'rtl' : undefined} value={v.seo.title[l] ?? ''} maxLength={70} placeholder={SEO_PH[l]} onChange={(e) => set({ seo: { ...v.seo, title: { ...v.seo.title, [l]: e.target.value } } })} />
               </Field>
               <Field label={`Descrierea în Google, ${LANG_NAMES[l]} (cel mult 160 de caractere: ${(v.seo.description[l] ?? '').length})`}>
-                <textarea dir={l === 'ar' ? 'rtl' : undefined} rows={2} maxLength={300} value={v.seo.description[l] ?? ''} onChange={(e) => set({ seo: { ...v.seo, description: { ...v.seo.description, [l]: e.target.value } } })} />
+                <textarea dir={l === 'ar' ? 'rtl' : undefined} rows={2} maxLength={300} placeholder={SEO_DESC_PH[l]} value={v.seo.description[l] ?? ''} onChange={(e) => set({ seo: { ...v.seo, description: { ...v.seo.description, [l]: e.target.value } } })} />
               </Field>
             </div>
           ))}
@@ -355,6 +365,63 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
           </p>
         </>
       );
+    case 'ai': {
+      const faq = v.faq ?? [];
+      const profiles = v.profiles ?? [];
+      return (
+        <>
+          <h2 style={{ margin: 0 }}>Asistenți AI (ChatGPT, Gemini, Claude) și întrebări frecvente</h2>
+          <p className="muted small" style={{ margin: 0 }}>
+            Site-ul are pagini pe care Google și asistenții AI le citesc ușor, făcute singure din panou (servicii, prețuri, frizeri, program, adresă, telefon):{' '}
+            <a href={`${SITE_URL}/servicii`} target="_blank" rel="noreferrer">Servicii și prețuri</a>, <a href={`${SITE_URL}/frizeri`} target="_blank" rel="noreferrer">Frizeri</a>,{' '}
+            <a href={`${SITE_URL}/intrebari-frecvente`} target="_blank" rel="noreferrer">Întrebări frecvente</a>, <a href={`${SITE_URL}/llms.txt`} target="_blank" rel="noreferrer">llms.txt</a>.
+          </p>
+          <h3 style={{ margin: '8px 0 0' }}>Profilurile salonului pe alte site-uri</h3>
+          <p className="muted small" style={{ margin: 0 }}>
+            Lipiți aici linkul salonului din Google Maps, Mero, Facebook, Instagram, TikTok etc. Nu apar ca butoane pe site; spun Google și asistenților AI că toate
+            sunt același salon, iar informațiile oficiale sunt pe site-ul vostru.
+          </p>
+          {profiles.map((u, i) => (
+            <div key={i} className="row" style={{ gap: 8 }}>
+              <input value={u} placeholder="https://mero.ro/p/..." style={{ flex: 1 }} onChange={(e) => set({ profiles: profiles.map((x, j) => (j === i ? e.target.value : x)) })} />
+              <button className="ghost sm" onClick={() => set({ profiles: profiles.filter((_, j) => j !== i) })}>
+                Scoate
+              </button>
+            </div>
+          ))}
+          {profiles.length < 15 ? (
+            <div>
+              <button className="ghost" onClick={() => set({ profiles: [...profiles, ''] })}>
+                + Adaugă un profil
+              </button>
+            </div>
+          ) : null}
+          <h3 style={{ margin: '8px 0 0' }}>Întrebări frecvente (în plus)</h3>
+          <p className="muted small" style={{ margin: 0 }}>
+            Întrebările despre adresă, program, prețuri, frizeri, programare, anulare și aplicație se scriu singure. Adăugați aici ce mai întreabă clienții, cu
+            răspunsul adevărat (ex.: „Se poate plăti cu cardul la salon?”, „Unde parchez?”, „Tundeți și copii?”).
+          </p>
+          {faq.map((x, i) => (
+            <div key={i} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 10 }}>
+              <input value={x.q} placeholder="Întrebarea" maxLength={200} onChange={(e) => set({ faq: faq.map((y, j) => (j === i ? { ...y, q: e.target.value } : y)) })} />
+              <textarea value={x.a} placeholder="Răspunsul" rows={3} maxLength={1500} onChange={(e) => set({ faq: faq.map((y, j) => (j === i ? { ...y, a: e.target.value } : y)) })} />
+              <div>
+                <button className="ghost sm" onClick={() => set({ faq: faq.filter((_, j) => j !== i) })}>
+                  Scoate întrebarea
+                </button>
+              </div>
+            </div>
+          ))}
+          {faq.length < 30 ? (
+            <div>
+              <button className="ghost" onClick={() => set({ faq: [...faq, { q: '', a: '' }] })}>
+                + Adaugă o întrebare
+              </button>
+            </div>
+          ) : null}
+        </>
+      );
+    }
     case 'tracking':
       return (
         <>
