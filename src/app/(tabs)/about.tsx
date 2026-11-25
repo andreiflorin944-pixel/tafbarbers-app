@@ -26,6 +26,7 @@ export default function About() {
         {socialUrl('facebook', business.facebook) ? <Social icon="logo-facebook" url={socialUrl('facebook', business.facebook)!} /> : null}
         {socialUrl('tiktok', business.tiktok) ? <Social icon="logo-tiktok" url={socialUrl('tiktok', business.tiktok)!} /> : null}
         {business.phone && whatsappUrl(business.phone) ? <Social icon="logo-whatsapp" url={whatsappUrl(business.phone)!} /> : null}
+        {business.googleReviewUrl ? <Social icon="logo-google" url={business.googleReviewUrl} /> : null}
         {business.website ? <Social icon="globe-outline" url={business.website} /> : null}
       </View>
 
