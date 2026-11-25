@@ -208,6 +208,11 @@ export type Business = {
   instagram: string;
   facebook?: string;
   tiktok?: string;
+  youtube?: string;
+  snapchat?: string;
+  x?: string;
+  googleRating?: number | null;
+  googleReviews?: number | null;
   cancelHours?: number;
   maxDaysAhead?: number; // cu câte zile înainte se poate programa (Setări → Reguli de programare)
   cancellationPolicy?: string;
@@ -228,6 +233,8 @@ export type Business = {
   approvalBarberIds?: string[]; // doar la acești frizeri (listă goală = la toți)
   /** Promo „Urmărește-ne pe rețele și deblochezi X% reducere” (null = oprit în panou). */
   socialPromo?: SocialPromo | null;
+  /** Linkul de recenzii Google (Panou → Marketing → Automatizări → Linkuri); null = nepus. */
+  googleReviewUrl?: string | null;
 };
 
 export type SocialLinks = { facebook: string | null; instagram: string | null; tiktok: string | null };

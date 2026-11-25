@@ -164,7 +164,7 @@ const NAV: NavSection[] = [
     icon: 'marketing',
     groups: [
       { items: [{ label: 'Campanii (SMS, e-mail, push)', to: 'campaigns' }, { label: 'Postări Facebook, Instagram, TikTok', to: 'social' }, { label: 'Campanie de sezon (Crăciun, Paște…)', to: 'season' }, { label: 'Bannere în aplicație', to: 'promos' }, { label: 'Coduri QR pentru campanii', to: 'qr' }, { label: 'Ne urmărești? 50% reducere (rețele sociale)', to: 'socialpromo' }] },
-      { title: 'Automatizări', items: [{ label: 'Ne e dor de tine', to: 'notifications/dor' }, { label: 'Ore libere azi', to: 'notifications/ore-libere' }, { label: 'Lângă salon', to: 'notifications/langa-salon' }, { label: 'Card cadou', to: 'notifications/card-cadou' }, { label: 'Zile de naștere', to: 'birthdays' }] },
+      { title: 'Automatizări', items: [{ label: 'Ne e dor de tine', to: 'notifications/dor' }, { label: 'Ore libere azi', to: 'notifications/ore-libere' }, { label: 'Lângă salon', to: 'notifications/langa-salon' }, { label: 'Card cadou', to: 'notifications/card-cadou' }, { label: 'Recenzii Google', to: 'notifications/linkuri' }, { label: 'Zile de naștere', to: 'birthdays' }] },
       { title: 'Fidelizare', items: [{ label: 'Recomandări și bonusuri', to: 'referrals' }, { label: 'Tombola săptămânii', to: 'raffle' }] },
     ],
   },

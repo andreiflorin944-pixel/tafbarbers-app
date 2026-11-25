@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from 'hono';
+import { getGooglePlace, syncGoogleRating } from '../googleReviews';
 import { notesRoutes } from '../notes';
 import { socialAdmin } from '../social';
 import { qrAdmin } from '../qr';
@@ -496,6 +497,18 @@ adminRoutes.put('/settings', ownerOnly, async (c) => {
   ];
   const next = { ...cur } as Record<string, unknown>;
   for (const k of allowed) if (k in b) next[k] = b[k];
+  for (const k of ['youtube', 'snapchat', 'x']) if (k in b) next[k] = String(b[k] ?? '').trim().slice(0, 200);
+  // Nota Google (1–5, cu o zecimală) și numărul de recenzii; gol = nu se arată.
+  if ('googleRating' in b) {
+    const r = b.googleRating === null || b.googleRating === '' ? null : Math.round(Number(String(b.googleRating).replace(',', '.')) * 10) / 10;
+    if (r !== null && !(r >= 1 && r <= 5)) throw new HttpError(400, 'invalid_rating');
+    next.googleRating = r;
+  }
+  if ('googleReviews' in b) {
+    const n = b.googleReviews === null || b.googleReviews === '' ? null : Math.round(Number(b.googleReviews));
+    if (n !== null && !(n >= 0 && n < 1e6)) throw new HttpError(400, 'invalid_number');
+    next.googleReviews = n;
+  }
   // Aprobarea programărilor din aplicație: pornită / oprită și, opțional, doar pentru anumiți frizeri.
   if ('requireApproval' in b) next.requireApproval = b.requireApproval === true;
   if ('approvalBarberIds' in b) {
@@ -510,6 +523,14 @@ adminRoutes.put('/settings', ownerOnly, async (c) => {
   const cb = cur as Record<string, unknown>;
   await saveTranslations(c.env, Object.fromEntries(BIZ_TEXTS.map((k) => [k, { ro: next[k] as string, prev: cb[k] as string }])), b.translations as ManualTr);
   return c.json((await withTranslations(c.env, [next], [...BIZ_TEXTS]))[0]);
+});
+
+// --- Nota Google, citită automat (Setări → Salonul) ---
+
+adminRoutes.get('/google-rating', ownerOnly, async (c) => c.json({ ...(await getGooglePlace(c.env)), hasKey: !!c.env.GOOGLE_PLACES_KEY }));
+adminRoutes.post('/google-rating/refresh', ownerOnly, async (c) => {
+  const b = await c.req.json<{ placeId?: string }>().catch(() => ({}) as { placeId?: string });
+  return c.json({ ...(await syncGoogleRating(c.env, { force: true, placeId: typeof b.placeId === 'string' ? b.placeId : undefined })), hasKey: !!c.env.GOOGLE_PLACES_KEY });
 });
 
 // --- Traducerea conținutului în engleză și franceză ---

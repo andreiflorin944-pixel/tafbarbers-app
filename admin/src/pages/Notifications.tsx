@@ -12,6 +12,7 @@ type Automations = {
   nearby: { enabled: boolean; radius: number; window: number; maxPerWeek: number; title: Texts; message: Texts };
   giftCard: { enabled: boolean; amounts: number[]; validMonths: number; title: Texts; message: Texts };
   links: { appStoreUrl: string; playStoreUrl: string; googleReviewUrl?: string };
+  reviewAuto: { enabled: boolean; delayHours: number; everyDays: number };
   channels: Record<Ev, Channel>;
   otpSms: boolean;
 };
@@ -225,7 +226,26 @@ export function NotificationsPage() {
               />
             </>
           ) : (
-            <LinksTab links={a.links} onChange={(p) => set('links', p)} />
+            <>
+              <LinksTab links={a.links} onChange={(p) => set('links', p)} />
+              <h3 style={{ margin: '12px 0 0' }}>Cerere automată de recenzie Google</h3>
+              <p className="muted small" style={{ margin: 0 }}>
+                După ce o programare e marcată „finalizat”, clientul primește singur mesajul „Cerere de recenzie” cu linkul de mai sus, pe canalele bifate la
+                Notificări (dacă mesajul e oprit acolo, nu pleacă nimic). O singură dată pe programare și cel mult o dată la câteva zile pe client.
+                Programările copiate din Barberly nu primesc (le cere Barberly).
+              </p>
+              <label className="check">
+                <input type="checkbox" checked={a.reviewAuto.enabled} onChange={(e) => set('reviewAuto', { enabled: e.target.checked })} /> Pornit
+              </label>
+              <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
+                <Field label="La câte ore după tunsoare">
+                  <input type="number" min={1} max={48} value={a.reviewAuto.delayHours} onChange={(e) => set('reviewAuto', { delayHours: Number(e.target.value) })} style={{ maxWidth: 100 }} />
+                </Field>
+                <Field label="Același client, cel mult o dată la (zile)">
+                  <input type="number" min={1} max={365} value={a.reviewAuto.everyDays} onChange={(e) => set('reviewAuto', { everyDays: Number(e.target.value) })} style={{ maxWidth: 100 }} />
+                </Field>
+              </div>
+            </>
           )}
           {error ? <div className="err">{error}</div> : null}
           <div className="row">

@@ -583,6 +583,11 @@ export type Business = {
   instagram: string;
   facebook?: string;
   tiktok?: string;
+  youtube?: string;
+  snapchat?: string;
+  x?: string;
+  googleRating?: number | string | null;
+  googleReviews?: number | string | null;
   slotStepMin: number;
   cancelHours: number;
   minLeadMin?: number;

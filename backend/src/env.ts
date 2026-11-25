@@ -22,6 +22,8 @@ export type Env = {
   ADMIN_SETUP_KEY?: string;
   // Plata online (Stripe). Fără ele butoanele „Plătește online” nu apar și totul se plătește la salon.
   STRIPE_SECRET_KEY?: string;
+  /** Cheia Google Places (nota și recenziile salonului de pe Google, citite automat). */
+  GOOGLE_PLACES_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   // Doar pentru teste locale: server de probă în locul api.stripe.com.
   STRIPE_MOCK_BASE?: string;

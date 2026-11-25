@@ -22,6 +22,8 @@ import { runBarberlyPush } from './barberlyPush';
  * curățenie (sesiuni și coduri expirate; o dată pe zi, datele vechi după termenele de păstrare). Fiecare reminder se marchează înainte de trimitere,
  * ca o rulare suprapusă să nu-l trimită de două ori.
  */
+import { autoReviewRequests, syncGoogleRating } from './googleReviews';
+
 export async function scheduled(env: Env) {
   const now = Date.now();
   try {
@@ -54,6 +56,18 @@ export async function scheduled(env: Env) {
     for (const c of sending.results) await runCampaign(env, c.id);
   } catch (e) {
     await recordServerError(env, 'cron: campaigns failed', e);
+  }
+
+  // Recenzii Google: nota citită din Google (de două ori pe zi) și cererile automate după tunsoare.
+  try {
+    await syncGoogleRating(env);
+  } catch (e) {
+    await recordServerError(env, 'cron: google rating failed', e);
+  }
+  try {
+    await autoReviewRequests(env, now);
+  } catch (e) {
+    await recordServerError(env, 'cron: review requests failed', e);
   }
 
   // Anunțul despre trecerea din Barberly: tranșa zilei pe e-mail (oprit până îl pornește proprietarul).

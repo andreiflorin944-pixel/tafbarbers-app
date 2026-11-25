@@ -528,6 +528,7 @@ export const ar: Record<Key, string> = {
   'price.offer': '{price} · −{n}%',
   'about.hours': 'ساعات العمل',
   'about.closed': 'مغلق',
+  'about.googleReviews': '{n} تقييم على Google',
   'about.location': 'الموقع',
   'about.whatsapp': 'راسلنا على واتساب',
   'about.legal': 'معلومات قانونية',
