@@ -12,7 +12,7 @@ import { colors, space } from '@/theme';
 
 export default function About() {
   const { business, user } = useApp();
-  const { t } = useT();
+  const { t, lang } = useT();
   if (!business) return null;
 
   return (
@@ -21,14 +21,32 @@ export default function About() {
         <Logo size={0.6} />
       </View>
 
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: space.md, marginBottom: space.md }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: space.md, marginBottom: space.md }}>
         {socialUrl('instagram', business.instagram) ? <Social icon="logo-instagram" url={socialUrl('instagram', business.instagram)!} /> : null}
         {socialUrl('facebook', business.facebook) ? <Social icon="logo-facebook" url={socialUrl('facebook', business.facebook)!} /> : null}
         {socialUrl('tiktok', business.tiktok) ? <Social icon="logo-tiktok" url={socialUrl('tiktok', business.tiktok)!} /> : null}
         {business.phone && whatsappUrl(business.phone) ? <Social icon="logo-whatsapp" url={whatsappUrl(business.phone)!} /> : null}
+        {[
+          ['logo-youtube', business.youtube],
+          ['logo-snapchat', business.snapchat],
+          ['logo-x', business.x],
+        ].map(([icon, v]) => (linkOf(v) ? <Social key={icon} icon={icon as ComponentProps<typeof Ionicons>['name']} url={linkOf(v)!} /> : null))}
         {business.googleReviewUrl ? <Social icon="logo-google" url={business.googleReviewUrl} /> : null}
         {business.website ? <Social icon="globe-outline" url={business.website} /> : null}
       </View>
+
+      {/* Nota de pe Google (scrisă în panou), cu linkul spre recenzii. */}
+      {business.googleRating ? (
+        <Pressable
+          onPress={business.googleReviewUrl ? () => Linking.openURL(business.googleReviewUrl!) : undefined}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: space.md }}
+          accessibilityRole={business.googleReviewUrl ? 'link' : undefined}
+        >
+          <Ionicons name="star" size={18} color={colors.gold} />
+          <Text style={[styles.text, { fontWeight: '800', fontSize: 18 }]}>{lang === 'en' ? business.googleRating.toFixed(1) : business.googleRating.toFixed(1).replace('.', ',')}</Text>
+          {business.googleReviews ? <Text style={styles.muted}>· {t('about.googleReviews', { n: business.googleReviews })}</Text> : null}
+        </Pressable>
+      ) : null}
 
       {/* Promo „Urmărește-ne pe rețele și ai X% reducere” (pornit din panou), sub iconițele rețelelor; dispare după deblocare. */}
       {business.socialPromo && !user?.socialPromoClaimed ? (
@@ -98,6 +116,12 @@ export default function About() {
     </Screen>
   );
 }
+
+/** Link complet dintr-un câmp din panou („youtube.com/@x” sau „https://…”). */
+const linkOf = (v: string | undefined) => {
+  const s = (v ?? '').trim();
+  return !s ? null : /^https?:\/\//i.test(s) ? s : `https://${s.replace(/^\/+/, '')}`;
+};
 
 function Social({ icon, url }: { icon: ComponentProps<typeof Ionicons>['name']; url: string }) {
   return (

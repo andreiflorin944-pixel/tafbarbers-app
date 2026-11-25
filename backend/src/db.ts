@@ -11,6 +11,12 @@ export type Business = {
   instagram: string;
   facebook?: string;
   tiktok?: string;
+  youtube?: string;
+  snapchat?: string;
+  x?: string;
+  /** Nota și numărul de recenzii de pe Google, scrise în panou (Setări → Salonul); apar în aplicație, pe site și pentru AI. */
+  googleRating?: number | null;
+  googleReviews?: number | null;
   timezone: string;
   slotStepMin: number;
   cancelHours: number;

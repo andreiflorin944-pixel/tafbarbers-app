@@ -208,6 +208,11 @@ export type Business = {
   instagram: string;
   facebook?: string;
   tiktok?: string;
+  youtube?: string;
+  snapchat?: string;
+  x?: string;
+  googleRating?: number | null;
+  googleReviews?: number | null;
   cancelHours?: number;
   maxDaysAhead?: number; // cu câte zile înainte se poate programa (Setări → Reguli de programare)
   cancellationPolicy?: string;

@@ -496,6 +496,18 @@ adminRoutes.put('/settings', ownerOnly, async (c) => {
   ];
   const next = { ...cur } as Record<string, unknown>;
   for (const k of allowed) if (k in b) next[k] = b[k];
+  for (const k of ['youtube', 'snapchat', 'x']) if (k in b) next[k] = String(b[k] ?? '').trim().slice(0, 200);
+  // Nota Google (1–5, cu o zecimală) și numărul de recenzii; gol = nu se arată.
+  if ('googleRating' in b) {
+    const r = b.googleRating === null || b.googleRating === '' ? null : Math.round(Number(String(b.googleRating).replace(',', '.')) * 10) / 10;
+    if (r !== null && !(r >= 1 && r <= 5)) throw new HttpError(400, 'invalid_rating');
+    next.googleRating = r;
+  }
+  if ('googleReviews' in b) {
+    const n = b.googleReviews === null || b.googleReviews === '' ? null : Math.round(Number(b.googleReviews));
+    if (n !== null && !(n >= 0 && n < 1e6)) throw new HttpError(400, 'invalid_number');
+    next.googleReviews = n;
+  }
   // Aprobarea programărilor din aplicație: pornită / oprită și, opțional, doar pentru anumiți frizeri.
   if ('requireApproval' in b) next.requireApproval = b.requireApproval === true;
   if ('approvalBarberIds' in b) {

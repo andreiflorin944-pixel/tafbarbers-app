@@ -126,6 +126,7 @@ export function profileLinks(d: SiteData) {
         handle(biz.instagram, 'https://www.instagram.com/'),
         handle(biz.facebook, 'https://www.facebook.com/'),
         biz.tiktok ? (/^https?:/.test(biz.tiktok) ? biz.tiktok : `https://www.tiktok.com/@${biz.tiktok.replace(/^@/, '')}`) : null,
+        ...[biz.youtube, biz.snapchat, biz.x].map((v) => (v ? (/^https?:/.test(v) ? v : `https://${v}`) : null)),
         ...(w.profiles ?? []),
         ...w.links.map((l) => l.url).filter((u) => /^https:\/\/([a-z0-9-]+\.)*(instagram|facebook|tiktok|youtube|google|goo|mero|maps\.app\.goo)\.[a-z.]+\//i.test(u)),
       ].filter((x): x is string => !!x && /^https:\/\//.test(x)),
@@ -189,6 +190,11 @@ export function faqList(d: SiteData): Array<{ q: string; a: string }> {
     list.push({
       q: `Cine sunt frizerii de la ${name}?`,
       a: `${d.barbers.map((b) => `${b.name}${b.role ? ` (${b.role})` : ''}`).join(', ')}. La programare poți alege frizerul preferat. Detalii: ${origin}/frizeri`,
+    });
+  if (biz.googleRating)
+    list.push({
+      q: `Ce părere au clienții despre ${name}?`,
+      a: `${name} are nota ${String(biz.googleRating).replace('.', ',')} din 5 pe Google${biz.googleReviews ? `, din ${biz.googleReviews} de recenzii` : ''}. Recenziile se văd pe Google Maps: ${mapsUrl(d)}`,
     });
   list.push({
     q: 'Pot anula sau muta programarea?',

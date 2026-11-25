@@ -447,6 +447,21 @@ function BusinessForm() {
         {text('instagram', 'Instagram (doar numele)', 'tafbarbers')}
         {text('facebook', 'Facebook (link)', 'https://facebook.com/…')}
         {text('tiktok', 'TikTok (link)', 'https://tiktok.com/@…')}
+        {text('youtube', 'YouTube (link)', 'https://youtube.com/@…')}
+        {text('snapchat', 'Snapchat (link)', 'https://snapchat.com/add/…')}
+        {text('x', 'X / Twitter (link)', 'https://x.com/…')}
+      </div>
+      <p className="muted small" style={{ margin: 0 }}>
+        Rețelele completate apar ca butoane în aplicație (Despre noi) și pe site. Nota Google de mai jos o scrieți de mână (o vedeți în Google Maps) și o
+        actualizați din când în când; butonul „Recenzii Google” folosește linkul din Marketing → Automatizări → Linkuri.
+      </p>
+      <div className="grid two">
+        <Field label="Nota pe Google (ex. 4,9; gol = nu se arată)">
+          <input inputMode="decimal" value={v.googleRating ?? ''} placeholder="4,9" onChange={(e) => set({ googleRating: e.target.value })} />
+        </Field>
+        <Field label="Câte recenzii aveți pe Google (ex. 145)">
+          <input inputMode="numeric" value={v.googleReviews ?? ''} placeholder="145" onChange={(e) => set({ googleReviews: e.target.value })} />
+        </Field>
       </div>
       <Field label="Descriere (pagina Despre din aplicație)">
         <textarea value={v.description ?? ''} onChange={(e) => set({ description: e.target.value })} />
