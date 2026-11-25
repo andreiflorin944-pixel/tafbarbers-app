@@ -68,7 +68,7 @@ ok(r.status === 200 && !!r.body.devCode, 'bifă bună: codul pleacă');
 r = await req('POST', '/auth/password/forgot', { identifier: phone }, null, ip());
 ok(r.status === 400 && r.body.error === 'captcha_required', 'parolă uitată fără bifă: niciun cod');
 r = await req('POST', '/auth/password/forgot', { identifier: '0744' + rnd(), captcha: 'tok-ok' }, null, ip());
-ok(r.status === 200 && r.body.ok, 'parolă uitată cu bifă: același răspuns');
+ok(r.status === 404 && r.body.error === 'no_account', 'parolă uitată cu bifă: trece de verificare (număr fără cont)');
 r = await req('GET', '/admin/captcha', null, at);
 ok(!!r.body.lastFailAt, 'panoul arată ultimul robot oprit');
 

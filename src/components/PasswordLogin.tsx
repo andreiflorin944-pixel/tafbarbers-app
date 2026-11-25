@@ -106,7 +106,8 @@ export function PasswordLogin({ onDone, initialIdentifier }: { onDone: (token: s
       setDevCode(r.devCode);
       setCode('');
       setStep('reset');
-      setNotice(t('pw.sent'));
+      // Unde a plecat codul (mascat), ca clientul să știe unde să se uite; serverele vechi nu spun.
+      setNotice(r.sentTo ? t(r.channel === 'sms' ? 'pw.sentSms' : 'pw.sentEmail', { to: r.sentTo }) : t('pw.sent'));
     });
 
   const reset = () =>
