@@ -578,3 +578,19 @@ button.bk-row:disabled { opacity: 1; cursor: default; }
 .slot-menu-item svg { flex: none; margin-top: 2px; }
 .slot-menu-item > span { display: grid; gap: 2px; }
 .slot-menu-item b { font-size: 14px; }
+
+/* Mutarea prin tragere: programarea ridicată se estompează, locul nou apare punctat cu ora. */
+.cal-ev.lifted { opacity: 0.35; }
+.cal-ghost {
+  position: absolute; left: 5px; right: 5px; z-index: 6; border-radius: 8px; padding: 6px 10px; pointer-events: none;
+  border: 2px dashed var(--c); background: color-mix(in srgb, var(--c) 18%, var(--card)); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 2px; font-size: 12px; overflow: hidden;
+}
+.cal-ghost b { font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.cal-ghost span { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.cal-dragging, body.cal-dragging * { cursor: grabbing !important; user-select: none; }
+.move-ask { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card-alt); }
+.move-ask > div { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.move-ask > span { font-size: 20px; color: var(--muted); }
+.cal-ghost.clash { --c: var(--danger); }
+.cal-ghost.clash span { color: var(--danger); }
