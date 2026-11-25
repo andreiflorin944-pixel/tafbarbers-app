@@ -29,7 +29,14 @@ type Website = {
 const SITE_URL = 'https://app.tafbarbers.ro';
 const LANG_NAMES: Record<Lang, string> = { ro: 'Română', en: 'English', fr: 'Français', ar: 'العربية (arabă)' };
 const WELCOME_DEFAULT: Record<Lang, string> = { ro: '„Bine ați venit”', en: '“Welcome”', fr: '« Bienvenue »', ar: '„أهلاً وسهلاً”' };
-const SEO_PH: Record<Lang, string> = { ro: 'TAFBarbers · Frizerie, programare online', en: 'TAFBarbers · Barbershop, book online', fr: 'TAFBarbers · Barbier, réservation en ligne', ar: 'TAFBarbers · صالون حلاقة، احجز عبر الإنترنت' };
+const SEO_PH: Record<Lang, string> = { ro: 'TAFBarbers · Frizerie & Barber Iași · Programare online', en: 'TAFBarbers · Barber shop in Iași · Book online', fr: 'TAFBarbers · Barbier à Iași · Réservation en ligne', ar: 'TAFBarbers · صالون حلاقة رجالي في Iași · احجز عبر الإنترنت' };
+// Ce scrie site-ul singur când descrierea e goală (orașul vine din adresa salonului).
+const SEO_DESC_PH: Record<Lang, string> = {
+  ro: 'TAFBarbers, frizerie și barber shop în Iași: tuns bărbați, fade, aranjat barbă și styling. Programare online: alegi serviciul, frizerul și ora.',
+  en: "TAFBarbers, barber shop in Iași: men's haircuts, skin fades, beard trims and styling. Book online in seconds: service, barber and time.",
+  fr: 'TAFBarbers, barbier à Iași : coupe homme, dégradé, taille de barbe et coiffage. Réservez en ligne en quelques secondes : service, barbier et heure.',
+  ar: 'TAFBarbers، صالون حلاقة رجالي في Iași: قص شعر الرجال والتدريج وتهذيب اللحية والتصفيف. احجز عبر الإنترنت في ثوانٍ.',
+};
 const ACCENTS = ['#F9A11B', '#E8C547', '#D64545', '#2E86DE', '#1ABC9C', '#27AE60', '#9B59B6', '#FFFFFF'];
 const BACKGROUNDS = ['#000000', '#1E1F22', '#2B2D31', '#FFFFFF'];
 
@@ -328,8 +335,8 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
         <>
           <h2 style={{ margin: 0 }}>Google și distribuire (SEO)</h2>
           <p className="muted small" style={{ margin: 0 }}>
-            Cum apare site-ul în căutările Google și când cineva trimite linkul pe WhatsApp, Facebook sau Instagram. Lăsați gol și se folosește un
-            text automat cu numele și adresa salonului. Google mai primește automat programul, prețurile, serviciile, adresa și telefonul.
+            Cum apare site-ul în căutările Google și când cineva trimite linkul pe WhatsApp, Facebook sau Instagram. Lăsați gol și se folosește textul automat
+            (cel gri din câmp), scris cu cuvintele căutate în Google: frizerie, barber, tuns bărbați, fade, barbă și orașul din adresa salonului. Google mai primește automat programul, prețurile, serviciile, adresa și telefonul.
           </p>
           {v.languages.map((l) => (
             <div key={l} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -337,7 +344,7 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
                 <input dir={l === 'ar' ? 'rtl' : undefined} value={v.seo.title[l] ?? ''} maxLength={70} placeholder={SEO_PH[l]} onChange={(e) => set({ seo: { ...v.seo, title: { ...v.seo.title, [l]: e.target.value } } })} />
               </Field>
               <Field label={`Descrierea în Google, ${LANG_NAMES[l]} (cel mult 160 de caractere: ${(v.seo.description[l] ?? '').length})`}>
-                <textarea dir={l === 'ar' ? 'rtl' : undefined} rows={2} maxLength={300} value={v.seo.description[l] ?? ''} onChange={(e) => set({ seo: { ...v.seo, description: { ...v.seo.description, [l]: e.target.value } } })} />
+                <textarea dir={l === 'ar' ? 'rtl' : undefined} rows={2} maxLength={300} placeholder={SEO_DESC_PH[l]} value={v.seo.description[l] ?? ''} onChange={(e) => set({ seo: { ...v.seo, description: { ...v.seo.description, [l]: e.target.value } } })} />
               </Field>
             </div>
           ))}

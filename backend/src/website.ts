@@ -189,28 +189,37 @@ export const siteDomain = (env: Env, w: Website) => w.customDomain || (env.SITE_
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
-const SEO_TEXT: Record<Lang, { title: (n: string) => string; desc: (n: string, where: string) => string; locale: string }> = {
+// Textele automate pentru Google (când câmpurile din Panou → Site web → SEO sunt goale), scrise cu cuvintele căutate
+// de clienți: „frizerie <oraș>”, „barber <oraș>”, „tuns bărbați”, „fade”, „aranjat barbă”, „programare online”.
+const SEO_TEXT: Record<Lang, { title: (n: string, city: string) => string; desc: (n: string, city: string) => string; locale: string }> = {
   ro: {
-    title: (n) => `${n} · Frizerie, programare online`,
-    desc: (n, where) => `${n}${where ? `, ${where}` : ''}: tuns, barbă și styling. Programează-te online în câteva secunde: alegi serviciul, frizerul și ora.`,
+    title: (n, c) => (c ? `${n} · Frizerie & Barber ${c} · Programare online` : `${n} · Frizerie & Barber · Programare online`),
+    desc: (n, c) =>
+      `${n}, frizerie și barber shop${c ? ` în ${c}` : ''}: tuns bărbați, fade, aranjat barbă și styling. Programare online: alegi serviciul, frizerul și ora.`,
     locale: 'ro_RO',
   },
   en: {
-    title: (n) => `${n} · Barbershop, book online`,
-    desc: (n, where) => `${n}${where ? `, ${where}` : ''}: haircuts, beard and styling. Book online in seconds: choose the service, the barber and the time.`,
+    title: (n, c) => (c ? `${n} · Barber shop in ${c} · Book online` : `${n} · Barber shop · Book online`),
+    desc: (n, c) => `${n}, barber shop${c ? ` in ${c}` : ''}: men's haircuts, skin fades, beard trims and styling. Book online in seconds: service, barber and time.`,
     locale: 'en_GB',
   },
   fr: {
-    title: (n) => `${n} · Barbier, réservation en ligne`,
-    desc: (n, where) => `${n}${where ? `, ${where}` : ''} : coupe, barbe et coiffage. Réservez en ligne en quelques secondes : service, barbier et heure.`,
+    title: (n, c) => (c ? `${n} · Barbier à ${c} · Réservation en ligne` : `${n} · Barbier · Réservation en ligne`),
+    desc: (n, c) => `${n}, barbier${c ? ` à ${c}` : ''} : coupe homme, dégradé, taille de barbe et coiffage. Réservez en ligne en quelques secondes : service, barbier et heure.`,
     locale: 'fr_FR',
   },
   ar: {
-    title: (n) => `${n} · صالون حلاقة، احجز عبر الإنترنت`,
-    desc: (n, where) => `${n}${where ? `، ${where}` : ''}: قص الشعر واللحية والتصفيف. احجز عبر الإنترنت في ثوانٍ: اختر الخدمة والحلاق والوقت.`,
+    title: (n, c) => (c ? `${n} · صالون حلاقة رجالي في ${c} · احجز عبر الإنترنت` : `${n} · صالون حلاقة رجالي · احجز عبر الإنترنت`),
+    desc: (n, c) => `${n}، صالون حلاقة رجالي${c ? ` في ${c}` : ''}: قص شعر الرجال والتدريج وتهذيب اللحية والتصفيف. احجز عبر الإنترنت في ثوانٍ: الخدمة والحلاق والوقت.`,
     locale: 'ar_AR',
   },
 };
+
+/** Orașul din adresa salonului (ultima parte, fără „jud.” și codul poștal): „Str. Lacului 2, Rediu, jud. Iași” → „Iași”. */
+export function siteCity(address: string) {
+  const parts = address.split(',').map((x) => x.replace(/\b(jud(e[țt]ul)?\.?|cod po[șs]tal)\s*/gi, '').replace(/\b\d{6}\b/g, '').replace(/\b(rom[âa]nia|romania)\b/gi, '').trim()).filter(Boolean);
+  return parts[parts.length - 1] ?? '';
+}
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -255,7 +264,8 @@ async function structuredData(env: Env, w: Website, biz: Business, origin: strin
     image,
     logo: image,
     telephone: biz.phone || undefined,
-    address: biz.address ? { '@type': 'PostalAddress', streetAddress: biz.address, addressCountry: 'RO' } : undefined,
+    address: biz.address ? { '@type': 'PostalAddress', streetAddress: biz.address, addressLocality: siteCity(biz.address) || undefined, addressCountry: 'RO' } : undefined,
+    areaServed: siteCity(biz.address) ? { '@type': 'City', name: siteCity(biz.address) } : undefined,
     priceRange: prices.length ? `${Math.min(...prices)}-${Math.max(...prices)} RON` : undefined,
     currenciesAccepted: 'RON',
     openingHoursSpecification: hours.results
@@ -286,8 +296,8 @@ export async function sitePage(env: Env, opts: { preview?: boolean; lang?: strin
   const lang = siteLang(w, opts.lang);
   const abs = (u: string) => (/^https:/.test(u) ? u : `${origin}${u}`);
   const image = abs(w.seo.shareImage ?? w.logoUrl ?? look.logoUrl ?? '/app-icon.png');
-  const where = biz.address.split(',').slice(-1)[0]?.trim() ?? '';
-  const title = w.seo.title[lang] || SEO_TEXT[lang].title(biz.name);
+  const where = siteCity(biz.address);
+  const title = w.seo.title[lang] || SEO_TEXT[lang].title(biz.name, where);
   const desc = w.seo.description[lang] || SEO_TEXT[lang].desc(biz.name, where);
   const url = langUrl(origin, w, lang);
   const cfg = {
