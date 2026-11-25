@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { api, ApiError, BLOCK_KINDS, blockKind, errorText, type Barber, type BlockKind, type BlockOccurrence, type Booking, type Client, type Location, type Me, type Service, type Slot, type TimeOff } from '../api';
 import { Field, Loading, Modal, TopBar, useAction, useLoad } from '../ui';
 import { BOOKINGS_CHANGED } from '../Requests';
@@ -78,6 +78,11 @@ export function CalendarPage({ me }: { me: Me }) {
   const [menu, setMenu] = useState<{ x: number; y: number; barberId: string | null; time: string; outside: boolean; day: string } | null>(null);
   const [blockNew, setBlockNew] = useState<{ barberId: string | null; day: string; start: string; kind: BlockKind; label: string; len: number } | null>(null);
   const [blockOpen, setBlockOpen] = useState<BlockOccurrence | null>(null);
+  // Tragerea cu mouse-ul: ții apăsat pe o programare și o duci la altă oră (sau la alt frizer / altă zi), apoi confirmi.
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [moveAsk, setMoveAsk] = useState<Drag | null>(null);
+  const dragRef = useRef<Drag | null>(null);
+  const justDragged = useRef(false);
   const datePick = useRef<HTMLInputElement>(null);
   // „Toată ziua”: calendarul se întinde 07:00–22:00, cu orele din afara programului hașurate (și programabile). Ținut minte în browser.
   const [wide, setWide] = useState(() => {
@@ -183,6 +188,94 @@ export function CalendarPage({ me }: { me: Me }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const canDrag = (x: Booking) => me.permissions.bookings_manage && x.status === 'confirmed';
+  /** Apăsat pe o programare: tragerea pornește abia după ce mouse-ul se mișcă puțin, ca un click simplu să deschidă panoul. */
+  const dragStart = (e: ReactPointerEvent<HTMLDivElement>, x: Booking) => {
+    if (e.button !== 0 || e.pointerType !== 'mouse' || !canDrag(x)) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const len = Math.round((Date.parse(x.end) - Date.parse(x.start)) / 60000);
+    const grab = (e.clientY - r.top) / PX;
+    const x0 = e.clientX,
+      y0 = e.clientY;
+    let started = false;
+    let lastY = y0;
+    let lastX = x0;
+    // Lângă marginea de sus/jos a ferestrei, pagina se derulează singură cât timp ții programarea acolo.
+    const scroller = window.setInterval(() => {
+      if (!started) return;
+      const edge = 70;
+      const dy = lastY < edge ? -(edge - lastY) / 3 : lastY > window.innerHeight - edge ? (lastY - (window.innerHeight - edge)) / 3 : 0;
+      if (dy) {
+        window.scrollBy(0, dy);
+        place(lastX, lastY);
+      }
+    }, 30);
+    const place = (cx: number, cy: number) => {
+      const col = (document.elementFromPoint(cx, cy) as HTMLElement | null)?.closest<HTMLElement>('.cal-col[data-day]');
+      const prev = dragRef.current;
+      if (!col) return;
+      const top = col.getBoundingClientRect().top;
+      let m = Math.round((startMin + (cy - top) / PX - grab) / step) * step;
+      m = Math.max(startMin, Math.min(m, endMin - Math.min(len, endMin - startMin)));
+      const d = col.dataset.day!;
+      const barberId = col.dataset.barber || x.barberId;
+      if (prev && prev.day === d && prev.barberId === barberId && prev.min === m) return;
+      // La alt frizer, locul arătat are durata lui pentru serviciu (ca la salvare).
+      const to = barberId !== x.barberId ? barbers.find((b) => b.id === barberId) : null;
+      const svc = services.find((v) => v.id === x.serviceId);
+      const extrasMin = (x.extras ?? []).reduce((a, e) => a + (e.addon ? 0 : e.durationMin), 0);
+      const l = to ? (to.durations?.[x.serviceId] ?? svc?.durationMin ?? len - extrasMin) + extrasMin : len;
+      const s0 = Date.parse(localToIso(d, hm(m)));
+      const clash = shown.some((o) => o.id !== x.id && o.barberId === barberId && Date.parse(o.start) < s0 + l * 60000 && Date.parse(o.end) > s0);
+      const next: Drag = { b: x, day: d, barberId, min: m, len: l, clash };
+      dragRef.current = next;
+      setDrag(next);
+    };
+    const move = (ev: PointerEvent) => {
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      if (!started) {
+        if (Math.abs(ev.clientX - x0) < 5 && Math.abs(ev.clientY - y0) < 5) return;
+        started = true;
+        setHover(null);
+        document.body.classList.add('cal-dragging');
+      }
+      ev.preventDefault();
+      place(ev.clientX, ev.clientY);
+    };
+    const stop = (cancel: boolean) => {
+      window.clearInterval(scroller);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('keydown', key);
+      document.body.classList.remove('cal-dragging');
+      const d = dragRef.current;
+      dragRef.current = null;
+      setDrag(null);
+      if (!started) return;
+      // Clickul care urmează după tragere nu mai deschide nimic (nici panoul, nici meniul orei libere).
+      justDragged.current = true;
+      const eat = (ev: MouseEvent) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+      };
+      window.addEventListener('click', eat, true);
+      window.setTimeout(() => {
+        justDragged.current = false;
+        window.removeEventListener('click', eat, true);
+      }, 0);
+      if (cancel || !d) return;
+      const same = d.barberId === x.barberId && localToIso(d.day, hm(d.min)) === x.start;
+      if (!same) setMoveAsk(d);
+    };
+    const up = () => stop(false);
+    const key = (ev: KeyboardEvent) => ev.key === 'Escape' && stop(true);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('keydown', key);
+  };
+
   /** O programare din calendar: ora, clientul, serviciul și starea în colț. */
   const card = (x: Booking, lane: { lane: number; n: number }, color: string, withBarber: boolean) => {
     const s = minutesOf(x.start);
@@ -193,7 +286,7 @@ export function CalendarPage({ me }: { me: Me }) {
     return (
       <div
         key={x.id}
-        className={`cal-ev ${x.status}${h < 54 ? ' short' : ''}${x.identity ? ' has-id' : ''}${x.clientBirthday ? ' bday' : ''}${open?.id === x.id ? ' sel' : ''}`}
+        className={`cal-ev ${x.status}${h < 54 ? ' short' : ''}${x.identity ? ' has-id' : ''}${x.clientBirthday ? ' bday' : ''}${open?.id === x.id ? ' sel' : ''}${canDrag(x) ? ' drag' : ''}${drag?.b.id === x.id ? ' lifted' : ''}`}
         style={{
           top: (s - startMin) * PX + 1,
           height: h,
@@ -202,12 +295,15 @@ export function CalendarPage({ me }: { me: Me }) {
           ['--c' as string]: color,
           ['--bc' as string]: color,
         }}
+        onPointerDown={(e) => dragStart(e, x)}
         onClick={() => {
+          if (justDragged.current) return;
           setHover(null);
           setOpenCheckout(false);
           setOpen(x);
         }}
         onMouseEnter={(e) => {
+          if (dragRef.current) return;
           const r = e.currentTarget.getBoundingClientRect();
           setHover({ b: x, x: r.right, y: r.top });
         }}
@@ -308,6 +404,8 @@ export function CalendarPage({ me }: { me: Me }) {
       <div
         key={key}
         className={`cal-col cal-empty${isToday && week ? ' today' : ''}`}
+        data-day={d}
+        data-barber={barberId ?? ''}
         onClick={(e) => {
           const cl = (e.target as HTMLElement).classList;
           if (e.target !== e.currentTarget && !cl.contains('cal-off') && !cl.contains('cal-line') && !cl.contains('cal-block') && !cl.contains('cal-pause')) return;
@@ -369,6 +467,14 @@ export function CalendarPage({ me }: { me: Me }) {
         })}
         {week && isToday && nowIn ? <div className="cal-now" style={{ top: (nowMin - startMin) * PX }} /> : null}
         {list.map((x) => card(x, lane.get(x.id) ?? { lane: 0, n: 1 }, colorOf(x.barberId), withBarber))}
+        {drag && drag.day === d && (barberId === null || drag.barberId === barberId) ? (
+          <div className={`cal-ghost${drag.clash ? ' clash' : ''}`} style={{ top: (drag.min - startMin) * PX + 1, height: Math.max(drag.len * PX - 2, 22), ['--c' as string]: colorOf(drag.barberId) }}>
+            <b>
+              {hm(drag.min)} – {hm(drag.min + drag.len)}
+            </b>
+            <span>{drag.clash ? 'Ocupat: se suprapune cu altă programare' : drag.b.clientName || drag.b.clientPhone}</span>
+          </div>
+        ) : null}
       </div>
     );
   };
@@ -577,7 +683,7 @@ export function CalendarPage({ me }: { me: Me }) {
         </div>
       ) : null}
 
-      {hover && !open ? (
+      {hover && !open && !drag ? (
         <div className="cal-pop" style={{ left: Math.min(hover.x + 10, window.innerWidth - 300), top: Math.max(8, Math.min(hover.y, window.innerHeight - 190)) }} role="tooltip">
           <div className="row" style={{ justifyContent: 'space-between', gap: 10, flexWrap: 'nowrap' }}>
             <b>
@@ -627,6 +733,17 @@ export function CalendarPage({ me }: { me: Me }) {
             setOpenCheckout(false);
           }}
           onChange={reload}
+        />
+      ) : null}
+      {moveAsk ? (
+        <MoveConfirm
+          ask={moveAsk}
+          barbers={barbers}
+          onClose={() => setMoveAsk(null)}
+          onDone={() => {
+            setMoveAsk(null);
+            reload();
+          }}
         />
       ) : null}
       {menu ? (
@@ -687,6 +804,87 @@ export function CalendarPage({ me }: { me: Me }) {
         />
       ) : null}
     </>
+  );
+}
+
+type Drag = { b: Booking; day: string; barberId: string; min: number; len: number; clash?: boolean };
+
+/** „Muți programarea?”: după ce ai tras-o în calendar. Se salvează doar la „Da, mută”. */
+function MoveConfirm({ ask, barbers, onClose, onDone }: { ask: Drag; barbers: Barber[]; onClose: () => void; onDone: () => void }) {
+  const { b } = ask;
+  const { busy, error, run, setError } = useAction();
+  const [notify, setNotify] = useState(false);
+  const [busyErr, setBusyErr] = useState(false);
+  const start = localToIso(ask.day, hm(ask.min));
+  const otherBarber = ask.barberId !== b.barberId;
+  const to = barbers.find((x) => x.id === ask.barberId);
+  // La alt frizer: trebuie să facă serviciul; durata se ia de la el (poate fi alta).
+  const cannot = otherBarber && !!to?.serviceIds?.length && !to.serviceIds.includes(b.serviceId);
+  const newLen = ask.len;
+  const oldLen = Math.round((Date.parse(b.end) - Date.parse(b.start)) / 60000);
+  const sameDay = dayOf(b.start) === ask.day;
+  const save = (force: boolean) =>
+    run(async () => {
+      try {
+        await api('PATCH', `/admin/bookings/${b.id}`, { start, ...(otherBarber && { barberId: ask.barberId }), force, notify });
+        onDone();
+      } catch (e) {
+        if (e instanceof ApiError && e.message === 'slot_unavailable' && !force) setBusyErr(true);
+        throw e;
+      }
+    });
+  return (
+    <Modal title="Muți programarea?" onClose={onClose}>
+      <p style={{ marginTop: 0 }}>
+        <b>{b.clientName || b.clientPhone || 'Client'}</b> · {b.serviceName}
+      </p>
+      <div className="move-ask">
+        <div>
+          <span className="muted small">Acum</span>
+          <b>
+            {sameDay ? '' : `${date(b.start)} · `}
+            {time(b.start)} – {time(b.end)}
+          </b>
+          <span className="muted small">{b.barberName}</span>
+        </div>
+        <span aria-hidden="true">→</span>
+        <div>
+          <span className="muted small">Nou</span>
+          <b>
+            {sameDay ? '' : `${date(start)} · `}
+            {hm(ask.min)} – {hm(ask.min + newLen)}
+          </b>
+          <span className="muted small">{to?.name ?? b.barberName}</span>
+        </div>
+      </div>
+      {otherBarber && newLen !== oldLen && !cannot ? <p className="muted small">La {to?.name} serviciul durează {newLen} min, așa că programarea se termină la {hm(ask.min + newLen)}.</p> : null}
+      {ask.clash ? <p className="err">Acolo e deja altă programare, așa că mutarea nu se poate salva. Alege alt loc.</p> : null}
+      {cannot ? <p className="err">{to?.name} nu face „{b.serviceName}”. Mut-o la alt frizer sau schimbă serviciul din panoul programării.</p> : null}
+      <label className="check small" style={{ margin: '10px 0' }}>
+        <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} /> Trimite clientului mesaj cu noua oră
+      </label>
+      {busyErr ? (
+        <div className="err">
+          Ora nouă nu e liberă: e în afara programului, într-o pauză sau prea aproape de altă programare. Poți s-o pui totuși acolo cu „Mută oricum” (doar dacă nu se suprapune cu altă programare).
+        </div>
+      ) : error ? (
+        <div className="err">{error}</div>
+      ) : null}
+      <div className="row" style={{ marginTop: 12, gap: 8 }}>
+        {busyErr ? (
+          <button disabled={busy || cannot || !!ask.clash} onClick={() => (setError(null), save(true))}>
+            Mută oricum
+          </button>
+        ) : (
+          <button disabled={busy || cannot || !!ask.clash} onClick={() => save(false)}>
+            {busy ? 'Se mută…' : 'Da, mută'}
+          </button>
+        )}
+        <button className="ghost" onClick={onClose}>
+          Renunță
+        </button>
+      </div>
+    </Modal>
   );
 }
 
