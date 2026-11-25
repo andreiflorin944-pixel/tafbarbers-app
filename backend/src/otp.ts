@@ -28,12 +28,13 @@ const OTP_PREFIXES = ['+40', '+373', '+33', '+32', '+41', '+352', '+39', '+34', 
  * Trimite un cod nou pe e-mail sau SMS, după toate limitele (prefixe SMS, totaluri zilnice, pe număr / adresă, 45 de secunde
  * între coduri, prea multe greșeli în ultima oră). `purpose: 'reset'` schimbă doar textul e-mailului (parolă nouă).
  * `smsEvenIfOff`: SMS-ul pleacă și cu „Cod prin SMS” oprit (parola uitată a unui cont fără e-mail: altfel n-ar avea nicio cale).
+ * `both`: codul pleacă pe ambele canale ale contului (e-mail și SMS).
  * `fallback`: dacă trimiterea eșuează, același cod pleacă pe celălalt canal (e-mail ↔ SMS).
  */
 export async function issueCode(
   c: Context<AppEnv>,
-  o: { phone: string; email: string | null; channel: 'email' | 'sms'; lang: string; purpose?: 'login' | 'reset'; fallback?: boolean; smsEvenIfOff?: boolean },
-): Promise<{ code: string; channel: 'email' | 'sms'; sent: boolean }> {
+  o: { phone: string; email: string | null; channel: 'email' | 'sms'; lang: string; purpose?: 'login' | 'reset'; fallback?: boolean; both?: boolean; smsEvenIfOff?: boolean },
+): Promise<{ code: string; channel: 'email' | 'sms'; channels: ('email' | 'sms')[]; sent: boolean }> {
   const { phone, email, channel, lang } = o;
   // Protecție contra abuzului: SMS doar spre prefixe europene uzuale și limite zilnice totale pe canal.
   if (channel === 'sms' && !o.smsEvenIfOff && !(await getAutomations(c.env)).otpSms) throw new HttpError(400, 'sms_code_off');
@@ -88,7 +89,7 @@ export async function issueCode(
   )
     .bind(phone, await sha256(`${phone}:${code}`), iso(new Date(Date.now() + OTP_TTL)), email, channel, recent)
     .run();
-  if (review) return { code, channel, sent: true }; // fără mesaj: echipa care verifică aplicația știe codul
+  if (review) return { code, channel, channels: [channel], sent: true }; // fără mesaj: echipa care verifică aplicația știe codul
   const biz = await getBusiness(c.env);
   const t = await renderTemplate(c.env, 'otp', lang, { businessname: biz.name, code });
   const send = async (ch: 'email' | 'sms') => {
@@ -98,19 +99,18 @@ export async function issueCode(
     }
     return sendSms(c.env, { kind: 'otp', recipient: phone }, t.sms);
   };
-  let used = channel;
-  let sent = await send(channel);
-  // Nu a plecat (adresă respinsă, SMS căzut): același cod pe celălalt canal, dacă s-a cerut și se poate.
-  if (!sent && o.fallback) {
+  const ok: ('email' | 'sms')[] = [];
+  if (await send(channel)) ok.push(channel);
+  // `both`: același cod și pe celălalt canal al contului (orice-ar fi cu primul); `fallback`: doar dacă primul n-a plecat.
+  if (o.both || (!ok.length && o.fallback)) {
     const other = channel === 'email' ? 'sms' : 'email';
     const canOther = other === 'email' ? !!email : (o.smsEvenIfOff || (await getAutomations(c.env)).otpSms) && OTP_PREFIXES.some((p) => phone.startsWith(p));
-    if (canOther && (await send(other))) {
-      sent = true;
-      used = other;
-      await c.env.DB.prepare('UPDATE otp_codes SET channel = ? WHERE phone = ?').bind(other, phone).run();
-    }
+    if (canOther && (await send(other))) ok.push(other);
   }
-  return { code, channel: used, sent };
+  // Canalul ținut la cod: e-mail dacă a plecat și pe e-mail (codul din SMS nu „dovedește” atunci telefonul, ca la contul făcut cu e-mail).
+  const used = ok.includes('email') ? 'email' : ok[0] ?? channel;
+  if (used !== channel) await c.env.DB.prepare('UPDATE otp_codes SET channel = ? WHERE phone = ?').bind(used, phone).run();
+  return { code, channel: ok[0] ?? channel, channels: ok, sent: ok.length > 0 };
 }
 
 export type CodeRow = { code_hash: string; email: string | null; channel: string | null };

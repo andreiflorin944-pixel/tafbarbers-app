@@ -304,7 +304,9 @@ async function sendWave(env: Env, s: AnnounceSettings, wave: AnyWave, n: number)
   let sent = 0;
   let refused = false;
   const sp = await salonPhone(env);
-  for (const r of rows.results) {
+  for (const [i, r] of rows.results.entries()) {
+    // Pauză între anunțuri: rămâne loc la furnizor (câteva e-mailuri pe secundă) pentru codurile de cont, care au prioritate.
+    if (i) await new Promise((res) => setTimeout(res, 700));
     const html = waveHtml(env, wave, { name: firstName(r.name), phone: r.phone, salonPhone: sp, email: r.email });
     if (await sendEmail(env, { kind: 'announce', recipient: r.email, campaignId: wave }, SUBJECTS[wave], html)) sent++;
     else {
