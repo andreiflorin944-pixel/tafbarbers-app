@@ -521,10 +521,10 @@ publicRoutes.post('/auth/password/login', async (c) => {
   return c.json({ token, clientId: match.id });
 });
 
-// Codul de recuperare pleacă pe ce a scris clientul: telefon → SMS, e-mail → e-mail. Dacă acel canal nu merge
-// (SMS oprit din panou, număr din afara Europei, e-mail respins), pleacă pe celălalt canal al contului.
-// Clientul află unde a plecat codul (mascat), ori că nu există cont cu acele date (verificarea anti-robot oprește încercările în masă,
-// iar intrarea cu cod spune oricum dacă un număr are cont).
+// Mesajele pentru cont au prioritate (regula lui florin, 25 nov 2026): codul de recuperare pleacă pe TOATE căile contului
+// (SMS pe telefon și e-mail, dacă le are), indiferent de mesajele automate oprite sau de „Cod prin SMS” din panou.
+// Primul pleacă pe ce a scris clientul. Clientul află unde a plecat codul (mascat), ori că nu există cont cu acele date
+// (verificarea anti-robot oprește încercările în masă, iar intrarea cu cod spune oricum dacă un număr are cont).
 const maskEmail = (e: string) => {
   const [u, d] = e.split('@');
   return `${u.slice(0, Math.min(2, u.length))}***@${d}`;
@@ -542,19 +542,19 @@ publicRoutes.post('/auth/password/forgot', async (c) => {
   if (blocked?.blocked_at) throw new HttpError(403, 'account_blocked');
   const lang = c.req.query('lang') ?? 'ro';
   const first: 'email' | 'sms' = id.kind === 'phone' || !acct.email ? 'sms' : 'email';
-  // Cont fără e-mail (ex. adus din Barberly doar cu telefonul): SMS-ul e singura cale, deci pleacă și cu „Cod prin SMS” oprit.
-  const opts = { phone: acct.phone, email: acct.email, lang, purpose: 'reset' as const, fallback: true, smsEvenIfOff: !acct.email };
+  const opts = { phone: acct.phone, email: acct.email, lang, purpose: 'reset' as const, both: true, smsEvenIfOff: true };
   let r: Awaited<ReturnType<typeof issueCode>>;
   try {
     r = await issueCode(c, { ...opts, channel: first });
   } catch (e) {
-    // SMS-ul nu se poate trimite deloc (oprit din panou / număr din afara listei): direct pe e-mail, dacă are.
-    if (!(e instanceof HttpError) || first !== 'sms' || !acct.email || !['sms_code_off', 'country_not_supported'].includes(e.code)) throw e;
+    // Număr din afara listei de țări pentru SMS: direct pe e-mail, dacă are.
+    if (!(e instanceof HttpError) || first !== 'sms' || !acct.email || e.code !== 'country_not_supported') throw e;
     r = await issueCode(c, { ...opts, channel: 'email' });
   }
   if (!r.sent) throw new HttpError(400, 'code_not_sent');
-  const sentTo = r.channel === 'email' ? maskEmail(acct.email!) : maskPhone(acct.phone);
-  return c.json({ ok: true, channel: r.channel, sentTo, ...(c.env.DEV_OTP === '1' && { devCode: r.code }) });
+  const mask = (ch: 'email' | 'sms') => (ch === 'email' ? maskEmail(acct.email!) : maskPhone(acct.phone));
+  const sentTo = r.channels.map(mask).join(' + ');
+  return c.json({ ok: true, channel: r.channels.length > 1 ? 'both' : r.channel, sentTo, ...(c.env.DEV_OTP === '1' && { devCode: r.code }) });
 });
 
 // Codul + parola nouă: parola se pune, toate celelalte sesiuni se închid, iar clientul intră în cont.

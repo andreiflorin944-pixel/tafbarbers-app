@@ -45,7 +45,7 @@ export interface BookingApi {
   /** Intrarea cu e-mail (sau telefon) și parolă. Date greșite: mereu `wrong_credentials`; prea multe greșeli: `login_locked`. */
   passwordLogin(input: { identifier: string; password: string }): Promise<{ token: string }>;
   /** „Am uitat parola”: codul pleacă pe e-mailul contului, dacă există contul (răspunsul e mereu la fel). */
-  forgotPassword(input: { identifier: string; captcha?: string }, lang: string): Promise<{ ok: true; devCode?: string; channel?: 'email' | 'sms'; sentTo?: string }>;
+  forgotPassword(input: { identifier: string; captcha?: string }, lang: string): Promise<{ ok: true; devCode?: string; channel?: 'email' | 'sms' | 'both'; sentTo?: string }>;
   /** Codul primit + parola nouă: celelalte dispozitive ies din cont, iar clientul intră. */
   resetPassword(input: { identifier: string; code: string; password: string; acceptTerms?: boolean; lang?: string }): Promise<{ token: string }>;
   /** Pune prima parolă sau o schimbă (cu parola de acum sau cu un cod proaspăt de pe e-mail). */

@@ -87,7 +87,9 @@ export async function sendEmail(
     // Răspunsurile clienților ajung la adresa de contact a salonului (Setări → Datele firmei), ca la Barberly.
     const biz = (await getBusiness(env).catch(() => null)) as { legalEmail?: string } | null;
     const replyTo = env.EMAIL_REPLY_TO || biz?.legalEmail || undefined;
-    const res = await fetch('https://api.resend.com/emails', {
+    // Resend primește doar câteva e-mailuri pe secundă: când trimiterile de anunț merg în paralel cu un cod de cont,
+    // răspunde 429. Atunci mai încercăm de 2 ori, la o secundă, ca e-mailul să nu se piardă.
+    const post = () => fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.EMAIL_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -104,7 +106,12 @@ export async function sendEmail(
           : {}),
       }),
     });
-    await log(env, entry, res.ok, res.ok ? undefined : `HTTP ${res.status}`);
+    let res = await post();
+    for (let i = 0; i < 2 && res.status === 429; i++) {
+      await new Promise((r) => setTimeout(r, 1100));
+      res = await post();
+    }
+    await log(env, entry, res.ok, res.ok ? undefined : `HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
     return res.ok;
   } catch (e) {
     await log(env, entry, false, String(e));

@@ -29,7 +29,7 @@ r = await req('POST', '/auth/password/forgot', { identifier: '0799' + rnd() }, n
 ok(r.status === 404 && r.body.error === 'no_account', 'număr fără cont: clientul află');
 
 r = await req('POST', '/auth/password/forgot', { identifier: phone }, null, ip());
-ok(r.status === 200 && r.body.channel === 'sms' && /^\+40\d\d\*{5}\d\d$/.test(r.body.sentTo) && !!r.body.devCode, `telefon scris: cod prin SMS (${r.body.sentTo})`);
+ok(r.status === 200 && r.body.channel === 'both' && /^\+40\d\d\*{5}\d\d \+ io\*\*\*@test\.ro$/.test(r.body.sentTo) && !!r.body.devCode, `telefon scris: cod prin SMS și pe e-mail (${r.body.sentTo})`);
 const code1 = r.body.devCode;
 
 r = await req('POST', '/auth/password/forgot', { identifier: email }, null, ip());
@@ -46,7 +46,7 @@ const email2 = `ana${rnd()}@test.ro`;
 r = await req('POST', '/auth/otp', { phone: phone2, channel: 'sms' }, null, ip());
 await req('POST', '/auth/verify', { phone: phone2, code: r.body.devCode, name: 'Ana', acceptTerms: true, email: email2 }, null, ip());
 r = await req('POST', '/auth/password/forgot', { identifier: email2.toUpperCase() }, null, ip());
-ok(r.status === 200 && r.body.channel === 'email' && r.body.sentTo === `${email2.slice(0, 2)}***@test.ro`, `e-mail scris: cod pe e-mail (${r.body.sentTo})`);
+ok(r.status === 200 && r.body.channel === 'both' && r.body.sentTo.startsWith(`${email2.slice(0, 2)}***@test.ro + +40`), `e-mail scris: întâi e-mail, apoi și SMS (${r.body.sentTo})`);
 
 // „Cod prin SMS” oprit din panou.
 await req('PUT', '/admin/automations/switch', { key: 'otpSms', enabled: false }, at);
@@ -55,7 +55,7 @@ const email3 = `dan${rnd()}@test.ro`;
 r = await req('POST', '/auth/otp', { phone: phone3, channel: 'email', email: email3 }, null, ip());
 await req('POST', '/auth/verify', { phone: phone3, code: r.body.devCode, name: 'Dan', acceptTerms: true }, null, ip());
 r = await req('POST', '/auth/password/forgot', { identifier: phone3 }, null, ip());
-ok(r.status === 200 && r.body.channel === 'email', 'SMS oprit, telefon scris: codul pleacă pe e-mailul contului');
+ok(r.status === 200 && r.body.channel === 'both', 'SMS oprit din panou: codul de cont pleacă totuși pe ambele căi (prioritate)');
 
 // Client adus din panou / Barberly doar cu telefonul (fără e-mail), cu SMS oprit: tot primește SMS (singura cale).
 const phone4 = '0748' + rnd();
