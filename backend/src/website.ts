@@ -7,6 +7,7 @@ import { captchaSiteKey } from './captcha';
 import { STORE_LINKS } from './stores';
 import { autoTranslate } from './translate';
 import { faqList, homeLd, pageUrls, profileLinks, siteData } from './seoPages';
+import { appAnalyticsSecretSet, saveAppAnalyticsSecret, trackingTagFor } from './tracking';
 
 // Site-ul web cu programare online (Panou → Aplicații → Site web): o pagină pentru telefon, ca aplicația, la app.tafbarbers.ro
 // (și la domeniul propriu, dacă e legat). Aspectul se alege din panou; programarea folosește aceleași rute ca aplicația
@@ -37,7 +38,8 @@ export type Website = {
   sections: { booking: boolean; barbers: boolean; services: boolean; contact: boolean; links: boolean; apps: boolean };
   customDomain: string; // ex. programari.tafbarbers.ro (îl leagă cine publică serverul)
   // Codurile pentru statistici și reclame (din conturile Google, Meta, TikTok); pornesc doar după acordul vizitatorului.
-  tracking: { gaId: string; metaPixelId: string; googleAdsId: string; googleAdsLabel: string; tiktokPixelId: string };
+  // clarityId = Microsoft Clarity (hărți de clicuri pe site); appGaId = fluxul Google Analytics pentru aplicație (cheia lui secretă stă separat, criptată).
+  tracking: { gaId: string; metaPixelId: string; googleAdsId: string; googleAdsLabel: string; tiktokPixelId: string; clarityId: string; appGaId: string };
   // Cum apare site-ul în Google și când e trimis pe WhatsApp / Facebook; gol = text automat din datele salonului.
   seo: { title: Texts; description: Texts; shareImage: string | null; googleVerification: string; metaVerification: string };
   links: Array<{ label: string; url: string }>;
@@ -63,7 +65,7 @@ export const DEFAULT_WEBSITE: Website = {
   layout: 'buttons',
   sections: { booking: true, barbers: true, services: true, contact: true, links: true, apps: true },
   customDomain: '',
-  tracking: { gaId: '', metaPixelId: '', googleAdsId: '', googleAdsLabel: '', tiktokPixelId: '' },
+  tracking: { gaId: '', metaPixelId: '', googleAdsId: '', googleAdsLabel: '', tiktokPixelId: '', clarityId: '', appGaId: '' },
   seo: { title: { ro: '', en: '', fr: '', ar: '' }, description: { ro: '', en: '', fr: '', ar: '' }, shareImage: null, googleVerification: '', metaVerification: '' },
   links: [],
   faq: [],
@@ -143,7 +145,10 @@ export async function saveWebsite(env: Env, b: Partial<Website>): Promise<Websit
       googleAdsId: v('googleAdsId', /^AW-\d{6,15}$/, 'invalid_ads_id'),
       googleAdsLabel: v('googleAdsLabel', /^[A-Za-z0-9_-]{4,40}$/, 'invalid_ads_label', false),
       tiktokPixelId: v('tiktokPixelId', /^[A-Z0-9]{10,30}$/, 'invalid_tiktok_id'),
+      clarityId: v('clarityId', /^[A-Z0-9]{6,20}$/, 'invalid_clarity_id').toLowerCase(),
+      appGaId: v('appGaId', /^G-[A-Z0-9]{4,15}$/, 'invalid_ga_id'),
     };
+    await saveAppAnalyticsSecret(env, (b.tracking as { appGaSecret?: unknown }).appGaSecret);
   }
   if (b.seo && typeof b.seo === 'object') {
     const s = b.seo;
@@ -315,7 +320,7 @@ export async function sitePage(env: Env, opts: { preview?: boolean; lang?: strin
 <link rel="icon" href="${esc(icon)}"><link rel="apple-touch-icon" href="${esc(icon)}"><meta name="theme-color" content="${esc(w.accent)}">
 ${head}
 <style>${SITE_CSS}</style></head><body><div id="bg"></div><div id="app"></div>${noscript}
-<script>window.SITE=${json};</script><script>${SITE_JS}</script>${captcha ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>' : ''}</body></html>`;
+<script>window.SITE=${json};</script>${trackingTagFor(opts.preview ? { ...w.tracking, gaId: '', googleAdsId: '', metaPixelId: '', tiktokPixelId: '', clarityId: '' } : w.tracking, true)}<script>${SITE_JS}</script>${captcha ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>' : ''}</body></html>`;
 }
 
 /** Roboții care citesc site-uri pentru asistenții AI (ChatGPT, Claude, Perplexity, Gemini, Copilot etc.): îi primim cu numele, ca să știe sigur că au voie. */
@@ -582,8 +587,6 @@ label.f{display:block;font-size:13px;color:var(--muted);margin-top:8px}
 .fab .btn{max-width:688px;margin:0 auto;pointer-events:auto;box-shadow:0 6px 24px rgba(0,0,0,.45)}
 .fab.hide{opacity:0;transform:translateY(20px)}.fab.hide .btn{pointer-events:none}
 .spin{width:28px;height:28px;margin:60px auto;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 0.8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
-#consent{position:fixed;left:12px;right:12px;bottom:12px;max-width:500px;margin:0 auto;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;font-size:14px;z-index:9;box-shadow:0 6px 30px rgba(0,0,0,.4)}
-#consent .row{display:flex;gap:10px;margin-top:10px}#consent .btn{min-height:42px;padding:8px;font-size:15px}
 [dir=rtl] svg.dirx{transform:scaleX(-1)}
 footer{text-align:center;font-size:12px;color:var(--muted);padding:20px 16px 110px}footer a{color:inherit}
 @media (min-width:760px){main{padding-top:16px}.hello{font-size:40px}.promo{width:calc(50% - 6px)}.team{grid-template-columns:repeat(3,1fr)}.slots{grid-template-columns:repeat(6,1fr)}}
@@ -706,7 +709,7 @@ function done(){var req=sel.result&&sel.result.status==='requested';return'<div 
 function contact(){return soft('biz','/business',null).then(function(b){return'<h2>'+t('contact')+'</h2><div class="card"><div class="ctitle">'+e(S.biz.name)+'</div>'+(S.biz.address?'<div class="muted">'+e(S.biz.address)+'</div>':'')+'</div>'+visit()})}
 function links(){return'<h2>'+t('links')+'</h2>'+W.links.map(function(l){return'<a class="card perk" href="'+e(l.url)+'" target="_blank" rel="noopener">'+ic('links')+'<span>'+e(l.label)+'</span>'+ic('chev','chev')+'</a>'}).join('')}
 var seq=0;
-function render(){theme();document.documentElement.lang=lang;var titles={home:'',app:t('apps'),bookings:t('tabBookings'),account:t('tabAccount'),services:t('services'),barbers:t('barbers'),barber:'',contact:t('contact'),links:t('links'),book:t('book'),pickBarber:t('book'),pickTime:t('book'),details:t('book'),done:t('book')};
+function render(){pv();theme();document.documentElement.lang=lang;var titles={home:'',app:t('apps'),bookings:t('tabBookings'),account:t('tabAccount'),services:t('services'),barbers:t('barbers'),barber:'',contact:t('contact'),links:t('links'),book:t('book'),pickBarber:t('book'),pickTime:t('book'),details:t('book'),done:t('book')};
 var body=view==='home'?home():view==='app'||view==='bookings'||view==='account'?appOnly():view==='services'?services(false):view==='barbers'?barbers(false):view==='barber'?profile():view==='contact'?contact():view==='links'?links():view==='book'?services(true):view==='pickBarber'?barbers(true):view==='pickTime'?times():view==='details'?details():done();
 var my=++seq,foot='<footer><a href="/servicii">'+({ro:'Prețuri',fr:'Tarifs',ar:'الأسعار'}[lang]||'Prices')+'</a> · <a href="/frizeri">'+({ro:'Frizeri',fr:'Barbiers',ar:'الحلاقون'}[lang]||'Barbers')+'</a> · <a href="/intrebari-frecvente">'+({ro:'Întrebări frecvente',fr:'FAQ',ar:'الأسئلة الشائعة'}[lang]||'FAQ')+'</a><br>© '+e(S.biz.name)+' · <a href="/legal/privacy?lang='+lang+'">'+({ro:'Confidențialitate',fr:'Confidentialité',ar:'الخصوصية'}[lang]||'Privacy')+'</a> · <a href="/legal/terms?lang='+lang+'">'+({ro:'Termeni',fr:'Conditions',ar:'الشروط'}[lang]||'Terms')+'</a>'+(hasTracking()&&!S.preview?' · <a href="#" id="cookies">'+({ro:'Cookie-uri',ar:'ملفات تعريف الارتباط'}[lang]||'Cookies')+'</a>':'')+'</footer>';
 var fab=TABS[view]||view==='app'?tabbar():'';
@@ -731,26 +734,21 @@ if(view==='details')bindDetails();var a=document.getElementById('again');if(a)a.
 // Bara de jos, ca în aplicație: Acasă, Servicii, Rezervă (butonul din mijloc), Programări, Cont.
 var TABS={home:1,services:1,bookings:1,account:1};
 function tabbar(){var it=[['home','home','tabHome'],['services','cut','tabServices'],null,['bookings','calendar','tabBookings'],['account','user','tabAccount']];return'<nav class="tabs">'+it.map(function(x){if(!x)return'<button class="tab" data-go="book"><span class="tplus">'+ic('plus')+'</span><span>'+t('tabBook')+'</span></button>';return'<button class="tab'+(view===x[0]?' on':'')+'" data-tab="'+x[0]+'">'+ic(x[1])+'<span>'+t(x[2])+'</span></button>'}).join('')+'</nav>'}
-// Statistici și reclame (Google Analytics / Ads, Meta Pixel, TikTok): pornesc doar după „Accept” în banner (GDPR, Legea 506/2004).
-var TR=W.tracking||{},trackOn=false;
-function hasTracking(){return!!(TR.gaId||TR.googleAdsId||TR.metaPixelId||TR.tiktokPixelId)}
-function tracking(){if(S.preview||!hasTracking())return;var c=null;try{c=localStorage.getItem('taf-consent')}catch(x){}if(c==='yes')return startTracking();if(c==='no')return;askConsent()}
-function askConsent(){if(document.getElementById('consent'))return;var d=document.createElement('div');d.id='consent';d.setAttribute('role','dialog');d.innerHTML=e(t('consent'))+' <a href="/legal/privacy?lang='+lang+'" style="color:inherit">›</a><div class="row"><button class="btn" id="cy">'+t('accept')+'</button><button class="btn ghost" id="cn">'+t('refuse')+'</button></div>';document.body.appendChild(d);
-document.getElementById('cy').onclick=function(){try{localStorage.setItem('taf-consent','yes')}catch(x){}d.remove();startTracking()};document.getElementById('cn').onclick=function(){try{localStorage.setItem('taf-consent','no')}catch(x){}d.remove()}}
-// Linkul „Cookie-uri” din subsol: retragi sau schimbi acordul oricând (după retragere, pagina se reîncarcă fără scripturi).
-function cookieSettings(){var was=null;try{was=localStorage.getItem('taf-consent');localStorage.removeItem('taf-consent')}catch(x){}if(was==='yes')return location.reload();askConsent()}
-function addScript(src){var s=document.createElement('script');s.async=true;s.src=src;document.head.appendChild(s)}
-function startTracking(){if(trackOn)return;trackOn=true;var g=TR.gaId||TR.googleAdsId;
-if(g){addScript('https://www.googletagmanager.com/gtag/js?id='+g);window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};gtag('consent','default',{ad_storage:'granted',ad_user_data:'granted',ad_personalization:'granted',analytics_storage:'granted'});gtag('js',new Date());if(TR.gaId)gtag('config',TR.gaId);if(TR.googleAdsId)gtag('config',TR.googleAdsId)}
-if(TR.metaPixelId){!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init',TR.metaPixelId);fbq('track','PageView')}
-if(TR.tiktokPixelId){!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie'];ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js';ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=r;ttq._t=ttq._t||{};ttq._t[e]=+new Date;ttq._o=ttq._o||{};ttq._o[e]=n||{};addScript(r+'?sdkid='+e+'&lib='+t)}}(window,document,'ttq');ttq.load(TR.tiktokPixelId);ttq.page()}}
+// Statistici și reclame (Google Analytics, Clarity, Google Ads, Meta Pixel, TikTok): codul comun din tracking.ts (window.tafTrack)
+// pornește doar după „Accept” în banner (GDPR, Legea 506/2004). Aici spunem doar ce ecran se vede.
+var TR=W.tracking||{},TT=window.tafTrack||{has:false,on:false,page:function(){},event:function(){},settings:function(){}};
+function hasTracking(){return!!TT.has}
+function cookieSettings(){TT.settings()}
+var PV={home:'',services:'servicii',barbers:'frizeri',barber:'frizer',contact:'contact',links:'linkuri',app:'aplicatie',bookings:'programarile-mele',account:'cont',book:'programare-1-serviciu',pickBarber:'programare-2-frizer',pickTime:'programare-3-ora',details:'programare-4-date',done:'programare-5-gata'};
+var PT={home:'Acasă',services:'Servicii',barbers:'Frizeri',barber:'Profil frizer',contact:'Contact',links:'Linkuri',app:'Aplicația',bookings:'Programările mele',account:'Cont',book:'Programare 1 · serviciul',pickBarber:'Programare 2 · frizerul',pickTime:'Programare 3 · ziua și ora',details:'Programare 4 · datele',done:'Programare 5 · confirmată'};
+function pv(){if(S.preview)return;var n=PV[view]!==undefined?PV[view]:view;TT.page(n,(PT[view]||view)+' · '+S.biz.name)}
 // Programarea făcută = „conversia” pentru reclame (doar dacă vizitatorul a acceptat).
-function trackBooking(){if(!trackOn||!sel.service)return;var v=Number(sel.service.price)||0,p={value:v,currency:'RON'};
+function trackBooking(){if(!TT.on||!sel.service)return;var v=Number(sel.service.price)||0,p={value:v,currency:'RON'};
 try{if(window.gtag){if(TR.gaId)gtag('event','generate_lead',{value:v,currency:'RON',items:[{item_name:sel.service.name}]});if(TR.googleAdsId&&TR.googleAdsLabel)gtag('event','conversion',{send_to:TR.googleAdsId+'/'+TR.googleAdsLabel,value:v,currency:'RON'})}
 if(window.fbq)fbq('track','Schedule',p);if(window.ttq)ttq.track('PlaceAnOrder',{value:v,currency:'RON',contents:[{content_name:sel.service.name}]})}catch(x){}}
 // Previzualizarea din panou: aspectul nesalvat vine prin postMessage, de la aceeași adresă.
 if(S.preview)addEventListener('message',function(ev){if(ev.origin!==location.origin||!ev.data||ev.data.type!=='taf-site')return;W=S.w=ev.data.website;TR=W.tracking||{};if(W.languages.indexOf(lang)<0)lang=W.defaultLang;if(ev.data.view&&ev.data.view!==view){history=[];view=ev.data.view}render()});
-render();tracking();
+render();
 })();`;
 
 // --- Rutele ---
@@ -779,5 +777,6 @@ websiteAdmin.use('/website', async (c, next) => {
   if (!c.get('admin').owner) throw new HttpError(403, 'owner_only');
   await next();
 });
-websiteAdmin.get('/website', async (c) => c.json(await getWebsite(c.env)));
-websiteAdmin.put('/website', async (c) => c.json(await saveWebsite(c.env, await c.req.json())));
+// appGaSecretSet: dacă e pusă cheia secretă pentru statisticile din aplicație (cheia nu se mai arată).
+websiteAdmin.get('/website', async (c) => c.json({ ...(await getWebsite(c.env)), appGaSecretSet: await appAnalyticsSecretSet(c.env) }));
+websiteAdmin.put('/website', async (c) => c.json({ ...(await saveWebsite(c.env, await c.req.json())), appGaSecretSet: await appAnalyticsSecretSet(c.env) }));

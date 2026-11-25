@@ -10,6 +10,7 @@ import { usePriceLabel } from '@/lib/price';
 import { useT } from '@/i18n';
 import { Backdrop } from '@/components/Backdrop';
 import { colors, radius, space } from '@/theme';
+import { trackEvent } from '@/lib/analytics';
 
 // Bara de taburi e lipită de marginea de jos, pe toată lățimea: înălțimea rândului cu butoane, plus spațiul de sub el
 // pentru bara de navigare a telefonului (3 butoane sau gesturi), ca butoanele să nu ajungă sub ea (ex. pe Samsung).
@@ -80,7 +81,11 @@ export function Button({ title, onPress, variant = 'primary', disabled, loading 
   const fg = variant === 'primary' ? colors.onGold : variant === 'danger' ? colors.danger : colors.text;
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        // Statistici anonime (doar cu acordul clientului): pe ce buton s-a apăsat.
+        trackEvent('clic_buton', { link_text: title.slice(0, 80) });
+        onPress();
+      }}
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.button,

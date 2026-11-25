@@ -21,7 +21,9 @@ type Website = {
   layout: 'buttons' | 'tiles';
   sections: { booking: boolean; barbers: boolean; services: boolean; contact: boolean; links: boolean; apps: boolean };
   customDomain: string;
-  tracking: { gaId: string; metaPixelId: string; googleAdsId: string; googleAdsLabel: string; tiktokPixelId: string };
+  tracking: { gaId: string; metaPixelId: string; googleAdsId: string; googleAdsLabel: string; tiktokPixelId: string; clarityId: string; appGaId: string; appGaSecret?: string | null };
+  /** Cheia secretă pentru statisticile din aplicație e pusă (nu se mai arată). */
+  appGaSecretSet?: boolean;
   seo: { title: Record<Lang, string>; description: Record<Lang, string>; shareImage: string | null; googleVerification: string; metaVerification: string };
   links: Array<{ label: string; url: string }>;
   faq: Array<{ q: string; a: string }>;
@@ -427,11 +429,17 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
         <>
           <h2 style={{ margin: 0 }}>Statistici și reclame</h2>
           <p className="muted small" style={{ margin: 0 }}>
-            Opțional, pentru reclame. Codurile le găsiți în conturile Google, Meta (Facebook / Instagram) și TikTok. Vizitatorii văd întâi o întrebare
-            dacă sunt de acord (cerut de GDPR); fără acord, nu se trimite nimic. Programările făcute pe site se numără automat ca „conversii”.
+            Vedeți unde stau clienții cel mai mult și pe ce apasă, pe site și în aplicație. Codurile le găsiți în conturile Google, Microsoft Clarity,
+            Meta (Facebook / Instagram) și TikTok. Vizitatorii văd întâi o întrebare dacă sunt de acord (cerut de GDPR); fără acord, nu se trimite
+            nimic. Programările făcute pe site se numără automat ca „conversii”. Codurile merg singure pe toate paginile site-ului (prima pagină,
+            /servicii, /frizeri, /cont, /cadou, /descarca) și politica de confidențialitate se completează singură.
           </p>
-          <Field label="Google Analytics, Measurement ID (G-…)">
+          <h3 style={{ margin: '8px 0 0' }}>Site</h3>
+          <Field label="Google Analytics, Measurement ID (G-…): pagini vizitate, timp pe pagină, butoane apăsate">
             <input value={v.tracking.gaId} placeholder="G-XXXXXXXXXX" onChange={(e) => set({ tracking: { ...v.tracking, gaId: e.target.value } })} />
+          </Field>
+          <Field label="Microsoft Clarity, Project ID: hărți cu locurile unde se apasă și înregistrări ale vizitelor (gratuit)">
+            <input value={v.tracking.clarityId} placeholder="abcd1234ef" onChange={(e) => set({ tracking: { ...v.tracking, clarityId: e.target.value } })} />
           </Field>
           <Field label="Google Ads, Conversion ID (AW-…)">
             <input value={v.tracking.googleAdsId} placeholder="AW-123456789" onChange={(e) => set({ tracking: { ...v.tracking, googleAdsId: e.target.value } })} />
@@ -445,6 +453,30 @@ function Editor({ tab, v, set }: { tab: Tab; v: Website; set: (p: Partial<Websit
           <Field label="TikTok Pixel ID">
             <input value={v.tracking.tiktokPixelId} placeholder="C4ABCDEFGHIJ1234567" onChange={(e) => set({ tracking: { ...v.tracking, tiktokPixelId: e.target.value } })} />
           </Field>
+          <h3 style={{ margin: '8px 0 0' }}>Aplicația (iOS și Android)</h3>
+          <p className="muted small" style={{ margin: 0 }}>
+            Aplicația îl întreabă o dată pe client dacă e de acord cu statistici. Dacă spune „Da”, vedeți în Google Analytics ce ecrane deschide, cât
+            stă pe fiecare și programările făcute. Fără nume, telefon sau e-mail. Folosiți un flux separat (Web) în aceeași proprietate Google Analytics.
+          </p>
+          <Field label="Google Analytics pentru aplicație, Measurement ID (G-…)">
+            <input value={v.tracking.appGaId} placeholder="G-XXXXXXXXXX" onChange={(e) => set({ tracking: { ...v.tracking, appGaId: e.target.value } })} />
+          </Field>
+          <Field label={v.appGaSecretSet ? 'Cheia „API secret” a fluxului: pusă ✓ (scrieți alta doar ca s-o schimbați)' : 'Cheia „API secret” a fluxului (Measurement Protocol API secret)'}>
+            <input
+              value={v.tracking.appGaSecret ?? ''}
+              placeholder={v.appGaSecretSet ? '••••••••••' : 'AbCdEf12GhIj34KlMn'}
+              autoComplete="off"
+              onChange={(e) => set({ tracking: { ...v.tracking, appGaSecret: e.target.value } })}
+            />
+          </Field>
+          {v.appGaSecretSet ? (
+            <div>
+              <button className="ghost sm" onClick={() => set({ tracking: { ...v.tracking, appGaSecret: null } })}>
+                Opriți statisticile din aplicație (ștergeți cheia)
+              </button>
+              {v.tracking.appGaSecret === null ? <span className="muted small"> Se șterge după „Aplicați modificările”.</span> : null}
+            </div>
+          ) : null}
         </>
       );
     case 'linkuri':

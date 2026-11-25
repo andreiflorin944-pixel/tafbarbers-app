@@ -14,6 +14,7 @@ import { useApp } from '@/state/AppState';
 import { useStaff } from '@/state/Staff';
 import { useT } from '@/i18n';
 import { colors, space } from '@/theme';
+import { setAnalyticsConsent, useAnalytics } from '@/lib/analytics';
 
 // Un singur loc de cont. Fără cont: alegi Client (rezervări) sau Echipă (proprietar / frizeri).
 // Clientul în cont vede doar contul lui (fără nicio intrare pentru echipă).
@@ -111,6 +112,7 @@ function ClientAccount() {
           <Button title={t('account.shop')} variant="ghost" onPress={() => router.push('/shop')} />
           <Button title={t('account.about')} variant="ghost" onPress={() => router.push('/about')} />
         </View>
+        <StatsToggle />
       </>
     );
   }
@@ -360,6 +362,8 @@ function ClientAccount() {
         </Card>
       ) : null}
 
+      <StatsToggle />
+
       <View style={{ marginTop: space.md }}>
         <Button title={t('account.myOrders')} variant="ghost" onPress={() => router.push('/shop/orders')} />
       </View>
@@ -379,6 +383,24 @@ function ClientAccount() {
       </Pressable>
       {offersMsg ? <Text style={{ color: offersMsg.ok ? colors.success : colors.danger, textAlign: 'center', fontSize: 13 }}>{offersMsg.text}</Text> : null}
     </>
+  );
+}
+
+/** Statisticile anonime (apare doar dacă sunt pornite în panou): clientul le poate porni sau opri oricând. */
+function StatsToggle() {
+  const { t } = useT();
+  const { available, consent } = useAnalytics();
+  if (!available) return null;
+  return (
+    <Card style={{ marginTop: space.md }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '700' }}>{t('analytics.title')}</Text>
+          <Text style={[styles.muted, { fontSize: 13, marginTop: 2 }]}>{t('analytics.hint')}</Text>
+        </View>
+        <Switch value={consent === 'yes'} onValueChange={(on) => void setAnalyticsConsent(on ? 'yes' : 'no')} trackColor={{ true: colors.gold, false: colors.border }} thumbColor={colors.text} />
+      </View>
+    </Card>
   );
 }
 

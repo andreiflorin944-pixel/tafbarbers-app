@@ -241,6 +241,8 @@ const MESSAGES: Record<string, string> = {
   invalid_ads_id: 'Codul Google Ads începe cu AW- și are cifre (de exemplu AW-123456789).',
   invalid_ads_label: 'Eticheta conversiei Google Ads are doar litere, cifre, - și _.',
   invalid_tiktok_id: 'TikTok Pixel ID are doar litere mari și cifre.',
+  invalid_clarity_id: 'Codul Microsoft Clarity are doar litere și cifre (de exemplu abcd1234ef), îl găsiți în Clarity → Settings → Overview.',
+  invalid_ga_secret: 'Cheia API secret din Google Analytics are doar litere, cifre, - și _ (o copiați din Google Analytics → Fluxuri de date → Measurement Protocol API secrets).',
   invalid_verification: 'Codul de verificare nu pare corect. Lipiți doar codul sau tot rândul <meta …>.',
   invalid_link: 'Fiecare link are nevoie de un nume și de o adresă corectă.',
   no_language: 'Alege cel puțin o limbă.',
