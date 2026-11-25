@@ -91,7 +91,7 @@ async function ensureCustomer(env: Env, clientId: string, fresh = false): Promis
  */
 export async function createRecurringCheckout(
   env: Env,
-  p: { clientId: string; plan: Pick<PlanRow, 'id' | 'name' | 'price_bani' | 'period_days'>; title: string; base: string; lang?: string | null },
+  p: { clientId: string; plan: Pick<PlanRow, 'id' | 'name' | 'price_bani' | 'period_days'>; title: string; base: string; lang?: string | null; successUrl?: string; cancelUrl?: string },
 ): Promise<string | null> {
   if (!onlinePaymentsOn(env)) throw new HttpError(409, 'payments_off');
   const iv = recurringInterval(p.plan.period_days);
@@ -124,8 +124,9 @@ export async function createRecurringCheckout(
       'line_items[0][price_data][recurring][interval]': iv.interval,
       'line_items[0][price_data][recurring][interval_count]': String(iv.count),
       client_reference_id: ref,
-      success_url: back('gata'),
-      cancel_url: back('anulata'),
+      // Cumpărat de pe site: întoarcerea e pe site („Contul meu”); din aplicație, pagina care deschide aplicația.
+      success_url: p.successUrl ?? back('gata'),
+      cancel_url: p.cancelUrl ?? back('anulata'),
       expires_at: String(Math.floor(Date.now() / 1000) + 35 * 60),
     });
     for (const [k, v] of Object.entries(meta)) {

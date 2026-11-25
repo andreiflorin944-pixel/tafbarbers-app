@@ -3,7 +3,7 @@
 // cumpărătorul scrie cui îl dă și plătește cu cardul (Stripe). După plată vede voucherul cu codul, gata de printat sau
 // de trimis, îl primește și pe e-mail, iar cel care îl primește are codul prin SMS (dacă mesajul e pornit în panou).
 import { Hono } from 'hono';
-import { normalizePhone } from './auth';
+import { normalizePhone, optionalSession } from './auth';
 import { requireCaptcha, captchaSiteKey } from './captcha';
 import { getBusiness } from './db';
 import { HttpError, onlinePaymentsOn, type AppEnv, type Env } from './env';
@@ -86,12 +86,16 @@ ${captcha ? '<div id="cf" style="margin:10px 0;min-height:65px"></div>' : ''}
 <p id="err" class="e"></p></form></main>
 ${captcha ? `<script>let cfTok=null;window.cfGo=()=>turnstile.render('#cf',{sitekey:${JSON.stringify(captcha)},language:'ro',theme:'dark',callback:(x)=>{cfTok=x},'expired-callback':()=>{cfTok=null},'error-callback':()=>{cfTok=null}});</script><script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=cfGo&render=explicit" async defer></script>` : '<script>const cfTok=null;</script>'}
 <script>
-const $=(i)=>document.getElementById(i);let amount=${o.preset ?? 'null'};
+const $=(i)=>document.getElementById(i);
+// Intrat în cont pe site (pagina „Contul meu”): cardul intră în contul lui, iar numele și telefonul se completează singure.
+let tok=null;try{tok=localStorage.getItem('taf-token')}catch(_){}
+if(tok)fetch('/v1/me',{headers:{authorization:'Bearer '+tok}}).then(r=>r.ok?r.json():null).then(m=>{if(!m)return;if(!$('bn').value)$('bn').value=m.name||'';if(!$('bp').value)$('bp').value=m.phone||'';if(!$('be').value)$('be').value=m.email||''}).catch(()=>{});
+let amount=${o.preset ?? 'null'};
 const E={invalid_amount:'Alege o sumă.',recipient_required:'Scrie pentru cine este cardul.',name_required:'Scrie numele tău.',invalid_phone:'Numărul de telefon nu pare corect.',invalid_email:'E-mailul nu pare corect.',terms_required:'Bifează că ai citit Termenii.',captcha_required:'Confirmă că nu ești robot.',captcha_failed:'Confirmă din nou că nu ești robot.',too_many_requests:'Prea multe încercări. Mai încearcă peste câteva minute.',gift_cards_off:'Momentan cardurile cadou nu se vând online.',payments_off:'Momentan plata cu cardul nu e disponibilă.'};
 const label=()=>{$('go').textContent=amount?${JSON.stringify(o.cta)}+' · '+amount+' lei':'Alege suma'};label();
 $('am').onclick=(e)=>{const b=e.target.closest('button');if(!b)return;amount=Number(b.dataset.a);[...$('am').children].forEach(x=>x.className=x===b?'on':'');label()};
 $('f').onsubmit=async(e)=>{e.preventDefault();$('err').textContent='';$('go').disabled=true;
-try{const r=await fetch('/v1/gift-web',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount,recipientName:$('rn').value,recipientPhone:$('rp').value,message:$('msg').value,buyerName:$('bn').value,buyerPhone:$('bp').value,buyerEmail:$('be').value,terms:$('t').checked,captcha:cfTok||undefined})});
+try{const r=await fetch('/v1/gift-web',{method:'POST',headers:Object.assign({'content-type':'application/json'},tok?{authorization:'Bearer '+tok}:{}),body:JSON.stringify({amount,recipientName:$('rn').value,recipientPhone:$('rp').value,message:$('msg').value,buyerName:$('bn').value,buyerPhone:$('bp').value,buyerEmail:$('be').value,terms:$('t').checked,captcha:cfTok||undefined})});
 const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.error)||'server_error');location.href=j.url}
 catch(x){$('err').textContent=E[x.message]||'A apărut o problemă. Încearcă din nou sau sună-ne la salon.';$('go').disabled=false;if(window.turnstile&&$('cf')){try{turnstile.reset('#cf')}catch(_){}cfTok=null}}};
 </script></body></html>`);
@@ -124,7 +128,10 @@ giftWebPublic.post('/v1/gift-web', async (c) => {
       .first<{ n: number }>();
     if ((n?.n ?? 0) > 8) throw new HttpError(429, 'too_many_requests');
   }
-  const id = await createGiftCard(c.env, null, { amount, recipientName, recipientPhone, message: str(b.message, 200) });
+  // Intrat în cont pe site (/cont): cardul apare și la „Carduri cadou → Cumpărate” în contul lui (în aplicație și pe site).
+  const who = await optionalSession(c);
+  const buyerId = who?.kind === 'client' ? who.id : null;
+  const id = await createGiftCard(c.env, buyerId, { amount, recipientName, recipientPhone, message: str(b.message, 200) });
   await c.env.DB.prepare('UPDATE gift_cards SET web_buyer_name = ?, web_buyer_phone = ?, web_buyer_email = ? WHERE id = ?').bind(buyerName, buyerPhone, buyerEmail, id).run();
   const base = publicBase(c.env, c.req.url);
   const url = await createCheckout(c.env, {
@@ -134,7 +141,7 @@ giftWebPublic.post('/v1/gift-web', async (c) => {
     title: `Card cadou ${o.biz.name} · ${amount} lei`,
     email: buyerEmail,
     base,
-    clientId: '',
+    clientId: buyerId ?? '',
     lang: 'ro',
     successUrl: await voucherUrl(c.env, base, id),
     cancelUrl: `${base}/cadou?anulat=1`,
