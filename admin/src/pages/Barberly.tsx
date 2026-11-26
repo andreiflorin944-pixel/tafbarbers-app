@@ -246,6 +246,7 @@ type PushView = {
   catalogError: string;
   counts: Record<string, number>;
   log: PushEntry[];
+  manual?: Array<{ bookingId: string; startsAt: string; fromAt: string | null; clientName: string; barberName: string }>;
 };
 const PUSH_STATE: Record<PushEntry['state'], [string, string]> = {
   synced: ['În Barberly', 'completed'],
@@ -404,6 +405,37 @@ export function BarberlyPushCard() {
                 {ran ? <span className="small muted">{ran}</span> : null}
               </div>
             </>
+          ) : null}
+          {v.manual?.length ? (
+            <div style={{ marginTop: 12, padding: 12, border: '1px solid #c9a24b', borderRadius: 10 }}>
+              <b>De mutat de mână în Barberly ({v.manual.length})</b>
+              <p className="muted small" style={{ marginTop: 4 }}>
+                Aceste programări au venit din Barberly și le-ați mutat la noi. Pe ele nu le putem muta noi în Barberly (sunt ale clientului acolo), așa că acolo au rămas la
+                ora veche. Mută-le și în Barberly, apoi apasă „Am mutat-o”.
+              </p>
+              {v.manual.map((m) => (
+                <div key={m.bookingId} className="row" style={{ gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 6 }}>
+                  <span className="small">
+                    <b>{m.clientName}</b> · {m.barberName}: {m.fromAt ? `${date(m.fromAt)}, ${time(m.fromAt)} → ` : ''}
+                    <b>
+                      {date(m.startsAt)}, {time(m.startsAt)}
+                    </b>
+                  </span>
+                  <button
+                    className="ghost small"
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        await api('POST', '/admin/barberly/push/manual-done', { bookingId: m.bookingId, startsAt: m.startsAt });
+                        data.reload();
+                      })
+                    }
+                  >
+                    Am mutat-o
+                  </button>
+                </div>
+              ))}
+            </div>
           ) : null}
           {v.log.length ? (
             <div className="table-wrap" style={{ marginTop: 12 }}>

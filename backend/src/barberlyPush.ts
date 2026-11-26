@@ -118,7 +118,21 @@ type Row = {
   client_name: string;
   barberly_id: string | null;
   tries: number | null;
+  old_start: string | null;
 };
+
+const fmt = (t: string) => {
+  const { day, hm } = roLocal(t);
+  return `${+day.slice(8, 10)}.${day.slice(5, 7)} ora ${hm}`;
+};
+/** Barberly refuză schimbările cu mai puțin de X ore înainte (regula salonului, valabilă și pentru noi). */
+const TOO_LATE = /no longer be changed|no longer be cancel|notice/i;
+/** Mesajele Barberly, pe înțelesul tuturor. */
+function explain(msg: string) {
+  if (/already taken/i.test(msg)) return 'Ora e deja ocupată în Barberly de altă programare. Verifică să nu fie o programare dublă.';
+  if (TOO_LATE.test(msg)) return 'Barberly nu mai permite schimbări atât de aproape de oră. Fă schimbarea de mână în Barberly.';
+  return msg;
+}
 
 const MAX_TRIES = 5;
 
@@ -146,7 +160,7 @@ export async function runBarberlyPush(env: Env, now = new Date(), limit = 20) {
   const horizon = iso(new Date(now.getTime() + 90 * 864e5));
 
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.starts_at, b.ends_at, b.barber_id, b.service_id, ${WALKIN_NAME_SQL} AS client_name, o.barberly_id, o.tries
+    `SELECT b.id, b.starts_at, b.ends_at, b.barber_id, b.service_id, ${WALKIN_NAME_SQL} AS client_name, o.barberly_id, o.tries, o.starts_at AS old_start
      FROM bookings b JOIN clients c ON c.id = b.client_id LEFT JOIN barberly_outbox o ON o.booking_id = b.id
      WHERE b.status IN ${HOLDS_SLOT} AND b.barberly_ref IS NULL AND b.ends_at > ?4 AND b.starts_at < ?2
        AND (o.booking_id IS NULL
@@ -180,14 +194,25 @@ export async function runBarberlyPush(env: Env, now = new Date(), limit = 20) {
       note: `Din aplicatia TAF: ${(r.client_name || 'client').slice(0, 60)}`,
     };
     try {
-      const b = r.barberly_id
-        ? await bapi<BBooking>(env, apiKey, 'PUT', `/v1/bookings/${r.barberly_id}`, body)
-        : await bapi<BBooking>(env, apiKey, 'POST', '/v1/bookings', body);
-      await mark(env, r.id, { barberlyId: b?.id ?? r.barberly_id, state: 'synced', row: r, detail: b?.status === 'Unconfirmed' ? 'În Barberly apare neconfirmată.' : '' });
+      let b: BBooking;
+      let detail = '';
+      try {
+        b = r.barberly_id
+          ? await bapi<BBooking>(env, apiKey, 'PUT', `/v1/bookings/${r.barberly_id}`, body)
+          : await bapi<BBooking>(env, apiKey, 'POST', '/v1/bookings', body);
+      } catch (e) {
+        // Mutată prea aproape de oră: Barberly nu mai lasă schimbarea, așa că ocupăm ora nouă cu o programare nouă,
+        // iar cea veche (pe care n-o mai putem anula nici noi) rămâne de anulat de mână în Barberly.
+        if (!r.barberly_id || !TOO_LATE.test(String(e instanceof Error ? e.message : e))) throw e;
+        b = await bapi<BBooking>(env, apiKey, 'POST', '/v1/bookings', body);
+        detail = `Ora nouă e pusă în Barberly, dar ora veche${r.old_start ? ` (${fmt(r.old_start)})` : ''} a rămas acolo: Barberly nu mai lasă schimbări atât de aproape de oră. Anuleaz-o de mână în Barberly.`;
+      }
+      if (!detail && b?.status === 'Unconfirmed') detail = 'În Barberly apare neconfirmată.';
+      await mark(env, r.id, { barberlyId: b?.id ?? r.barberly_id, state: 'synced', row: r, detail });
       if (r.barberly_id) res.moved++;
       else res.sent++;
     } catch (e) {
-      await mark(env, r.id, { state: 'error', row: r, fail: true, detail: String(e instanceof Error ? e.message : e) });
+      await mark(env, r.id, { state: 'error', row: r, fail: true, detail: explain(String(e instanceof Error ? e.message : e)) });
       res.errors++;
     }
   }
@@ -206,7 +231,8 @@ export async function runBarberlyPush(env: Env, now = new Date(), limit = 20) {
       await mark(env, g.booking_id, { state: 'cancelled', detail: '' });
       res.cancelled++;
     } catch (e) {
-      await mark(env, g.booking_id, { state: 'error', fail: true, detail: `Anulare: ${String(e instanceof Error ? e.message : e)}` });
+      const m = String(e instanceof Error ? e.message : e);
+      await mark(env, g.booking_id, { state: 'error', fail: true, detail: TOO_LATE.test(m) ? 'Anulată la noi, dar Barberly nu mai permite anularea atât de aproape de oră. Anuleaz-o de mână în Barberly.' : `Anulare: ${explain(m)}` });
       res.errors++;
     }
   }
@@ -236,6 +262,7 @@ async function view(env: Env) {
     ).all(),
     env.DB.prepare(`SELECT state, count(*) AS n FROM barberly_outbox GROUP BY state`).all<{ state: string; n: number }>(),
   ]);
+  const manual = await manualMoves(env);
   let catalog: Awaited<ReturnType<typeof barberlyCatalog>> | null = null;
   let catalogError = '';
   if (s.keySealed) {
@@ -261,8 +288,37 @@ async function view(env: Env) {
     catalogError,
     counts: Object.fromEntries(counts.results.map((x) => [x.state, x.n])),
     log: log.results,
+    manual,
   };
 }
+
+const DONE_KEY = 'barberly_manual_done';
+/**
+ * Programări venite DIN Barberly pe care le-ați mutat la noi (panou sau aplicația echipei): pe acelea nu le putem muta noi
+ * în Barberly (sunt ale clientului acolo), deci rămân de mutat de mână. Dispar când le bifați „Am mutat-o”,
+ * când Barberly trimite singur noua oră sau când trece ora.
+ */
+async function manualMoves(env: Env) {
+  const done = new Set((await getSetting<{ keys?: string[] }>(env, DONE_KEY, {})).keys ?? []);
+  const rows = await env.DB.prepare(
+    `SELECT b.id AS bookingId, b.starts_at AS startsAt, json_extract(e.detail, '$.from') AS fromAt, c.name AS clientName, br.name AS barberName
+     FROM bookings b JOIN clients c ON c.id = b.client_id JOIN barbers br ON br.id = b.barber_id
+     JOIN booking_events e ON e.id = (SELECT max(id) FROM booking_events WHERE booking_id = b.id AND kind = 'moved')
+     WHERE b.barberly_ref IS NOT NULL AND b.status IN ${HOLDS_SLOT} AND b.starts_at > ? AND json_extract(e.detail, '$.to') = b.starts_at
+     ORDER BY b.starts_at LIMIT 30`,
+  )
+    .bind(iso(new Date()))
+    .all<{ bookingId: string; startsAt: string; fromAt: string | null; clientName: string; barberName: string }>();
+  return rows.results.filter((r) => !done.has(`${r.bookingId}|${r.startsAt}`));
+}
+
+barberlyPushAdmin.post('/barberly/push/manual-done', async (c) => {
+  const { bookingId, startsAt } = await c.req.json<{ bookingId?: string; startsAt?: string }>();
+  if (!bookingId || !startsAt) throw new HttpError(400, 'invalid');
+  const done = (await getSetting<{ keys?: string[] }>(c.env, DONE_KEY, {})).keys ?? [];
+  await setSetting(c.env, DONE_KEY, { keys: [...done.slice(-300), `${bookingId}|${startsAt}`] });
+  return c.json(await view(c.env));
+});
 
 barberlyPushAdmin.get('/barberly/push', async (c) => c.json(await view(c.env)));
 

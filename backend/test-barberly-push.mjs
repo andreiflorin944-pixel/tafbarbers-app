@@ -16,6 +16,7 @@ const KEY = 'bk_test_cheie_de_proba_123';
 const LOC = '11111111-1111-1111-1111-111111111111';
 const calls = [];
 let n = 0;
+let tooLate = false;
 const server = http.createServer((q, s) => {
   let raw = '';
   q.on('data', (d) => (raw += d));
@@ -36,6 +37,7 @@ const server = http.createServer((q, s) => {
       if (!body.customer?.customerId) return send(400, { title: 'Bad Request', detail: 'This salon requires customers to be registered. Provide the customer id of a registered customer.' });
     }
     if (q.method === 'POST' && q.url === '/v1/bookings') return send(201, { id: `bb-${++n}`, status: 'Confirmed' });
+    if (tooLate && q.method === 'PUT') return send(400, { title: 'Bad Request', detail: 'This booking can no longer be changed. The salon requires at least 12 ore notice.' });
     if (q.method === 'PUT' && q.url.startsWith('/v1/bookings/')) return send(200, { id: q.url.split('/')[3], status: 'Confirmed' });
     if (q.method === 'POST' && /\/v1\/bookings\/[^/]+\/cancel$/.test(q.url)) return send(204);
     send(404, { title: 'Not found' });
@@ -118,6 +120,33 @@ try {
   // O programare reală în Barberly a cuiva cu același număr (ex. proprietarul se programează singur), la altă oră: se copiază.
   r = await req('POST', '/admin/barberly/paste', { subject: 'Numire nouă: Florin Test', text: `Numire nouă: Florin Test\nCLIENT\nFlorin Test\n+40747857517\nCÂND\n${later.slice(0, 10)} 17:00\nSERVICII\nBarbă\nCU\nAndrei` }, at);
   ok(r.status === 200 && r.body.result === 'created', `real booking with salon phone still copied (${r.body?.result}: ${r.body?.detail})`);
+  const fromBarberly = r.body.bookingId;
+
+  // Venită din Barberly și mutată la noi: nu o putem muta noi acolo, deci apare în lista „De mutat de mână”.
+  const moved2 = new Date(Date.parse(`${later.slice(0, 10)}T00:00:00Z`) + 86400_000 + 9 * 3600_000).toISOString().replace('.000Z', 'Z');
+  r = await req('PATCH', `/admin/bookings/${fromBarberly}`, { start: moved2, force: true, notify: false }, at);
+  ok(r.status === 200, 'Barberly booking moved at us');
+  calls.length = 0;
+  await req('POST', '/admin/barberly/push/run', {}, at);
+  ok(!calls.some((c) => c.method === 'PUT' || (c.method === 'POST' && c.url === '/v1/bookings')), 'Barberly booking not pushed back');
+  r = await req('GET', '/admin/barberly/push', null, at);
+  ok(r.body.manual?.length === 1 && r.body.manual[0].bookingId === fromBarberly && r.body.manual[0].startsAt === moved2, `listed to move by hand ${JSON.stringify(r.body.manual)}`);
+  r = await req('POST', '/admin/barberly/push/manual-done', { bookingId: fromBarberly, startsAt: moved2 }, at);
+  ok(r.status === 200 && r.body.manual.length === 0, '„Am mutat-o” removes it');
+
+  // Mutată prea aproape de oră (Barberly refuză): ora nouă se ocupă cu o programare nouă, iar cea veche rămâne de anulat de mână.
+  const later2 = new Date(Date.parse(later) + 3600_000).toISOString().replace('.000Z', 'Z');
+  r = await req('PATCH', `/admin/bookings/${bk.id}`, { start: later2, force: true, notify: false }, at);
+  tooLate = true;
+  calls.length = 0;
+  r = await req('POST', '/admin/barberly/push/run', {}, at);
+  tooLate = false;
+  ok(r.body.moved === 1 && r.body.errors === 0 && calls.some((c) => c.method === 'POST' && c.url === '/v1/bookings'), `too late to change: new slot booked ${JSON.stringify(r.body)}`);
+  r = await req('GET', '/admin/barberly/push', null, at);
+  ok(r.body.log.some((e) => e.bookingId === bk.id && e.state === 'synced' && /Anuleaz/.test(e.detail)), 'panel says to cancel the old one by hand');
+  calls.length = 0;
+  r = await req('POST', '/admin/barberly/push/run', {}, at);
+  ok(r.body.moved === 0 && r.body.sent === 0, 'not sent again');
 
   // Anulată la noi → anulată în Barberly.
   r = await req('PATCH', `/admin/bookings/${bk.id}`, { status: 'cancelled' }, at);
