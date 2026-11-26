@@ -143,6 +143,7 @@ export async function repeatBooking(env: Env, sourceId: string, o: Opts, adminId
         quiet: true,
         adminId,
         seriesId,
+        ...(src.walkIn && { walkinName: src.clientName ?? '' }),
       });
       it.id = b.id;
       it.end = b.end;

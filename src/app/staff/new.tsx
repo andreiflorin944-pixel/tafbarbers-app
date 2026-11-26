@@ -17,7 +17,7 @@ import { colors, radius, space } from '@/theme';
 
 export default function StaffNewBooking() {
   // Din calendar: ziua, ora și frizerul slotului atins vin precompletate. Din fișa clientului: clientul (`clientId`).
-  const params = useLocalSearchParams<{ day?: string; time?: string; barberId?: string; clientId?: string; clientName?: string }>();
+  const params = useLocalSearchParams<{ day?: string; time?: string; barberId?: string; clientId?: string; clientName?: string; walkIn?: string }>();
   const { staff, staffToken } = useStaff();
   const { t } = useT();
   const { barbers } = useApp();
@@ -42,6 +42,9 @@ export default function StaffNewBooking() {
   const [addError, setAddError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // „Client fără programare” (walk-in): fără cont și fără mesaje; doar un nume opțional.
+  const [walkIn, setWalkIn] = useState(params.walkIn === '1');
+  const [walkName, setWalkName] = useState('');
 
   useEffect(() => {
     if (!serviceId || !barberId) return;
@@ -73,7 +76,7 @@ export default function StaffNewBooking() {
   }, [term, picked, staged, adding, staffToken, staff]);
 
   if (!staff || !staffToken) return null;
-  const ok = (!!picked || !!staged) && !!start;
+  const ok = (walkIn || !!picked || !!staged) && !!start;
 
   // „+”: ce ai scris deja în căutare trece în rubrica potrivită (cifre → telefon, litere → nume).
   const openAdd = () => {
@@ -119,7 +122,13 @@ export default function StaffNewBooking() {
     setBusy(true);
     setError(null);
     try {
-      await staffApi.create(staffToken, { ...(picked ? { clientId: picked.id } : { phone: staged?.phone ?? '', name: staged?.name ?? '' }), serviceId, barberId, start: start!, notify });
+      await staffApi.create(staffToken, {
+        ...(walkIn ? { walkIn: true, name: walkName.trim() } : picked ? { clientId: picked.id } : { phone: staged?.phone ?? '', name: staged?.name ?? '' }),
+        serviceId,
+        barberId,
+        start: start!,
+        notify: walkIn ? false : notify,
+      });
       router.back();
     } catch (e) {
       setError(errorMessage(e, t('snew.saveFailed')));
@@ -130,7 +139,19 @@ export default function StaffNewBooking() {
 
   return (
     <Screen edges={['bottom']}>
-      {picked || staged ? (
+      {walkIn ? (
+        <Card style={{ marginTop: space.sm }}>
+          <View style={[ui.row, { justifyContent: 'space-between' }]}>
+            <Text style={ui.cardTitle}>{t('snew.walkInTitle')}</Text>
+            <Pressable onPress={() => setWalkIn(false)} hitSlop={8}>
+              <Text style={{ color: colors.gold, fontWeight: '700' }}>{t('snew.pickClient')}</Text>
+            </Pressable>
+          </View>
+          <Text style={ui.label}>{t('snew.walkInName')}</Text>
+          <TextInput value={walkName} onChangeText={setWalkName} style={ui.input} maxLength={80} placeholderTextColor={colors.muted} />
+          <Text style={[ui.muted, { fontSize: 12, marginTop: space.xs }]}>{t('snew.walkInHint')}</Text>
+        </Card>
+      ) : picked || staged ? (
         <Card style={[ui.row, { justifyContent: 'space-between', marginTop: space.sm }]}>
           <View style={{ flex: 1 }}>
             <Text style={ui.cardTitle}>{(picked ?? staged)?.name || t('scl.noName')}</Text>
@@ -210,6 +231,9 @@ export default function StaffNewBooking() {
               </Card>
             </View>
           ) : null}
+          <Pressable onPress={() => setWalkIn(true)} hitSlop={6} style={{ marginTop: space.sm }}>
+            <Text style={{ color: colors.gold, fontWeight: '700' }}>{t('snew.walkIn')}</Text>
+          </Pressable>
         </>
       )}
 
@@ -267,10 +291,12 @@ export default function StaffNewBooking() {
         </View>
       )}
 
-      <View style={[ui.row, { justifyContent: 'space-between', marginTop: space.md }]}>
-        <Text style={ui.text}>{t('snew.sms')}</Text>
-        <Switch value={notify} onValueChange={setNotify} trackColor={{ true: colors.gold, false: colors.border }} thumbColor={colors.text} />
-      </View>
+      {walkIn ? null : (
+        <View style={[ui.row, { justifyContent: 'space-between', marginTop: space.md }]}>
+          <Text style={ui.text}>{t('snew.sms')}</Text>
+          <Switch value={notify} onValueChange={setNotify} trackColor={{ true: colors.gold, false: colors.border }} thumbColor={colors.text} />
+        </View>
+      )}
       {error ? <Text style={{ color: colors.danger, marginTop: space.sm }}>{error}</Text> : null}
       <View style={{ marginTop: space.lg }}>
         <Button title={t('snew.save')} onPress={save} loading={busy} disabled={!ok} />

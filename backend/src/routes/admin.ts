@@ -96,6 +96,7 @@ import { blockOccurrences, createBlock, deleteBlock, listBlocks, type BlockInput
 import { getAppearance, isImageUrl, MEDIA_MAX, MEDIA_TYPES, saveAppearance } from '../appearance';
 import { addAlbumPhoto, BARBER_ALBUM_COL, deleteAlbumPhoto, getAlbum } from '../barberAlbum';
 import { cancelDebt, clientDebts, settleDebts } from '../debts';
+import { WALKIN_ID } from '../walkin';
 
 /** Iconițele pe care le poate avea un banner (nume din Ionicons; aplicația folosește varianta cu contur). */
 const PROMO_ICONS: string[] = ['pricetag', 'flame', 'school', 'bag-handle', 'cut', 'sparkles', 'star', 'diamond', 'gift', 'water', 'hourglass', 'trophy', 'people', 'ribbon', 'flash', 'heart'];
@@ -1140,12 +1141,16 @@ adminRoutes.post('/bookings', async (c) => {
     note?: string;
     force?: boolean;
     notify?: boolean;
+    /** „Client fără programare” (walk-in): fără cont și fără mesaje; `name` e opțional. */
+    walkIn?: boolean;
   }>();
   need(c, 'bookings_create');
   if (!b.serviceId || !b.start) throw new HttpError(400, 'invalid_body');
   // Client ales din bază în panou (căutat după telefon sau nume), sau după numărul de telefon.
   let cl: { id: string; name: string } | null = null;
-  if (b.clientId) {
+  if (b.walkIn) {
+    cl = { id: WALKIN_ID, name: '' };
+  } else if (b.clientId) {
     need(c, 'clients');
     cl = await c.env.DB.prepare('SELECT id, name FROM clients WHERE id = ? AND deleted_at IS NULL').bind(b.clientId).first<{ id: string; name: string }>();
     if (!cl) throw new HttpError(404, 'client_not_found');
@@ -1155,7 +1160,7 @@ adminRoutes.post('/bookings', async (c) => {
   if (!cl) {
     cl = { id: newId('cl'), name: (b.name ?? '').trim() };
     await c.env.DB.prepare('INSERT INTO clients (id, phone, name, marketing_push) VALUES (?, ?, ?, 0)').bind(cl.id, phone, cl.name.slice(0, 80)).run();
-  } else if (!cl.name && b.name?.trim()) {
+  } else if (!b.walkIn && !cl.name && b.name?.trim()) {
     await c.env.DB.prepare('UPDATE clients SET name = ? WHERE id = ?').bind(b.name.trim().slice(0, 80), cl.id).run();
   }
   const barberId = ownBarber(c) ?? b.barberId ?? null;
@@ -1174,6 +1179,7 @@ adminRoutes.post('/bookings', async (c) => {
     notify: b.notify !== false,
     adminId: c.get('admin').adminId,
     defer: (p) => c.executionCtx.waitUntil(p),
+    ...(b.walkIn && { walkinName: b.name ?? '' }),
   });
   return c.json(created, 201);
 });
@@ -1218,7 +1224,7 @@ adminRoutes.patch('/bookings/:id', async (c) => {
   need(c, 'bookings_manage');
   const scoped = ownBarber(c);
   if (!cur || !inScope(c, cur)) throw new HttpError(404, 'not_found');
-  const b = await c.req.json<{ status?: string; note?: string } & BookingEdit>();
+  const b = await c.req.json<{ status?: string; note?: string; walkinName?: string | null } & BookingEdit>();
   if (b.status === 'cancelled') return c.json(await cancelBooking(c.env, id, 'admin', undefined, c.get('admin').adminId));
   // Mutată (altă oră sau alt frizer), alt serviciu sau alt preț: „Salvați modificările” din panoul programării.
   // Frizerul care vede doar programările lui nu le poate da altui frizer.
@@ -1252,6 +1258,8 @@ adminRoutes.patch('/bookings/:id', async (c) => {
     await logBookingEvent(c.env, id, b.status === 'no_show' ? 'no_show' : 'reopened', {}, c.get('admin').adminId);
   }
   if (b.note !== undefined) v.note = String(b.note).slice(0, 500);
+  // Numele clientului fără programare (walk-in) se poate scrie sau schimba după.
+  if (b.walkinName !== undefined && cur.walkIn) v.walkin_name = String(b.walkinName ?? '').trim().slice(0, 80);
   await update(c.env.DB, 'bookings', id, v);
   return c.json(await getBooking(c.env, id));
 });

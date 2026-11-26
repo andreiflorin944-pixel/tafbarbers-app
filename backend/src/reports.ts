@@ -4,6 +4,7 @@ import { HttpError, type AdminSession, type Env } from './env';
 import { addDays, iso, isDay, localToUtc, roLocal } from './time';
 import type { Cell } from './xlsx';
 import { listMoves, MOVE_LABELS } from './stock';
+import { isWalkinKey, WALKIN_CLIENT_KEY_SQL, WALKIN_ID, WALKIN_NAME_SQL } from './walkin';
 
 export type ColType = 'text' | 'int' | 'money' | 'pct' | 'date' | 'datetime';
 export type Col = { key: string; label: string; type: ColType };
@@ -128,8 +129,9 @@ async function loadBookings(env: Env, scope: Scope, from: string, to: string, f:
   if (scope.locationId) where.push('b.location_id = ?'), vals.push(scope.locationId);
   if (f.serviceId) where.push('b.service_id = ?'), vals.push(f.serviceId);
   const r = await env.DB.prepare(
-    `SELECT b.id, b.client_id, b.barber_id, b.service_id, b.starts_at, b.created_at, b.price_bani, b.status, b.source, b.payment, b.paid_bani,
-       b.tip_bani, b.gift_bani, b.pay_method, b.ends_at, b.cancelled_at, b.cancelled_by, b.request_outcome, b.completed_by, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+    `SELECT b.id, ${WALKIN_CLIENT_KEY_SQL} AS client_id, b.barber_id, b.service_id, b.starts_at, b.created_at, b.price_bani, b.status, b.source, b.payment, b.paid_bani,
+       b.tip_bani, b.gift_bani, b.pay_method, b.ends_at, b.cancelled_at, b.cancelled_by, b.request_outcome, b.completed_by, ${WALKIN_NAME_SQL} AS client_name,
+       CASE WHEN b.client_id = '${WALKIN_ID}' THEN '' ELSE c.phone END AS client_phone, c.email AS client_email,
        s.name AS service_name, br.name AS barber_name, coalesce(nullif(ca.name, ''), ca.email) AS canceller_name,
        coalesce(nullif(cb.name, ''), cb.email) AS completer_name,
        (SELECT group_concat(gs.name, ', ') FROM booking_gifts g JOIN services gs ON gs.id = g.service_id WHERE g.booking_id = b.id) AS gift_names,
@@ -247,7 +249,7 @@ async function loadDebts(env: Env, scope: Scope, from: string, to: string, by: '
 /** Prima vizită a fiecărui client la salon (pentru „nou” vs „revine”). */
 async function firstVisits(env: Env): Promise<Map<string, string>> {
   const r = await env.DB.prepare(
-    `SELECT client_id, min(starts_at) AS first FROM bookings WHERE status IN ('completed','confirmed') AND starts_at <= ? GROUP BY client_id`,
+    `SELECT ${WALKIN_CLIENT_KEY_SQL} AS client_id, min(b.starts_at) AS first FROM bookings b WHERE b.status IN ('completed','confirmed') AND b.starts_at <= ? GROUP BY 1`,
   )
     .bind(iso(new Date()))
     .all<{ client_id: string; first: string }>();
@@ -657,12 +659,15 @@ export async function buildReport(env: Env, scope: Scope, kind: ReportKind, q: R
         if (phone) x.phone = phone;
         return x;
       };
+      // Clienții fără programare (walk-in, fără cont) nu intră în clasament.
       for (const b of bk) {
+        if (isWalkinKey(b.client_id)) continue;
         const x = get(b.client_id, b.client_name, b.client_phone, b.client_email);
         if (b.status === 'cancelled') x.cancelled++;
         if (b.status === 'no_show') x.noShow++;
       }
       for (const b of visits) {
+        if (isWalkinKey(b.client_id)) continue;
         const x = get(b.client_id, b.client_name);
         x.visits++;
         x.spent += collected(b);
@@ -1194,7 +1199,7 @@ export async function buildDashboard(env: Env, scope: Scope) {
       if (m && (m.noShow >= 1 || m.cancelled >= 2)) tags.push('risk');
       return {
         bookingId: b.id,
-        clientId: b.client_id,
+        clientId: isWalkinKey(b.client_id) ? '' : b.client_id,
         name: b.client_name || 'Fără nume',
         start: b.starts_at,
         status: b.status,
@@ -1226,7 +1231,7 @@ export async function buildDashboard(env: Env, scope: Scope) {
     : [];
 
   const topClients = perms.clients
-    ? (perms.stats ? ranked.map(([id]) => id) : [...visitCount.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id)).slice(0, 10).map((id) => ({
+    ? (perms.stats ? ranked.map(([id]) => id) : [...visitCount.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id)).filter((id) => !isWalkinKey(id)).slice(0, 10).map((id) => ({
         clientId: id,
         name: visits.find((b) => b.client_id === id)?.client_name || subs.find((s) => s.client_id === id)?.client_name || 'Fără nume',
         visits: visitCount.get(id) ?? 0,

@@ -43,6 +43,8 @@ export type StaffBooking = {
   note: string;
   clientName: string;
   clientPhone?: string; // lipsește fără dreptul „contacts”
+  /** „Client fără programare” (walk-in): fără cont și fără fișă. */
+  walkIn?: boolean;
   serviceName: string;
   barberName: string;
   // Confirmarea frizerului la finalizare: suma plătită sau pe abonament.
@@ -172,7 +174,7 @@ export const staffApi = {
     call<StaffBooking>('DELETE', `/admin/bookings/${encodeURIComponent(id)}/pay-request`, t, { payMethod }),
   refuseRequest: (t: string, id: string, reason: string) => call<StaffBooking>('POST', `/admin/bookings/${encodeURIComponent(id)}/refuse`, t, { reason }),
   // Clientul se dă după telefon (+ nume, pentru client nou) sau, ales din bază, după `clientId`.
-  create: (t: string, body: { phone?: string; name?: string; clientId?: string; serviceId: string; barberId: string; start: string; notify: boolean }) =>
+  create: (t: string, body: { phone?: string; name?: string; clientId?: string; walkIn?: boolean; serviceId: string; barberId: string; start: string; notify: boolean }) =>
     call<StaffBooking>('POST', '/admin/bookings', t, body),
   timeOff: (t: string, body: { fromDay: string; toDay: string; reason: string; barberId?: string | null }) => call<{ id: number; conflicts?: number }>('POST', '/admin/time-off', t, body),
   listTimeOff: (t: string, from: string) => call<StaffTimeOff[]>('GET', `/admin/time-off?from=${encodeURIComponent(from)}`, t),

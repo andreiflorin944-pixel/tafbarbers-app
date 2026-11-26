@@ -12,6 +12,7 @@ import { discounted, serviceOffers } from './offers';
 import { notifyStaff } from './staffNotify';
 import { recordServerError } from './serverErrors';
 import { checkExtraCounts, cleanExtraIds, extraQuotes, insertExtras } from './bookingExtras';
+import { WALKIN_ID, WALKIN_NAME_SQL } from './walkin';
 
 /** Stările care țin ora ocupată: programările confirmate și cererile încă fără răspuns. */
 export const HOLDS_SLOT = `('confirmed','requested')`;
@@ -24,7 +25,7 @@ export function needsApproval(biz: { requireApproval?: boolean; approvalBarberId
 }
 
 export const BOOKING_SELECT = `
-  SELECT b.*, c.name AS client_name, c.phone AS client_phone, c.birth_date AS client_birth_date, s.name AS service_name, br.name AS barber_name, loc.name AS location_name,
+  SELECT b.*, ${WALKIN_NAME_SQL} AS client_name, CASE WHEN b.client_id = '${WALKIN_ID}' THEN '' ELSE c.phone END AS client_phone, c.birth_date AS client_birth_date, s.name AS service_name, br.name AS barber_name, loc.name AS location_name,
     (SELECT json_group_array(json_object('id', e.id, 'serviceId', e.service_id, 'name', es.name, 'durationMin', e.duration_min, 'price', e.price_bani, 'addon', es.addon))
        FROM booking_extras e JOIN services es ON es.id = e.service_id WHERE e.booking_id = b.id) AS extras_json,
     (SELECT json_group_array(json_object('serviceId', g.service_id, 'name', gs.name, 'value', g.value_bani))
@@ -69,6 +70,8 @@ export async function createBooking(
     seriesId?: string | null;
     /** Fără niciun anunț (nici clientului, nici echipei): repetările se fac multe odată, din panou. */
     quiet?: boolean;
+    /** „Client fără programare” (walk-in): numele scris de echipă, opțional (clientul e cel de sistem, fără cont). */
+    walkinName?: string | null;
   },
 ) {
   const start = new Date(input.start);
@@ -122,8 +125,8 @@ export async function createBooking(
   // Limita de programări viitoare se verifică în aceeași instrucțiune, ca două rezervări trimise odată să n-o depășească.
   const limit = input.maxActive ? `AND (SELECT count(*) FROM bookings WHERE client_id = ? AND status IN ${HOLDS_SLOT} AND starts_at > ?) < ?` : '';
   const res = await env.DB.prepare(
-    `INSERT INTO bookings (id, client_id, barber_id, service_id, starts_at, ends_at, price_bani, source, note, status, location_id, series_id)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT location_id FROM barbers WHERE id = ?), ?
+    `INSERT INTO bookings (id, client_id, barber_id, service_id, starts_at, ends_at, price_bani, source, note, status, location_id, series_id, walkin_name)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT location_id FROM barbers WHERE id = ?), ?, ?
      WHERE NOT EXISTS (
        SELECT 1 FROM bookings WHERE barber_id = ? AND status IN ${HOLDS_SLOT} AND starts_at < ? AND ends_at > ?
      ) ${limit}`,
@@ -141,6 +144,7 @@ export async function createBooking(
       requested ? 'requested' : 'confirmed',
       barberId,
       input.seriesId ?? null,
+      input.clientId === WALKIN_ID ? (input.walkinName ?? '').trim().slice(0, 80) : null,
       barberId,
       iso(end),
       iso(start),
@@ -164,7 +168,7 @@ export async function createBooking(
   if (!requested) await closeOnBooking(env, input.clientId, service.id, iso(start));
   if (input.quiet) return created;
   const notify = async () => {
-    if (input.notify !== false) await notifyBooking(env, created, requested ? 'booking_request' : 'confirm');
+    if (input.notify !== false && input.clientId !== WALKIN_ID) await notifyBooking(env, created, requested ? 'booking_request' : 'confirm');
     await notifyStaff(env, created, requested ? 'request' : 'new', input.adminId ?? null);
   };
   if (input.defer) input.defer(notify().catch((e) => recordServerError(env, 'booking_notify', e)));

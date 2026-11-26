@@ -73,7 +73,7 @@ export function CalendarPage({ me }: { me: Me }) {
   // Fereastra mică de la trecerea cu mouse-ul peste o programare.
   const [hover, setHover] = useState<{ b: Booking; x: number; y: number } | null>(null);
   const [quickErr, setQuickErr] = useState<string | null>(null);
-  const [create, setCreate] = useState<{ barberId?: string; time?: string; outside?: boolean; day?: string } | null>(null);
+  const [create, setCreate] = useState<{ barberId?: string; time?: string; outside?: boolean; day?: string; walkIn?: boolean } | null>(null);
   // Click pe o oră liberă: un meniu mic, ca în Barberly (programare, blochează, eveniment, pauză, liber).
   const [menu, setMenu] = useState<{ x: number; y: number; barberId: string | null; time: string; outside: boolean; day: string } | null>(null);
   const [blockNew, setBlockNew] = useState<{ barberId: string | null; day: string; start: string; kind: BlockKind; label: string; len: number } | null>(null);
@@ -757,6 +757,10 @@ export function CalendarPage({ me }: { me: Me }) {
             setCreate({ barberId: menu.barberId ?? undefined, time: menu.time, outside: menu.outside, day: menu.day });
             setMenu(null);
           }}
+          onWalkIn={() => {
+            setCreate({ barberId: menu.barberId ?? undefined, time: menu.time, outside: menu.outside, day: menu.day, walkIn: true });
+            setMenu(null);
+          }}
           onBlock={(kind, label, len) => {
             setBlockNew({ barberId: menu.barberId ?? (me.owner ? null : me.barberId), day: menu.day, start: menu.time, kind, label, len });
             setMenu(null);
@@ -901,10 +905,13 @@ function NewBooking({
   barbers: Barber[];
   services: Service[];
   day: string;
-  initial: { barberId?: string; time?: string; outside?: boolean };
+  initial: { barberId?: string; time?: string; outside?: boolean; walkIn?: boolean };
   onClose: () => void;
   onDone: (day: string) => void;
 }) {
+  // „Client fără programare” (walk-in): fără cont, fără mesaje; doar un nume opțional.
+  const [walkIn, setWalkIn] = useState(!!initial.walkIn);
+  const [walkName, setWalkName] = useState('');
   const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   // Servicii în plus la aceeași programare (ex. Vopsit barbă): timpul și prețul se adună.
   const [extraIds, setExtraIds] = useState<string[]>([]);
@@ -1014,23 +1021,38 @@ function NewBooking({
   const submit = () =>
     run(async () => {
       await api('POST', '/admin/bookings', {
-        ...(picked ? { clientId: picked.id } : { phone: staged?.phone ?? '', name: staged?.name ?? '' }),
+        ...(walkIn ? { walkIn: true, name: walkName.trim() } : picked ? { clientId: picked.id } : { phone: staged?.phone ?? '', name: staged?.name ?? '' }),
         serviceId,
         extraServiceIds: [...extraIds, ...addonIds],
         barberId,
         start: force ? localToIso(day, forceTime) : start,
         force,
-        notify,
+        notify: walkIn ? false : notify,
       });
       onDone(day);
     });
 
-  const ok = (picked || staged) && serviceId && barberId && (force ? !!forceTime : !!start);
+  const ok = (walkIn || picked || staged) && serviceId && barberId && (force ? !!forceTime : !!start);
 
   return (
-    <Modal title="Programare nouă" onClose={onClose}>
+    <Modal title={walkIn ? 'Client fără programare' : 'Programare nouă'} onClose={onClose}>
       <div className="grid">
-        {picked || staged ? (
+        {walkIn ? (
+          <div className="card grid" style={{ background: 'var(--card-alt)', padding: '12px 14px' }}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <strong>Walk-in, fără cont</strong>
+              <button type="button" className="ghost sm" onClick={() => setWalkIn(false)}>
+                Alege un client
+              </button>
+            </div>
+            <Field label="Nume (opțional)">
+              <input value={walkName} onChange={(e) => setWalkName(e.target.value)} maxLength={80} placeholder="Ex.: Mihai, tuns scurt" autoFocus />
+            </Field>
+            <p className="muted small" style={{ margin: 0 }}>
+              Nu se face cont și clientul nu primește niciun mesaj. Ora apare ocupată peste tot (aplicație, site, Barberly), iar încasarea intră în registru și în statistici.
+            </p>
+          </div>
+        ) : picked || staged ? (
           <div className="card row" style={{ background: 'var(--card-alt)', justifyContent: 'space-between', padding: '10px 14px' }}>
             <div>
               <strong>{(picked ?? staged)?.name || 'Fără nume'}</strong>
@@ -1097,6 +1119,9 @@ function NewBooking({
                 </button>
               </div>
             </Field>
+            <button type="button" className="ghost sm" style={{ marginTop: 6 }} onClick={() => setWalkIn(true)}>
+              Fără cont: client fără programare (walk-in)
+            </button>
             {hits ? (
               <div className="suggest">
                 {hits.length ? (
@@ -1250,9 +1275,11 @@ function NewBooking({
         <label className="check small">
           <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> Altă oră decât cele libere
         </label>
-        <label className="check small">
-          <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} /> Trimite SMS de confirmare clientului
-        </label>
+        {walkIn ? null : (
+          <label className="check small">
+            <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} /> Trimite SMS de confirmare clientului
+          </label>
+        )}
         {error ? <div className="err">{error}</div> : null}
         <div className="row">
           <button disabled={!ok || busy} onClick={submit}>
@@ -1282,6 +1309,7 @@ function SlotMenu({
   barberName,
   onClose,
   onBook,
+  onWalkIn,
   onBlock,
 }: {
   menu: { x: number; y: number; time: string; day: string };
@@ -1290,6 +1318,7 @@ function SlotMenu({
   barberName?: string;
   onClose: () => void;
   onBook: () => void;
+  onWalkIn: () => void;
   onBlock: (kind: BlockKind, label: string, len: number) => void;
 }) {
   useEffect(() => {
@@ -1323,6 +1352,7 @@ function SlotMenu({
           </span>
         </div>
         {canBook ? item('plus', 'Programare nouă', 'Deschide formularul de programare', onBook) : null}
+        {canBook ? item('person', 'Client fără programare (walk-in)', 'Intrat de pe stradă: fără cont, fără mesaje', onWalkIn) : null}
         {canBlock ? (
           <>
             {item('ban', 'Blochează intervalul', 'Marchează ora ca ocupată, nu se mai poate programa', () => onBlock('other', 'Ocupat', 30))}
