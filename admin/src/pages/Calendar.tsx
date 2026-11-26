@@ -65,7 +65,38 @@ function lanes(list: Booking[]) {
   return out;
 }
 
+/** Ceasul calendarului: se actualizează exact la fiecare minut nou și imediat ce revii la fereastră
+ *  (browserul oprește ceasurile când fereastra e în bară sau calculatorul doarme, așa că ne resincronizăm atunci). */
+function useNow() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    let t = 0;
+    const tick = () => {
+      window.clearTimeout(t);
+      const d = new Date();
+      setNow(d);
+      // Următoarea bătaie: la începutul minutului următor (+50 ms siguranță).
+      t = window.setTimeout(tick, 60_000 - (d.getTime() % 60_000) + 50);
+    };
+    tick();
+    const back = () => document.visibilityState === 'visible' && tick();
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('focus', back);
+    window.addEventListener('pageshow', back);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener('visibilitychange', back);
+      window.removeEventListener('focus', back);
+      window.removeEventListener('pageshow', back);
+    };
+  }, []);
+  return now;
+}
+
+const LIVE_MS = 15_000;
+
 export function CalendarPage({ me }: { me: Me }) {
+  const now = useNow();
   const [day, setDay] = useState(today());
   const [open, setOpen] = useState<Booking | null>(null);
   // ✓ de pe calendar: panoul se deschide direct la încasare.
@@ -175,11 +206,38 @@ export function CalendarPage({ me }: { me: Me }) {
   }, [cols, bookings.data, first, last, wide]);
 
   const height = (endMin - startMin) * PX;
-  const nowMin = days.includes(today()) ? minutesOf(new Date().toISOString()) : -1;
+  const nowMin = days.includes(dayOf(now)) ? minutesOf(now.toISOString()) : -1;
   const nowIn = nowMin >= startMin && nowMin <= endMin;
   const reload = () => {
     bookings.reload();
   };
+  // Calendarul e „live”: verificăm programările la fiecare 15 secunde cât fereastra e deschisă și imediat
+  // ce revii la ea (din bara de jos, din altă filă, după ce calculatorul a stat în repaus sau a revenit internetul).
+  // Nu reîncărcăm în timp ce muți o programare cu mouse-ul.
+  const refreshAll = () => {
+    if (dragRef.current) return;
+    bookings.reload();
+    blocks.reload();
+    off.reload();
+    waiting.reload();
+  };
+  const refreshRef = useRef(refreshAll);
+  refreshRef.current = refreshAll;
+  useEffect(() => {
+    const t = window.setInterval(() => document.visibilityState === 'visible' && refreshRef.current(), LIVE_MS);
+    const back = () => document.visibilityState === 'visible' && refreshRef.current();
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('focus', back);
+    window.addEventListener('online', back);
+    window.addEventListener('pageshow', back);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener('visibilitychange', back);
+      window.removeEventListener('focus', back);
+      window.removeEventListener('online', back);
+      window.removeEventListener('pageshow', back);
+    };
+  }, []);
   // Clopoțelul anunță cererile noi și răspunsurile date din listă: calendarul se reîncarcă singur.
   useEffect(() => {
     const f = () => bookings.reload();

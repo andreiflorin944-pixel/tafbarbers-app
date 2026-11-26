@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { blockLabel, panelUrl, staffApi, type StaffBarber, type StaffBooking, type StaffTimeOff } from '@/api/staff';
 import { BOOKING_STATUS, BookingSheet } from '@/components/BookingSheet';
@@ -46,7 +46,9 @@ export default function StaffCalendar() {
   const { t } = useT();
   const { business } = useApp();
   const step = (business as { slotStepMin?: number } | null)?.slotStepMin || 15;
-  const today = dayKey(new Date());
+  // Ceasul calendarului: linia roșie „acum” se mută exact la fiecare minut nou și imediat ce revii în aplicație.
+  const [now, setNow] = useState(() => new Date());
+  const today = dayKey(now);
   const [day, setDay] = useState(params.day ?? today);
   const [barbers, setBarbers] = useState<StaffBarber[]>([]);
   const canAll = !!staff && (staff.permissions.bookings_all || !staff.barberId);
@@ -74,11 +76,12 @@ export default function StaffCalendar() {
     if (staffToken) staffApi.barbers(staffToken).then((b) => setBarbers(b.filter((x) => x.active)), () => undefined);
   }, [staffToken]);
 
-  const load = useCallback(async () => {
+  // quiet = reîmprospătarea automată: fără să golim calendarul dacă internetul cade o clipă.
+  const load = useCallback(async (quiet = false) => {
     if (!staffToken) return;
     // Ziua de la miezul nopții la miezul nopții, ora salonului.
     const from = salonMidnight(day);
-    setError(null);
+    if (!quiet) setError(null);
     try {
       const [b, t] = await Promise.all([
         staffApi.bookings(staffToken, from.toISOString(), salonMidnight(dayKey(addDays(fromDayKey(day), 1))).toISOString()),
@@ -87,9 +90,11 @@ export default function StaffCalendar() {
       // Pauzele și celelalte blocuri care scot ore din program se hașurează ca timpul liber (cele „doar membri” rămân de lucru).
       const blocks = await staffApi.blockOccurrences(staffToken, day, day).catch(() => []);
       setBookings(b);
+      setError(null);
       staffApi.waitlist(staffToken, day, day).then((w) => setWaiting(w.filter((x) => x.active).length), () => setWaiting(0));
       setTimeOff([...t, ...blocks.filter((o) => o.kind !== 'members').map((o) => ({ id: 0, barberId: o.barberId, start: o.start, end: o.end, reason: blockLabel(o) }))]);
     } catch (e) {
+      if (quiet) return;
       setError(errorMessage(e));
       setBookings([]);
     }
@@ -99,6 +104,34 @@ export default function StaffCalendar() {
     useCallback(() => {
       load();
     }, [load]),
+  );
+
+  // Calendarul e „live” cât timp e pe ecran: programările se verifică la fiecare 15 secunde, ceasul la fiecare minut,
+  // iar când revii în aplicație (din fundal sau după ce telefonul a stat blocat) se actualizează imediat amândouă.
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useFocusEffect(
+    useCallback(() => {
+      let clock: ReturnType<typeof setTimeout> | undefined;
+      const tick = () => {
+        if (clock) clearTimeout(clock);
+        const d = new Date();
+        setNow(d);
+        clock = setTimeout(tick, 60_000 - (d.getTime() % 60_000) + 50);
+      };
+      tick();
+      const poll = setInterval(() => AppState.currentState === 'active' && loadRef.current(true), 15_000);
+      const sub = AppState.addEventListener('change', (st) => {
+        if (st !== 'active') return;
+        tick();
+        loadRef.current(true);
+      });
+      return () => {
+        if (clock) clearTimeout(clock);
+        clearInterval(poll);
+        sub.remove();
+      };
+    }, []),
   );
 
   if (!staff || !staffToken) return null;
@@ -137,7 +170,7 @@ export default function StaffCalendar() {
     return out;
   };
 
-  const nowMin = day === today ? toMin(new Date().toISOString()) : -1;
+  const nowMin = day === today ? Math.floor((now.getTime() - dayStart.getTime()) / 60000) : -1;
   const ownName = barbers.find((b) => b.id === staff.barberId)?.name ?? staff.name;
 
   return (
