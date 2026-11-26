@@ -232,6 +232,7 @@ export type BookingRow = {
   location_id?: string | null;
   location_name?: string | null;
   series_id?: string | null;
+  walkin_name?: string | null;
 };
 /** `addon`: „extra fără timp” (ex. Spălat): are preț, dar nu prelungește programarea. */
 export type BookingExtra = { id: string; serviceId: string; name: string; durationMin: number; price: number; addon?: boolean };
@@ -303,6 +304,8 @@ export const booking = (r: BookingRow) => ({
   lateNote: r.late_note ?? null,
   lateAt: r.late_at ?? null,
   ...(r.client_name !== undefined && { clientName: r.client_name, clientPhone: r.client_phone }),
+  // „Client fără programare” (walk-in): fără cont, fără fișă, fără mesaje; numele (opțional) e în `clientName`.
+  walkIn: r.client_id === 'cl_walkin',
   // Programare în ziua de naștere a clientului (frizerul vede o lumânare); data nașterii nu se trimite.
   ...(r.client_birth_date !== undefined && { clientBirthday: isBirthdayOn(r.client_birth_date, roLocal(r.starts_at).day) }),
   ...(r.service_name !== undefined && { serviceName: r.service_name, barberName: r.barber_name }),

@@ -6,6 +6,7 @@ import { iso } from './time';
 import { sendTemplate } from './sendTemplate';
 import { parseItems, usedByService } from './customSubs';
 import { addDebt, settleDebts, undoDebtStatements } from './debts';
+import { WALKIN_ID } from './walkin';
 
 // Abonamente la tuns: adminul definește planurile, clientul plătește la salon și frizerul
 // (sau adminul) îl activează. La fiecare tunsoare finalizată, frizerul confirmă „a plătit X lei”
@@ -289,6 +290,10 @@ export async function completeBooking(
   if (!(debtLei >= 0 && debtLei * 100 <= bk.price_bani)) throw new HttpError(400, 'invalid_debt');
   const debtBani = Math.round(debtLei * 100);
   if (debtBani && (b.payment !== 'paid' || b.payMethod === 'app')) throw new HttpError(400, 'invalid_debt');
+  // Clientul fără programare (walk-in) n-are cont: plătește pe loc (numerar, card sau card cadou), fără abonament, bonus, rest sau plată în aplicație.
+  if (bk.client_id === WALKIN_ID && (b.payment !== 'paid' || b.payMethod === 'app' || debtBani || b.bonusId || b.settleDebtIds?.length)) {
+    throw new HttpError(400, 'walkin_pay_now');
+  }
 
   // Resturile vechi de încasat acum: trebuie să fie ale clientului și încă neîncasate (verificat înainte de închidere).
   const settleIds = [...new Set((b.settleDebtIds ?? []).filter((x) => typeof x === 'string'))].slice(0, 20);

@@ -5,6 +5,7 @@ import { getBusiness, getSetting, setSetting } from './db';
 import { HttpError, type AppEnv, type Env } from './env';
 import { seal, unseal } from './social';
 import { iso, roLocal } from './time';
+import { WALKIN_ID, WALKIN_LABEL, WALKIN_NAME_SQL } from './walkin';
 
 // Calendarul invers, cât timp se lucrează pe ambele: fiecare programare făcută la noi (aplicație, site, panou) se pune și
 // în calendarul Barberly, prin API-ul lor de programări (X-Api-Key), ca ora să fie ocupată și acolo. Mutarea la noi o mută
@@ -145,15 +146,16 @@ export async function runBarberlyPush(env: Env, now = new Date(), limit = 20) {
   const horizon = iso(new Date(now.getTime() + 90 * 864e5));
 
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.starts_at, b.ends_at, b.barber_id, b.service_id, c.name AS client_name, o.barberly_id, o.tries
+    `SELECT b.id, b.starts_at, b.ends_at, b.barber_id, b.service_id, ${WALKIN_NAME_SQL} AS client_name, o.barberly_id, o.tries
      FROM bookings b JOIN clients c ON c.id = b.client_id LEFT JOIN barberly_outbox o ON o.booking_id = b.id
-     WHERE b.status IN ${HOLDS_SLOT} AND b.barberly_ref IS NULL AND b.starts_at > ?1 AND b.starts_at < ?2
+     WHERE b.status IN ${HOLDS_SLOT} AND b.barberly_ref IS NULL AND b.ends_at > ?4 AND b.starts_at < ?2
        AND (o.booking_id IS NULL
          OR (o.state = 'error' AND o.tries < ${MAX_TRIES})
          OR (o.state = 'synced' AND (o.starts_at IS NOT b.starts_at OR o.ends_at IS NOT b.ends_at OR o.barber_id IS NOT b.barber_id) AND o.tries < ${MAX_TRIES}))
      ORDER BY b.starts_at LIMIT ?3`,
   )
-    .bind(iso(now), horizon, limit)
+    // Și cele începute deja (ex. clientul fără programare, trecut în calendar când a intrat): restul timpului rămâne ocupat în Barberly.
+    .bind(iso(now), horizon, limit, iso(new Date(now.getTime() + 5 * 60_000)))
     .all<Row>();
 
   for (const r of rows.results) {
@@ -164,12 +166,14 @@ export async function runBarberlyPush(env: Env, now = new Date(), limit = 20) {
       res.errors++;
       continue;
     }
-    const { day, hm } = roLocal(r.starts_at);
+    // Începută deja: în Barberly se trimite de acum (rotunjit la 5 minute) până la final, ca ora să fie în viitor.
+    const startMs = Math.max(Date.parse(r.starts_at), Math.ceil(now.getTime() / 300_000) * 300_000);
+    const { day, hm } = roLocal(new Date(startMs).toISOString());
     const body = {
       locationId: s.locationId,
       teamMemberId: tm,
       serviceIds: [svc],
-      timeSlot: { date: day, startMinutesOfDay: +hm.slice(0, 2) * 60 + +hm.slice(3, 5), durationMinutes: Math.max(5, Math.round((Date.parse(r.ends_at) - Date.parse(r.starts_at)) / 60_000)) },
+      timeSlot: { date: day, startMinutesOfDay: +hm.slice(0, 2) * 60 + +hm.slice(3, 5), durationMinutes: Math.max(5, Math.round((Date.parse(r.ends_at) - startMs) / 60_000)) },
       customer: s.customerId
         ? { customerId: s.customerId, firstName: s.customerName.split(' ')[0] || 'Aplicatia', phoneNumber: s.phone }
         : { firstName: 'Aplicatia', lastName: 'TAF', phoneNumber: s.phone },
@@ -226,7 +230,7 @@ async function view(env: Env) {
     env.DB.prepare('SELECT id, name FROM barbers WHERE active = 1 ORDER BY sort, name').all<{ id: string; name: string }>(),
     env.DB.prepare('SELECT id, name FROM services ORDER BY name').all<{ id: string; name: string }>(),
     env.DB.prepare(
-      `SELECT o.booking_id AS bookingId, o.state, o.detail, o.tries, o.updated_at AS updatedAt, b.starts_at AS startsAt, cl.name AS clientName, br.name AS barberName
+      `SELECT o.booking_id AS bookingId, o.state, o.detail, o.tries, o.updated_at AS updatedAt, b.starts_at AS startsAt, CASE WHEN b.client_id = '${WALKIN_ID}' THEN coalesce(nullif(trim(b.walkin_name), ''), '${WALKIN_LABEL}') ELSE cl.name END AS clientName, br.name AS barberName
        FROM barberly_outbox o JOIN bookings b ON b.id = o.booking_id JOIN clients cl ON cl.id = b.client_id JOIN barbers br ON br.id = b.barber_id
        ORDER BY o.updated_at DESC LIMIT 50`,
     ).all(),

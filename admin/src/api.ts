@@ -75,6 +75,7 @@ const MESSAGES: Record<string, string> = {
   too_many_attempts: 'Prea multe coduri greșite. Încearcă din nou peste o oră.',
   too_many_requests: 'Ai cerut un cod de curând. Mai încearcă peste un minut.',
   slot_unavailable: 'Ora nu mai e liberă la frizerul ales.',
+  walkin_pay_now: 'Clientul fără programare n-are cont: se încasează pe loc (numerar, card sau card cadou), fără abonament, bonus sau rest de plată.',
   criteria_required: 'Alege cel puțin un criteriu.',
   invalid_criteria: 'Criteriu greșit (verifică numerele).',
   confirm_required: 'Scrie STERGE ca să confirmi.',
@@ -413,6 +414,8 @@ export type Booking = {
   note: string;
   clientName: string;
   clientPhone: string;
+  /** „Client fără programare” (walk-in): fără cont și fără fișă; `clientName` e numele scris de echipă (sau „Client fără programare”). */
+  walkIn?: boolean;
   serviceName: string;
   barberName: string;
   payment?: 'paid' | 'subscription' | null;

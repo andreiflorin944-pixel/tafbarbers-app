@@ -265,7 +265,10 @@ export function BookingSheet({
             </View>
           ) : (
           <View style={{ gap: space.sm, marginTop: space.md }}>
-            {b.clientPhone || b.clientId ? (
+            {b.walkIn ? (
+              <Text style={ui.muted}>{t("sheet.walkIn")}</Text>
+            ) : null}
+            {b.clientPhone || (b.clientId && !b.walkIn) ? (
               <View style={{ flexDirection: "row", gap: space.sm }}>
                 {b.clientPhone ? (
                   <View style={{ flex: 1 }}>
@@ -276,7 +279,7 @@ export function BookingSheet({
                     />
                   </View>
                 ) : null}
-                {b.clientId ? (
+                {b.clientId && !b.walkIn ? (
                   <View style={{ flex: 1 }}>
                     <Button
                       title={t("sheet.clientFile")}
@@ -303,7 +306,7 @@ export function BookingSheet({
                 }}
               />
             ) : null}
-            {p.bookings_manage && !checkout && (b.status === "confirmed" || b.payDue) && !b.onlinePaid ? (
+            {p.bookings_manage && !checkout && (b.status === "confirmed" || b.payDue) && !b.onlinePaid && !b.walkIn ? (
               <PayRequest
                 booking={b}
                 token={staffToken}
@@ -424,7 +427,8 @@ function Checkout({
   const [bonusId, setBonusId] = useState<string | null>(null);
   const [tip, setTip] = useState("");
   const { staff } = useStaff();
-  const appOn = !!staff?.onlinePayments && !b.onlinePaid;
+  // Clientul fără programare (walk-in) n-are cont: nu i se poate cere plata în aplicație.
+  const appOn = !!staff?.onlinePayments && !b.onlinePaid && !b.walkIn;
   const [payMethod, setPayMethod] = useState<"cash" | "card" | "online" | "app">(b.onlinePaid ? "online" : "cash");
   const [giftCode, setGiftCode] = useState("");
   const [gift, setGift] = useState<{ code: string; take: number; balance: number } | null>(null);
@@ -570,17 +574,19 @@ function Checkout({
           </View>
         ) : null}
       </Choice>
-      <Choice
-        selected={mode === "subscription"}
-        onPress={() => sub && setMode("subscription")}
-        disabled={!sub}
-        title={t("sheet.onSub")}
-        sub={
-          sub
-            ? t("sheet.subLine", { name: sub.name, cuts: cutsText(sub), date: formatDate(new Date(sub.endsAt)) })
-            : t("sheet.noSub")
-        }
-      />
+      {b.walkIn ? null : (
+        <Choice
+          selected={mode === "subscription"}
+          onPress={() => sub && setMode("subscription")}
+          disabled={!sub}
+          title={t("sheet.onSub")}
+          sub={
+            sub
+              ? t("sheet.subLine", { name: sub.name, cuts: cutsText(sub), date: formatDate(new Date(sub.endsAt)) })
+              : t("sheet.noSub")
+          }
+        />
+      )}
       {data.bonuses.length ? (
         <>
           <Text style={ui.label}>{t("sheet.useBonus")}</Text>

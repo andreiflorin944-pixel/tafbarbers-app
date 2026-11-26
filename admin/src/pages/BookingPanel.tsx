@@ -433,6 +433,26 @@ export function BookingPanel({
             </div>
             <div style={{ minWidth: 0 }}>
               <strong style={{ fontSize: 18 }}>{b.clientName || 'Client fără nume'}</strong>
+              {b.walkIn ? (
+                <div className="muted small">
+                  Fără programare (walk-in), fără cont
+                  {canManage ? (
+                    <>
+                      {' · '}
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const v = prompt('Numele clientului (poate rămâne gol):', b.clientName === 'Client fără programare' ? '' : b.clientName);
+                          if (v !== null) set({ walkinName: v }, false);
+                        }}
+                      >
+                        scrie numele
+                      </a>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
               {b.clientPhone ? (
                 <div>
                   <a href={`tel:${b.clientPhone}`}>{b.clientPhone}</a>
@@ -441,12 +461,16 @@ export function BookingPanel({
             </div>
           </div>
           <div className="row bk-icons">
-            <a className="btn ghost sm" href={`#/clients/${b.clientId}`} title="Fișa clientului" aria-label="Fișa clientului">
-              <Icon name="person" />
-            </a>
-            <a className="btn ghost sm" href={`#/clients/${b.clientId}`} title="Programările clientului" aria-label="Programările clientului">
-              <Icon name="calendar" />
-            </a>
+            {b.walkIn ? null : (
+              <>
+                <a className="btn ghost sm" href={`#/clients/${b.clientId}`} title="Fișa clientului" aria-label="Fișa clientului">
+                  <Icon name="person" />
+                </a>
+                <a className="btn ghost sm" href={`#/clients/${b.clientId}`} title="Programările clientului" aria-label="Programările clientului">
+                  <Icon name="calendar" />
+                </a>
+              </>
+            )}
             {b.clientPhone ? (
               <>
                 <a className="btn ghost sm" href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer" title="WhatsApp" aria-label="WhatsApp">
@@ -469,7 +493,7 @@ export function BookingPanel({
               {b.lateNote ? <div>„{b.lateNote}”</div> : null}
             </div>
           ) : null}
-          {b.clientId ? <WalletBox clientId={b.clientId} /> : null}
+          {b.clientId && !b.walkIn ? <WalletBox clientId={b.clientId} /> : null}
           {b.clientBirthday ? <div className="bday-note">🕯️ E ziua lui de naștere! Urează-i „La mulți ani” și, dacă vrei, fă-i o reducere.</div> : null}
 
           {b.status === 'requested' ? (
@@ -943,13 +967,15 @@ export function BookingPanel({
               ) : null}
               <h3>Plăți</h3>
               <div className="bk-list">
-                {b.status === 'confirmed' && !b.onlinePaid ? (
+                {b.status === 'confirmed' && !b.onlinePaid && !b.walkIn ? (
                   <MenuItem icon="card" title="Cere plata în aplicație" sub={online ? 'Clientul primește mesaj și plătește cu cardul' : 'Plata online e oprită (Setări → Plăți online)'} disabled={!online} onClick={startPay} />
                 ) : null}
                 {canComplete ? <MenuItem icon="bolt" title="Checkout rapid" sub="Plată rapidă pentru această programare" onClick={startCheckoutNow} /> : null}
                 {owner && b.payment ? <MenuItem icon="undo" title="Anulează confirmarea plății" sub="Programarea revine la confirmată" disabled={busy} onClick={undoPay} /> : null}
                 {!(b.status === 'confirmed' && !b.onlinePaid) && !canComplete && !(owner && b.payment) ? <div className="muted small" style={{ padding: 10 }}>Nimic de făcut la plată.</div> : null}
               </div>
+              {b.walkIn ? null : (
+              <>
               <h3>Client</h3>
               <div className="bk-list">
                 <MenuItem icon="chat" title="Trimite cerere de recenzie" sub={b.status === 'completed' ? 'Linkul de recenzie Google, prin SMS și notificare' : 'Se poate după ce programarea e încheiată'} disabled={b.status !== 'completed' || busy} onClick={review} />
@@ -962,6 +988,8 @@ export function BookingPanel({
                 />
                 <MenuItem icon="person" title="Copiază linkul fișei" sub="Fișa clientului din panou, pentru echipă" onClick={() => copy(fileLink, 'Linkul fișei clientului e copiat.')} />
               </div>
+              </>
+              )}
             </div>
           </div>
         ) : null}
@@ -1233,7 +1261,7 @@ function CheckoutForm({
   // Restul neplătit rămâne pe client (altfel diferența e o reducere).
   const [leaveDebt, setLeaveDebt] = useState(false);
   // Resturi mai vechi ale clientului, încasate acum odată cu programarea.
-  const wallet = useLoad(() => (b.clientId ? api<Wallet>('GET', `/admin/clients/${b.clientId}/wallet`) : Promise.resolve(null)), [b.clientId]);
+  const wallet = useLoad(() => (b.clientId && !b.walkIn ? api<Wallet>('GET', `/admin/clients/${b.clientId}/wallet`) : Promise.resolve(null)), [b.clientId]);
   const [settle, setSettle] = useState<string[]>([]);
   const [amount, setAmount] = useState(String(b.price));
   const [bonusId, setBonusId] = useState('');
@@ -1264,7 +1292,7 @@ function CheckoutForm({
   const settleSum = openDebts.filter((d) => settle.includes(d.id)).reduce((n, d) => n + d.amount, 0);
   // Cât lipsește din preț după suma plătită și cardul cadou.
   const short = Math.round((b.price - (Number(amount) || 0) - (gift?.take ?? 0)) * 100) / 100;
-  const canDebt = m === 'paid' && payMethod !== 'app' && amount !== '' && short > 0;
+  const canDebt = m === 'paid' && payMethod !== 'app' && amount !== '' && short > 0 && !b.walkIn;
   const debt = canDebt && leaveDebt ? short : 0;
   return (
     <div className="card grid">
@@ -1278,7 +1306,7 @@ function CheckoutForm({
           <option value="card">card (POS)</option>
           <option value="transfer">transfer</option>
           {b.onlinePaid ? <option value="online">online (în aplicație)</option> : null}
-          {online && !b.onlinePaid ? <option value="app">cere plata în aplicație</option> : null}
+          {online && !b.onlinePaid && !b.walkIn ? <option value="app">cere plata în aplicație</option> : null}
         </select>
       </label>
       {m === 'paid' && payMethod === 'app' ? (
@@ -1286,7 +1314,7 @@ function CheckoutForm({
           Clientul primește cererea de plată (SMS, e-mail sau notificare, după Notificări) și plătește din aplicație cu cardul, Apple Pay sau Google Pay. Suma nu
           intră la numerar sau card în registru; apare la online după ce plătește.
         </div>
-      ) : !online && !b.onlinePaid ? (
+      ) : !online && !b.onlinePaid && !b.walkIn ? (
         <div className="muted small">„Cere plata în aplicație” apare după ce pornești plata online (Setări → Plăți online).</div>
       ) : null}
       {canDebt ? (
@@ -1298,6 +1326,7 @@ function CheckoutForm({
           </span>
         </label>
       ) : null}
+      {b.walkIn ? null : (
       <label className="check" style={{ opacity: sub ? 1 : 0.5 }}>
         <input type="radio" disabled={!sub} checked={m === 'subscription'} onChange={() => setMode('subscription')} />
         <span>
@@ -1309,6 +1338,7 @@ function CheckoutForm({
           </span>
         </span>
       </label>
+      )}
       <div className="drawer-card">
         <b className="small">Servicii oferite cadou</b>
         {gifts.map((id) => (
