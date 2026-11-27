@@ -32,6 +32,11 @@ export type SeasonCampaign = {
   wish: Texts; // urarea pusă din oficiu în cardul cadou (doar când butonul duce la cardul cadou)
   imageUrl: string | null;
   amount: number | null; // suma cardului cadou aleasă din oficiu (lei); null = clientul alege
+  // Pachetul de sezon: cu preț de ofertă, pagina de cadou vinde doar pachetul. Voucherul valorează `amount` (ex. 180 lei),
+  // cumpărătorul plătește `packagePrice` (ex. 149,99 lei), iar cu un cod de reducere și mai puțin.
+  packageName: string;
+  packageItems: string; // serviciile, despărțite prin virgulă
+  packagePrice: number | null; // lei, cu bani (149.99); null = fără ofertă, clientul alege suma
   version: number; // crește la fiecare salvare cu alt conținut: pop-up-ul apare din nou pentru campania nouă
 };
 
@@ -55,6 +60,9 @@ export const DEFAULT_SEASON: SeasonCampaign = {
   wish: t3('Crăciun fericit! 🎄', 'Merry Christmas! 🎄', 'Joyeux Noël ! 🎄', 'عيد ميلاد مجيد! 🎄'),
   imageUrl: '/campanii/craciun.jpg',
   amount: 120,
+  packageName: 'Experiența TAF',
+  packageItems: 'Tuns, Aranjarea bărbii, 2 spălări, Prosop cald, Masaj capilar',
+  packagePrice: null,
   version: 1,
 };
 
@@ -94,8 +102,16 @@ export async function saveSeasonCampaign(env: Env, v: Partial<SeasonCampaign>): 
     popup: typeof v.popup === 'boolean' ? v.popup : cur.popup,
     imageUrl: img,
     amount: amountOf(v.amount, cur.amount),
+    packageName: v.packageName === undefined ? cur.packageName : String(v.packageName ?? '').trim().slice(0, 60),
+    packageItems: v.packageItems === undefined ? cur.packageItems : String(v.packageItems ?? '').trim().slice(0, 200),
+    packagePrice: v.packagePrice === undefined ? cur.packagePrice : priceOf(v.packagePrice),
     version: cur.version,
   } as SeasonCampaign;
+  if (next.packagePrice !== null) {
+    if (!next.amount) throw new HttpError(400, 'package_value_required');
+    if (next.packagePrice > next.amount) throw new HttpError(400, 'package_price_too_high');
+    if (!next.packageName) throw new HttpError(400, 'package_name_required');
+  }
   // Textele: scrise în română, engleza, franceza și araba se completează singure (ca la bannere).
   for (const k of TEXT_KEYS) {
     const out = { ...cur[k] };
@@ -117,6 +133,20 @@ function amountOf(x: unknown, d: number | null): number | null {
   return n;
 }
 
+function priceOf(x: unknown): number | null {
+  if (x === null || x === '' || x === 0) return null;
+  const n = Math.round(Number(String(x).replace(',', '.')) * 100) / 100;
+  if (!(n >= 5 && n <= 5000)) throw new HttpError(400, 'invalid_price');
+  return n;
+}
+
+/** Pachetul de sezon în vânzare (campanie pornită, duce la cardul cadou și are preț de ofertă). */
+export async function activePackage(env: Env) {
+  const s = await activeSeason(env);
+  if (!s || s.target !== 'gift_card' || !s.packagePrice || !s.amount) return null;
+  return { name: s.packageName, items: s.packageItems, value: s.amount, price: s.packagePrice };
+}
+
 /** E în desfășurare azi, iar ce deschide butonul e pornit (cardul cadou se vinde, abonamentul personalizat e pornit). */
 export async function activeSeason(env: Env, now = new Date()): Promise<SeasonCampaign | null> {
   const s = await getSeasonCampaign(env);
@@ -132,7 +162,7 @@ export async function activeSeason(env: Env, now = new Date()): Promise<SeasonCa
 export function seasonTexts(s: SeasonCampaign, lang: string | null | undefined) {
   const l = langOf(lang);
   const p = (t: Texts) => pick3(t, l);
-  return { kicker: p(s.kicker), title: p(s.title), text: p(s.text), cta: p(s.cta), wish: p(s.wish), imageUrl: s.imageUrl, amount: s.amount ?? null };
+  return { kicker: p(s.kicker), title: p(s.title), text: p(s.text), cta: p(s.cta), wish: p(s.wish), imageUrl: s.imageUrl, amount: s.amount ?? null, packageName: s.packageName, packageItems: s.packageItems, packagePrice: s.target === 'gift_card' && s.amount ? s.packagePrice : null };
 }
 
 /** Bannerul de pe Acasă (aplicație și site), ca unul din panou; `popup` = se arată și ca pop-up la intrare. */

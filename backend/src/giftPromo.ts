@@ -2,6 +2,7 @@
 // Proprietarul generează o serie (ex. 50 de coduri CRACIUN-XXXXX, 10% sau 20 lei, câte o folosire, până pe 31 decembrie)
 // sau un singur cod ales de el (ex. TAF10, folosit de oricâți). La cumpărare (site, aplicație, salon) codul scade prețul;
 // cardul rămâne la valoarea lui întreagă. O folosire = un card cadou plătit cu acel cod.
+import { activePackage } from './seasonCampaign';
 import { newId } from './auth';
 import { HttpError, type Env } from './env';
 import { localDay } from './time';
@@ -96,8 +97,15 @@ export async function setPromoActive(env: Env, b: { id?: string; batch?: string;
   return { changed: r.meta.changes };
 }
 
-/** Prețul cu codul: valoarea cardului minus reducerea, rotunjit la leu, cel puțin 5 lei. Aruncă eroare dacă codul nu e bun. */
-export async function quotePromo(env: Env, rawCode: unknown, amountLei: number) {
+/** Cât costă un card de `amountLei`: prețul pachetului de sezon (ex. 180 lei vândut cu 149,99), altfel valoarea lui. */
+export async function giftBase(env: Env, amountLei: number) {
+  const pkg = await activePackage(env);
+  if (pkg && pkg.value === amountLei) return { priceBani: Math.round(pkg.price * 100), pkg };
+  return { priceBani: amountLei * 100, pkg: null };
+}
+
+/** Prețul cu codul: prețul cardului (sau al pachetului) minus reducerea în lei întregi, cel puțin 5 lei. Aruncă eroare dacă codul nu e bun. */
+export async function quotePromo(env: Env, rawCode: unknown, amountLei: number, baseBani = amountLei * 100) {
   const code = normCode(rawCode);
   if (!code) throw new HttpError(400, 'promo_invalid');
   const p = await env.DB.prepare(`SELECT p.*, ${USED_SQL} AS used FROM gift_promo_codes p WHERE p.code = ?`).bind(recent(), code).first<PromoRow>();
@@ -105,7 +113,7 @@ export async function quotePromo(env: Env, rawCode: unknown, amountLei: number) 
   const today = localDay(env.TIMEZONE || 'Europe/Bucharest', new Date());
   if (p.expires_day && p.expires_day < today) throw new HttpError(409, 'promo_expired');
   if (p.max_uses !== null && (p.used ?? 0) >= p.max_uses) throw new HttpError(409, 'promo_used_up');
-  const off = p.kind === 'percent' ? Math.round((amountLei * p.value) / 100) : p.value;
-  const price = Math.max(5, amountLei - off);
-  return { id: p.id, code: p.code, kind: p.kind, value: p.value, amount: amountLei, discount: amountLei - price, price };
+  const off = p.kind === 'percent' ? Math.round((baseBani * p.value) / 10000) : p.value;
+  const priceBani = Math.max(500, baseBani - off * 100);
+  return { id: p.id, code: p.code, kind: p.kind, value: p.value, amount: amountLei, base: baseBani / 100, discount: (baseBani - priceBani) / 100, price: priceBani / 100, priceBani };
 }

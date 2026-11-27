@@ -20,11 +20,16 @@ export type GiftCard = {
   paidByName?: string | null;
   price?: number;
   promoCode?: string | null;
+  packageName?: string | null;
+  packageItems?: string | null;
+  buyerPhone?: string | null;
+  buyerEmail?: string | null;
 };
 const STATUS: Record<GiftCard['status'], string> = { pending: 'De încasat', active: 'Activ', used: 'Folosit', cancelled: 'Anulat', expired: 'Expirat' };
 const FILTERS: Array<{ v: string; label: string }> = [
   { v: 'pending', label: 'De încasat' },
   { v: 'active', label: 'Active' },
+  { v: 'paid', label: 'Registru vândute' },
   { v: '', label: 'Toate' },
 ];
 
@@ -36,6 +41,29 @@ export function GiftCardsPage({ me }: { me: Me }) {
   const [code, setCode] = useState('');
   const [checked, setChecked] = useState<GiftCard | string | null>(null);
   const [method, setMethod] = useState('cash');
+  const [q, setQ] = useState('');
+  const norm = (x: string) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const rows = (list.data ?? []).filter((g) => {
+    if (!q.trim()) return true;
+    const hay = norm([g.code, g.recipientName, g.recipientPhone, g.buyerName, g.buyerPhone, g.buyerEmail, g.promoCode, g.packageName].filter(Boolean).join(' '));
+    return hay.includes(norm(q.trim()));
+  });
+  const paid = rows.filter((g) => g.status !== 'pending' && g.status !== 'cancelled');
+  const sum = (f: (g: GiftCard) => number) => Math.round(paid.reduce((a, g) => a + f(g), 0) * 100) / 100;
+  const csv = () => {
+    const head = ['Data', 'Cumpărat de', 'Telefon cumpărător', 'E-mail cumpărător', 'Pentru', 'Telefon destinatar', 'Pachet', 'Valoare (lei)', 'Plătit (lei)', 'Cod reducere', 'Cod voucher', 'Folosit (lei)', 'Rămas (lei)', 'Stare', 'Plătit prin', 'Valabil până'];
+    const cell = (x: unknown) => `"${String(x ?? '').replace(/"/g, '""')}"`;
+    const lines = rows.map((g) =>
+      [date(g.createdAt), g.buyerName ?? 'vândut la salon', g.buyerPhone, g.buyerEmail, g.recipientName, g.recipientPhone, g.packageName, g.amount, g.price ?? g.amount, g.promoCode, g.code, g.status === 'pending' ? '' : Math.round((g.amount - g.balance) * 100) / 100, g.status === 'pending' ? '' : g.balance, STATUS[g.status], g.payMethod, g.expiresAt ? longDate(g.expiresAt) : '']
+        .map(cell)
+        .join(','),
+    );
+    const blob = new Blob(['\ufeff' + [head.map(cell).join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `vouchere-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+  };
   const { busy, error, run } = useAction();
 
   const act = (g: GiftCard, status: 'active' | 'cancelled') =>
@@ -48,7 +76,7 @@ export function GiftCardsPage({ me }: { me: Me }) {
   return (
     <>
       <div className="head">
-        <h1>Carduri cadou</h1>
+        <h1>Carduri cadou și vouchere</h1>
         <button onClick={() => setSelling(true)}>+ Vinde un card la salon</button>
       </div>
       <p className="muted small" style={{ marginTop: -8, maxWidth: 760 }}>
@@ -91,10 +119,21 @@ export function GiftCardsPage({ me }: { me: Me }) {
           </button>
         ))}
       </div>
+      <div className="row" style={{ gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Caută: nume, telefon, cod voucher, cod reducere…" style={{ maxWidth: 340 }} />
+        <button className="ghost sm" disabled={!rows.length} onClick={csv}>
+          Descarcă tabelul (Excel / CSV)
+        </button>
+        {paid.length ? (
+          <span className="muted small">
+            {paid.length} vândute · încasat {lei(sum((g) => g.price ?? g.amount))} · valoare {lei(sum((g) => g.amount))} · folosit la salon {lei(sum((g) => g.amount - g.balance))}
+          </span>
+        ) : null}
+      </div>
       {error ? <div className="err">{error}</div> : null}
       {!list.data ? (
         <Loading error={list.error} />
-      ) : list.data.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="muted">Niciun card aici.</div>
       ) : (
         <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
@@ -104,18 +143,23 @@ export function GiftCardsPage({ me }: { me: Me }) {
                 <th>Cerut pe</th>
                 <th>De la</th>
                 <th>Pentru</th>
-                <th>Sumă</th>
-                <th>Sold</th>
+                <th>Valoare</th>
+                <th>Plătit</th>
+                <th>Folosit</th>
                 <th>Cod</th>
                 <th>Stare</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {list.data.map((g) => (
+              {rows.map((g) => (
                 <tr key={g.id}>
                   <td>{date(g.createdAt)}</td>
-                  <td>{g.buyerName || <span className="muted">vândut la salon</span>}</td>
+                  <td>
+                    {g.buyerName || <span className="muted">vândut la salon</span>}
+                    {g.buyerPhone && !(g.buyerName ?? '').includes(g.buyerPhone) ? <div className="muted small">{g.buyerPhone}</div> : null}
+                    {g.buyerEmail ? <div className="muted small">{g.buyerEmail}</div> : null}
+                  </td>
                   <td>
                     {g.recipientName || '—'}
                     {g.recipientPhone ? <div className="muted small">{g.recipientPhone}</div> : null}
@@ -123,13 +167,26 @@ export function GiftCardsPage({ me }: { me: Me }) {
                   </td>
                   <td>
                     {lei(g.amount)}
-                    {g.promoCode && g.price !== undefined && g.price < g.amount ? (
-                      <div className="muted small">
-                        plătit {lei(g.price)} cu codul {g.promoCode}
-                      </div>
-                    ) : null}
+                    {g.packageName ? <div className="muted small">{g.packageName}</div> : null}
                   </td>
-                  <td>{g.status === 'pending' ? '—' : lei(g.balance)}</td>
+                  <td>
+                    {lei(g.price ?? g.amount)}
+                    {g.promoCode ? <div className="muted small">cu codul {g.promoCode}</div> : null}
+                  </td>
+                  <td>
+                    {g.status === 'pending' ? (
+                      '—'
+                    ) : g.balance >= g.amount ? (
+                      <span className="muted">nefolosit</span>
+                    ) : g.balance <= 0 ? (
+                      <span>tot ({lei(g.amount)})</span>
+                    ) : (
+                      <span>
+                        {lei(Math.round((g.amount - g.balance) * 100) / 100)}
+                        <div className="muted small">rămas {lei(g.balance)}</div>
+                      </span>
+                    )}
+                  </td>
                   <td style={{ fontFamily: 'monospace' }}>{g.code ?? '—'}</td>
                   <td>
                     {STATUS[g.status]}

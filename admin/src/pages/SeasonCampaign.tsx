@@ -23,9 +23,12 @@ type Season = {
   wish: Texts;
   imageUrl: string | null;
   amount: number | null;
+  packageName: string;
+  packageItems: string;
+  packagePrice: number | null;
   version: number;
 };
-type Preset = Pick<Season, 'target' | 'kicker' | 'title' | 'text' | 'cta' | 'wish' | 'imageUrl' | 'amount'> & { label: string; dates: () => [string, string] };
+type Preset = Pick<Season, 'target' | 'kicker' | 'title' | 'text' | 'cta' | 'wish' | 'imageUrl' | 'amount'> & Partial<Pick<Season, 'packageName' | 'packageItems' | 'packagePrice'>> & { label: string; dates: () => [string, string] };
 
 const t3 = (ro: string, en: string, fr: string): Texts => ({ ro, en, fr });
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -73,17 +76,20 @@ const PRESETS: Record<Theme, Preset> = {
   christmas: {
     label: '🎄 Crăciun',
     target: 'gift_card',
-    kicker: t3('VOUCHER CADOU · 120 LEI', 'GIFT VOUCHER · 120 LEI', 'BON CADEAU · 120 LEI'),
+    kicker: t3('VOUCHER CADOU · CRĂCIUN', 'GIFT VOUCHER · CHRISTMAS', 'BON CADEAU · NOËL'),
     title: t3('De Crăciun, oferă-i un moment TAF unui prieten.', 'This Christmas, give a friend a TAF moment.', 'À Noël, offrez un moment TAF à un ami.'),
     text: t3(
-      'Dăruiește Experiența TAF: tuns, aranjat barba și spa cu prosop cald, însoțită de urarea ta. Ajunge pe loc prin SMS și în aplicație.',
-      'Give the TAF Experience: haircut, beard trim and hot towel spa, with your wishes. Delivered instantly by SMS and in the app.',
-      'Offrez l’Expérience TAF : coupe, taille de barbe et soin à la serviette chaude, avec vos vœux. Envoyée par SMS et dans l’application.',
+      'Dăruiește Experiența TAF, însoțită de urarea ta. Ajunge pe loc prin SMS și în aplicație.',
+      'Give the TAF Experience, with your wishes. Delivered instantly by SMS and in the app.',
+      'Offrez l’Expérience TAF, avec vos vœux. Envoyée par SMS et dans l’application.',
     ),
     cta: t3('Oferă Experiența TAF', 'Give the TAF Experience', 'Offrir l’Expérience TAF'),
     wish: t3('Crăciun fericit! 🎄', 'Merry Christmas! 🎄', 'Joyeux Noël ! 🎄'),
     imageUrl: '/campanii/craciun.jpg',
-    amount: 120,
+    amount: 180,
+    packageName: 'Experiența TAF',
+    packageItems: 'Tuns, Aranjarea bărbii, 2 spălări, Prosop cald, Masaj capilar',
+    packagePrice: 149.99,
     dates: () => {
       const y = upcoming('12-24');
       return [later(today(), `${y}-11-15`), `${y}-12-24`];
@@ -185,7 +191,7 @@ export function SeasonCampaignPage({ me }: { me: Me }) {
   const pickTheme = (theme: Theme) => {
     const p = PRESETS[theme];
     const [startsAt, endsAt] = p.dates();
-    set({ theme, target: p.target, kicker: p.kicker, title: p.title, text: p.text, cta: p.cta, wish: p.wish, imageUrl: p.imageUrl, amount: p.amount, startsAt, endsAt });
+    set({ theme, target: p.target, kicker: p.kicker, title: p.title, text: p.text, cta: p.cta, wish: p.wish, imageUrl: p.imageUrl, amount: p.amount, packageName: p.packageName ?? v.packageName, packageItems: p.packageItems ?? v.packageItems, packagePrice: p.packagePrice ?? null, startsAt, endsAt });
   };
   const save = () =>
     run(async () => {
@@ -266,7 +272,35 @@ export function SeasonCampaignPage({ me }: { me: Me }) {
             <input disabled={!owner} value={v.cta.ro} maxLength={40} onChange={(e) => setRo('cta', e.target.value)} />
           </Field>
           {v.target === 'gift_card' ? (
-            <Field label="Suma aleasă din oficiu (lei; gol = clientul alege)">
+            <div className="card" style={{ background: 'transparent', display: 'grid', gap: 8 }}>
+              <b>Pachet cu preț de ofertă (opțional)</b>
+              <p className="muted small" style={{ margin: 0 }}>
+                Cu prețul de ofertă completat, pagina de cadou (site și aplicație) vinde doar acest pachet: valoarea de mai jos apare tăiată, iar
+                clientul plătește prețul de ofertă (cu un cod de reducere, și mai puțin). Voucherul valorează tot pachetul la salon. Gol = clientul alege suma.
+              </p>
+              <Field label="Numele pachetului">
+                <input disabled={!owner} value={v.packageName} maxLength={60} onChange={(e) => set({ packageName: e.target.value })} placeholder="Experiența TAF" />
+              </Field>
+              <Field label="Ce conține (despărțite prin virgulă)">
+                <input disabled={!owner} value={v.packageItems} maxLength={200} onChange={(e) => set({ packageItems: e.target.value })} placeholder="Tuns, Aranjarea bărbii, 2 spălări, Prosop cald, Masaj capilar" />
+              </Field>
+              <Field label="Preț de ofertă (lei, ex. 149,99; gol = fără ofertă)">
+                <input
+                  inputMode="decimal"
+                  disabled={!owner}
+                  defaultValue={v.packagePrice != null ? String(v.packagePrice).replace('.', ',') : ''}
+                  key={`pp-${v.packagePrice ?? ''}`}
+                  onBlur={(e) => {
+                    const t = e.target.value.trim().replace(',', '.');
+                    set({ packagePrice: t ? Number(t) : null });
+                  }}
+                  style={{ maxWidth: 140 }}
+                />
+              </Field>
+            </div>
+          ) : null}
+          {v.target === 'gift_card' ? (
+            <Field label={v.packagePrice ? 'Valoarea pachetului (lei, prețul normal la salon, apare tăiat)' : 'Suma aleasă din oficiu (lei; gol = clientul alege)'}>
               <input
                 type="number"
                 min={10}

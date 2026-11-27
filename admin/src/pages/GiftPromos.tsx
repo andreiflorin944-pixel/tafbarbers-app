@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { api, type Me } from '../api';
 import { Field, Loading, useAction, useLoad } from '../ui';
 import { date, lei } from '../util';
+import { printPromoVouchers, VOUCHER_MODELS, type VoucherModel } from './promoVoucherPrint';
 
 // Marketing → Coduri reducere card cadou: generezi coduri (ex. pentru campania de Crăciun), le dai clienților,
 // iar cine cumpără un card cadou cu un cod valid plătește mai puțin. Cardul rămâne la valoarea lui întreagă.
@@ -26,6 +27,27 @@ const siteBase = () => `${location.protocol}//${location.host.replace(/^panou\./
 
 export function GiftPromosPage({ me }: { me: Me }) {
   const list = useLoad(() => api<Promo[]>('GET', '/admin/gift-promos'));
+  // Pachetul de sezon (ex. Experiența TAF, 180 → 149,99 lei): apare pe voucherele de reducere printate.
+  const season = useLoad(() => api<{ enabled: boolean; target: string; amount: number | null; packageName: string; packageItems: string; packagePrice: number | null }>('GET', '/admin/season-campaign'));
+  const biz = useLoad(() => api<{ name: string }>('GET', '/admin/settings').catch(() => ({ name: 'TAF Barbers' })));
+  const [printing, setPrinting] = useState<string | null>(null);
+  const print = (m: VoucherModel, items: Promo[]) => {
+    const s = season.data;
+    const pkg = s && s.target === 'gift_card' && s.packagePrice && s.amount ? s : null;
+    const exp = items.map((p) => p.expiresDay).filter(Boolean).sort()[0] ?? null;
+    const ok = items.filter((p) => p.state === 'ok');
+    printPromoVouchers(m, ok.length ? ok : items, {
+      shop: biz.data?.name || 'TAF Barbers',
+      site: siteBase(),
+      packageName: pkg?.packageName || null,
+      packageItems: pkg ? pkg.packageItems.split(',').map((x) => x.trim()).filter(Boolean) : [],
+      packageValue: pkg?.amount ?? null,
+      packagePrice: pkg?.packagePrice ?? null,
+      expires: exp ? day(exp) : null,
+    }).then((opened) => {
+      if (!opened) alert('Browserul a blocat fereastra. Permite ferestrele pop-up pentru panou și încearcă din nou.');
+    });
+  };
   const [open, setOpen] = useState<string | null>(null);
   const { busy, error, run } = useAction();
   const batches = useMemo(() => {
@@ -84,6 +106,9 @@ export function GiftPromosPage({ me }: { me: Me }) {
                   <button className="sm ghost" onClick={() => navigator.clipboard?.writeText(codes)}>
                     Copiază toate
                   </button>
+                  <button className="sm" onClick={() => setPrinting(printing === batch ? null : batch)}>
+                    Printează vouchere
+                  </button>
                   <a className="btn sm ghost" href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} download={`coduri-${(batch || 'reducere').replace(/\s+/g, '-')}.csv`}>
                     Descarcă (Excel)
                   </a>
@@ -94,6 +119,16 @@ export function GiftPromosPage({ me }: { me: Me }) {
                   ) : null}
                 </div>
               </div>
+              {printing === batch ? (
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>
+                  <span className="muted small">Alege modelul ({items.filter((p) => p.state === 'ok').length || items.length} vouchere, câte 4 pe A4):</span>
+                  {VOUCHER_MODELS.map((m) => (
+                    <button key={m.id} className="ghost sm" onClick={() => print(m.id, items)} title={m.hint}>
+                      {m.id}. {m.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               {isOpen ? (
                 <table style={{ marginTop: 10 }}>
                   <thead>

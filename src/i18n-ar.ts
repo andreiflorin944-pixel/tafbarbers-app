@@ -623,6 +623,8 @@ export const ar: Record<Key, string> = {
   'gift.order': 'اطلب بطاقة بقيمة {n} لي',
   'gift.promo': 'هل لديك رمز خصم؟',
   'gift.promoApply': 'تطبيق',
+  'gift.save': 'عرض · توفّر {n} لي',
+  'gift.promoOkPkg': '✓ تم تطبيق الرمز: −{off} لي. تدفع {price} لي.',
   'gift.promoOk': 'تم تطبيق الرمز: قيمة البطاقة {amount} لي، وتدفع {price} لي.',
   'gift.orderPrice': 'اطلب بطاقة بقيمة {n} لي · تدفع {p} لي',
   'gift.paidWith': 'تم الدفع {p} لي بالرمز {code}',
