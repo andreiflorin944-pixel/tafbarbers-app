@@ -79,6 +79,7 @@ import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } fr
 import { localizeReport, reportText } from '../reportsI18n';
 import { xlsx } from '../xlsx';
 import { adjustMove, cancelNir, createNir, getNir, listNir, stockOut, type NirInput } from '../stock';
+import { generatePromos, listPromos, quotePromo, setPromoActive } from '../giftPromo';
 import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCard, saveAutomations, switchMessage, type GiftCardRow } from '../growth';
 import { sendPush, sendSms } from '../notify';
 import { autoTranslate } from '../translate';
@@ -2228,8 +2229,8 @@ adminRoutes.get('/link-stats', ownerOnly, async (c) => {
 
 // --- Carduri cadou ---
 
-const GIFT_SELECT = `SELECT g.*, coalesce(b.name, g.web_buyer_name || ' (site, ' || coalesce(g.web_buyer_phone, '') || ')') AS buyer_name, coalesce(nullif(a.name, ''), a.email) AS paid_by_name FROM gift_cards g
-  LEFT JOIN clients b ON b.id = g.buyer_client_id LEFT JOIN admins a ON a.id = g.paid_by`;
+const GIFT_SELECT = `SELECT g.*, coalesce(b.name, g.web_buyer_name || ' (site, ' || coalesce(g.web_buyer_phone, '') || ')') AS buyer_name, coalesce(nullif(a.name, ''), a.email) AS paid_by_name, pc.code AS promo_code FROM gift_cards g
+  LEFT JOIN clients b ON b.id = g.buyer_client_id LEFT JOIN admins a ON a.id = g.paid_by LEFT JOIN gift_promo_codes pc ON pc.id = g.promo_code_id`;
 
 adminRoutes.get('/gift-cards', async (c) => {
   need(c, 'bookings_manage');
@@ -2243,7 +2244,7 @@ adminRoutes.get('/gift-cards', async (c) => {
 /** Card vândut direct la salon: se creează și se activează pe loc. */
 adminRoutes.post('/gift-cards', async (c) => {
   need(c, 'bookings_manage');
-  const b = await c.req.json<{ amount?: number; recipientName?: string; recipientPhone?: string; message?: string; payMethod?: string }>();
+  const b = await c.req.json<{ amount?: number; recipientName?: string; recipientPhone?: string; message?: string; payMethod?: string; promoCode?: string }>();
   const phone = b.recipientPhone?.trim() ? normalizePhone(b.recipientPhone) : null;
   const id = await createGiftCard(c.env, null, { ...b, recipientPhone: phone });
   await activateGiftCard(c.env, id, c.get('admin').adminId);
@@ -2282,6 +2283,16 @@ adminRoutes.get('/gift-cards/check', async (c) => {
   const g = await c.env.DB.prepare(`${GIFT_SELECT} WHERE g.code = ?`).bind(norm).first<GiftCardRow>();
   if (!g || g.status === 'pending' || g.status === 'cancelled') throw new HttpError(404, 'gift_card_not_found');
   return c.json(giftCard(g, true));
+});
+
+// --- Coduri de reducere pentru cardurile cadou ---
+adminRoutes.get('/gift-promos', ownerOnly, async (c) => c.json(await listPromos(c.env)));
+adminRoutes.post('/gift-promos', ownerOnly, async (c) => c.json(await generatePromos(c.env, c.get('admin').adminId, await c.req.json()), 201));
+adminRoutes.patch('/gift-promos', ownerOnly, async (c) => c.json(await setPromoActive(c.env, await c.req.json())));
+// Prețul cu cod la vânzarea din salon (casa).
+adminRoutes.post('/gift-promos/quote', async (c) => {
+  const b = await c.req.json<{ code?: string; amount?: number }>();
+  return c.json(await quotePromo(c.env, b.code, Math.round(Number(b.amount))));
 });
 
 // --- Promo „Urmărește-ne pe rețele” ---

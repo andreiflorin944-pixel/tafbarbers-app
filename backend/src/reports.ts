@@ -179,7 +179,7 @@ async function loadSubscriptions(env: Env, scope: Scope, from: string, to: strin
        FROM subscriptions s JOIN clients c ON c.id = s.client_id LEFT JOIN admins a ON a.id = s.created_by LEFT JOIN barbers br ON br.id = a.barber_id
        WHERE s.status != 'cancelled' AND s.created_at >= ? AND s.created_at < ? ${own}
        UNION ALL
-       SELECT g.id, coalesce(g.buyer_client_id, 'gift:' || g.id), 'Card cadou ' || g.code, g.amount_bani, g.paid_at, g.paid_by, coalesce(nullif(a.name, ''), a.email),
+       SELECT g.id, coalesce(g.buyer_client_id, 'gift:' || g.id), 'Card cadou ' || g.code || CASE WHEN g.price_bani IS NOT NULL AND g.price_bani < g.amount_bani THEN ' (valoare ' || (g.amount_bani / 100) || ' lei, cu cod de reducere)' ELSE '' END, coalesce(g.price_bani, g.amount_bani), g.paid_at, g.paid_by, coalesce(nullif(a.name, ''), a.email),
          a.barber_id, br.name, coalesce(c.name, g.recipient_name), 'gift', g.pay_method
        FROM gift_cards g LEFT JOIN clients c ON c.id = g.buyer_client_id LEFT JOIN admins a ON a.id = g.paid_by LEFT JOIN barbers br ON br.id = a.barber_id
        WHERE g.paid_at IS NOT NULL AND g.status != 'cancelled' AND g.paid_at >= ? AND g.paid_at < ? ${ownG}

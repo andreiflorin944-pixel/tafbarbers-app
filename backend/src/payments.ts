@@ -174,7 +174,7 @@ export async function recordPayment(
 
 async function applyPayment(env: Env, kind: Kind, ref: string, s: Session, pi: string | null, amount: number): Promise<Outcome> {
   if (kind === 'gift') {
-    const g = await env.DB.prepare('SELECT buyer_client_id, amount_bani, status, payment_ref FROM gift_cards WHERE id = ?')
+    const g = await env.DB.prepare('SELECT buyer_client_id, coalesce(price_bani, amount_bani) AS amount_bani, status, payment_ref FROM gift_cards WHERE id = ?')
       .bind(ref)
       .first<{ buyer_client_id: string | null; amount_bani: number; status: string; payment_ref: string | null }>();
     if (!g) return { ok: false, reason: 'Cardul cadou nu mai există' };

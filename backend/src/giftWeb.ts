@@ -11,6 +11,7 @@ import { createGiftCard, getAutomations, voucherKey, voucherUrl } from './growth
 import { createCheckout, publicBase } from './payments';
 import { ipHash } from './qr';
 import { activeSeason } from './seasonCampaign';
+import { quotePromo } from './giftPromo';
 import { iso } from './time';
 
 export const giftWebPublic = new Hono<AppEnv>();
@@ -79,6 +80,7 @@ ${cancelled ? '<p class="e">Plata a fost anulată și nu s-a luat niciun ban. Po
 <label>Numele tău<input id="bn" maxlength="80" autocomplete="name" required></label>
 <label>Telefonul tău<input id="bp" type="tel" placeholder="07xx xxx xxx" autocomplete="tel" required></label>
 <label>E-mailul tău (opțional, primești voucherul și pe e-mail)<input id="be" type="email" placeholder="nume@exemplu.ro" autocomplete="email"></label>
+<label>Ai un cod de reducere?</label><div style="display:flex;gap:8px;margin-top:5px"><input id="pc" maxlength="30" placeholder="ex. CRACIUN-AB3CD" autocomplete="off" style="margin:0;text-transform:uppercase"><button type="button" id="pcb" style="flex:none;background:#1c1c1c;color:#eee;border:1px solid #333;border-radius:12px;padding:0 16px;font-weight:700;cursor:pointer">Aplică</button></div><p id="pcm" class="m" style="margin:6px 0 0"></p>
 <p class="chk" style="margin-top:14px"><input type="checkbox" id="t"><span>Am citit <a href="/legal/terms" target="_blank">Termenii</a> și <a href="/legal/privacy" target="_blank">Politica de confidențialitate</a>. Folosim datele doar pentru acest card cadou.</span></p>
 ${captcha ? '<div id="cf" style="margin:10px 0;min-height:65px"></div>' : ''}
 <button class="pay" id="go">${esc(o.cta)}</button>
@@ -91,14 +93,39 @@ const $=(i)=>document.getElementById(i);
 let tok=null;try{tok=localStorage.getItem('taf-token')}catch(_){}
 if(tok)fetch('/v1/me',{headers:{authorization:'Bearer '+tok}}).then(r=>r.ok?r.json():null).then(m=>{if(!m)return;if(!$('bn').value)$('bn').value=m.name||'';if(!$('bp').value)$('bp').value=m.phone||'';if(!$('be').value)$('be').value=m.email||''}).catch(()=>{});
 let amount=${o.preset ?? 'null'};
-const E={invalid_amount:'Alege o sumă.',recipient_required:'Scrie pentru cine este cardul.',name_required:'Scrie numele tău.',invalid_phone:'Numărul de telefon nu pare corect.',invalid_email:'E-mailul nu pare corect.',terms_required:'Bifează că ai citit Termenii.',captcha_required:'Confirmă că nu ești robot.',captcha_failed:'Confirmă din nou că nu ești robot.',too_many_requests:'Prea multe încercări. Mai încearcă peste câteva minute.',gift_cards_off:'Momentan cardurile cadou nu se vând online.',payments_off:'Momentan plata cu cardul nu e disponibilă.'};
-const label=()=>{$('go').textContent=amount?${JSON.stringify(o.cta)}+' · '+amount+' lei':'Alege suma'};label();
-$('am').onclick=(e)=>{const b=e.target.closest('button');if(!b)return;amount=Number(b.dataset.a);[...$('am').children].forEach(x=>x.className=x===b?'on':'');label()};
+const E={invalid_amount:'Alege o sumă.',recipient_required:'Scrie pentru cine este cardul.',name_required:'Scrie numele tău.',invalid_phone:'Numărul de telefon nu pare corect.',invalid_email:'E-mailul nu pare corect.',terms_required:'Bifează că ai citit Termenii.',captcha_required:'Confirmă că nu ești robot.',captcha_failed:'Confirmă din nou că nu ești robot.',too_many_requests:'Prea multe încercări. Mai încearcă peste câteva minute.',gift_cards_off:'Momentan cardurile cadou nu se vând online.',payments_off:'Momentan plata cu cardul nu e disponibilă.',promo_invalid:'Codul de reducere nu mai e valabil.',promo_expired:'Codul de reducere a expirat.',promo_used_up:'Codul de reducere a fost deja folosit.'};
+const P={promo_invalid:'Codul nu există sau nu mai e activ.',promo_expired:'Codul a expirat.',promo_used_up:'Codul a fost deja folosit.',too_many_requests:'Prea multe încercări. Mai încearcă peste câteva minute.'};
+let promo=null;
+const label=()=>{$('go').textContent=!amount?'Alege suma':promo?${JSON.stringify(o.cta)}+' · plătești '+promo.price+' lei':${JSON.stringify(o.cta)}+' · '+amount+' lei'};label();
+// Codul de reducere: se verifică la „Aplică” și din nou când schimbi suma. Linkul /cadou?cod=XYZ îl completează singur.
+const applyPromo=async()=>{const code=$('pc').value.trim();promo=null;$('pcm').className='m';$('pcm').textContent='';label();if(!code)return;if(!amount){$('pcm').textContent='Alege întâi suma.';return}
+try{const r=await fetch('/v1/gift-promo/quote',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code,amount})});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.error)||'x');promo=j;$('pcm').className='ok';$('pcm').textContent='Cod aplicat: cardul are '+j.amount+' lei, tu plătești '+j.price+' lei (−'+j.discount+' lei).'}
+catch(x){$('pcm').className='e';$('pcm').textContent=P[x.message]||'Codul nu a putut fi verificat.'}label()};
+$('pcb').onclick=applyPromo;$('pc').onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();applyPromo()}};
+try{const q=new URLSearchParams(location.search).get('cod');if(q){$('pc').value=q;applyPromo()}}catch(_){}
+$('am').onclick=(e)=>{const b=e.target.closest('button');if(!b)return;amount=Number(b.dataset.a);[...$('am').children].forEach(x=>x.className=x===b?'on':'');label();if($('pc').value.trim())applyPromo()};
 $('f').onsubmit=async(e)=>{e.preventDefault();$('err').textContent='';$('go').disabled=true;
-try{const r=await fetch('/v1/gift-web',{method:'POST',headers:Object.assign({'content-type':'application/json'},tok?{authorization:'Bearer '+tok}:{}),body:JSON.stringify({amount,recipientName:$('rn').value,recipientPhone:$('rp').value,message:$('msg').value,buyerName:$('bn').value,buyerPhone:$('bp').value,buyerEmail:$('be').value,terms:$('t').checked,captcha:cfTok||undefined})});
+try{const r=await fetch('/v1/gift-web',{method:'POST',headers:Object.assign({'content-type':'application/json'},tok?{authorization:'Bearer '+tok}:{}),body:JSON.stringify({amount,recipientName:$('rn').value,recipientPhone:$('rp').value,message:$('msg').value,buyerName:$('bn').value,buyerPhone:$('bp').value,buyerEmail:$('be').value,promoCode:promo?promo.code:undefined,terms:$('t').checked,captcha:cfTok||undefined})});
 const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.error)||'server_error');location.href=j.url}
 catch(x){$('err').textContent=E[x.message]||'A apărut o problemă. Încearcă din nou sau sună-ne la salon.';$('go').disabled=false;if(window.turnstile&&$('cf')){try{turnstile.reset('#cf')}catch(_){}cfTok=null}}};
 </script></body></html>`);
+});
+
+/** Prețul cu un cod de reducere (site și aplicație). Cel mult 30 de încercări pe oră de pe același IP. */
+giftWebPublic.post('/v1/gift-promo/quote', async (c) => {
+  const b = await c.req.json<{ code?: unknown; amount?: unknown }>().catch(() => ({}) as { code?: unknown; amount?: unknown });
+  const ip = await ipHash(c.env, c);
+  if (ip) {
+    const now = iso(new Date());
+    const n = await c.env.DB.prepare(`INSERT INTO assistant_usage (day, key, n) VALUES (?, ?, 1) ON CONFLICT (day, key) DO UPDATE SET n = n + 1 RETURNING n`)
+      .bind(now.slice(0, 10), `gift-promo:${ip}:${now.slice(11, 13)}`)
+      .first<{ n: number }>();
+    if ((n?.n ?? 0) > 30) throw new HttpError(429, 'too_many_requests');
+  }
+  const amount = Math.round(Number(b.amount));
+  if (!(amount >= 10 && amount <= 5000)) throw new HttpError(400, 'invalid_amount');
+  const q = await quotePromo(c.env, b.code, amount);
+  return c.json({ code: q.code, amount: q.amount, discount: q.discount, price: q.price, kind: q.kind, value: q.value });
 });
 
 giftWebPublic.post('/v1/gift-web', async (c) => {
@@ -131,14 +158,16 @@ giftWebPublic.post('/v1/gift-web', async (c) => {
   // Intrat în cont pe site (/cont): cardul apare și la „Carduri cadou → Cumpărate” în contul lui (în aplicație și pe site).
   const who = await optionalSession(c);
   const buyerId = who?.kind === 'client' ? who.id : null;
-  const id = await createGiftCard(c.env, buyerId, { amount, recipientName, recipientPhone, message: str(b.message, 200) });
+  const id = await createGiftCard(c.env, buyerId, { amount, recipientName, recipientPhone, message: str(b.message, 200), promoCode: str(b.promoCode, 30) || undefined });
+  const priced = await c.env.DB.prepare('SELECT coalesce(price_bani, amount_bani) AS p FROM gift_cards WHERE id = ?').bind(id).first<{ p: number }>();
+  const payBani = priced?.p ?? amount * 100;
   await c.env.DB.prepare('UPDATE gift_cards SET web_buyer_name = ?, web_buyer_phone = ?, web_buyer_email = ? WHERE id = ?').bind(buyerName, buyerPhone, buyerEmail, id).run();
   const base = publicBase(c.env, c.req.url);
   const url = await createCheckout(c.env, {
     kind: 'gift',
     ref: id,
-    amountBani: amount * 100,
-    title: `Card cadou ${o.biz.name} · ${amount} lei`,
+    amountBani: payBani,
+    title: `Card cadou ${o.biz.name} · ${amount} lei${payBani < amount * 100 ? ' (cu cod de reducere)' : ''}`,
     email: buyerEmail,
     base,
     clientId: buyerId ?? '',

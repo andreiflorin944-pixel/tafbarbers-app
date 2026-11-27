@@ -6,6 +6,7 @@ import { availability } from './availability';
 import { EMAIL_WORDS, langKey, publicBase, sendBrandEmail } from './emailLayout';
 import { getBusiness, getSetting, setSetting } from './db';
 import { sha256 } from './auth';
+import { quotePromo } from './giftPromo';
 import { HttpError, type Env } from './env';
 import { sendPush, sendSms } from './notify';
 import { giveBonus, parseReward, type Reward } from './referrals';
@@ -535,6 +536,8 @@ export type GiftCardRow = {
   expires_at: string | null;
   created_at: string;
   pay_method?: string | null;
+  price_bani?: number | null;
+  promo_code?: string | null;
   buyer_name?: string | null;
   web_buyer_phone?: string | null;
   web_buyer_email?: string | null;
@@ -547,6 +550,9 @@ export const giftCard = (r: GiftCardRow, showCode: boolean) => {
     // Codul se vede doar când cardul e plătit (altfel ar putea fi folosit înainte de plată).
     code: showCode && r.status !== 'pending' ? r.code : null,
     amount: r.amount_bani / 100,
+    // Cât s-a plătit (mai puțin decât valoarea, cu un cod de reducere) și codul folosit.
+    price: (r.price_bani ?? r.amount_bani) / 100,
+    ...(r.promo_code !== undefined && { promoCode: r.promo_code }),
     balance: r.balance_bani / 100,
     recipientName: r.recipient_name,
     recipientPhone: r.recipient_phone,
@@ -569,7 +575,7 @@ function newCode() {
 }
 
 /** Clientul cumpără din aplicație un card cadou: rămâne „de plătit” până îl încasează echipa (sau, mai târziu, plata cu cardul). */
-export async function createGiftCard(env: Env, buyerId: string | null, b: { amount?: number; recipientName?: string; recipientPhone?: string | null; message?: string }) {
+export async function createGiftCard(env: Env, buyerId: string | null, b: { amount?: number; recipientName?: string; recipientPhone?: string | null; message?: string; promoCode?: unknown }) {
   const s = (await getAutomations(env)).giftCard;
   if (buyerId && !s.enabled) throw new HttpError(409, 'gift_cards_off');
   const amount = Math.round(Number(b.amount));
@@ -578,12 +584,14 @@ export async function createGiftCard(env: Env, buyerId: string | null, b: { amou
     const pending = await env.DB.prepare(`SELECT count(*) AS n FROM gift_cards WHERE buyer_client_id = ? AND status = 'pending'`).bind(buyerId).first<{ n: number }>();
     if ((pending?.n ?? 0) >= 5) throw new HttpError(429, 'too_many_gift_cards');
   }
+  // Cod de reducere (Marketing → Coduri reducere card cadou): cardul are valoarea întreagă, cumpărătorul plătește mai puțin.
+  const promo = b.promoCode ? await quotePromo(env, b.promoCode, amount) : null;
   const id = 'gc_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
   for (let i = 0; i < 5; i++) {
     const r = await env.DB.prepare(
-      `INSERT OR IGNORE INTO gift_cards (id, code, amount_bani, balance_bani, buyer_client_id, recipient_name, recipient_phone, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO gift_cards (id, code, amount_bani, balance_bani, buyer_client_id, recipient_name, recipient_phone, message, price_bani, promo_code_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, newCode(), amount * 100, amount * 100, buyerId, String(b.recipientName ?? '').trim().slice(0, 80), b.recipientPhone ?? null, String(b.message ?? '').trim().slice(0, 200))
+      .bind(id, newCode(), amount * 100, amount * 100, buyerId, String(b.recipientName ?? '').trim().slice(0, 80), b.recipientPhone ?? null, String(b.message ?? '').trim().slice(0, 200), promo ? promo.price * 100 : null, promo?.id ?? null)
       .run();
     if (r.meta.changes) return id;
   }

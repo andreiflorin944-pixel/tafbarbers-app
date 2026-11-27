@@ -219,7 +219,7 @@ clientRoutes.get('/me/gift-cards', async (c) => {
   // cu numărul altcuiva (cod pe e-mail, Apple / Google) ar vedea codurile cardurilor trimise acelui număr.
   const myPhone = me && !me.phone_unverified ? me.phone : '';
   const r = await c.env.DB.prepare(
-    `SELECT g.*, b.name AS buyer_name FROM gift_cards g LEFT JOIN clients b ON b.id = g.buyer_client_id
+    `SELECT g.*, b.name AS buyer_name, pc.code AS promo_code FROM gift_cards g LEFT JOIN clients b ON b.id = g.buyer_client_id LEFT JOIN gift_promo_codes pc ON pc.id = g.promo_code_id
      WHERE (g.buyer_client_id = ? OR g.recipient_phone = ?) AND g.status != 'cancelled' ORDER BY g.created_at DESC LIMIT 50`,
   )
     .bind(id, myPhone)
@@ -235,12 +235,13 @@ clientRoutes.get('/me/gift-cards', async (c) => {
     season: season?.target === 'gift_card' ? seasonTexts(season, c.req.query('lang') || me?.lang) : null,
     bought: r.results.filter((g) => g.buyer_client_id === id).map((g) => giftCard(g, true)),
     // Cel care primește vede codul doar după ce cardul a fost plătit.
-    received: r.results.filter((g) => !!myPhone && g.recipient_phone === myPhone && g.buyer_client_id !== id).map((g) => giftCard(g, true)),
+    // Cine primește cardul nu vede cât a plătit cumpărătorul și nici codul de reducere.
+    received: r.results.filter((g) => !!myPhone && g.recipient_phone === myPhone && g.buyer_client_id !== id).map((g) => ({ ...giftCard(g, true), price: g.amount_bani / 100, promoCode: null })),
   });
 });
 
 clientRoutes.post('/me/gift-cards', async (c) => {
-  const b = await c.req.json<{ amount?: number; recipientName?: string; recipientPhone?: string; message?: string }>();
+  const b = await c.req.json<{ amount?: number; recipientName?: string; recipientPhone?: string; message?: string; promoCode?: string }>();
   const phone = b.recipientPhone?.trim() ? normalizePhone(b.recipientPhone) : null;
   const id = await createGiftCard(c.env, c.get('client').clientId, { ...b, recipientPhone: phone });
   return c.json({ id }, 201);
@@ -249,17 +250,17 @@ clientRoutes.post('/me/gift-cards', async (c) => {
 // Plata online: întoarce adresa paginii de plată Stripe. Codul pleacă automat după confirmarea plății.
 clientRoutes.post('/me/gift-cards/:id/pay', async (c) => {
   const id = c.get('client').clientId;
-  const g = await c.env.DB.prepare(`SELECT g.id, g.amount_bani, g.recipient_name, c.email FROM gift_cards g JOIN clients c ON c.id = g.buyer_client_id
+  const g = await c.env.DB.prepare(`SELECT g.id, coalesce(g.price_bani, g.amount_bani) AS amount_bani, g.amount_bani AS value_bani, g.recipient_name, c.email FROM gift_cards g JOIN clients c ON c.id = g.buyer_client_id
      WHERE g.id = ? AND g.buyer_client_id = ? AND g.status = 'pending'`)
     .bind(c.req.param('id'), id)
-    .first<{ id: string; amount_bani: number; recipient_name: string; email: string | null }>();
+    .first<{ id: string; amount_bani: number; value_bani: number; recipient_name: string; email: string | null }>();
   if (!g) throw new HttpError(409, 'not_pending');
   const shop = (await getBusiness(c.env)).name;
   const url = await createCheckout(c.env, {
     kind: 'gift',
     ref: g.id,
     amountBani: g.amount_bani,
-    title: `Card cadou ${shop} · ${g.amount_bani / 100} lei`,
+    title: `Card cadou ${shop} · ${g.value_bani / 100} lei${g.value_bani !== g.amount_bani ? ' (cu cod de reducere)' : ''}`,
     email: g.email,
     base: publicBase(c.env, c.req.url),
     clientId: id,
