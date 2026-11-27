@@ -71,7 +71,7 @@ async function card(m: VoucherModel, c: Code, i: VoucherInfo) {
 <div class="k">${m === 2 ? 'DE CRĂCIUN, PENTRU EL' : 'PENTRU EL · DE CRĂCIUN'}</div><div class="shop">${esc(i.shop)}</div>
 <div class="t">${i.packageName ? `Fă-i cadou ${esc(i.packageName)}` : 'Fă-i cadou o vizită la noi'}</div>
 <div class="off">${esc(t.off)}</div><div class="what">${esc(t.what)}</div>
-${t.pay && i.packageValue && i.packagePrice ? `<div class="pay">în loc de <s>${money(i.packageValue)} lei</s> plătești doar <b>${t.pay} lei</b></div>` : ''}
+${t.pay && i.packageValue && i.packagePrice ? `<div class="pay">în loc de <s>${money(i.packagePrice)} lei</s> plătești doar <b>${t.pay} lei</b></div><div class="exp">valoarea pachetului la salon: ${money(i.packageValue)} lei</div>` : ''}
 ${i.packageItems.length ? `<div class="inc">${i.packageItems.map((x) => `<span>${esc(x)}</span>`).join('')}</div>` : ''}
 <div class="code"><img src="${qr}" alt=""><div><div class="cd">${esc(c.code)}</div>
 <div class="how">Scanează codul sau intră pe ${esc(site)}/cadou și scrie codul. Voucherul ajunge pe loc, gata de dăruit.</div>
