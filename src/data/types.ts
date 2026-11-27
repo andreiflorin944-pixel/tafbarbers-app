@@ -308,7 +308,12 @@ export type GiftCard = {
   expiresAt: string | null;
   createdAt: string;
   buyerName?: string | null;
+  /** Cât s-a plătit (mai puțin decât valoarea dacă s-a folosit un cod de reducere). */
+  price?: number;
+  promoCode?: string | null;
 };
+/** Prețul cardului cadou cu un cod de reducere. */
+export type GiftPromoQuote = { code: string; amount: number; discount: number; price: number };
 /** Campania de sezon a cardului cadou (ex. Crăciun), setată din panou; null = nu e în desfășurare. */
 export type GiftSeason = { kicker: string; title: string; text: string; cta: string; wish: string; imageUrl: string | null; amount?: number | null };
 export type GiftCards = { enabled: boolean; amounts: number[]; validMonths: number; season?: GiftSeason | null; bought: GiftCard[]; received: GiftCard[] };

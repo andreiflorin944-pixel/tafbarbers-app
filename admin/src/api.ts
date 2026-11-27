@@ -255,6 +255,13 @@ const MESSAGES: Record<string, string> = {
   raffle_no_entries: 'Nu e niciun participant: nicio tunsoare încheiată a unui client cu cont în săptămâna aleasă.',
   raffle_busy: 'Se face deja o extragere. Așteaptă câteva secunde.',
   raffle_prize_used: 'Premiul a fost deja dat la salon, extragerea nu se mai poate anula.',
+  promo_invalid: 'Codul de reducere nu există sau e oprit.',
+  promo_expired: 'Codul de reducere a expirat.',
+  promo_used_up: 'Codul de reducere a fost folosit de câte ori era voie.',
+  code_taken: 'Există deja un cod cu acest nume.',
+  invalid_code: 'Codul poate avea 3–20 de litere, cifre sau cratimă.',
+  invalid_count: 'Poți genera între 1 și 500 de coduri odată.',
+  invalid_uses: 'Folosiri pe cod: un număr de la 1 în sus, sau gol pentru nelimitat.',
 };
 export const errorText = (e: unknown) =>
   e instanceof ApiError ? (e.detail ?? MESSAGES[e.code] ?? `Eroare: ${e.code}`) : 'A apărut o problemă.';

@@ -92,6 +92,7 @@ export function httpApi(baseUrl: string): BookingApi {
     getSubscriptions: (token) => call('GET', '/me/subscriptions', { token }),
     getGiftCards: (token, lang) => call('GET', `/me/gift-cards${lang ? `?lang=${encodeURIComponent(lang)}` : ''}`, { token }),
     buyGiftCard: (token, input) => call('POST', '/me/gift-cards', { token, body: input }),
+    quoteGiftPromo: (code, amount) => call('POST', '/gift-promo/quote', { body: { code, amount } }),
     cancelGiftCard: async (token, id) => {
       await call('POST', `/me/gift-cards/${encodeURIComponent(id)}/cancel`, { token });
     },

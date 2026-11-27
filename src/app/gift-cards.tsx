@@ -5,7 +5,7 @@ import { api } from '@/api';
 import { mediaUrl } from '@/api/staff';
 import { useLoginGate } from '@/components/LoginGate';
 import { Button, Card, Screen, styles } from '@/components/ui';
-import type { GiftCard, GiftCards } from '@/data/types';
+import type { GiftCard, GiftCards, GiftPromoQuote } from '@/data/types';
 import { useT, type Key } from '@/i18n';
 import { formatDate } from '@/lib/dates';
 import { errorMessage } from '@/lib/errors';
@@ -34,6 +34,30 @@ export default function GiftCardsScreen() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  // Codul de reducere (generat din panou): clientul îl scrie, noi arătăm cât plătește.
+  const [promo, setPromo] = useState('');
+  const [quote, setQuote] = useState<GiftPromoQuote | null>(null);
+  const [promoErr, setPromoErr] = useState<string | null>(null);
+  const [promoBusy, setPromoBusy] = useState(false);
+  const applyPromo = useCallback(
+    async (code: string, amt: number | null) => {
+      setPromoErr(null);
+      if (!code.trim() || !amt) {
+        setQuote(null);
+        return;
+      }
+      setPromoBusy(true);
+      try {
+        setQuote(await api.quoteGiftPromo(code.trim(), amt));
+      } catch (e) {
+        setQuote(null);
+        setPromoErr(errorMessage(e));
+      } finally {
+        setPromoBusy(false);
+      }
+    },
+    [],
+  );
 
   const load = useCallback(() => {
     if (token) api.getGiftCards(token, lang).then(setData, (e) => setError(errorMessage(e)));
@@ -66,12 +90,14 @@ export default function GiftCardsScreen() {
     setBusy(true);
     setError(null);
     try {
-      await api.buyGiftCard(token, { amount, recipientName: name.trim(), recipientPhone: phone.trim() || undefined, message: message.trim() || undefined });
+      await api.buyGiftCard(token, { amount, recipientName: name.trim(), recipientPhone: phone.trim() || undefined, message: message.trim() || undefined, promoCode: quote?.code });
       setDone(true);
       setAmount(seasonAmount);
       setName('');
       setPhone('');
       setMessage(seasonWish);
+      setPromo('');
+      setQuote(null);
       load();
     } catch (e) {
       setError(errorMessage(e));
@@ -139,6 +165,7 @@ export default function GiftCardsScreen() {
                   onPress={() => {
                     setAmount(a);
                     setDone(false);
+                    if (promo.trim()) applyPromo(promo, a);
                   }}
                   accessibilityRole="button"
                   accessibilityState={{ selected: amount === a }}
@@ -165,10 +192,33 @@ export default function GiftCardsScreen() {
               keyboardType="phone-pad"
             />
             <TextInput value={message} onChangeText={setMessage} style={styles.input} placeholder={t('gift.wish')} placeholderTextColor={colors.muted} maxLength={200} />
+            <Text style={styles.muted}>{t('gift.promo')}</Text>
+            <View style={[styles.row, { gap: space.sm }]}>
+              <TextInput
+                value={promo}
+                onChangeText={(v) => {
+                  setPromo(v.toUpperCase());
+                  setQuote(null);
+                  setPromoErr(null);
+                }}
+                onSubmitEditing={() => applyPromo(promo, amount)}
+                style={[styles.input, { flex: 1 }]}
+                placeholder="CRACIUN-AB12C"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={20}
+              />
+              <View style={{ width: 110 }}>
+                <Button title={t('gift.promoApply')} variant="ghost" onPress={() => applyPromo(promo, amount)} disabled={!promo.trim() || !amount} loading={promoBusy} />
+              </View>
+            </View>
+            {quote ? <Text style={{ color: colors.success }}>{t('gift.promoOk', { amount: quote.amount, price: quote.price })}</Text> : null}
+            {promoErr ? <Text style={{ color: colors.danger }}>{promoErr}</Text> : null}
             <Text style={[styles.muted, { fontSize: 13 }]}>
               {online ? t('gift.payOnlineOr') : t('gift.payAtSalon')} {t('gift.info', { months: data.validMonths })}
             </Text>
-            <Button title={amount ? t('gift.order', { n: amount }) : t('gift.pickAmount')} onPress={buy} disabled={!amount || !name.trim()} loading={busy} />
+            <Button title={amount ? (quote ? t('gift.orderPrice', { n: amount, p: quote.price }) : t('gift.order', { n: amount })) : t('gift.pickAmount')} onPress={buy} disabled={!amount || !name.trim()} loading={busy} />
             {done ? (
               <Text style={{ color: colors.success }}>
                 {online
@@ -234,6 +284,7 @@ function GiftRow({ g, from, to, onCancel, onPay, shop }: { g: GiftCard; from?: s
           {until ? ` · ${until}` : ''}. {t('gift.sayCode')}
         </Text>
       ) : null}
+      {g.promoCode && g.price != null && g.price !== g.amount ? <Text style={[styles.muted, { fontSize: 13 }]}>{t('gift.paidWith', { p: g.price, code: g.promoCode })}</Text> : null}
       {g.message ? <Text style={[styles.text, { fontStyle: 'italic' }]}>„{g.message}”</Text> : null}
       <View style={[styles.row, { gap: space.sm, marginTop: 4 }]}>
         {g.code && to ? (

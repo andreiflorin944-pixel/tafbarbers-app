@@ -18,6 +18,8 @@ export type GiftCard = {
   createdAt: string;
   buyerName?: string | null;
   paidByName?: string | null;
+  price?: number;
+  promoCode?: string | null;
 };
 const STATUS: Record<GiftCard['status'], string> = { pending: 'De încasat', active: 'Activ', used: 'Folosit', cancelled: 'Anulat', expired: 'Expirat' };
 const FILTERS: Array<{ v: string; label: string }> = [
@@ -119,7 +121,14 @@ export function GiftCardsPage({ me }: { me: Me }) {
                     {g.recipientPhone ? <div className="muted small">{g.recipientPhone}</div> : null}
                     {g.message ? <div className="muted small">„{g.message}”</div> : null}
                   </td>
-                  <td>{lei(g.amount)}</td>
+                  <td>
+                    {lei(g.amount)}
+                    {g.promoCode && g.price !== undefined && g.price < g.amount ? (
+                      <div className="muted small">
+                        plătit {lei(g.price)} cu codul {g.promoCode}
+                      </div>
+                    ) : null}
+                  </td>
                   <td>{g.status === 'pending' ? '—' : lei(g.balance)}</td>
                   <td style={{ fontFamily: 'monospace' }}>{g.code ?? '—'}</td>
                   <td>
@@ -167,6 +176,8 @@ function SellModal({ method, onClose, onDone }: { method: string; onClose: () =>
   const [recipientName, setName] = useState('');
   const [recipientPhone, setPhone] = useState('');
   const [message, setMessage] = useState('');
+  const [promo, setPromo] = useState('');
+  const [quote, setQuote] = useState<{ price: number; discount: number } | null>(null);
   const { busy, error, run } = useAction();
   return (
     <Modal title="Card cadou vândut la salon" onClose={onClose}>
@@ -183,12 +194,38 @@ function SellModal({ method, onClose, onDone }: { method: string; onClose: () =>
         <Field label="Urare (opțional)">
           <input value={message} onChange={(e) => setMessage(e.target.value)} maxLength={200} />
         </Field>
+        <Field label="Cod de reducere (opțional)">
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              value={promo}
+              onChange={(e) => {
+                setPromo(e.target.value.toUpperCase());
+                setQuote(null);
+              }}
+              placeholder="ex. CRACIUN-AB3CD"
+              style={{ maxWidth: 220 }}
+            />
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy || !promo.trim()}
+              onClick={() => run(async () => setQuote(await api<{ price: number; discount: number }>('POST', '/admin/gift-promos/quote', { code: promo, amount: Number(amount) })))}
+            >
+              Verifică
+            </button>
+          </div>
+          {quote ? (
+            <div className="small success" style={{ marginTop: 4 }}>
+              Încasezi {lei(quote.price)} (reducere {lei(quote.discount)}); cardul rămâne de {lei(Number(amount))}.
+            </div>
+          ) : null}
+        </Field>
         {error ? <div className="err">{error}</div> : null}
         <button
           disabled={busy}
-          onClick={() => run(async () => onDone(await api<GiftCard>('POST', '/admin/gift-cards', { amount: Number(amount), recipientName, recipientPhone, message, payMethod: method })))}
+          onClick={() => run(async () => onDone(await api<GiftCard>('POST', '/admin/gift-cards', { amount: Number(amount), recipientName, recipientPhone, message, payMethod: method, promoCode: promo.trim() || undefined })))}
         >
-          Încasat ({method === 'card' ? 'card' : method === 'transfer' ? 'transfer' : 'numerar'}), generează codul
+          Încasat{quote ? ` ${lei(quote.price)}` : ''} ({method === 'card' ? 'card' : method === 'transfer' ? 'transfer' : 'numerar'}), generează codul
         </button>
       </div>
     </Modal>

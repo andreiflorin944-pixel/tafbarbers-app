@@ -1,4 +1,4 @@
-import type { Raffle, AppVersionInfo, BeforeAfter, DayPart, WaitlistEntry, GiftCards, Barber, Bonus, Location, Booking, Business, Identity, Referrals, IdentityPhoto, Plan, Subscription, CustomSubConfig, CustomSubHint, CustomSubItem, CustomSubQuote, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
+import type { Raffle, AppVersionInfo, BeforeAfter, DayPart, WaitlistEntry, GiftCards, GiftPromoQuote, Barber, Bonus, Location, Booking, Business, Identity, Referrals, IdentityPhoto, Plan, Subscription, CustomSubConfig, CustomSubHint, CustomSubItem, CustomSubQuote, Me, Order, Product, Promo, Service, Slot } from '@/data/types';
 
 // Singura legătură dintre interfață și server. `http.ts` vorbește cu serverul nostru
 // (Cloudflare Worker); `mock.ts` e varianta de test, folosită cât timp aplicația nu are
@@ -83,7 +83,9 @@ export interface BookingApi {
 
   // Carduri cadou (plata la salon) și pozele înainte/după puse de frizer.
   getGiftCards(token: string, lang?: string): Promise<GiftCards>;
-  buyGiftCard(token: string, input: { amount: number; recipientName: string; recipientPhone?: string; message?: string }): Promise<{ id: string }>;
+  buyGiftCard(token: string, input: { amount: number; recipientName: string; recipientPhone?: string; message?: string; promoCode?: string }): Promise<{ id: string }>;
+  /** Prețul cu un cod de reducere pentru cardul cadou. */
+  quoteGiftPromo(code: string, amount: number): Promise<GiftPromoQuote>;
   cancelGiftCard(token: string, id: string): Promise<void>;
   /** Adresa paginii de plată online (Stripe). */
   payGiftCard(token: string, id: string): Promise<{ url: string }>;
