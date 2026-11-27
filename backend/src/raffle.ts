@@ -1,9 +1,11 @@
 // Tombola săptămânală (panou → Marketing → Tombola săptămânii).
-// Intră automat, o singură dată pe săptămână (șanse egale), fiecare client care are cont în aplicație și a avut cel puțin
-// o programare ÎNCHEIATĂ (închisă în panou / aplicația echipei) între luni 00:00 și duminică 23:59, ora salonului.
+// Intră automat, o singură dată pe săptămână (șanse egale), fiecare client care are telefon ȘI e-mail în fișă și a avut cel puțin
+// o programare între luni 00:00 și duminică 23:59, ora salonului (din orice sursă: aplicație, site, panou, Barberly), încasată sau nu,
+// cu sau fără cont în aplicație. Ies singuri cei a căror programare a fost ștearsă / anulată sau marcată „nu a venit”.
 // Extragerea o face serverul (număr la întâmplare criptografic), roata din panou doar arată rezultatul.
 // Câștigătorul primește premiul ca beneficiu (Bonusurile mele în aplicație); echipa îl vede și îl marchează folosit la tuns.
-// Nu se trimite nimic automat clienților (SMS, e-mail, push): câștigătorul vede premiul la următoarea deschidere a aplicației.
+// Nu se trimite nimic automat clienților (SMS, e-mail, push): câștigătorul vede premiul la următoarea deschidere a aplicației
+// (dacă își face cont cu același telefon, îl găsește tot acolo), iar echipa îl vede în fișa lui la încasare.
 import { newId } from './auth';
 import { localize, localizeText, ensureTranslated } from './contentI18n';
 import { getBusiness, getSetting, setSetting, tryLock, unlock } from './db';
@@ -89,16 +91,18 @@ async function pickWeek(env: Env, raw: unknown) {
   return w;
 }
 
-// Cine are cont în aplicație (a semnat termenii sau și-a pus parolă), cont neșters și neblocat.
-const HAS_ACCOUNT = `c.deleted_at IS NULL AND c.blocked_at IS NULL AND (c.terms_accepted_at IS NOT NULL OR c.password_hash IS NOT NULL)`;
+// Client neșters, neblocat, cu telefon și e-mail în fișă (contul în aplicație NU mai e obligatoriu).
+const HAS_CONTACT = `c.deleted_at IS NULL AND c.blocked_at IS NULL AND trim(coalesce(c.phone, '')) <> '' AND trim(coalesce(c.email, '')) LIKE '%_@_%'`;
+// Programarea contează cât timp nu e anulată / ștearsă sau marcată „nu a venit” (încasată sau nu).
+const BOOKED = `b.status IN ('requested','confirmed','completed')`;
 
-type Entry = { id: string; name: string; phone: string; visits: number };
+type Entry = { id: string; name: string; phone: string; email: string; visits: number; first_at: string };
 
-/** Participanții săptămânii: clienții cu cont și cel puțin o programare încheiată în săptămână (fără cei care au câștigat deja în ea). */
+/** Participanții săptămânii: o singură dată fiecare client programat în săptămână, cu telefon și e-mail (fără cei care au câștigat deja în ea). */
 async function entries(env: Env, from: string, to: string, week: string) {
   const r = await env.DB.prepare(
-    `SELECT c.id, c.name, c.phone, count(b.id) AS visits FROM clients c JOIN bookings b ON b.client_id = c.id
-     WHERE b.status = 'completed' AND b.starts_at >= ? AND b.starts_at < ? AND ${HAS_ACCOUNT}
+    `SELECT c.id, c.name, c.phone, c.email, count(b.id) AS visits, min(b.starts_at) AS first_at FROM clients c JOIN bookings b ON b.client_id = c.id
+     WHERE ${BOOKED} AND b.starts_at >= ? AND b.starts_at < ? AND ${HAS_CONTACT}
        AND NOT EXISTS (SELECT 1 FROM raffle_draws d WHERE d.week = ? AND d.client_id = c.id AND d.status = 'won')
      GROUP BY c.id ORDER BY c.name COLLATE NOCASE`,
   )
@@ -154,14 +158,14 @@ export async function raffleWeek(env: Env, rawWeek: unknown) {
   const [list, draws, open] = await Promise.all([
     entries(env, from, to, week),
     env.DB.prepare(`${DRAW_SELECT} WHERE d.week = ? ORDER BY d.drawn_at`).bind(week).all<DrawRow>(),
-    // Tunsori trecute din săptămână rămase neînchise (din grabă): cât timp nu sunt închise, clientul nu intră în tombolă.
+    // Clienți programați în săptămână care NU intră pentru că le lipsește e-mailul sau telefonul din fișă.
     env.DB.prepare(
-      `SELECT b.id, b.starts_at, c.name, c.phone, br.name AS barber, (${HAS_ACCOUNT}) AS has_account
-       FROM bookings b JOIN clients c ON c.id = b.client_id LEFT JOIN barbers br ON br.id = b.barber_id
-       WHERE b.status = 'confirmed' AND b.starts_at >= ? AND b.starts_at < ? AND b.starts_at < ? ORDER BY b.starts_at LIMIT 200`,
+      `SELECT c.id, c.name, c.phone, c.email, min(b.starts_at) AS first_at FROM bookings b JOIN clients c ON c.id = b.client_id
+       WHERE ${BOOKED} AND b.starts_at >= ? AND b.starts_at < ? AND c.deleted_at IS NULL AND c.blocked_at IS NULL AND NOT (${HAS_CONTACT})
+       GROUP BY c.id ORDER BY first_at LIMIT 200`,
     )
-      .bind(from, to, now)
-      .all<{ id: string; starts_at: string; name: string; phone: string; barber: string | null; has_account: number }>(),
+      .bind(from, to)
+      .all<{ id: string; name: string; phone: string | null; email: string | null; first_at: string }>(),
   ]);
   const won = draws.results.filter((d) => d.status === 'won').length;
   const thisWeek = await currentWeek(env);
@@ -171,10 +175,10 @@ export async function raffleWeek(env: Env, rawWeek: unknown) {
     end,
     current: week === thisWeek,
     weeks: Array.from({ length: 8 }, (_, i) => addDays(thisWeek, -7 * i)),
-    participants: list.map((p) => ({ id: p.id, name: p.name || p.phone, short: shortName(p.name || 'Client'), visits: p.visits })),
+    participants: list.map((p) => ({ id: p.id, name: p.name || p.phone, short: shortName(p.name || 'Client'), visits: p.visits, phone: p.phone, email: p.email, firstAt: p.first_at, upcoming: p.first_at > now })),
     draws: draws.results.map(draw),
     left: Math.max(0, s.winnersPerWeek - won),
-    unclosed: open.results.map((b) => ({ id: b.id, start: b.starts_at, name: b.name || b.phone, barber: b.barber ?? '', hasAccount: !!b.has_account })),
+    noContact: open.results.map((b) => ({ id: b.id, name: b.name || b.phone || 'Client', phone: b.phone ?? '', email: b.email ?? '', firstAt: b.first_at })),
   };
 }
 
@@ -284,13 +288,19 @@ export async function myRaffle(env: Env, clientId: string, lang: unknown) {
   );
   if (!pub.enabled) return { ...pub, entered: false, visits: 0, wins: myWins };
   const { from, to } = await weekRange(env, pub.week);
-  const v = await env.DB.prepare(`SELECT count(*) AS n FROM bookings WHERE client_id = ? AND status = 'completed' AND starts_at >= ? AND starts_at < ?`)
+  const v = await env.DB.prepare(
+    `SELECT count(*) AS n FROM bookings b JOIN clients c ON c.id = b.client_id
+     WHERE b.client_id = ? AND ${BOOKED} AND b.starts_at >= ? AND b.starts_at < ? AND ${HAS_CONTACT}`,
+  )
     .bind(clientId, from, to)
     .first<{ n: number }>();
   return { ...pub, entered: (v?.n ?? 0) > 0, visits: v?.n ?? 0, wins: myWins };
 }
 
 // ——— Regulamentul ———
+
+/** Data ultimei schimbări a modelului de regulament (cine intră: toți programații cu telefon și e-mail). */
+const RULES_DATE = '2026-11-27';
 
 const RULES_RO = `REGULAMENTUL TOMBOLEI SĂPTĂMÂNALE „{name}”
 Ultima actualizare: {updated}
@@ -302,9 +312,10 @@ Tombola este organizată de {company}, cu sediul în {seat}, CUI {cui}, nr. de �
 Tombola are loc în fiecare săptămână, de luni (ora 00:00) până duminică (ora 23:59), ora României, cât timp este anunțată în aplicația {name}. Organizatorul o poate opri oricând, anunțând acest lucru în aplicație; extragerile pentru săptămânile deja încheiate se fac în continuare.
 
 3. Cine participă
-3.1. Participă automat orice persoană fizică cu vârsta de cel puțin 16 ani care are cont în aplicația {name} și care, în săptămâna respectivă, a beneficiat la salon de cel puțin un serviciu, înregistrat ca încheiat în sistemul salonului.
-3.2. Participarea este gratuită: nu se plătește nimic în plus față de serviciul ales și nu trebuie făcut nimic în plus. Fiecare participant are o singură șansă pe săptămână, indiferent de numărul sau valoarea serviciilor.
-3.3. Nu participă angajații și colaboratorii Organizatorului. Conturile false, duplicate sau blocate nu participă.
+3.1. Participă automat orice persoană fizică cu vârsta de cel puțin 16 ani care are o programare la salonul {name} în săptămâna respectivă (făcută din aplicație, de pe site, telefonic sau la salon) și care are trecute în fișa de client un număr de telefon și o adresă de e-mail. Nu este nevoie de cont în aplicație.
+3.2. Nu participă (sau sunt scoși din tombola săptămânii) cei a căror programare a fost anulată ori care nu s-au prezentat la programare.
+3.3. Participarea este gratuită: nu se plătește nimic în plus față de serviciul ales și nu trebuie făcut nimic în plus. Fiecare participant are o singură șansă pe săptămână, indiferent de numărul sau valoarea serviciilor.
+3.4. Nu participă angajații și colaboratorii Organizatorului. Conturile false, duplicate sau blocate nu participă.
 
 4. Premiile
 Premiile din fiecare săptămână sunt produse de îngrijire din salon: {prizes}. Se acordă {winners} premiu/premii pe săptămână. Valoarea unui premiu este mai mică de 600 lei. Premiile nu se pot schimba în bani sau în alte produse și nu se pot transfera altei persoane.
@@ -314,11 +325,11 @@ Premiile din fiecare săptămână sunt produse de îngrijire din salon: {prizes
 5.2. Pentru fiecare extragere se păstrează data, numărul de participanți și câștigătorul, ca dovadă.
 
 6. Acordarea premiului
-6.1. Câștigătorul vede premiul în aplicație, la „Bonusurile mele”, și îl ridică de la salon la următoarea vizită, în cel mult {days} zile de la extragere. Dacă nu îl ridică în acest termen, premiul se pierde.
+6.1. Premiul se trece pe numele câștigătorului în sistemul salonului: dacă are cont în aplicație, îl vede la „Bonusurile mele”, iar dacă nu, salonul îl poate anunța telefonic. Premiul se ridică de la salon la următoarea vizită, în cel mult {days} zile de la extragere. Dacă nu îl ridică în acest termen, premiul se pierde.
 6.2. Organizatorul nu trimite mesaje care cer bani, parole sau date de card pentru acordarea premiului.
 
 7. Datele personale
-Pentru tombolă folosim datele din contul tău (nume, istoricul programărilor încheiate) doar ca să stabilim participanții și să acordăm premiul, pe baza participării tale la tombolă (art. 6 alin. 1 lit. b GDPR). {publish} Detalii despre datele tale și drepturile tale găsești în Politica de confidențialitate din aplicație.
+Pentru tombolă folosim datele din fișa ta de client (nume, telefon, e-mail, programările din săptămâna respectivă) doar ca să stabilim participanții și să acordăm premiul, pe baza participării tale la tombolă (art. 6 alin. 1 lit. b GDPR). {publish} Detalii despre datele tale și drepturile tale găsești în Politica de confidențialitate din aplicație.
 
 8. Taxe
 Valoarea premiilor este sub pragul de 600 lei, pentru care nu se reține impozit pe venitul din premii (Codul fiscal, art. 110). Dacă vreodată un premiu depășește această valoare, Organizatorul reține și plătește impozitul datorat.
@@ -336,7 +347,8 @@ export async function raffleRules(env: Env, s?: RaffleSettings) {
   const b = biz as typeof biz & Partial<Record<'legalName' | 'cui' | 'regCom' | 'legalAddress' | 'legalEmail', string>>;
   const todo = (v: string | undefined, what: string) => (v?.trim() ? v.trim() : `[de completat: ${what}]`);
   const base = (env.PUBLIC_URL ?? '').replace(/\/$/, '') || 'https://app.tafbarbers.ro';
-  const updated = (st.rulesUpdatedAt ?? '2026-11-21').slice(0, 10).split('-').reverse().join('.');
+  const when = st.rules ? (st.rulesUpdatedAt ?? RULES_DATE) : [st.rulesUpdatedAt ?? '', RULES_DATE].sort().pop()!;
+  const updated = when.slice(0, 10).split('-').reverse().join('.');
   const body = (st.rules || RULES_RO)
     .replaceAll('{name}', biz.name)
     .replaceAll('{company}', todo(b.legalName, 'denumirea firmei'))
