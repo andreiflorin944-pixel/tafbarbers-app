@@ -6,7 +6,7 @@ import { availability } from './availability';
 import { EMAIL_WORDS, langKey, publicBase, sendBrandEmail } from './emailLayout';
 import { getBusiness, getSetting, setSetting } from './db';
 import { sha256 } from './auth';
-import { quotePromo } from './giftPromo';
+import { giftBase, quotePromo } from './giftPromo';
 import { HttpError, type Env } from './env';
 import { sendPush, sendSms } from './notify';
 import { giveBonus, parseReward, type Reward } from './referrals';
@@ -538,6 +538,9 @@ export type GiftCardRow = {
   pay_method?: string | null;
   price_bani?: number | null;
   promo_code?: string | null;
+  package_name?: string | null;
+  package_items?: string | null;
+  web_buyer_name?: string | null;
   buyer_name?: string | null;
   web_buyer_phone?: string | null;
   web_buyer_email?: string | null;
@@ -553,6 +556,7 @@ export const giftCard = (r: GiftCardRow, showCode: boolean) => {
     // Cât s-a plătit (mai puțin decât valoarea, cu un cod de reducere) și codul folosit.
     price: (r.price_bani ?? r.amount_bani) / 100,
     ...(r.promo_code !== undefined && { promoCode: r.promo_code }),
+    ...(r.package_name !== undefined && { packageName: r.package_name, packageItems: r.package_items ?? null }),
     balance: r.balance_bani / 100,
     recipientName: r.recipient_name,
     recipientPhone: r.recipient_phone,
@@ -564,6 +568,7 @@ export const giftCard = (r: GiftCardRow, showCode: boolean) => {
     createdAt: r.created_at,
     ...(r.buyer_name !== undefined && { buyerName: r.buyer_name }),
     ...(r.paid_by_name !== undefined && { paidByName: r.paid_by_name }),
+    ...(r.web_buyer_phone !== undefined && { buyerPhone: r.web_buyer_phone ?? null, buyerEmail: r.web_buyer_email ?? null }),
   };
 };
 
@@ -585,13 +590,16 @@ export async function createGiftCard(env: Env, buyerId: string | null, b: { amou
     if ((pending?.n ?? 0) >= 5) throw new HttpError(429, 'too_many_gift_cards');
   }
   // Cod de reducere (Marketing → Coduri reducere card cadou): cardul are valoarea întreagă, cumpărătorul plătește mai puțin.
-  const promo = b.promoCode ? await quotePromo(env, b.promoCode, amount) : null;
+  // Pachetul de sezon (ex. Experiența TAF, valoare 180 lei, la ofertă 149,99): cardul valorează 180, se plătește prețul ofertei.
+  const base = await giftBase(env, amount);
+  const promo = b.promoCode ? await quotePromo(env, b.promoCode, amount, base.priceBani) : null;
+  const priceBani = promo ? promo.priceBani : base.priceBani !== amount * 100 ? base.priceBani : null;
   const id = 'gc_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16);
   for (let i = 0; i < 5; i++) {
     const r = await env.DB.prepare(
-      `INSERT OR IGNORE INTO gift_cards (id, code, amount_bani, balance_bani, buyer_client_id, recipient_name, recipient_phone, message, price_bani, promo_code_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO gift_cards (id, code, amount_bani, balance_bani, buyer_client_id, recipient_name, recipient_phone, message, price_bani, promo_code_id, package_name, package_items) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, newCode(), amount * 100, amount * 100, buyerId, String(b.recipientName ?? '').trim().slice(0, 80), b.recipientPhone ?? null, String(b.message ?? '').trim().slice(0, 200), promo ? promo.price * 100 : null, promo?.id ?? null)
+      .bind(id, newCode(), amount * 100, amount * 100, buyerId, String(b.recipientName ?? '').trim().slice(0, 80), b.recipientPhone ?? null, String(b.message ?? '').trim().slice(0, 200), priceBani, promo?.id ?? null, base.pkg?.name ?? null, base.pkg?.items ?? null)
       .run();
     if (r.meta.changes) return id;
   }

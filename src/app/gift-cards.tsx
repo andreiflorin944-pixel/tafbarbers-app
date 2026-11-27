@@ -13,6 +13,9 @@ import { lei } from '@/lib/price';
 import { useApp } from '@/state/AppState';
 import { colors, radius, space } from '@/theme';
 
+/** Lei cu bani: 149,99 (în engleză 149.99); sumele întregi rămân 180. */
+const money = (n: number, lang: string) => (n % 1 ? n.toFixed(2).replace('.', lang === 'en' ? '.' : ',') : String(n));
+
 const STATUS: Record<GiftCard['status'], Key> = {
   pending: 'gift.st.pending',
   active: 'gift.st.active',
@@ -67,6 +70,8 @@ export default function GiftCardsScreen() {
   // Și suma campaniei (ex. voucherul de Crăciun de 120 lei) e aleasă din oficiu.
   const seasonWish = data?.season?.wish ?? '';
   const seasonAmount = data?.season?.amount ?? null;
+  // Pachetul de sezon cu preț de ofertă (ex. Experiența TAF, 180 lei → 149,99): se vinde doar pachetul.
+  const pkg = data?.enabled && data.season?.packagePrice && seasonAmount ? { name: data.season.packageName ?? '', items: (data.season.packageItems ?? '').split(',').map((x) => x.trim()).filter(Boolean), value: seasonAmount, price: data.season.packagePrice } : null;
   const [wishSet, setWishSet] = useState(false);
   useEffect(() => {
     if ((seasonWish || seasonAmount) && !wishSet) {
@@ -157,7 +162,27 @@ export default function GiftCardsScreen() {
         <>
           <Text style={[styles.label, { color: colors.gold }]}>{t('gift.give')}</Text>
           <Card style={{ gap: space.sm }}>
-            <Text style={styles.muted}>{t('gift.pickAmount')}</Text>
+            {pkg ? (
+              <View style={{ borderWidth: 2, borderColor: colors.gold, borderRadius: radius.lg, padding: space.md, gap: 4 }}>
+                <Text style={[styles.cardTitle, { fontSize: 20 }]}>{pkg.name}</Text>
+                {pkg.items.map((x) => (
+                  <Text key={x} style={styles.text}>
+                    <Text style={{ color: colors.gold, fontWeight: '800' }}>✓ </Text>
+                    {x}
+                  </Text>
+                ))}
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginTop: 6 }}>
+                  <Text style={{ color: colors.muted, textDecorationLine: 'line-through', fontSize: 18, fontWeight: '700' }}>{t('common.lei', { n: money(pkg.value, lang) })}</Text>
+                  <Text style={quote ? { color: colors.muted, textDecorationLine: 'line-through', fontSize: 18, fontWeight: '700' } : { color: colors.text, fontSize: 30, fontWeight: '800' }}>
+                    {t('common.lei', { n: money(pkg.price, lang) })}
+                  </Text>
+                </View>
+                {quote ? <Text style={{ color: colors.gold, fontSize: 32, fontWeight: '800' }}>{t('common.lei', { n: money(quote.price, lang) })}</Text> : null}
+                <Text style={{ color: colors.success, fontWeight: '700' }}>{t('gift.save', { n: money(Math.round((pkg.value - (quote?.price ?? pkg.price)) * 100) / 100, lang) })}</Text>
+              </View>
+            ) : null}
+            {pkg ? null : <Text style={styles.muted}>{t('gift.pickAmount')}</Text>}
+            {pkg ? null : (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
               {data.amounts.map((a) => (
                 <Pressable
@@ -182,6 +207,7 @@ export default function GiftCardsScreen() {
                 </Pressable>
               ))}
             </View>
+            )}
             <TextInput value={name} onChangeText={setName} style={styles.input} placeholder={t('gift.forWho')} placeholderTextColor={colors.muted} maxLength={80} />
             <TextInput
               value={phone}
@@ -213,12 +239,12 @@ export default function GiftCardsScreen() {
                 <Button title={t('gift.promoApply')} variant="ghost" onPress={() => applyPromo(promo, amount)} disabled={!promo.trim() || !amount} loading={promoBusy} />
               </View>
             </View>
-            {quote ? <Text style={{ color: colors.success }}>{t('gift.promoOk', { amount: quote.amount, price: quote.price })}</Text> : null}
+            {quote ? <Text style={{ color: colors.success }}>{pkg ? t('gift.promoOkPkg', { off: money(quote.discount, lang), price: money(quote.price, lang) }) : t('gift.promoOk', { amount: quote.amount, price: money(quote.price, lang) })}</Text> : null}
             {promoErr ? <Text style={{ color: colors.danger }}>{promoErr}</Text> : null}
             <Text style={[styles.muted, { fontSize: 13 }]}>
               {online ? t('gift.payOnlineOr') : t('gift.payAtSalon')} {t('gift.info', { months: data.validMonths })}
             </Text>
-            <Button title={amount ? (quote ? t('gift.orderPrice', { n: amount, p: quote.price }) : t('gift.order', { n: amount })) : t('gift.pickAmount')} onPress={buy} disabled={!amount || !name.trim()} loading={busy} />
+            <Button title={pkg ? `${data.season?.cta || pkg.name} · ${t('common.lei', { n: money(quote?.price ?? pkg.price, lang) })}` : amount ? (quote ? t('gift.orderPrice', { n: amount, p: money(quote.price, lang) }) : t('gift.order', { n: amount })) : t('gift.pickAmount')} onPress={buy} disabled={!amount || !name.trim()} loading={busy} />
             {done ? (
               <Text style={{ color: colors.success }}>
                 {online
@@ -255,7 +281,7 @@ export default function GiftCardsScreen() {
 }
 
 function GiftRow({ g, from, to, onCancel, onPay, shop }: { g: GiftCard; from?: string | null; to?: string; onCancel?: () => void; onPay?: () => void; shop?: string }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const until = g.expiresAt ? t('common.until', { date: formatDate(new Date(g.expiresAt)) }) : '';
   const share = () =>
     Share.share({
@@ -267,7 +293,7 @@ function GiftRow({ g, from, to, onCancel, onPay, shop }: { g: GiftCard; from?: s
         <View style={[styles.row, { gap: 8, flex: 1 }]}>
           <Ionicons name="gift" size={22} color={colors.gold} />
           <Text style={styles.cardTitle}>
-            {lei(g.amount)}
+            {g.packageName || lei(g.amount)}
             {to ? t('gift.for', { name: to }) : from ? t('gift.from', { name: from.split(' ')[0] }) : ''}
           </Text>
         </View>
@@ -284,7 +310,7 @@ function GiftRow({ g, from, to, onCancel, onPay, shop }: { g: GiftCard; from?: s
           {until ? ` · ${until}` : ''}. {t('gift.sayCode')}
         </Text>
       ) : null}
-      {g.promoCode && g.price != null && g.price !== g.amount ? <Text style={[styles.muted, { fontSize: 13 }]}>{t('gift.paidWith', { p: g.price, code: g.promoCode })}</Text> : null}
+      {g.promoCode && g.price != null && g.price !== g.amount ? <Text style={[styles.muted, { fontSize: 13 }]}>{t('gift.paidWith', { p: money(g.price, lang), code: g.promoCode })}</Text> : null}
       {g.message ? <Text style={[styles.text, { fontStyle: 'italic' }]}>„{g.message}”</Text> : null}
       <View style={[styles.row, { gap: space.sm, marginTop: 4 }]}>
         {g.code && to ? (

@@ -79,7 +79,7 @@ import { buildDashboard, buildReport, REPORTS, reportCells, type ReportKind } fr
 import { localizeReport, reportText } from '../reportsI18n';
 import { xlsx } from '../xlsx';
 import { adjustMove, cancelNir, createNir, getNir, listNir, stockOut, type NirInput } from '../stock';
-import { generatePromos, listPromos, quotePromo, setPromoActive } from '../giftPromo';
+import { generatePromos, giftBase, listPromos, quotePromo, setPromoActive } from '../giftPromo';
 import { activateGiftCard, createGiftCard, freeSlotsSoon, getAutomations, giftCard, saveAutomations, switchMessage, type GiftCardRow } from '../growth';
 import { sendPush, sendSms } from '../notify';
 import { autoTranslate } from '../translate';
@@ -2235,8 +2235,10 @@ const GIFT_SELECT = `SELECT g.*, coalesce(b.name, g.web_buyer_name || ' (site, '
 adminRoutes.get('/gift-cards', async (c) => {
   need(c, 'bookings_manage');
   const st = c.req.query('status');
-  const r = await c.env.DB.prepare(`${GIFT_SELECT} ${st ? 'WHERE g.status = ?' : ''} ORDER BY g.created_at DESC LIMIT 300`)
-    .bind(...(st ? [st] : []))
+  // `paid` = registrul voucherelor vândute (active și folosite).
+  const where = st === 'paid' ? `WHERE g.status IN ('active','used')` : st ? 'WHERE g.status = ?' : '';
+  const r = await c.env.DB.prepare(`${GIFT_SELECT} ${where} ORDER BY g.created_at DESC LIMIT 1000`)
+    .bind(...(st && st !== 'paid' ? [st] : []))
     .all<GiftCardRow>();
   return c.json(r.results.map((g) => giftCard(g, true)));
 });
@@ -2292,7 +2294,8 @@ adminRoutes.patch('/gift-promos', ownerOnly, async (c) => c.json(await setPromoA
 // Prețul cu cod la vânzarea din salon (casa).
 adminRoutes.post('/gift-promos/quote', async (c) => {
   const b = await c.req.json<{ code?: string; amount?: number }>();
-  return c.json(await quotePromo(c.env, b.code, Math.round(Number(b.amount))));
+  const amount = Math.round(Number(b.amount));
+  return c.json(await quotePromo(c.env, b.code, amount, (await giftBase(c.env, amount)).priceBani));
 });
 
 // --- Promo „Urmărește-ne pe rețele” ---

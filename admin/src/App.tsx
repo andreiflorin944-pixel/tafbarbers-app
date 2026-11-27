@@ -50,7 +50,7 @@ const PAGES = [
   { key: 'shop', label: 'Magazin', show: (m: Me) => m.owner || m.permissions.shop, el: ShopPage },
   { key: 'stock', label: 'Stoc și NIR', show: (m: Me) => m.owner || m.permissions.shop, el: StockPage },
   { key: 'subscriptions', label: 'Abonamente', show: (m: Me) => m.owner, el: SubscriptionsPage },
-  { key: 'giftcards', label: 'Carduri cadou', show: (m: Me) => m.permissions.bookings_manage, el: GiftCardsPage },
+  { key: 'giftcards', label: 'Carduri cadou și vouchere', show: (m: Me) => m.permissions.bookings_manage, el: GiftCardsPage },
   { key: 'payments', label: 'Plăți online', show: (m: Me) => m.owner || m.permissions.stats, el: PaymentsPage },
   { key: 'birthdays', label: 'Zile de naștere', show: (m: Me) => m.owner, el: BirthdaysPage },
   { key: 'referrals', label: 'Recomandări și bonusuri', show: (m: Me) => m.owner, el: ReferralsPage },
@@ -148,7 +148,7 @@ const NAV: NavSection[] = [
     icon: 'pay',
     groups: [
       { title: 'Încasări', items: [{ label: 'Registrul de încasări', to: 'reports/register' }, { label: 'Toate plățile', to: 'reports/payments' }, { label: 'Plăți pe frizer', to: 'reports/payments-member' }, { label: 'Bacșișuri', to: 'reports/tips-member' }] },
-      { title: 'Online și cadouri', items: [{ label: 'Plăți online (Stripe)', to: 'payments' }, { label: 'Carduri cadou', to: 'giftcards' }] },
+      { title: 'Online și cadouri', items: [{ label: 'Plăți online (Stripe)', to: 'payments' }, { label: 'Carduri cadou și vouchere', to: 'giftcards' }] },
     ],
   },
   {
