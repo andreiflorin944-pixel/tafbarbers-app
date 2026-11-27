@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { api, type Me } from '../api';
 import { Field, Loading, useAction, useLoad } from '../ui';
 
-// Marketing → Tombola săptămânii. Intră singuri clienții cu cont în aplicație care au avut o tunsoare ÎNCHEIATĂ în săptămână.
+// Marketing → Tombola săptămânii. Intră singuri, o dată pe săptămână, toți clienții programați în săptămână care au telefon și e-mail
+// în fișă (încasați sau nu, cu sau fără cont). Programarea ștearsă / anulată sau „nu a venit” îl scoate singur din listă.
 // Serverul alege câștigătorul la întâmplare; roata doar arată rezultatul. Premiul ajunge la „Bonusurile mele” în aplicație.
 
 type Settings = { enabled: boolean; prizes: string[]; winnersPerWeek: number; validDays: number; showWinners: boolean; rules: string; rulesUpdatedAt: string | null };
-type Participant = { id: string; name: string; short: string; visits?: number };
+type Participant = { id: string; name: string; short: string; visits?: number; phone?: string; email?: string; firstAt?: string; upcoming?: boolean };
 type Draw = { id: string; week: string; clientId: string; name: string; phone: string; prize: string; entries: number; status: 'won' | 'cancelled'; bonusStatus: string | null; drawnAt: string; drawnBy: string | null };
-type Unclosed = { id: string; start: string; name: string; barber: string; hasAccount: boolean };
+type NoContact = { id: string; name: string; phone: string; email: string; firstAt: string };
 type Rules = { title: string; body: string; isDefault: boolean; template: string };
-type Week = { settings: Settings; week: string; end: string; current: boolean; weeks: string[]; participants: Participant[]; draws: Draw[]; left: number; unclosed: Unclosed[]; rules: Rules };
+type Week = { settings: Settings; week: string; end: string; current: boolean; weeks: string[]; participants: Participant[]; draws: Draw[]; left: number; noContact: NoContact[]; rules: Rules };
 
 const RANDOM = '__random__';
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -63,10 +64,11 @@ export function RafflePage({ me }: { me: Me }) {
         <h1>Tombola săptămânii</h1>
       </div>
       <p className="muted small" style={{ marginTop: -8, maxWidth: 780 }}>
-        În fiecare săptămână (luni–duminică) intră automat în tombolă toți clienții care au <b>cont în aplicație</b> și au avut cel puțin o tunsoare{' '}
-        <b>încheiată</b> în acea săptămână. Fiecare are o singură șansă, oricâte vizite a avut. Apeși „Învârte roata”, serverul alege câștigătorul la
-        întâmplare, iar premiul îi apare singur în aplicație, la „Bonusurile mele”. Când vine la salon, îl vedeți la încasare și îl bifați „folosit”. Nu se
-        trimite niciun SMS sau e-mail.
+        În fiecare săptămână (luni–duminică) intră automat în tombolă toți clienții <b>programați</b> în acea săptămână care au <b>telefon și e-mail</b> în
+        fișă (din aplicație, site, panou sau Barberly; încasați sau nu; cu sau fără cont). Fiecare apare o singură dată, oricâte programări a avut. Dacă
+        ștergi programarea din calendar sau o marchezi „Nu a venit”, clientul iese singur din tombolă. Apeși „Învârte roata”, serverul alege câștigătorul la
+        întâmplare, iar premiul i se trece în fișă (și la „Bonusurile mele” în aplicație, dacă are cont). Când vine la salon, îl vedeți la încasare și îl
+        bifați „folosit”. Nu se trimite niciun SMS sau e-mail.
       </p>
 
       <div className="row" style={{ gap: 16, alignItems: 'flex-start' }}>
@@ -191,7 +193,6 @@ function DrawCard({ d, v, owner, week, setWeek, reload }: { d: Week; v: Settings
       setSpin(null);
       reload();
     });
-  const missed = d.unclosed.filter((u) => u.hasAccount);
 
   return (
     <div className="card grid" style={{ flex: '2 1 480px', maxWidth: 640 }}>
@@ -219,26 +220,6 @@ function DrawCard({ d, v, owner, week, setWeek, reload }: { d: Week; v: Settings
         </div>
       </div>
 
-      {missed.length ? (
-        <div className="card" style={{ borderColor: 'var(--gold)', background: 'transparent' }}>
-          <b style={{ color: 'var(--gold)' }}>
-            {missed.length === 1 ? '1 client cu cont nu e în tombolă' : `${missed.length} clienți cu cont nu sunt în tombolă`}: tunsoarea lor n-a fost închisă.
-          </b>
-          <div className="muted small" style={{ margin: '4px 0 8px' }}>
-            Închide-le în <a href="#/calendar">Calendar</a> (Încasează / Încheie), apoi reîncarcă pagina, și intră și ei.
-          </div>
-          <div className="grid" style={{ gap: 4 }}>
-            {missed.slice(0, 15).map((u) => (
-              <div key={u.id} className="small">
-                {time(u.start)} · {u.name}
-                {u.barber ? ` · ${u.barber}` : ''}
-              </div>
-            ))}
-            {missed.length > 15 ? <div className="muted small">și încă {missed.length - 15}</div> : null}
-          </div>
-        </div>
-      ) : null}
-
       {list.length ? <Wheel list={list} angle={spin?.angle ?? 0} winnerId={spin?.done ? spin.draw.clientId : null} /> : <div className="muted">Încă nu e niciun participant în această săptămână.</div>}
 
       {spin?.done ? (
@@ -250,7 +231,7 @@ function DrawCard({ d, v, owner, week, setWeek, reload }: { d: Week; v: Settings
             Premiu: <b>{spin.draw.prize}</b>
           </div>
           <div className="muted small" style={{ marginTop: 6 }}>
-            Premiul i-a apărut în aplicație, la „Bonusurile mele”. Dacă vrei să-l anunți, sună-l sau trimite-i un mesaj din fișa lui.
+            Premiul i s-a trecut în fișă (și la „Bonusurile mele” în aplicație, dacă are cont). Dacă vrei să-l anunți, sună-l sau trimite-i un mesaj din fișa lui.
           </div>
         </div>
       ) : null}
@@ -306,16 +287,53 @@ function DrawCard({ d, v, owner, week, setWeek, reload }: { d: Week; v: Settings
         </div>
       ) : null}
 
-      {d.participants.length ? (
+      <div className="grid" style={{ gap: 6 }}>
+        <h3 style={{ margin: '8px 0 0' }}>Participanții săptămânii ({d.participants.length})</h3>
+        <div className="muted small">
+          Cine nu a venit sau nu a plătit: șterge-i programarea din <a href="#/calendar">Calendar</a> sau marcheaz-o „Nu a venit” și dispare singur de aici.
+        </div>
+        {d.participants.length ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="small" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr className="muted" style={{ textAlign: 'left' }}>
+                  <th style={{ padding: '4px 6px' }}>Nume</th>
+                  <th style={{ padding: '4px 6px' }}>Telefon</th>
+                  <th style={{ padding: '4px 6px' }}>E-mail</th>
+                  <th style={{ padding: '4px 6px' }}>Programarea</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.participants.map((p) => (
+                  <tr key={p.id} style={{ borderTop: '1px solid var(--line, #2a2a2e)' }}>
+                    <td style={{ padding: '4px 6px' }}>
+                      <a href={`#/clients/${p.id}`}>{p.name}</a>
+                    </td>
+                    <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>{p.phone}</td>
+                    <td style={{ padding: '4px 6px', wordBreak: 'break-all' }}>{p.email}</td>
+                    <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                      {p.firstAt ? time(p.firstAt) : ''}
+                      {p.visits && p.visits > 1 ? <span className="muted"> (+{p.visits - 1})</span> : null}
+                      {p.upcoming ? <span className="muted"> · urmează</span> : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+
+      {d.noContact.length ? (
         <details>
-          <summary className="small" style={{ cursor: 'pointer' }}>
-            Vezi participanții ({d.participants.length})
+          <summary className="small" style={{ cursor: 'pointer', color: 'var(--gold)' }}>
+            {d.noContact.length === 1 ? '1 client programat nu intră' : `${d.noContact.length} clienți programați nu intră`}: le lipsește e-mailul sau telefonul din fișă
           </summary>
-          <div className="small muted" style={{ marginTop: 6, columns: 2 }}>
-            {d.participants.map((p) => (
-              <div key={p.id}>
-                {p.name}
-                {p.visits && p.visits > 1 ? ` (${p.visits} vizite)` : ''}
+          <div className="muted small" style={{ margin: '6px 0' }}>Dacă le completezi fișa (apasă pe nume), intră și ei în tombolă.</div>
+          <div className="grid small" style={{ gap: 4 }}>
+            {d.noContact.map((u) => (
+              <div key={u.id}>
+                <a href={`#/clients/${u.id}`}>{u.name}</a> · {time(u.firstAt)} · <span className="muted">{!u.phone ? 'fără telefon' : ''}{!u.phone && !u.email ? ', ' : ''}{!u.email ? 'fără e-mail' : ''}</span>
               </div>
             ))}
           </div>
