@@ -1631,10 +1631,28 @@ adminRoutes.patch('/subscriptions/:id', ownerOnly, async (c) => {
 
 // --- Clienți ---
 
+// D1 (Cloudflare) refuză tiparele LIKE mai lungi de 50 de octeți („LIKE or GLOB pattern too complex”).
+// Scoatem % și _ (ar fi caractere speciale) și tăiem textul ca tiparul `%...%` să rămână sub limită.
+const LIKE_MAX_BYTES = 48;
+function likePattern(s: string): string {
+  let t = s.replace(/[%_\\]/g, '').trim();
+  const enc = new TextEncoder();
+  while (t && enc.encode(t).length > LIKE_MAX_BYTES) t = t.slice(0, -1);
+  return `%${t}%`;
+}
+
 adminRoutes.get('/clients', async (c) => {
   need(c, 'clients');
-  const q = (c.req.query('q') ?? '').trim();
-  const like = `%${q.replace(/[%_]/g, '')}%`;
+  const q = (c.req.query('q') ?? '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  const like = likePattern(q);
+  // Numele se caută pe cuvinte (oricare ordine): „Ion Popescu” găsește și „Popescu Ion”.
+  const words = q
+    .replace(/[%_\\]/g, '')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 4);
+  const nameCond = words.length ? words.map(() => 'c.name LIKE ?').join(' AND ') : 'c.name LIKE ?';
+  const nameArgs = words.length ? words.map(likePattern) : [like];
   // Fără dreptul „contacts” nu se vede lista clienților, doar potrivirile la ce scrii (de ex. la programare).
   if (!c.get('admin').perms.contacts && q.length < 2) return c.json([]);
   if (q && !c.get('admin').perms.contacts) {
@@ -1652,9 +1670,9 @@ adminRoutes.get('/clients', async (c) => {
       `SELECT c.*,
          (SELECT count(*) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS visits,
          (SELECT max(starts_at) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS last_visit
-       FROM clients c WHERE c.deleted_at IS NULL AND ${phone ? 'c.phone = ?' : 'c.name LIKE ?'} ORDER BY c.created_at DESC LIMIT 100`,
+       FROM clients c WHERE c.deleted_at IS NULL AND ${phone ? 'c.phone = ?' : `(${nameCond})`} ORDER BY c.created_at DESC LIMIT 100`,
     )
-      .bind(phone ?? like)
+      .bind(...(phone ? [phone] : nameArgs))
       .all<ClientRow & { visits: number; last_visit: string | null }>();
     return c.json(r.results.map((x) => ({ ...client(x), visits: x.visits, lastVisit: x.last_visit, blocked: !!x.blocked_at })));
   }
@@ -1662,10 +1680,19 @@ adminRoutes.get('/clients', async (c) => {
     `SELECT c.*,
        (SELECT count(*) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS visits,
        (SELECT max(starts_at) FROM bookings WHERE client_id = c.id AND status IN ('confirmed','completed')) AS last_visit
-     FROM clients c WHERE c.deleted_at IS NULL ${q ? "AND (c.name LIKE ? OR c.phone LIKE ? OR replace(c.phone, '+40', '0') LIKE ? OR c.email LIKE ?)" : ''}
+     FROM clients c WHERE c.deleted_at IS NULL ${q ? `AND ((${nameCond}) OR c.phone LIKE ? OR replace(c.phone, '+40', '0') LIKE ? OR c.email LIKE ?)` : ''}
      ORDER BY c.created_at DESC LIMIT 500`,
   )
-    .bind(...(q ? [like, `%${q.replace(/[^\d+]/g, '') || q}%`, `%${q.replace(/[^\d]/g, '') || q}%`, like] : []))
+    .bind(
+      ...(q
+        ? [
+            ...nameArgs,
+            likePattern(q.replace(/[^\d+]/g, '') || q),
+            likePattern(q.replace(/[^\d]/g, '') || q),
+            like,
+          ]
+        : []),
+    )
     .all<ClientRow & { visits: number; last_visit: string | null }>();
   return c.json(r.results.map((x) => ({ ...client(x), visits: x.visits, lastVisit: x.last_visit, blocked: !!x.blocked_at })));
 });
